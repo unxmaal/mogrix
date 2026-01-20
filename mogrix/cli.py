@@ -6,12 +6,12 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from mogrix.parser.spec import SpecParser
-from mogrix.rules.loader import RuleLoader
-from mogrix.rules.engine import RuleEngine
+from mogrix.compat.injector import CompatInjector
 from mogrix.emitter.spec import SpecWriter
 from mogrix.headers.overlay import HeaderOverlayManager
-from mogrix.compat.injector import CompatInjector
+from mogrix.parser.spec import SpecParser
+from mogrix.rules.engine import RuleEngine
+from mogrix.rules.loader import RuleLoader
 
 console = Console()
 

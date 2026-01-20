@@ -1,6 +1,7 @@
 """Tests for header overlay manager."""
 
 from pathlib import Path
+
 from mogrix.headers.overlay import HeaderOverlayManager
 
 HEADERS_DIR = Path(__file__).parent.parent / "headers"
@@ -27,7 +28,6 @@ def test_manager_orders_overlays():
     manager = HeaderOverlayManager(HEADERS_DIR)
     flags = manager.get_cppflags(["generic", "packages/test"])
     # Package-specific should come before generic
-    pkg_idx = flags.find("packages/test") if "packages/test" in flags else -1
     gen_idx = flags.find("generic")
     # If both exist, package should come first
     # (In our case packages/test doesn't exist, so just check generic works)

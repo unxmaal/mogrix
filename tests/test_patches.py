@@ -1,8 +1,9 @@
 """Tests for patch catalog functionality."""
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from mogrix.patches.catalog import PatchCatalog
 

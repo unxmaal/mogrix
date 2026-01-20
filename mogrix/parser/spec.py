@@ -60,7 +60,7 @@ class SpecParser:
             if in_preamble:
                 for tag, attr in self.PREAMBLE_FIELDS.items():
                     if line.startswith(f"{tag}:"):
-                        value = line[len(tag) + 1:].strip()
+                        value = line[len(tag) + 1 :].strip()
                         setattr(spec, attr, value)
                         break
 

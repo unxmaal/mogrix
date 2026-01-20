@@ -1,9 +1,10 @@
 """Tests for rule application engine."""
 
 from pathlib import Path
-from mogrix.parser.spec import SpecParser, SpecFile
-from mogrix.rules.loader import RuleLoader
+
+from mogrix.parser.spec import SpecFile
 from mogrix.rules.engine import RuleEngine
+from mogrix.rules.loader import RuleLoader
 
 FIXTURES = Path(__file__).parent / "fixtures"
 RULES_DIR = Path(__file__).parent.parent / "rules"
@@ -85,12 +86,13 @@ def test_engine_collects_header_overlays():
 def test_engine_applies_package_rules():
     """Engine applies package-specific rules."""
     # Create a temporary package rule file
-    import tempfile
     import os
+    import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Copy generic rules
         import shutil
+
         shutil.copy(RULES_DIR / "generic.yaml", tmpdir)
 
         # Create packages directory and rule

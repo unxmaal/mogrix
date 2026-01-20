@@ -1,9 +1,10 @@
 """Tests for spec emitter functionality."""
 
 import pytest
+
 from mogrix.emitter.spec import SpecWriter
-from mogrix.rules.engine import TransformResult
 from mogrix.parser.spec import SpecFile
+from mogrix.rules.engine import TransformResult
 
 
 @pytest.fixture
@@ -116,8 +117,7 @@ def test_ac_cv_overrides(basic_spec):
 
     writer = SpecWriter()
     content = writer.write(
-        result,
-        ac_cv_overrides={"ac_cv_func_malloc_0_nonnull": "yes"}
+        result, ac_cv_overrides={"ac_cv_func_malloc_0_nonnull": "yes"}
     )
 
     assert "export ac_cv_func_malloc_0_nonnull=yes" in content

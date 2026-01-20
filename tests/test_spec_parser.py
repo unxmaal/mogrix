@@ -1,6 +1,7 @@
 """Tests for spec file parser."""
 
 from pathlib import Path
+
 from mogrix.parser.spec import SpecParser
 
 FIXTURES = Path(__file__).parent / "fixtures"

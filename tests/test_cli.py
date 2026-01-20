@@ -1,8 +1,10 @@
 """Tests for CLI."""
 
 from pathlib import Path
+
 from click.testing import CliRunner
-from mogrix.cli import main, analyze
+
+from mogrix.cli import analyze, main
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

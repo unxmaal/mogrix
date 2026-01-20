@@ -1,9 +1,10 @@
 """Tests for conditional handling in spec files."""
 
 import pytest
+
 from mogrix.emitter.spec import SpecWriter
-from mogrix.rules.engine import TransformResult
 from mogrix.parser.spec import SpecFile
+from mogrix.rules.engine import TransformResult
 
 
 @pytest.fixture

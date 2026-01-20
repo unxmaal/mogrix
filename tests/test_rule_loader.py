@@ -1,6 +1,7 @@
 """Tests for YAML rule loader."""
 
 from pathlib import Path
+
 from mogrix.rules.loader import RuleLoader
 
 RULES_DIR = Path(__file__).parent.parent / "rules"

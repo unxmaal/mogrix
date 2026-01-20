@@ -1,6 +1,7 @@
 """Tests for compat source injector."""
 
 from pathlib import Path
+
 from mogrix.compat.injector import CompatInjector
 
 COMPAT_DIR = Path(__file__).parent.parent / "compat"

@@ -1,9 +1,10 @@
 """Tests for subpackage management."""
 
 import pytest
+
 from mogrix.emitter.spec import SpecWriter
-from mogrix.rules.engine import TransformResult
 from mogrix.parser.spec import SpecFile
+from mogrix.rules.engine import TransformResult
 
 
 @pytest.fixture

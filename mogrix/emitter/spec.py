@@ -1,6 +1,7 @@
 """Spec file writer for mogrix."""
 
 import re
+
 from mogrix.rules.engine import TransformResult
 
 
@@ -44,12 +45,7 @@ class SpecWriter:
             for line_pattern in remove_lines:
                 # Escape and match the line
                 escaped = re.escape(line_pattern)
-                content = re.sub(
-                    rf"^{escaped}\s*$",
-                    "",
-                    content,
-                    flags=re.MULTILINE
-                )
+                content = re.sub(rf"^{escaped}\s*$", "", content, flags=re.MULTILINE)
 
         # Add new BuildRequires (after last existing one)
         if adds:
@@ -69,9 +65,7 @@ class SpecWriter:
 
         # Inject configure --disable flags
         if result.configure_disable:
-            flags = " ".join(
-                f"--disable-{f}" for f in result.configure_disable
-            )
+            flags = " ".join(f"--disable-{f}" for f in result.configure_disable)
             # Replace %configure with %configure + flags
             content = re.sub(
                 r"^(%configure)(\s*)$",
@@ -127,8 +121,9 @@ class SpecWriter:
             last_source_idx = -1
             for i, line in enumerate(lines):
                 stripped = line.strip()
-                if (stripped.startswith("Source") or
-                    stripped.startswith("Patch")) and ":" in stripped:
+                if (
+                    stripped.startswith("Source") or stripped.startswith("Patch")
+                ) and ":" in stripped:
                     last_source_idx = i
 
             if last_source_idx >= 0:
@@ -198,9 +193,7 @@ class SpecWriter:
 
         return content
 
-    def _handle_conditionals(
-        self, content: str, result: TransformResult
-    ) -> str:
+    def _handle_conditionals(self, content: str, result: TransformResult) -> str:
         """Process conditional blocks in the spec file."""
         # Comment out conditionals
         for cond_name in result.comment_conditionals:
@@ -256,11 +249,8 @@ class SpecWriter:
         # A more robust solution would track nesting
         return content
 
-    def _handle_subpackages(
-        self, content: str, result: TransformResult
-    ) -> str:
+    def _handle_subpackages(self, content: str, result: TransformResult) -> str:
         """Process subpackage dropping."""
-        import fnmatch
 
         for pattern in result.drop_subpackages:
             content = self._comment_subpackage(content, pattern)
@@ -273,7 +263,6 @@ class SpecWriter:
 
         lines = content.splitlines()
         result_lines = []
-        in_subpackage_block = False
         current_subpackage = None
 
         i = 0
@@ -306,7 +295,9 @@ class SpecWriter:
                         next_line = lines[i]
                         if next_line.strip().startswith("%"):
                             break
-                        result_lines.append("#" + next_line if next_line.strip() else next_line)
+                        result_lines.append(
+                            "#" + next_line if next_line.strip() else next_line
+                        )
                         i += 1
                     continue
 
@@ -321,11 +312,15 @@ class SpecWriter:
                     # Comment lines until next section or end
                     while i < len(lines):
                         next_line = lines[i]
-                        if next_line.strip().startswith("%") and not next_line.strip().startswith("%{"):
+                        if next_line.strip().startswith(
+                            "%"
+                        ) and not next_line.strip().startswith("%{"):
                             # Don't treat %{macro} as a section start
                             if re.match(r"^%[a-z]", next_line.strip()):
                                 break
-                        result_lines.append("#" + next_line if next_line.strip() else next_line)
+                        result_lines.append(
+                            "#" + next_line if next_line.strip() else next_line
+                        )
                         i += 1
                     continue
 

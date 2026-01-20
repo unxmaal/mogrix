@@ -1,8 +1,8 @@
 """Tests for spec file rewriter."""
 
+from mogrix.emitter.spec import SpecWriter
 from mogrix.parser.spec import SpecFile
 from mogrix.rules.engine import TransformResult
-from mogrix.emitter.spec import SpecWriter
 
 
 def test_writer_removes_buildrequires():

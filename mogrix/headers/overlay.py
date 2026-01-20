@@ -49,6 +49,7 @@ class HeaderOverlayManager:
         Returns:
             String with -I flags for all overlays
         """
+
         # Sort overlays: packages first, then classes, then generic
         def sort_key(name: str) -> tuple[int, str]:
             if name.startswith("packages/"):
@@ -75,6 +76,7 @@ class HeaderOverlayManager:
         This uses the actual header directory paths rather than
         the target install prefix.
         """
+
         def sort_key(name: str) -> tuple[int, str]:
             if name.startswith("packages/"):
                 return (0, name)

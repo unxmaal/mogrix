@@ -1,6 +1,7 @@
 """Rule application engine for mogrix."""
 
 from dataclasses import dataclass, field
+
 from mogrix.parser.spec import SpecFile
 from mogrix.rules.loader import RuleLoader
 
@@ -65,9 +66,7 @@ class RuleEngine:
 
         return result
 
-    def _apply_generic_rules(
-        self, result: TransformResult, rules: dict
-    ) -> None:
+    def _apply_generic_rules(self, result: TransformResult, rules: dict) -> None:
         """Apply generic rules to the result."""
         # Drop BuildRequires
         if "drop_buildrequires" in rules:
@@ -78,18 +77,14 @@ class RuleEngine:
             ]
             for br in original:
                 if br in drops:
-                    result.applied_rules.append(
-                        f"drop_buildrequires: removed {br}"
-                    )
+                    result.applied_rules.append(f"drop_buildrequires: removed {br}")
 
         # Add BuildRequires
         if "add_buildrequires" in rules:
             for br in rules["add_buildrequires"]:
                 if br not in result.spec.buildrequires:
                     result.spec.buildrequires.append(br)
-                    result.applied_rules.append(
-                        f"add_buildrequires: added {br}"
-                    )
+                    result.applied_rules.append(f"add_buildrequires: added {br}")
 
         # Collect configure --disable flags
         if "configure_disable" in rules:
@@ -106,23 +101,17 @@ class RuleEngine:
         # Collect header overlays
         if "header_overlays" in rules:
             result.header_overlays.extend(rules["header_overlays"])
-            result.applied_rules.append(
-                f"header_overlays: {rules['header_overlays']}"
-            )
+            result.applied_rules.append(f"header_overlays: {rules['header_overlays']}")
 
         # Configure flags add/remove
         if "configure_flags" in rules:
             cfg = rules["configure_flags"]
             if "add" in cfg:
                 result.configure_flags_add.extend(cfg["add"])
-                result.applied_rules.append(
-                    f"configure_flags_add: {cfg['add']}"
-                )
+                result.applied_rules.append(f"configure_flags_add: {cfg['add']}")
             if "remove" in cfg:
                 result.configure_flags_remove.extend(cfg["remove"])
-                result.applied_rules.append(
-                    f"configure_flags_remove: {cfg['remove']}"
-                )
+                result.applied_rules.append(f"configure_flags_remove: {cfg['remove']}")
 
         # Conditional handling
         if "comment_conditionals" in rules:
@@ -150,9 +139,7 @@ class RuleEngine:
                 f"drop_subpackages: {rules['drop_subpackages']}"
             )
 
-    def _apply_package_rules(
-        self, result: TransformResult, pkg_rules: dict
-    ) -> None:
+    def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""
         rules = pkg_rules.get("rules", pkg_rules)
 
@@ -160,9 +147,7 @@ class RuleEngine:
         if "inject_compat_functions" in rules:
             funcs = rules["inject_compat_functions"]
             result.compat_functions.extend(funcs)
-            result.applied_rules.append(
-                f"inject_compat_functions: {funcs}"
-            )
+            result.applied_rules.append(f"inject_compat_functions: {funcs}")
 
         # Add additional BuildRequires
         if "add_buildrequires" in rules:
@@ -210,9 +195,7 @@ class RuleEngine:
         # Drop runtime Requires
         if "drop_requires" in rules:
             result.drop_requires.extend(rules["drop_requires"])
-            result.applied_rules.append(
-                f"drop_requires: {rules['drop_requires']}"
-            )
+            result.applied_rules.append(f"drop_requires: {rules['drop_requires']}")
 
         # Lines to remove
         if "remove_lines" in rules:

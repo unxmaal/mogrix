@@ -20,9 +20,7 @@ class PatchCatalog:
             return []
         return sorted(generic_dir.glob("*.patch"))
 
-    def list_package(
-        self, package: str, version: str | None = None
-    ) -> list[Path]:
+    def list_package(self, package: str, version: str | None = None) -> list[Path]:
         """List patches for a specific package.
 
         Args:
@@ -61,9 +59,7 @@ class PatchCatalog:
         patch_path = self.patches_dir / relative_path
         return patch_path.read_text()
 
-    def get_spec_entries(
-        self, patches: list[Path], start_num: int = 100
-    ) -> str:
+    def get_spec_entries(self, patches: list[Path], start_num: int = 100) -> str:
         """Generate spec file Patch entries.
 
         Args:
