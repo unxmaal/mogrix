@@ -19,6 +19,7 @@ console = Console()
 RULES_DIR = Path(__file__).parent.parent / "rules"
 HEADERS_DIR = Path(__file__).parent.parent / "headers"
 COMPAT_DIR = Path(__file__).parent.parent / "compat"
+CROSS_DIR = Path(__file__).parent.parent / "cross"
 
 
 @click.group()
@@ -449,6 +450,13 @@ def list_rules():
         console.print(f"  - {rule_file.stem}")
 
 
+# Cross-compilation default paths
+SGUG_STAGING = Path("/opt/sgug-staging/usr/sgug")
+IRIX_MACROS = Path("/opt/sgug-staging/rpmmacros.irix")
+IRIX_SYSROOT = Path("/opt/irix-sysroot")
+CROSS_BINDIR = Path("/opt/cross/bin")
+
+
 @main.command()
 @click.argument("spec_or_srpm", type=click.Path(exists=True))
 @click.option(
@@ -458,16 +466,15 @@ def list_rules():
     help="rpmbuild directory (default: ~/rpmbuild)",
 )
 @click.option(
-    "--target",
-    type=str,
-    default="irix6.5-n32",
-    help="Build target (default: irix6.5-n32)",
+    "--cross",
+    is_flag=True,
+    help="Enable IRIX cross-compilation mode (uses /opt/sgug-staging/rpmmacros.irix)",
 )
 @click.option(
     "--macros",
     type=click.Path(exists=True),
     default=None,
-    help="Path to custom RPM macros file",
+    help="Path to custom RPM macros file (overrides --cross default)",
 )
 @click.option(
     "--dry-run",
@@ -477,13 +484,18 @@ def list_rules():
 def build(
     spec_or_srpm: str,
     rpmbuild_dir: str | None,
-    target: str,
+    cross: bool,
     macros: str | None,
     dry_run: bool,
 ):
     """Build a converted spec file or SRPM.
 
     SPEC_OR_SRPM is a .spec file or .src.rpm to build.
+
+    Use --cross to enable IRIX cross-compilation, which:
+      - Uses the cross-toolchain at /opt/cross/bin/
+      - Loads rpmmacros.irix from /opt/sgug-staging/
+      - Targets IRIX 6.5 N32 ABI
     """
     import subprocess
 
@@ -501,16 +513,38 @@ def build(
         console.print("[red]Error: Input must be a .spec file or .src.rpm[/red]")
         raise SystemExit(1)
 
+    # Resolve macros file
+    macros_path = None
+    if macros:
+        macros_path = Path(macros)
+    elif cross:
+        macros_path = IRIX_MACROS
+
+    # Validate cross-compilation environment
+    if cross:
+        _validate_cross_env(dry_run)
+
     # Build rpmbuild command
     cmd = ["rpmbuild"]
 
-    # Add target if specified
-    if target:
-        cmd.extend(["--target", target])
+    # Add macros - must chain with system macros for cross-compilation
+    if macros_path:
+        # Chain: system macros + system macros.d + our cross macros
+        macro_chain = f"/usr/lib/rpm/macros:/usr/lib/rpm/macros.d/*:{macros_path}"
+        cmd.extend(["--macros", macro_chain])
 
-    # Add custom macros file
-    if macros:
-        cmd.extend(["--macros", macros])
+    # For cross-compilation:
+    # 1. Skip RPM dependency checks (host tools may not be RPMs, target deps don't exist)
+    # 2. Skip %check section (can't run IRIX binaries on Linux host)
+    # 3. Force the target triple so configure gets --host=mips-sgi-irix6.5
+    # 4. Set _arch for BUILDROOT path expansion
+    if cross:
+        cmd.append("--nodeps")
+        cmd.append("--nocheck")
+        cmd.extend(["--define", "_target mips-sgi-irix6.5"])
+        cmd.extend(["--define", "_target_cpu mips"])
+        cmd.extend(["--define", "_target_os irix6.5"])
+        cmd.extend(["--define", "_arch mips"])
 
     # Add source/spec directories
     cmd.extend(["--define", f"_topdir {rpmbuild_path}"])
@@ -524,9 +558,12 @@ def build(
         console.print("[bold]Dry run - would execute:[/bold]")
         console.print(f"  {' '.join(cmd)}")
         console.print(f"\n[bold]rpmbuild directory:[/bold] {rpmbuild_path}")
-        console.print(f"[bold]Target:[/bold] {target}")
-        if macros:
-            console.print(f"[bold]Macros:[/bold] {macros}")
+        if cross:
+            console.print("[bold]Mode:[/bold] IRIX cross-compilation")
+            console.print(f"[bold]Sysroot:[/bold] {IRIX_SYSROOT}")
+            console.print(f"[bold]Cross toolchain:[/bold] {CROSS_BINDIR}")
+        if macros_path:
+            console.print(f"[bold]Macros:[/bold] {macros_path}")
         return
 
     # Ensure rpmbuild directories exist
@@ -543,7 +580,8 @@ def build(
             cmd[-1] = str(dest_spec)
 
     console.print(f"[bold]Building:[/bold] {input_path.name}")
-    console.print(f"[bold]Target:[/bold] {target}")
+    if cross:
+        console.print("[bold]Mode:[/bold] IRIX cross-compilation")
     console.print(f"[bold]Command:[/bold] {' '.join(cmd)}\n")
 
     try:
@@ -551,6 +589,14 @@ def build(
 
         if result.returncode == 0:
             console.print("\n[bold green]✓ Build succeeded[/bold green]")
+            # Show where RPMs were created
+            rpms_dir = rpmbuild_path / "RPMS"
+            if rpms_dir.exists():
+                rpms = list(rpms_dir.glob("**/*.rpm"))
+                if rpms:
+                    console.print(f"\n[bold]Built RPMs:[/bold]")
+                    for rpm in rpms:
+                        console.print(f"  {rpm}")
         else:
             # Check for missing dependencies
             combined_output = result.stdout + result.stderr
@@ -567,6 +613,63 @@ def build(
     except FileNotFoundError:
         console.print("[red]Error: rpmbuild not found. Install rpm-build package.[/red]")
         raise SystemExit(1)
+
+
+def _validate_cross_env(dry_run: bool = False):
+    """Validate that the cross-compilation environment is set up.
+
+    Checks for:
+      - IRIX sysroot at /opt/irix-sysroot/
+      - Deployed compiler wrapper at staging/bin/irix-cc
+      - Deployed linker wrapper at staging/bin/irix-ld
+      - rpmmacros.irix at /opt/sgug-staging/
+      - Base cross-toolchain (clang, ld.lld-irix)
+
+    Args:
+        dry_run: If True, only warn about missing components
+    """
+    issues = []
+
+    if not IRIX_SYSROOT.exists():
+        issues.append(f"IRIX sysroot not found at {IRIX_SYSROOT}")
+
+    # Check for deployed wrappers (from mogrix setup-cross)
+    cc = SGUG_STAGING / "bin" / "irix-cc"
+    if not cc.exists():
+        issues.append(f"Compiler wrapper not found at {cc} (run: mogrix setup-cross)")
+
+    ld = SGUG_STAGING / "bin" / "irix-ld"
+    if not ld.exists():
+        issues.append(f"Linker wrapper not found at {ld} (run: mogrix setup-cross)")
+
+    if not IRIX_MACROS.exists():
+        issues.append(f"rpmmacros.irix not found at {IRIX_MACROS} (run: mogrix setup-cross)")
+
+    # Check for base cross-toolchain
+    clang = CROSS_BINDIR / "clang"
+    if not clang.exists():
+        issues.append(f"clang not found at {clang}")
+
+    lld = CROSS_BINDIR / "ld.lld-irix"
+    if not lld.exists():
+        issues.append(f"ld.lld-irix not found at {lld}")
+
+    if issues:
+        console.print("[bold yellow]Cross-compilation environment issues:[/bold yellow]")
+        for issue in issues:
+            console.print(f"  [yellow]![/yellow] {issue}")
+        console.print()
+
+        if not dry_run:
+            console.print("[bold]Required setup:[/bold]")
+            console.print("  1. IRIX sysroot at /opt/irix-sysroot/")
+            console.print("  2. Cross-toolchain at /opt/cross/bin/")
+            console.print("     - clang (MIPS-capable)")
+            console.print("     - ld.lld-irix (vvuk's patched LLD)")
+            console.print("  3. Run: mogrix setup-cross")
+            console.print()
+            console.print("See /src/plan.md for detailed setup instructions.")
+            raise SystemExit(1)
 
 
 def _fetch_and_convert_deps(packages: list[str], output_dir: Path):
@@ -916,6 +1019,152 @@ def _prompt_select_srpm(matches: list) -> object | None:
             console.print(f"  [red]Invalid choice. Enter 0-{len(matches)}[/red]")
         except click.Abort:
             return None
+
+
+@main.command("setup-cross")
+@click.option(
+    "--staging-dir",
+    type=click.Path(),
+    default="/opt/sgug-staging/usr/sgug",
+    help="SGUG staging directory (default: /opt/sgug-staging/usr/sgug)",
+)
+@click.option(
+    "--sysroot",
+    type=click.Path(exists=True),
+    default="/opt/irix-sysroot",
+    help="IRIX sysroot directory (default: /opt/irix-sysroot)",
+)
+@click.option(
+    "--cross-bindir",
+    type=click.Path(exists=True),
+    default="/opt/cross/bin",
+    help="Cross-toolchain bin directory (default: /opt/cross/bin)",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be done without making changes",
+)
+def setup_cross(
+    staging_dir: str,
+    sysroot: str,
+    cross_bindir: str,
+    dry_run: bool,
+):
+    """Set up the IRIX cross-compilation environment.
+
+    Deploys compiler wrappers, dicl-clang-compat headers, and RPM macros
+    to the staging directory for cross-compilation.
+
+    Prerequisites:
+      - IRIX sysroot at /opt/irix-sysroot/ (or --sysroot)
+      - Cross-toolchain at /opt/cross/bin/ (or --cross-bindir)
+        - clang (MIPS-capable)
+        - ld.lld-irix (vvuk's patched LLD)
+        - llvm-ar, llvm-ranlib, llvm-strip, llvm-nm
+      - libsoft_float_stubs.a in staging lib32/
+    """
+    import shutil
+    import stat
+
+    staging_path = Path(staging_dir)
+    sysroot_path = Path(sysroot)
+    cross_bin_path = Path(cross_bindir)
+
+    console.print("[bold]Setting up IRIX cross-compilation environment[/bold]\n")
+
+    # Validate prerequisites
+    issues = []
+
+    if not sysroot_path.exists():
+        issues.append(f"IRIX sysroot not found at {sysroot_path}")
+
+    clang = cross_bin_path / "clang"
+    if not clang.exists():
+        issues.append(f"clang not found at {clang}")
+
+    lld = cross_bin_path / "ld.lld-irix"
+    if not lld.exists():
+        issues.append(f"ld.lld-irix not found at {lld}")
+
+    soft_float = staging_path / "lib32" / "libsoft_float_stubs.a"
+    if not soft_float.exists() and staging_path.exists():
+        issues.append(f"libsoft_float_stubs.a not found at {soft_float}")
+
+    if issues:
+        console.print("[bold red]Prerequisites not met:[/bold red]")
+        for issue in issues:
+            console.print(f"  [red]![/red] {issue}")
+        console.print()
+        if not dry_run:
+            console.print("[bold]Please ensure prerequisites are installed.[/bold]")
+            console.print("See /src/plan.md for setup instructions.")
+            raise SystemExit(1)
+        console.print("[yellow]Continuing dry-run despite issues...[/yellow]\n")
+
+    # Define what to deploy
+    deployments = [
+        # (source, destination, description)
+        (CROSS_DIR / "bin" / "irix-cc", staging_path / "bin" / "irix-cc", "C compiler wrapper"),
+        (CROSS_DIR / "bin" / "irix-ld", staging_path / "bin" / "irix-ld", "Linker wrapper"),
+        (CROSS_DIR / "rpmmacros.irix", staging_path.parent.parent / "rpmmacros.irix", "RPM macros"),
+    ]
+
+    # Add dicl-clang-compat headers (IRIX header fixes for clang)
+    clang_compat_src = CROSS_DIR / "include" / "dicl-clang-compat"
+    clang_compat_dst = staging_path / "include" / "dicl-clang-compat"
+
+    if clang_compat_src.exists():
+        for header in clang_compat_src.rglob("*.h"):
+            rel_path = header.relative_to(clang_compat_src)
+            dst = clang_compat_dst / rel_path
+            deployments.append((header, dst, f"Header: {rel_path}"))
+
+    console.print("[bold]Files to deploy:[/bold]")
+    for src, dst, desc in deployments:
+        status = "[green]exists[/green]" if dst.exists() else "[yellow]new[/yellow]"
+        console.print(f"  {desc}")
+        console.print(f"    [dim]{src}[/dim]")
+        console.print(f"    → {dst} ({status})")
+
+    if dry_run:
+        console.print("\n[yellow]Dry run - no changes made[/yellow]")
+        return
+
+    console.print("\n[bold]Deploying files...[/bold]")
+
+    for src, dst, desc in deployments:
+        if not src.exists():
+            console.print(f"  [red]![/red] Source not found: {src}")
+            continue
+
+        # Create parent directory
+        dst.parent.mkdir(parents=True, exist_ok=True)
+
+        # Copy file
+        shutil.copy2(src, dst)
+
+        # Make executables executable
+        if dst.parent.name == "bin":
+            dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+        console.print(f"  [green]✓[/green] {desc}")
+
+    # Create C++ wrapper as symlink/copy of C wrapper
+    cxx_wrapper = staging_path / "bin" / "irix-cxx"
+    if not cxx_wrapper.exists():
+        cc_wrapper = staging_path / "bin" / "irix-cc"
+        if cc_wrapper.exists():
+            shutil.copy2(cc_wrapper, cxx_wrapper)
+            cxx_wrapper.chmod(cxx_wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            console.print(f"  [green]✓[/green] C++ compiler wrapper (copy of C wrapper)")
+
+    console.print("\n[bold green]Cross-compilation environment set up![/bold green]")
+    console.print(f"\n[bold]Staging directory:[/bold] {staging_path}")
+    console.print(f"[bold]RPM macros:[/bold] {staging_path.parent.parent / 'rpmmacros.irix'}")
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print("  1. Convert an SRPM: mogrix convert <package>.src.rpm")
+    console.print("  2. Build with cross-compilation: mogrix build <spec> --cross")
 
 
 if __name__ == "__main__":

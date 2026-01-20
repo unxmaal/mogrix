@@ -1,0 +1,23 @@
+# gzip package rules for IRIX cross-compilation
+#
+# gzip uses gnulib which has complex compatibility code that conflicts
+# with IRIX headers. We provide ac_cv overrides to tell configure that
+# IRIX's native functions work properly.
+
+package: gzip
+
+# Tell configure that IRIX has working implementations
+ac_cv_overrides:
+  # gettimeofday works on IRIX - don't use gnulib replacement
+  gl_cv_func_gettimeofday_clobber: "no"
+  ac_cv_func_gettimeofday: "yes"
+  # sys/time.h exists on IRIX
+  ac_cv_header_sys_time_h: "yes"
+  # IRIX has working time functions
+  ac_cv_func_timegm: "yes"
+  # getprogname replacement not needed - gnulib's will return NULL which is fine
+  ac_cv_func_getprogname: "no"
+  # Tell configure that long double is not available to avoid compiler-rt deps
+  # This prevents gnulib from using long double in printf/vasnprintf
+  ac_cv_type_long_double: "no"
+  gl_cv_have_include_next: "yes"

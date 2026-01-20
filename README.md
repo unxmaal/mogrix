@@ -72,9 +72,32 @@ mogrix batch srpms_directory/ output_directory/
 # Build using rpmbuild (dry-run to see what would happen)
 mogrix build converted-package.src.rpm --dry-run
 
-# Actually build
+# Actually build (native rpmbuild)
 mogrix build converted-package.src.rpm
+
+# Cross-compile for IRIX (requires cross-toolchain setup)
+mogrix build converted-package.src.rpm --cross
+
+# Dry-run to see cross-compilation command
+mogrix build converted-package.src.rpm --cross --dry-run
 ```
+
+### Cross-Compilation for IRIX
+
+The `--cross` flag enables IRIX cross-compilation:
+
+```bash
+mogrix build converted-package.src.rpm --cross
+```
+
+This requires the following setup:
+- **IRIX sysroot** at `/opt/irix-sysroot/`
+- **Cross-toolchain** at `/opt/cross/bin/`:
+  - `irix-cc-bootstrap` - C compiler wrapper
+  - `irix-ld-lld` - Linker wrapper (vvuk's LLD with IRIX support)
+- **RPM macros** at `/opt/sgug-staging/rpmmacros.irix`
+
+See `/src/plan.md` for detailed toolchain setup instructions.
 
 ## CLI Commands
 

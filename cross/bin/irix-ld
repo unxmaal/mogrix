@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# IRIX linker wrapper using vvuk's LLD with IRIX support
+#
+# This wrapper provides a simple interface for linking IRIX N32 binaries
+# using the patched LLD that generates proper IRIX-compatible ELF files.
+#
+# Includes soft_float_stubs for missing compiler-rt long double functions.
+#
+# Deployed by: mogrix setup-cross
+#
+
+# Configurable paths - set by mogrix setup-cross or environment
+SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
+STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+LLD="${IRIX_LLD:-/opt/cross/bin/ld.lld-irix}"
+
+# Use fixed CRT files (with .MIPS.events sections stripped)
+CRT1=$SYSROOT/usr/lib32/mips3/fixed/crt1.o
+CRTN=$SYSROOT/usr/lib32/mips3/fixed/crtn.o
+
+exec $LLD \
+  --allow-shlib-undefined \
+  -dynamic-linker /lib32/rld \
+  $CRT1 \
+  "$@" \
+  -L$SYSROOT/lib32 \
+  -L$SYSROOT/usr/lib32 \
+  -L$STAGING/lib32 \
+  -lsoft_float_stubs \
+  -lc \
+  $CRTN

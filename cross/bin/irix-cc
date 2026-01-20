@@ -1,0 +1,162 @@
+#!/bin/sh
+#
+# IRIX cross-compiler wrapper using clang + vvuk's LLD
+#
+# This wrapper handles:
+# - Preprocess only (-E): uses clang directly
+# - Compile only (-c): uses clang directly
+# - Link only (.o files, no .c): uses LLD linker wrapper
+# - Compile+link (has .c and no -c): compiles with clang, links with LLD
+#
+# Deployed by: mogrix setup-cross
+#
+
+# Configurable paths - set by mogrix setup-cross
+SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
+STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+CLANG="${IRIX_CLANG:-/opt/cross/bin/clang}"
+LD="${STAGING}/bin/irix-ld"
+
+# Header search order:
+# 1. SGUG clang compat headers (fix IRIX headers for clang)
+# 2. SGUG staging headers (cross-built packages)
+# 3. IRIX sysroot headers (pristine IRIX)
+#
+# Define IRIX C++ namespace macros as empty for C code
+CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3"
+CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
+CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"
+CLANG_FLAGS="$CLANG_FLAGS -isystem $SYSROOT/usr/include"
+CLANG_FLAGS="$CLANG_FLAGS -D_SGI_SOURCE -D_SGI_MP_SOURCE -D_SGI_REENTRANT_FUNCTIONS"
+CLANG_FLAGS="$CLANG_FLAGS -D__sgi=1 -D_COMPILER_VERSION=730 -D_LANGUAGE_C=1 -D_LONGLONG=1"
+CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_NAMESPACE_QUALIFIER="
+CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_NAMESPACE_STD="
+CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_NAMESPACE_STD="
+CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_EXTERN_C="
+CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_EXTERN_C="
+
+# Check if this is preprocess-only (-E flag present)
+preprocess_only=false
+if echo " $* " | grep -q " -E "; then
+    preprocess_only=true
+fi
+
+# Check if this is compile-only (-c flag present)
+compile_only=false
+if echo " $* " | grep -q " -c "; then
+    compile_only=true
+fi
+
+# Check if there are any .c or .S source files in the arguments
+has_source=false
+for arg in "$@"; do
+    case "$arg" in
+        *.c|*.S|*.s)
+            has_source=true
+            break
+            ;;
+    esac
+done
+
+# Check if this is just linking (.o files only)
+link_only=false
+if [ "$has_source" = "false" ]; then
+    link_only=true
+fi
+
+if [ "$preprocess_only" = "true" ]; then
+    # Preprocess only - use clang directly
+    exec $CLANG $CLANG_FLAGS "$@"
+elif [ "$compile_only" = "true" ]; then
+    # Compile only - use clang directly
+    exec $CLANG $CLANG_FLAGS "$@"
+elif [ "$link_only" = "true" ]; then
+    # Link only - filter out compile-only flags and pass to LLD wrapper
+    link_args=""
+    next_is_output=false
+    for arg in "$@"; do
+        if [ "$next_is_output" = "true" ]; then
+            link_args="$link_args -o $arg"
+            next_is_output=false
+            continue
+        fi
+        case "$arg" in
+            -o)
+                next_is_output=true
+                ;;
+            # Skip compile-only flags
+            -D*|-I*|-W*|-O*|-g|-g[0-9]|-std=*|-c|-Q*|-f*)
+                ;;
+            # Skip flags that LLD doesn't understand
+            -static|-dynamic|-Bdynamic|-Bstatic)
+                ;;
+            *)
+                link_args="$link_args $arg"
+                ;;
+        esac
+    done
+    exec $LD $link_args
+else
+    # Compile + link in one step
+    # We need to compile sources to objects, then link
+
+    # Collect source files, output file, and other args
+    sources=""
+    objects=""
+    output=""
+    other_args=""
+    libs=""
+    next_is_output=false
+
+    for arg in "$@"; do
+        if [ "$next_is_output" = "true" ]; then
+            output="$arg"
+            next_is_output=false
+            continue
+        fi
+        case "$arg" in
+            -o)
+                next_is_output=true
+                ;;
+            *.c|*.S|*.s)
+                sources="$sources $arg"
+                ;;
+            *.o|*.a)
+                objects="$objects $arg"
+                ;;
+            -l*|-L*)
+                libs="$libs $arg"
+                ;;
+            -D*|-I*|-W*|-O*|-g*|-f*|-m*|-std=*|-Q*)
+                other_args="$other_args $arg"
+                ;;
+            # Skip link-only flags during compile phase
+            -static|-dynamic|-Bdynamic|-Bstatic)
+                ;;
+            *)
+                # Pass through other args
+                other_args="$other_args $arg"
+                ;;
+        esac
+    done
+
+    # Default output name
+    if [ -z "$output" ]; then
+        output="a.out"
+    fi
+
+    # Compile sources to temp objects
+    tmpdir=$(mktemp -d)
+    trap "rm -rf $tmpdir" EXIT
+
+    compiled_objs=""
+    for src in $sources; do
+        base=$(basename "$src" | sed 's/\.[cSs]$//')
+        obj="$tmpdir/${base}.o"
+        $CLANG $CLANG_FLAGS $other_args -c -o "$obj" "$src" || exit $?
+        compiled_objs="$compiled_objs $obj"
+    done
+
+    # Link everything
+    exec $LD -o "$output" $compiled_objs $objects $libs
+fi

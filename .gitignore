@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,9 +19,43 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Virtual environments
 .venv/
 venv/
 ENV/
+env/
+
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
+.nox/
+
+# Linting/formatting
+.ruff_cache/
+.mypy_cache/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Mogrix working directories
+workdir/
+
+# RPM build artifacts (if building locally)
+*.src.rpm
+*.rpm
+
+# Temporary files
+*.tmp
+*.temp
+*.log

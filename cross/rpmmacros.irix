@@ -1,0 +1,93 @@
+# IRIX Cross-Compilation RPM Macros
+# For building FC40 SRPMs targeting IRIX 6.5.30
+#
+# Deployed by: mogrix setup-cross
+#
+# Usage: rpmbuild --macros=/path/to/rpmmacros.irix -ba package.spec
+
+# Target architecture
+%_target_platform       mips-sgi-irix6.5
+%_target                mips-sgi-irix6.5
+%_target_cpu            mips
+%_target_os             irix6.5
+
+# Cross-compilation paths
+%_irix_sysroot          /opt/irix-sysroot
+%_sgug_staging          /opt/sgug-staging/usr/sgug
+%_cross_bindir          /opt/cross/bin
+
+# Installation prefix on target IRIX system
+%_prefix                /usr/sgug
+%_exec_prefix           %{_prefix}
+%_bindir                %{_prefix}/bin
+%_sbindir               %{_prefix}/sbin
+%_libdir                %{_prefix}/lib32
+%_libexecdir            %{_prefix}/libexec
+%_includedir            %{_prefix}/include
+%_datadir               %{_prefix}/share
+%_mandir                %{_prefix}/share/man
+%_infodir               %{_prefix}/share/info
+%_docdir                %{_prefix}/share/doc
+%_sysconfdir            %{_prefix}/etc
+
+# Build directories
+%_builddir              %{_topdir}/BUILD
+%_buildrootdir          %{_topdir}/BUILDROOT
+%_rpmdir                %{_topdir}/RPMS
+%_sourcedir             %{_topdir}/SOURCES
+%_specdir               %{_topdir}/SPECS
+%_srcrpmdir             %{_topdir}/SRPMS
+
+# Cross-compilers (deployed by mogrix setup-cross)
+%__cc                   %{_sgug_staging}/bin/irix-cc
+%__cxx                  %{_sgug_staging}/bin/irix-cxx
+%__cpp                  %{__cc} -E
+%__ar                   %{_cross_bindir}/llvm-ar
+%__ranlib               %{_cross_bindir}/llvm-ranlib
+%__strip                %{_cross_bindir}/llvm-strip
+%__objdump              %{_cross_bindir}/llvm-objdump
+%__nm                   %{_cross_bindir}/llvm-nm
+
+# Configure script options for cross-compilation
+%_configure_script      ./configure
+%_configure_args        --prefix=%{_prefix} --exec-prefix=%{_exec_prefix} --bindir=%{_bindir} --sbindir=%{_sbindir} --libdir=%{_libdir} --includedir=%{_includedir} --datadir=%{_datadir} --mandir=%{_mandir} --infodir=%{_infodir} --sysconfdir=%{_sysconfdir} --host=%{_target} --build=%{_build}
+
+# Environment for cross-compilation
+%_build                 %(uname -m)-linux-gnu
+%_host                  %{_target}
+
+# Compiler flags
+# Note: Most flags are handled by the wrapper scripts
+%optflags               -O2
+
+# CFLAGS/CXXFLAGS passed to builds
+%build_cflags           %{optflags}
+%build_cxxflags         %{optflags}
+%build_ldflags          %{nil}
+
+# Disable features that don't work for cross-compilation
+%__os_install_post      %{nil}
+%_enable_debug_packages 0
+%debug_package          %{nil}
+
+# Cross-compilation aware configure macro
+%configure \
+  CC="%{__cc}" \
+  CXX="%{__cxx}" \
+  AR="%{__ar}" \
+  RANLIB="%{__ranlib}" \
+  %{_configure_script} %{_configure_args}
+
+# Cross-compilation aware make_build macro
+%make_build \
+  %{__make} %{?_smp_mflags}
+
+# Cross-compilation aware make_install macro
+%make_install \
+  %{__make} install DESTDIR=%{buildroot}
+
+# Disable automatic dependency generation (cross-compiled binaries)
+%__find_requires        %{nil}
+%__find_provides        %{nil}
+AutoReq:                no
+AutoProv:               no
