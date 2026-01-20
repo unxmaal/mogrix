@@ -106,6 +106,20 @@ class RuleEngine:
                 f"header_overlays: {rules['header_overlays']}"
             )
 
+        # Configure flags add/remove
+        if "configure_flags" in rules:
+            cfg = rules["configure_flags"]
+            if "add" in cfg:
+                result.configure_flags_add.extend(cfg["add"])
+                result.applied_rules.append(
+                    f"configure_flags_add: {cfg['add']}"
+                )
+            if "remove" in cfg:
+                result.configure_flags_remove.extend(cfg["remove"])
+                result.applied_rules.append(
+                    f"configure_flags_remove: {cfg['remove']}"
+                )
+
     def _apply_package_rules(
         self, result: TransformResult, pkg_rules: dict
     ) -> None:
@@ -176,3 +190,17 @@ class RuleEngine:
             result.applied_rules.append(
                 f"remove_lines: {len(rules['remove_lines'])} patterns"
             )
+
+        # Package-specific configure flags
+        if "configure_flags" in rules:
+            cfg = rules["configure_flags"]
+            if "add" in cfg:
+                result.configure_flags_add.extend(cfg["add"])
+                result.applied_rules.append(
+                    f"package configure_flags_add: {cfg['add']}"
+                )
+            if "remove" in cfg:
+                result.configure_flags_remove.extend(cfg["remove"])
+                result.applied_rules.append(
+                    f"package configure_flags_remove: {cfg['remove']}"
+                )

@@ -87,6 +87,36 @@ class SpecWriter:
                 flags=re.MULTILINE,
             )
 
+        # Remove configure flags
+        if result.configure_flags_remove:
+            for flag in result.configure_flags_remove:
+                # Remove the flag and any argument (e.g., --with-foo=bar)
+                escaped = re.escape(flag)
+                # Handle flag with = argument
+                content = re.sub(
+                    rf"\s*{escaped}(=[^\s]+)?",
+                    "",
+                    content,
+                )
+
+        # Add configure flags
+        if result.configure_flags_add:
+            add_flags = " ".join(result.configure_flags_add)
+            # Add to %configure with no arguments
+            content = re.sub(
+                r"^(%configure)(\s*)$",
+                rf"\1 {add_flags}\2",
+                content,
+                flags=re.MULTILINE,
+            )
+            # Add to %configure with existing arguments
+            content = re.sub(
+                r"^(%configure\s+)(.+)$",
+                rf"\1{add_flags} \2",
+                content,
+                flags=re.MULTILINE,
+            )
+
         # Rewrite paths
         for old_path, new_path in result.path_rewrites.items():
             content = content.replace(old_path, new_path)
