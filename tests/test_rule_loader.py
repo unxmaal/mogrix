@@ -24,12 +24,15 @@ def test_generic_drop_buildrequires():
     assert "libselinux" in drops
 
 
-def test_generic_add_buildrequires():
-    """Generic rules contain add_buildrequires list."""
+def test_generic_rpm_macros():
+    """Generic rules contain rpm_macros dict."""
     loader = RuleLoader(RULES_DIR)
     rules = loader.load_generic()
-    adds = rules["generic"]["add_buildrequires"]
-    assert "sgug-rpm-config" in adds
+    macros = rules["generic"]["rpm_macros"]
+    assert "_prefix" in macros
+    assert macros["_prefix"] == "/usr/sgug"
+    assert "_libdir" in macros
+    assert macros["_libdir"] == "/usr/sgug/lib32"
 
 
 def test_generic_configure_disable():

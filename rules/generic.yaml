@@ -13,8 +13,19 @@ generic:
     - libattr-devel
     - audit-libs-devel
 
-  add_buildrequires:
-    - sgug-rpm-config
+  # RPM macros injected directly (replaces sgug-rpm-config)
+  rpm_macros:
+    _prefix: /usr/sgug
+    _exec_prefix: /usr/sgug
+    _bindir: /usr/sgug/bin
+    _sbindir: /usr/sgug/sbin
+    _libdir: /usr/sgug/lib32
+    _includedir: /usr/sgug/include
+    _datadir: /usr/sgug/share
+    _mandir: /usr/sgug/share/man
+    _infodir: /usr/sgug/share/info
+    _sysconfdir: /usr/sgug/etc
+    _localstatedir: /usr/sgug/var
 
   configure_disable:
     - selinux

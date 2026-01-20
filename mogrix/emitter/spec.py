@@ -20,11 +20,20 @@ class SpecWriter:
         ac_cv_overrides: dict[str, str] | None = None,
         drop_requires: list[str] | None = None,
         remove_lines: list[str] | None = None,
+        rpm_macros: dict[str, str] | None = None,
     ) -> str:
         """Generate modified spec content from transform result."""
         content = result.spec.raw_content
         drops = drops or []
         adds = adds or []
+
+        # Inject RPM macros at the top (replaces sgug-rpm-config)
+        if rpm_macros:
+            macro_lines = ["# IRIX/SGUG path macros (injected by mogrix)"]
+            for name, value in rpm_macros.items():
+                macro_lines.append(f"%define {name} {value}")
+            macro_lines.append("")
+            content = "\n".join(macro_lines) + content
 
         # Remove dropped BuildRequires
         for dep in drops:
@@ -133,10 +142,10 @@ class SpecWriter:
                     lines.insert(last_source_idx, src_line)
                 content = "\n".join(lines)
 
-        # Inject compat prep commands (after %setup)
+        # Inject compat prep commands (after %setup or %autosetup)
         if compat_prep:
             content = re.sub(
-                r"^(%setup\s+.*)$",
+                r"^(%(auto)?setup\s+.*)$",
                 f"\\1\n\n{compat_prep}",
                 content,
                 count=1,

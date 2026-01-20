@@ -28,8 +28,8 @@ def test_engine_drops_buildrequires():
     assert "zlib" in result.spec.buildrequires
 
 
-def test_engine_adds_buildrequires():
-    """Engine adds BuildRequires listed in add_buildrequires."""
+def test_engine_collects_rpm_macros():
+    """Engine collects RPM macros from generic rules."""
     spec = SpecFile(
         name="test",
         version="1.0",
@@ -40,7 +40,9 @@ def test_engine_adds_buildrequires():
 
     result = engine.apply(spec)
 
-    assert "sgug-rpm-config" in result.spec.buildrequires
+    assert "_prefix" in result.rpm_macros
+    assert result.rpm_macros["_prefix"] == "/usr/sgug"
+    assert "_libdir" in result.rpm_macros
     assert "gcc" in result.spec.buildrequires
 
 

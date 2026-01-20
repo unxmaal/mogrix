@@ -175,3 +175,40 @@ make
 
     assert "Source100: strdup.c" in output
     assert "mogrix-compat" in output
+
+
+def test_writer_injects_compat_prep_with_autosetup():
+    """Writer injects compat prep commands after %autosetup (not just %setup)."""
+    original = """Name: test
+Version: 1.0
+Source0: test-1.0.tar.gz
+
+%description
+Test package.
+
+%prep
+%autosetup -p1
+
+%build
+make
+"""
+    spec = SpecFile(
+        name="test",
+        version="1.0",
+        raw_content=original,
+    )
+    result = TransformResult(spec=spec)
+    writer = SpecWriter()
+
+    compat_prep = "# Mogrix compat sources\nmkdir -p mogrix-compat\ncp %{SOURCE100} mogrix-compat/"
+
+    output = writer.write(
+        result,
+        compat_prep=compat_prep,
+    )
+
+    # Prep commands should appear after %autosetup
+    assert "mogrix-compat" in output
+    autosetup_idx = output.find("%autosetup")
+    mkdir_idx = output.find("mkdir -p mogrix-compat")
+    assert autosetup_idx < mkdir_idx, f"autosetup at {autosetup_idx}, mkdir at {mkdir_idx}"

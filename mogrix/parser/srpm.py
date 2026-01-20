@@ -56,11 +56,12 @@ class SRPMExtractor:
                 rpm2cpio.stdout.close()
 
             _, cpio_err = cpio.communicate()
+            _, rpm2cpio_err = rpm2cpio.communicate()
 
             # Check for errors
-            rpm2cpio.wait()
             if rpm2cpio.returncode != 0:
-                raise RuntimeError(f"rpm2cpio failed: {rpm2cpio.returncode}")
+                err_msg = rpm2cpio_err.decode().strip() if rpm2cpio_err else f"exit code {rpm2cpio.returncode}"
+                raise RuntimeError(f"rpm2cpio failed: {err_msg}")
 
             if cpio.returncode != 0:
                 raise RuntimeError(f"cpio failed: {cpio_err.decode()}")

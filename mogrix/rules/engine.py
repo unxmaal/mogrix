@@ -25,6 +25,7 @@ class TransformResult:
     remove_conditionals: list[str] = field(default_factory=list)
     force_conditionals: dict[str, bool] = field(default_factory=dict)
     drop_subpackages: list[str] = field(default_factory=list)
+    rpm_macros: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -137,6 +138,13 @@ class RuleEngine:
             result.drop_subpackages.extend(rules["drop_subpackages"])
             result.applied_rules.append(
                 f"drop_subpackages: {rules['drop_subpackages']}"
+            )
+
+        # RPM macros (replaces sgug-rpm-config)
+        if "rpm_macros" in rules:
+            result.rpm_macros.update(rules["rpm_macros"])
+            result.applied_rules.append(
+                f"rpm_macros: {list(rules['rpm_macros'].keys())}"
             )
 
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
