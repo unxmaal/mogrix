@@ -1,0 +1,34 @@
+# zchunk - Compressed file format for efficient deltas
+# Has sgifixes patches, needs compat functions
+
+package: zchunk
+
+rules:
+  # Compat functions needed
+  inject_compat_functions:
+    - strdup
+    - strndup
+
+  # Drop libdicl dependency
+  drop_buildrequires:
+    - libdicl-devel
+    - libdicl
+
+  drop_requires:
+    - libdicl
+    - libdicl-devel
+
+  # Autoconf cache overrides
+  ac_cv_overrides:
+    ac_cv_func_malloc_0_nonnull: "yes"
+    ac_cv_func_realloc_0_nonnull: "yes"
+
+  # zchunk uses meson
+  # Meson options for IRIX:
+  # -Dwith-zstd=disabled (if zstd not available)
+  # -Dwith-openssl=enabled
+
+  # Remove libdicl setup lines
+  remove_lines:
+    - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
+    - 'export LIBS="-ldicl-0.1"'
