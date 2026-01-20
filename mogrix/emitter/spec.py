@@ -190,6 +190,9 @@ class SpecWriter:
         # Handle conditionals
         content = self._handle_conditionals(content, result)
 
+        # Handle subpackage dropping
+        content = self._handle_subpackages(content, result)
+
         # Clean up empty lines from removals
         content = re.sub(r"\n{3,}", "\n\n", content)
 
@@ -252,3 +255,81 @@ class SpecWriter:
         # For now, we just remove the first %endif after where the %if was
         # A more robust solution would track nesting
         return content
+
+    def _handle_subpackages(
+        self, content: str, result: TransformResult
+    ) -> str:
+        """Process subpackage dropping."""
+        import fnmatch
+
+        for pattern in result.drop_subpackages:
+            content = self._comment_subpackage(content, pattern)
+
+        return content
+
+    def _comment_subpackage(self, content: str, subpkg_pattern: str) -> str:
+        """Comment out a subpackage and its related sections."""
+        import fnmatch
+
+        lines = content.splitlines()
+        result_lines = []
+        in_subpackage_block = False
+        current_subpackage = None
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+
+            # Check for %package directive
+            pkg_match = re.match(r"^%package\s+(\S+)", stripped)
+            if pkg_match:
+                subpkg_name = pkg_match.group(1)
+                # Check if this subpackage matches the pattern
+                if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
+                    # Comment out %package line
+                    result_lines.append("#" + line)
+                    current_subpackage = subpkg_name
+                    i += 1
+                    continue
+
+            # Check for %description of a dropped subpackage
+            desc_match = re.match(r"^%description\s+(\S+)", stripped)
+            if desc_match and current_subpackage:
+                subpkg_name = desc_match.group(1)
+                if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
+                    # Comment out %description and its content
+                    result_lines.append("#" + line)
+                    i += 1
+                    # Comment lines until next section
+                    while i < len(lines):
+                        next_line = lines[i]
+                        if next_line.strip().startswith("%"):
+                            break
+                        result_lines.append("#" + next_line if next_line.strip() else next_line)
+                        i += 1
+                    continue
+
+            # Check for %files of a dropped subpackage
+            files_match = re.match(r"^%files\s+(\S+)", stripped)
+            if files_match:
+                subpkg_name = files_match.group(1)
+                if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
+                    # Comment out %files and its content
+                    result_lines.append("#" + line)
+                    i += 1
+                    # Comment lines until next section or end
+                    while i < len(lines):
+                        next_line = lines[i]
+                        if next_line.strip().startswith("%") and not next_line.strip().startswith("%{"):
+                            # Don't treat %{macro} as a section start
+                            if re.match(r"^%[a-z]", next_line.strip()):
+                                break
+                        result_lines.append("#" + next_line if next_line.strip() else next_line)
+                        i += 1
+                    continue
+
+            result_lines.append(line)
+            i += 1
+
+        return "\n".join(result_lines)

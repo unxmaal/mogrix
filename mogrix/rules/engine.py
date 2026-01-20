@@ -23,6 +23,7 @@ class TransformResult:
     comment_conditionals: list[str] = field(default_factory=list)
     remove_conditionals: list[str] = field(default_factory=list)
     force_conditionals: dict[str, bool] = field(default_factory=dict)
+    drop_subpackages: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -142,6 +143,13 @@ class RuleEngine:
                 f"force_conditionals: {list(rules['force_conditionals'].keys())}"
             )
 
+        # Drop subpackages
+        if "drop_subpackages" in rules:
+            result.drop_subpackages.extend(rules["drop_subpackages"])
+            result.applied_rules.append(
+                f"drop_subpackages: {rules['drop_subpackages']}"
+            )
+
     def _apply_package_rules(
         self, result: TransformResult, pkg_rules: dict
     ) -> None:
@@ -244,4 +252,11 @@ class RuleEngine:
             result.force_conditionals.update(rules["force_conditionals"])
             result.applied_rules.append(
                 f"package force_conditionals: {list(rules['force_conditionals'].keys())}"
+            )
+
+        # Package-specific drop subpackages
+        if "drop_subpackages" in rules:
+            result.drop_subpackages.extend(rules["drop_subpackages"])
+            result.applied_rules.append(
+                f"package drop_subpackages: {rules['drop_subpackages']}"
             )
