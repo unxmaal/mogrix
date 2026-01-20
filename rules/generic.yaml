@@ -36,6 +36,6 @@ generic:
     - generic
 
   drop_subpackages:
-    - "*-debuginfo"
-    - "*-debugsource"
-    - "*-langpack-*"
+    - "debuginfo"
+    - "debugsource"
+    - "langpack-*"

@@ -49,3 +49,8 @@ rules:
   # Disable Linux-specific features
   configure_disable:
     - seccomp-tests
+
+  # Remove libdicl-related lines
+  remove_lines:
+    - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
+    - 'export LIBS="-ldicl-0.1"'
