@@ -80,3 +80,38 @@ def test_engine_collects_header_overlays():
     result = engine.apply(spec)
 
     assert "generic" in result.header_overlays
+
+
+def test_engine_applies_package_rules():
+    """Engine applies package-specific rules."""
+    # Create a temporary package rule file
+    import tempfile
+    import os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Copy generic rules
+        import shutil
+        shutil.copy(RULES_DIR / "generic.yaml", tmpdir)
+
+        # Create packages directory and rule
+        os.makedirs(os.path.join(tmpdir, "packages"))
+        with open(os.path.join(tmpdir, "packages", "testpkg.yaml"), "w") as f:
+            f.write("""
+package: testpkg
+rules:
+  inject_compat_functions:
+    - strdup
+    - getline
+  ac_cv_overrides:
+    ac_cv_func_malloc_0_nonnull: "yes"
+""")
+
+        spec = SpecFile(name="testpkg", version="1.0")
+        loader = RuleLoader(Path(tmpdir))
+        engine = RuleEngine(loader)
+
+        result = engine.apply(spec)
+
+        assert "strdup" in result.compat_functions
+        assert "getline" in result.compat_functions
+        assert "ac_cv_func_malloc_0_nonnull" in result.ac_cv_overrides

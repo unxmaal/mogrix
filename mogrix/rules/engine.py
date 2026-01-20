@@ -16,6 +16,10 @@ class TransformResult:
     configure_flags_remove: list[str] = field(default_factory=list)
     header_overlays: list[str] = field(default_factory=list)
     path_rewrites: dict[str, str] = field(default_factory=dict)
+    compat_functions: list[str] = field(default_factory=list)
+    ac_cv_overrides: dict[str, str] = field(default_factory=dict)
+    drop_requires: list[str] = field(default_factory=list)
+    remove_lines: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -50,8 +54,10 @@ class RuleEngine:
         if generic and "generic" in generic:
             self._apply_generic_rules(result, generic["generic"])
 
-        # TODO: Load and apply class rules
-        # TODO: Load and apply package-specific rules
+        # Load and apply package-specific rules
+        pkg_rules = self.loader.load_package(spec.name)
+        if pkg_rules:
+            self._apply_package_rules(result, pkg_rules)
 
         return result
 
@@ -98,4 +104,75 @@ class RuleEngine:
             result.header_overlays.extend(rules["header_overlays"])
             result.applied_rules.append(
                 f"header_overlays: {rules['header_overlays']}"
+            )
+
+    def _apply_package_rules(
+        self, result: TransformResult, pkg_rules: dict
+    ) -> None:
+        """Apply package-specific rules to the result."""
+        rules = pkg_rules.get("rules", pkg_rules)
+
+        # Inject compat functions
+        if "inject_compat_functions" in rules:
+            funcs = rules["inject_compat_functions"]
+            result.compat_functions.extend(funcs)
+            result.applied_rules.append(
+                f"inject_compat_functions: {funcs}"
+            )
+
+        # Add additional BuildRequires
+        if "add_buildrequires" in rules:
+            for br in rules["add_buildrequires"]:
+                if br not in result.spec.buildrequires:
+                    result.spec.buildrequires.append(br)
+                    result.applied_rules.append(
+                        f"package add_buildrequires: added {br}"
+                    )
+
+        # Drop BuildRequires
+        if "drop_buildrequires" in rules:
+            drops = set(rules["drop_buildrequires"])
+            original = result.spec.buildrequires[:]
+            result.spec.buildrequires = [
+                br for br in result.spec.buildrequires if br not in drops
+            ]
+            for br in original:
+                if br in drops:
+                    result.applied_rules.append(
+                        f"package drop_buildrequires: removed {br}"
+                    )
+
+        # Configure disable flags
+        if "configure_disable" in rules:
+            result.configure_disable.extend(rules["configure_disable"])
+            result.applied_rules.append(
+                f"package configure_disable: {rules['configure_disable']}"
+            )
+
+        # AC_CV overrides for autoconf
+        if "ac_cv_overrides" in rules:
+            result.ac_cv_overrides.update(rules["ac_cv_overrides"])
+            result.applied_rules.append(
+                f"ac_cv_overrides: {list(rules['ac_cv_overrides'].keys())}"
+            )
+
+        # Additional header overlays
+        if "header_overlays" in rules:
+            result.header_overlays.extend(rules["header_overlays"])
+            result.applied_rules.append(
+                f"package header_overlays: {rules['header_overlays']}"
+            )
+
+        # Drop runtime Requires
+        if "drop_requires" in rules:
+            result.drop_requires.extend(rules["drop_requires"])
+            result.applied_rules.append(
+                f"drop_requires: {rules['drop_requires']}"
+            )
+
+        # Lines to remove
+        if "remove_lines" in rules:
+            result.remove_lines.extend(rules["remove_lines"])
+            result.applied_rules.append(
+                f"remove_lines: {len(rules['remove_lines'])} patterns"
             )

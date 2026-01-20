@@ -137,3 +137,41 @@ make
     build_idx = output.find("%build")
     cppflags_idx = output.find("CPPFLAGS")
     assert build_idx < cppflags_idx
+
+
+def test_writer_injects_compat_sources():
+    """Writer injects compat source entries."""
+    original = """Name: test
+Version: 1.0
+Source0: test-1.0.tar.gz
+
+%description
+Test package.
+
+%prep
+%setup -q
+
+%build
+make
+"""
+    spec = SpecFile(
+        name="test",
+        version="1.0",
+        raw_content=original,
+    )
+    result = TransformResult(spec=spec)
+    writer = SpecWriter()
+
+    compat_sources = "Source100: strdup.c\nSource101: getline.c"
+    compat_prep = "mkdir -p mogrix-compat\ncp %{SOURCE100} mogrix-compat/"
+    compat_build = 'for f in mogrix-compat/*.c; do\n  %{__cc} %{optflags} -c "$f"'
+
+    output = writer.write(
+        result,
+        compat_sources=compat_sources,
+        compat_prep=compat_prep,
+        compat_build=compat_build,
+    )
+
+    assert "Source100: strdup.c" in output
+    assert "mogrix-compat" in output

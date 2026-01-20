@@ -1,0 +1,76 @@
+# Mogrix Compat Source Catalog
+# Maps function names to their source files
+
+functions:
+  # String functions
+  strdup:
+    file: string/strdup.c
+    header: string.h
+    description: Duplicate a string
+
+  strndup:
+    file: string/strndup.c
+    header: string.h
+    description: Duplicate at most n bytes of a string
+
+  # stdio functions
+  getline:
+    file: stdio/getline.c
+    header: stdio.h
+    description: Read a line from stream
+    provides:
+      - getline
+      - getdelim
+
+  getdelim:
+    file: stdio/getline.c
+    header: stdio.h
+    description: Read delimited input from stream
+
+  asprintf:
+    file: stdio/asprintf.c
+    header: stdio.h
+    description: Print to allocated string
+    provides:
+      - asprintf
+      - vasprintf
+
+  vasprintf:
+    file: stdio/asprintf.c
+    header: stdio.h
+    description: Print to allocated string (va_list version)
+
+  # stdlib functions
+  reallocarray:
+    file: stdlib/reallocarray.c
+    header: stdlib.h
+    description: Safe array reallocation with overflow check
+
+  # error functions
+  strerror_r:
+    file: error/strerror_r.c
+    header: string.h
+    description: Thread-safe strerror
+
+# Common function sets for package classes
+sets:
+  # Basic string functions most packages need
+  basic_string:
+    - strdup
+    - strndup
+
+  # GNU extensions commonly used
+  gnu_extensions:
+    - strdup
+    - strndup
+    - getline
+    - asprintf
+
+  # Full compat set (replaces libdicl)
+  full:
+    - strdup
+    - strndup
+    - getline
+    - asprintf
+    - reallocarray
+    - strerror_r

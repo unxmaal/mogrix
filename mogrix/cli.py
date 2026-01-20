@@ -11,12 +11,14 @@ from mogrix.rules.loader import RuleLoader
 from mogrix.rules.engine import RuleEngine
 from mogrix.emitter.spec import SpecWriter
 from mogrix.headers.overlay import HeaderOverlayManager
+from mogrix.compat.injector import CompatInjector
 
 console = Console()
 
 # Default directories (relative to package)
 RULES_DIR = Path(__file__).parent.parent / "rules"
 HEADERS_DIR = Path(__file__).parent.parent / "headers"
+COMPAT_DIR = Path(__file__).parent.parent / "compat"
 
 
 @click.group()
@@ -89,6 +91,18 @@ def analyze(spec_file: str, rules_dir: str | None):
         for overlay in result.header_overlays:
             console.print(f"  - {overlay}")
 
+    # Compat functions
+    if result.compat_functions:
+        console.print("\n[bold]Compat Functions (injected):[/bold]")
+        for func in result.compat_functions:
+            console.print(f"  - {func}")
+
+    # AC_CV overrides
+    if result.ac_cv_overrides:
+        console.print("\n[bold]Autoconf Cache Overrides:[/bold]")
+        for var, val in result.ac_cv_overrides.items():
+            console.print(f"  {var}={val}")
+
 
 @main.command()
 @click.argument("spec_file", type=click.Path(exists=True))
@@ -105,6 +119,12 @@ def analyze(spec_file: str, rules_dir: str | None):
     help="Path to headers directory",
 )
 @click.option(
+    "--compat-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to compat sources directory",
+)
+@click.option(
     "--output",
     "-o",
     type=click.Path(),
@@ -115,12 +135,14 @@ def convert(
     spec_file: str,
     rules_dir: str | None,
     headers_dir: str | None,
+    compat_dir: str | None,
     output: str | None,
 ):
     """Convert a spec file using rules."""
     spec_path = Path(spec_file)
     rules_path = Path(rules_dir) if rules_dir else RULES_DIR
     headers_path = Path(headers_dir) if headers_dir else HEADERS_DIR
+    compat_path = Path(compat_dir) if compat_dir else COMPAT_DIR
 
     # Parse spec
     parser = SpecParser()
@@ -143,9 +165,30 @@ def convert(
         overlay_mgr = HeaderOverlayManager(headers_path)
         cppflags = overlay_mgr.get_cppflags(result.header_overlays)
 
+    # Generate compat source injection
+    compat_sources = None
+    compat_prep = None
+    compat_build = None
+    if result.compat_functions:
+        injector = CompatInjector(compat_path)
+        compat_sources = injector.get_source_entries(result.compat_functions)
+        compat_prep = injector.get_prep_commands(result.compat_functions)
+        compat_build = injector.get_build_commands(result.compat_functions)
+
     # Write modified spec
     writer = SpecWriter()
-    content = writer.write(result, drops=drops, adds=adds, cppflags=cppflags)
+    content = writer.write(
+        result,
+        drops=drops,
+        adds=adds,
+        cppflags=cppflags,
+        compat_sources=compat_sources,
+        compat_prep=compat_prep,
+        compat_build=compat_build,
+        ac_cv_overrides=result.ac_cv_overrides if result.ac_cv_overrides else None,
+        drop_requires=result.drop_requires if result.drop_requires else None,
+        remove_lines=result.remove_lines if result.remove_lines else None,
+    )
 
     if output:
         Path(output).write_text(content)
