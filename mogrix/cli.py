@@ -267,7 +267,7 @@ def batch(
 
     console.print(table)
 
-    console.print(f"\n[bold]Summary:[/bold]")
+    console.print("\n[bold]Summary:[/bold]")
     console.print(f"  Total: {summary['total']}")
     console.print(f"  Success: [green]{summary['success']}[/green]")
     if summary["errors"] > 0:
@@ -396,13 +396,15 @@ def convert_srpm(
     # Clean up temp dir
     shutil.rmtree(extracted_dir)
 
-    console.print(f"\n[bold green]Converted successfully![/bold green]")
+    console.print("\n[bold green]Converted successfully![/bold green]")
     console.print(f"[bold]Output:[/bold] {out_path}")
     console.print(f"[bold]Spec:[/bold] {out_spec}")
     console.print(f"[bold]Rules applied:[/bold] {len(result.applied_rules)}")
 
     if result.compat_functions:
-        console.print(f"[bold]Compat functions:[/bold] {', '.join(result.compat_functions)}")
+        console.print(
+            f"[bold]Compat functions:[/bold] {', '.join(result.compat_functions)}"
+        )
 
 
 @main.command()

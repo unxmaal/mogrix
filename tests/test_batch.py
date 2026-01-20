@@ -15,19 +15,16 @@ def temp_specs_dir():
         specs_path = Path(tmpdir)
 
         # Create simple spec files
-        (specs_path / "zlib.spec").write_text(
-            """Name: zlib
+        (specs_path / "zlib.spec").write_text("""Name: zlib
 Version: 1.2.13
 Release: 1
 Summary: Compression library
 BuildRequires: gcc
 %build
 %configure
-"""
-        )
+""")
 
-        (specs_path / "curl.spec").write_text(
-            """Name: curl
+        (specs_path / "curl.spec").write_text("""Name: curl
 Version: 8.0.0
 Release: 1
 Summary: URL transfer tool
@@ -35,8 +32,7 @@ BuildRequires: zlib-devel
 BuildRequires: openssl-devel
 %build
 %configure
-"""
-        )
+""")
 
         yield specs_path
 
