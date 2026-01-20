@@ -1,0 +1,1018 @@
+{
+  "target": "tdnf",
+  "build_order": [
+    "byacc",
+    "bzip2",
+    "chrpath",
+    "docbook-style-dsssl",
+    "docbook-style-xsl",
+    "expect",
+    "giflib",
+    "gperf",
+    "help2man",
+    "initial-sgug",
+    "libimagequant",
+    "libunistring",
+    "libidn2",
+    "lzip",
+    "npth",
+    "perl-Carp",
+    "perl-SGMLSpm",
+    "perl-podlators",
+    "pixman",
+    "pkgconfig",
+    "ncurses",
+    "python-rpm-macros",
+    "readline",
+    "sgug-rpm-config",
+    "symlinks",
+    "unzip",
+    "docbook-dtds",
+    "xorg-x11-util-macros",
+    "imake",
+    "xz",
+    "tdnf",
+    "curl",
+    "rpm",
+    "popt",
+    "openssl",
+    "libmetalink",
+    "libsolv",
+    "python3",
+    "gpgme",
+    "groff",
+    "zlib",
+    "automake",
+    "file",
+    "gnupg2",
+    "libdb",
+    "libtool",
+    "libarchive",
+    "libdicl",
+    "elfutils",
+    "lua",
+    "CUnit",
+    "expat",
+    "libxml2",
+    "zchunk",
+    "libX11",
+    "sqlite",
+    "uuid",
+    "tk",
+    "tcl",
+    "gdbm",
+    "libffi",
+    "desktop-file-utils",
+    "autoconf",
+    "libassuan",
+    "libgpg-error",
+    "git",
+    "libXmu",
+    "libXaw",
+    "dejagnu",
+    "vala",
+    "emacs",
+    "flex",
+    "bison",
+    "m4",
+    "python-setuptools",
+    "pinentry",
+    "libksba",
+    "gnutls",
+    "docbook-utils",
+    "libgcrypt",
+    "libxcb",
+    "libXft",
+    "glib2",
+    "texinfo",
+    "xmlto",
+    "libXt",
+    "libXext",
+    "libxslt",
+    "gobject-introspection",
+    "graphviz",
+    "libXrender",
+    "libXdmcp",
+    "libtiff",
+    "motif",
+    "fontconfig",
+    "libXau",
+    "libjpeg-turbo",
+    "freetype",
+    "libXpm",
+    "libpng",
+    "gcr",
+    "gtk2",
+    "libsecret",
+    "libtasn1",
+    "p11-kit",
+    "nettle",
+    "ca-certificates",
+    "openjade",
+    "pcre",
+    "sgug-fam",
+    "libXfixes",
+    "cairo",
+    "gmp",
+    "gd",
+    "pango",
+    "xorg-x11-xbitmaps",
+    "atk",
+    "asciidoc",
+    "opensp",
+    "binutils",
+    "libwebp",
+    "fribidi",
+    "harfbuzz"
+  ],
+  "total_packages": 123,
+  "dependency_graph": {
+    "tdnf": [
+      "curl",
+      "rpm",
+      "popt",
+      "openssl",
+      "libmetalink",
+      "libsolv",
+      "python3",
+      "gpgme"
+    ],
+    "curl": [
+      "groff",
+      "openssh-clients",
+      "openssl",
+      "zlib",
+      "automake",
+      "pkgconfig"
+    ],
+    "rpm": [
+      "file",
+      "ima-evm-utils",
+      "openssl",
+      "gnupg2",
+      "python3-rpm-macros",
+      "readline",
+      "python3",
+      "libzstd",
+      "libdb",
+      "zlib",
+      "lmdb",
+      "xz",
+      "ncurses",
+      "libtool",
+      "bzip2",
+      "libarchive",
+      "elfutils-libelf",
+      "popt",
+      "0.9.0c-2",
+      "libdicl",
+      "automake",
+      "elfutils",
+      "lua"
+    ],
+    "popt": [
+      "libdicl"
+    ],
+    "openssl": [
+      "perl-podlators",
+      "zlib"
+    ],
+    "libmetalink": [
+      "CUnit",
+      "expat"
+    ],
+    "libsolv": [
+      "libxml2",
+      "rpm",
+      "zchunk",
+      "libdicl",
+      "zlib",
+      "xz",
+      "python3",
+      "libzstd",
+      "bzip2"
+    ],
+    "python3": [
+      "libX11",
+      "sqlite",
+      "uuid",
+      "openssl",
+      "readline",
+      "tk",
+      "expat",
+      "zlib",
+      "sgug-rpm-config",
+      "tcl",
+      "xz",
+      "ncurses",
+      "bzip2",
+      "pkgconfig",
+      "gdbm",
+      "python-setuptools-wheel",
+      "libffi",
+      "desktop-file-utils",
+      "autoconf",
+      "python-pip-wheel",
+      "python-rpm-macros"
+    ],
+    "gpgme": [
+      "libassuan",
+      "libdicl",
+      "gnupg2",
+      "python3",
+      "libgpg-error",
+      "gnupg2-smime"
+    ],
+    "groff": [
+      "git",
+      "libXmu",
+      "libXaw"
+    ],
+    "zlib": [
+      "automake",
+      "libtool",
+      "autoconf"
+    ],
+    "automake": [
+      "dejagnu",
+      "vala",
+      "cscope",
+      "gcc-objc++",
+      "sharutils",
+      "ncompress",
+      "gcc-gfortran",
+      "lzip",
+      "texinfo-tex",
+      "libtool",
+      "help2man",
+      "imake",
+      "emacs",
+      "java-devel-openjdk",
+      "autoconf",
+      "flex",
+      "bison",
+      "m4",
+      "automake",
+      "expect",
+      "gcc-objc",
+      "texlive-dvips"
+    ],
+    "pkgconfig": [],
+    "file": [
+      "libdicl",
+      "autoconf",
+      "zlib",
+      "automake",
+      "python-setuptools",
+      "python3",
+      "libtool"
+    ],
+    "gnupg2": [
+      "pinentry",
+      "libassuan",
+      "curl",
+      "sqlite",
+      "libksba",
+      "gnutls",
+      "npth",
+      "docbook-utils",
+      "zlib",
+      "readline",
+      "ncurses",
+      "libgpg-error",
+      "bzip2",
+      "libgcrypt"
+    ],
+    "readline": [
+      "ncurses"
+    ],
+    "libdb": [
+      "tcl",
+      "libtool",
+      "zlib"
+    ],
+    "xz": [],
+    "ncurses": [
+      "pkgconfig"
+    ],
+    "libtool": [
+      "help2man",
+      "autoconf",
+      "libstdc++",
+      "m4",
+      "automake"
+    ],
+    "bzip2": [],
+    "libarchive": [
+      "libxml2",
+      "openssl",
+      "bison",
+      "zlib",
+      "automake",
+      "xz",
+      "bzip2"
+    ],
+    "libdicl": [
+      "automake",
+      "libtool",
+      "autoconf"
+    ],
+    "elfutils": [
+      "libdicl",
+      "flex",
+      "bison",
+      "zlib",
+      "2.5.4a",
+      "xz",
+      "bzip2"
+    ],
+    "lua": [
+      "autoconf",
+      "automake",
+      "readline",
+      "ncurses",
+      "libtool"
+    ],
+    "perl-podlators": [],
+    "CUnit": [
+      "automake",
+      "libtool"
+    ],
+    "expat": [
+      "libtool",
+      "autoconf"
+    ],
+    "libxml2": [
+      "xz",
+      "python3",
+      "cmake-rpm-macros",
+      "zlib"
+    ],
+    "zchunk": [
+      "libzstd",
+      "openssl",
+      "libcurl"
+    ],
+    "libX11": [
+      "xorg-x11-util-macros",
+      "xproto",
+      "libxcb",
+      "xau",
+      "xdmcp",
+      "xorg-x11-xtrans"
+    ],
+    "sqlite": [
+      "readline",
+      "tcl",
+      "ncurses",
+      "autoconf"
+    ],
+    "uuid": [
+      "automake",
+      "libtool",
+      "autoconf"
+    ],
+    "tk": [
+      "libXft",
+      "tcl",
+      "libX11",
+      "autoconf"
+    ],
+    "sgug-rpm-config": [],
+    "tcl": [
+      "zlib"
+    ],
+    "gdbm": [
+      "readline",
+      "libtool"
+    ],
+    "libffi": [
+      "dejagnu"
+    ],
+    "desktop-file-utils": [
+      "glib2",
+      "emacs"
+    ],
+    "autoconf": [
+      "help2man",
+      "perl-macros",
+      "emacs",
+      "m4"
+    ],
+    "python-rpm-macros": [],
+    "libassuan": [
+      "libgpg-error"
+    ],
+    "libgpg-error": [
+      "autoconf",
+      "gettext-autopoint",
+      "automake",
+      "texinfo",
+      "libtool"
+    ],
+    "git": [
+      "expat",
+      "emacs",
+      "openssl",
+      "zlib",
+      "tcl",
+      "tk",
+      "libcurl"
+    ],
+    "libXmu": [
+      "xorg-x11-util-macros",
+      "libX11",
+      "autoconf",
+      "xmlto",
+      "automake",
+      "libXt",
+      "libtool",
+      "libXext"
+    ],
+    "libXaw": [
+      "xorg-x11-util-macros",
+      "xproto",
+      "xpm",
+      "xext",
+      "autoconf",
+      "xt",
+      "xmlto",
+      "automake",
+      "xmu",
+      "x11",
+      "libtool"
+    ],
+    "dejagnu": [
+      "expect",
+      "texinfo"
+    ],
+    "vala": [
+      "glib2",
+      "flex",
+      "bison",
+      "libxslt",
+      "gobject-introspection",
+      "graphviz"
+    ],
+    "lzip": [],
+    "help2man": [],
+    "imake": [
+      "xorg-x11-util-macros",
+      "xorg-x11-proto",
+      "pkgconfig"
+    ],
+    "emacs": [
+      "libX11",
+      "libXrender",
+      "util-linux",
+      "libXdmcp",
+      "libtiff",
+      "giflib",
+      "zlib",
+      "motif",
+      "ncurses",
+      "libXt",
+      "libjpeg",
+      "bzip2",
+      "fontconfig",
+      "libXau",
+      "libjpeg-turbo",
+      "xorg-x11-proto",
+      "freetype",
+      "libXpm",
+      "libpng",
+      "libxml2",
+      "texinfo"
+    ],
+    "flex": [
+      "help2man",
+      "bison",
+      "m4",
+      "automake",
+      "libtool"
+    ],
+    "bison": [
+      "flex",
+      "m4",
+      "autoconf"
+    ],
+    "m4": [
+      "automake",
+      "texinfo",
+      "autoconf"
+    ],
+    "expect": [],
+    "python-setuptools": [
+      "python2-wheel",
+      "python3-pip",
+      "python2-pip",
+      "python3-pytest-fixture-config",
+      "python3-pytest-virtualenv",
+      "python3-rpm-generators",
+      "python3",
+      "python3-wheel",
+      "python2-futures"
+    ],
+    "pinentry": [
+      "gcr",
+      "libassuan",
+      "gtk2",
+      "libsecret",
+      "ncurses",
+      "libgpg-error"
+    ],
+    "libksba": [
+      "libgcrypt",
+      "libgpg-error"
+    ],
+    "gnutls": [
+      "gperf",
+      "autoconf",
+      "libtasn1",
+      "p11-kit",
+      "zlib",
+      "automake",
+      "readline",
+      "nettle",
+      "libidn2",
+      "p11-kit-trust",
+      "libunistring",
+      "ca-certificates",
+      "libtool"
+    ],
+    "npth": [],
+    "docbook-utils": [
+      "docbook-style-dsssl",
+      "openjade",
+      "perl-SGMLSpm"
+    ],
+    "libgcrypt": [
+      "texinfo",
+      "pkgconfig",
+      "libgpg-error"
+    ],
+    "xorg-x11-util-macros": [],
+    "libxcb": [
+      "xcbproto",
+      "xau",
+      "libxslt",
+      "python3",
+      "xorgmacros",
+      "libtool",
+      "pkgconfig"
+    ],
+    "libXft": [
+      "xorg-x11-util-macros",
+      "fontconfig",
+      "xrender",
+      "autoconf",
+      "freetype",
+      "automake",
+      "libtool"
+    ],
+    "glib2": [
+      "libffi",
+      "initial-sgug",
+      "libdicl",
+      "pcre",
+      "zlib",
+      "sgug-fam",
+      "elfutils",
+      "python3"
+    ],
+    "texinfo": [
+      "help2man",
+      "zlib",
+      "ncurses"
+    ],
+    "xmlto": [
+      "libxslt",
+      "docbook-xsl",
+      "flex"
+    ],
+    "libXt": [
+      "xorg-x11-util-macros",
+      "xproto",
+      "autoconf",
+      "sm",
+      "automake",
+      "x11",
+      "libtool"
+    ],
+    "libXext": [
+      "xorg-x11-util-macros",
+      "libX11",
+      "autoconf",
+      "libXau",
+      "xorg-x11-proto",
+      "xmlto",
+      "automake",
+      "libtool",
+      "pkgconfig"
+    ],
+    "libxslt": [
+      "libxml2",
+      "autoconf",
+      "automake",
+      "python3",
+      "python3-libxml2",
+      "libtool"
+    ],
+    "gobject-introspection": [
+      "glib2",
+      "fontconfig",
+      "libffi",
+      "libX11",
+      "libxml2",
+      "python3-mako",
+      "flex",
+      "libXft",
+      "bison",
+      "freetype",
+      "libXfixes",
+      "python3-markdown",
+      "python3",
+      "cairo-gobject"
+    ],
+    "graphviz": [
+      "cairo",
+      "gmp",
+      "gd",
+      "expat",
+      "libtool",
+      "autoconf",
+      "gtk2",
+      "perl-Carp",
+      "freetype",
+      "zlib",
+      "automake",
+      "pango",
+      "libjpeg",
+      "libpng",
+      "lua"
+    ],
+    "libXrender": [
+      "xorg-x11-util-macros",
+      "libX11",
+      "autoconf",
+      "automake",
+      "libtool",
+      "pkgconfig"
+    ],
+    "libXdmcp": [
+      "xorg-x11-util-macros",
+      "autoconf",
+      "xorg-x11-proto",
+      "xmlto",
+      "automake",
+      "libtool"
+    ],
+    "libtiff": [
+      "autoconf",
+      "zlib",
+      "automake",
+      "libjpeg",
+      "libtool",
+      "pkgconfig"
+    ],
+    "giflib": [],
+    "motif": [
+      "xorg-x11-xbitmaps",
+      "libpng",
+      "autoconf",
+      "flex",
+      "libjpeg",
+      "libXft",
+      "libXmu",
+      "automake",
+      "libXt",
+      "byacc",
+      "flex-static",
+      "libtool",
+      "pkgconfig",
+      "libXext"
+    ],
+    "fontconfig": [
+      "for",
+      "gperf",
+      "expat",
+      "uuid",
+      "autoconf",
+      "docbook-utils-pdf.",
+      "freetype",
+      "docbook-utils",
+      "and",
+      "automake",
+      "libtool"
+    ],
+    "libXau": [
+      "xorg-x11-util-macros",
+      "autoconf",
+      "xorg-x11-proto",
+      "automake",
+      "libtool",
+      "pkgconfig"
+    ],
+    "libjpeg-turbo": [
+      "libtool"
+    ],
+    "freetype": [
+      "libpng",
+      "bzip2",
+      "zlib"
+    ],
+    "libXpm": [
+      "xorg-x11-util-macros",
+      "xext",
+      "autoconf",
+      "xau",
+      "xt",
+      "automake",
+      "libtool"
+    ],
+    "libpng": [
+      "automake",
+      "libtool",
+      "zlib",
+      "autoconf"
+    ],
+    "gcr": [
+      "giounix2.0",
+      "gobjectintrospection1.0",
+      "p11kit1",
+      "docbook-style-xsl",
+      "desktop-file-utils",
+      "vala",
+      "chrpath",
+      "libgcrypt"
+    ],
+    "gtk2": [
+      "xi",
+      "glib2",
+      "gobjectintrospection1.0",
+      "cairo",
+      "xcursor",
+      "xrender",
+      "xfixes",
+      "xcomposite",
+      "autoconf",
+      "xrandr",
+      "xdamage",
+      "automake",
+      "pango",
+      "atk",
+      "xinerama",
+      "gdkpixbuf2.0",
+      "libtool",
+      "pkgconfig"
+    ],
+    "libsecret": [
+      "glib2",
+      "docbook-style-xsl",
+      "vala",
+      "libxslt",
+      "gobject-introspection",
+      "libgcrypt"
+    ],
+    "gperf": [],
+    "libtasn1": [
+      "help2man",
+      "autoconf",
+      "libdicl",
+      "bison",
+      "automake",
+      "libtool",
+      "pkgconfig"
+    ],
+    "p11-kit": [
+      "libtasn1",
+      "libffi",
+      "libdicl"
+    ],
+    "nettle": [
+      "gmp",
+      "autoconf",
+      "m4",
+      "automake",
+      "fipscheck",
+      "libtool"
+    ],
+    "libidn2": [
+      "libunistring"
+    ],
+    "libunistring": [],
+    "ca-certificates": [
+      "libxslt",
+      "openssl",
+      "asciidoc",
+      "python3"
+    ],
+    "docbook-style-dsssl": [],
+    "openjade": [
+      "opensp",
+      "docbook-dtds"
+    ],
+    "perl-SGMLSpm": [],
+    "initial-sgug": [],
+    "pcre": [
+      "libdicl",
+      "autoconf",
+      "automake",
+      "readline",
+      "libtool"
+    ],
+    "sgug-fam": [
+      "binutils"
+    ],
+    "libXfixes": [
+      "xorg-x11-util-macros",
+      "libX11",
+      "xext",
+      "fixesproto",
+      "autoconf",
+      "automake",
+      "libtool"
+    ],
+    "cairo": [
+      "glib2",
+      "fontconfig",
+      "libxml2",
+      "libX11",
+      "libXrender",
+      "freetype",
+      "pixman",
+      "libpng",
+      "pkgconfig"
+    ],
+    "gmp": [
+      "autoconf",
+      "git",
+      "fipscheck",
+      "automake",
+      "libtool"
+    ],
+    "gd": [
+      "fontconfig",
+      "libX11",
+      "libtool",
+      "libtiff",
+      "libimagequant",
+      "freetype",
+      "libwebp",
+      "zlib",
+      "libXpm",
+      "libjpeg",
+      "libpng",
+      "pkgconfig"
+    ],
+    "perl-Carp": [],
+    "pango": [
+      "cairo",
+      "fontconfig",
+      "glib2",
+      "gobjectintrospection1.0",
+      "help2man",
+      "freetype2",
+      "fribidi",
+      "harfbuzz",
+      "cairo-gobject",
+      "xft"
+    ],
+    "xorg-x11-xbitmaps": [
+      "automake"
+    ],
+    "byacc": [],
+    "docbook-style-xsl": [],
+    "chrpath": [],
+    "atk": [
+      "glib2",
+      "gobject-introspection"
+    ],
+    "asciidoc": [
+      "docbook-style-xsl",
+      "autoconf",
+      "vim-filesystem",
+      "libxslt",
+      "automake",
+      "symlinks",
+      "python3"
+    ],
+    "opensp": [
+      "jadetex",
+      "xmlto"
+    ],
+    "docbook-dtds": [
+      "unzip"
+    ],
+    "binutils": [
+      "flex",
+      "bison",
+      "zlib",
+      "m4",
+      "libstdc++-static",
+      "texinfo"
+    ],
+    "pixman": [],
+    "libimagequant": [],
+    "libwebp": [
+      "libtool",
+      "autoconf",
+      "libtiff",
+      "giflib",
+      "automake",
+      "libjpeg",
+      "libpng"
+    ],
+    "fribidi": [
+      "automake",
+      "libtool",
+      "autoconf"
+    ],
+    "harfbuzz": [
+      "cairo",
+      "glib2",
+      "freetype",
+      "libicu",
+      "gobject-introspection"
+    ],
+    "symlinks": [],
+    "unzip": [
+      "bzip2"
+    ]
+  },
+  "libdicl_packages": [
+    "chrpath",
+    "tdnf",
+    "rpm",
+    "popt",
+    "libsolv",
+    "python3",
+    "gpgme",
+    "file",
+    "gnupg2",
+    "libdicl",
+    "elfutils",
+    "zchunk",
+    "libassuan",
+    "libgpg-error",
+    "gnutls",
+    "glib2",
+    "xmlto",
+    "gobject-introspection",
+    "fontconfig",
+    "gcr",
+    "libtasn1",
+    "p11-kit",
+    "pcre",
+    "cairo",
+    "gd",
+    "fribidi"
+  ],
+  "sgifixes_packages": [
+    "expect",
+    "pixman",
+    "symlinks",
+    "tdnf",
+    "rpm",
+    "openssl",
+    "libsolv",
+    "python3",
+    "gpgme",
+    "groff",
+    "automake",
+    "gnupg2",
+    "libdb",
+    "libtool",
+    "libarchive",
+    "elfutils",
+    "lua",
+    "libxml2",
+    "zchunk",
+    "sqlite",
+    "uuid",
+    "tk",
+    "tcl",
+    "libffi",
+    "libassuan",
+    "git",
+    "dejagnu",
+    "emacs",
+    "flex",
+    "m4",
+    "glib2",
+    "gobject-introspection",
+    "libjpeg-turbo",
+    "freetype",
+    "gcr",
+    "gtk2",
+    "libsecret",
+    "libtasn1",
+    "p11-kit",
+    "openjade",
+    "cairo",
+    "gd",
+    "pango",
+    "binutils",
+    "harfbuzz"
+  ]
+}
