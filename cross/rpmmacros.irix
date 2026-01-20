@@ -70,12 +70,17 @@
 %_enable_debug_packages 0
 %debug_package          %{nil}
 
+# Cross-linker (for libtool)
+%__ld                   %{_sgug_staging}/bin/irix-ld
+
 # Cross-compilation aware configure macro
+# Export compiler variables so configure finds them
 %configure \
-  CC="%{__cc}" \
-  CXX="%{__cxx}" \
-  AR="%{__ar}" \
-  RANLIB="%{__ranlib}" \
+  export CC="%{__cc}"; \
+  export CXX="%{__cxx}"; \
+  export AR="%{__ar}"; \
+  export RANLIB="%{__ranlib}"; \
+  export LD="%{__ld}"; \
   %{_configure_script} %{_configure_args}
 
 # Cross-compilation aware make_build macro

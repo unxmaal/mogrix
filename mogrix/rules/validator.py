@@ -52,6 +52,7 @@ VALID_PACKAGE_RULE_KEYS = {
     "header_overlays",
     "remove_lines",
     "comment_conditionals",
+    "prep_commands",
     "patches",
     "notes",
 }
@@ -283,6 +284,7 @@ class RuleValidator:
             "header_overlays",
             "remove_lines",
             "comment_conditionals",
+            "prep_commands",
             "patches",
         ]
         for field_name in list_fields:

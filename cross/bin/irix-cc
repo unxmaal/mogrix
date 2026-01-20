@@ -24,6 +24,7 @@ LD="${STAGING}/bin/irix-ld"
 #
 # Define IRIX C++ namespace macros as empty for C code
 CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3"
+CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $SYSROOT/usr/include"
@@ -85,10 +86,12 @@ elif [ "$link_only" = "true" ]; then
                 next_is_output=true
                 ;;
             # Skip compile-only flags
-            -D*|-I*|-W*|-O*|-g|-g[0-9]|-std=*|-c|-Q*|-f*)
+            -D*|-I*|-W*|-O*|-g|-g[0-9]|-std=*|-c|-Q*|-f*|-m*)
                 ;;
-            # Skip flags that LLD doesn't understand
-            -static|-dynamic|-Bdynamic|-Bstatic)
+            # Skip compiler flags that LLD doesn't understand
+            -static|-dynamic|-Bdynamic|-Bstatic|-pedantic|-pedantic-errors)
+                ;;
+            -pipe|-pthread|-traditional|-ansi|-w)
                 ;;
             *)
                 link_args="$link_args $arg"

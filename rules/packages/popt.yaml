@@ -1,10 +1,12 @@
 # popt - command line option parsing library
 # Requires compat functions previously provided by libdicl
+# Successfully cross-compiled for IRIX N32
 
 package: popt
 
 rules:
   # Compat functions needed (replaces libdicl-devel dependency)
+  # Build as static archive for subdirectory builds (tests/)
   inject_compat_functions:
     - strdup
     - strndup
@@ -23,6 +25,24 @@ rules:
   remove_lines:
     - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
     - 'export LIBS="-ldicl-0.1"'
+
+  # Configure options for cross-compilation
+  configure_opts:
+    - --disable-nls
+
+  # Export LD for libtool to find our IRIX linker
+  export_vars:
+    LD: "/opt/sgug-staging/usr/sgug/bin/irix-ld"
+
+  # Remove .la files (not needed)
+  install_cleanup:
+    - "find $RPM_BUILD_ROOT -name '*.la' -delete"
+
+  # Skip find_lang (no NLS)
+  skip_find_lang: true
+
+  # Remove %files -f lang reference
+  files_no_lang: true
 
   # Autoconf cache overrides for cross-compilation
   ac_cv_overrides:

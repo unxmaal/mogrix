@@ -1,9 +1,14 @@
 # expat - XML parser library
 # Foundation library for many packages
+# Successfully cross-compiled for IRIX N32
 
 package: expat
 
 rules:
+  # Compat functions needed (C99 functions missing from IRIX)
+  inject_compat_functions:
+    - strtof
+
   # Autoconf cache overrides
   ac_cv_overrides:
     ac_cv_func_malloc_0_nonnull: "yes"
@@ -14,3 +19,10 @@ rules:
     add:
       - --disable-silent-rules
       - --without-docbook
+
+  # Skip man pages (no docbook for cross-compilation)
+  skip_manpages: true
+
+  # Remove duplicate docs installed by make install
+  install_cleanup:
+    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/expat"

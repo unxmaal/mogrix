@@ -26,6 +26,7 @@ class TransformResult:
     force_conditionals: dict[str, bool] = field(default_factory=dict)
     drop_subpackages: list[str] = field(default_factory=list)
     rpm_macros: dict[str, str] = field(default_factory=dict)
+    prep_commands: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -147,6 +148,13 @@ class RuleEngine:
                 f"rpm_macros: {list(rules['rpm_macros'].keys())}"
             )
 
+        # Lines to remove globally (e.g., gpgverify)
+        if "remove_lines" in rules:
+            result.remove_lines.extend(rules["remove_lines"])
+            result.applied_rules.append(
+                f"remove_lines: {len(rules['remove_lines'])} patterns"
+            )
+
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""
         rules = pkg_rules.get("rules", pkg_rules)
@@ -250,4 +258,11 @@ class RuleEngine:
             result.drop_subpackages.extend(rules["drop_subpackages"])
             result.applied_rules.append(
                 f"package drop_subpackages: {rules['drop_subpackages']}"
+            )
+
+        # Commands to inject into %prep section
+        if "prep_commands" in rules:
+            result.prep_commands.extend(rules["prep_commands"])
+            result.applied_rules.append(
+                f"prep_commands: {len(rules['prep_commands'])} commands"
             )

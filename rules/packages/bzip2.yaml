@@ -1,0 +1,16 @@
+# bzip2 - file compression utility
+# Uses Makefile-based build (not autotools)
+#
+# Cross-compilation notes:
+# - gpgverify and gnupg2 removal handled by generic rules
+# - The Makefile has "all: ... test" which tries to run the binary
+# - This fails during cross-compilation since MIPS binaries can't run on x86
+# - We use prep_commands to remove the test dependency from the all target
+#
+package: bzip2
+
+rules:
+  # Remove test from "all" target to avoid running MIPS binary on build host
+  # The Makefile has: all: libbz2.a bzip2 bzip2recover test
+  prep_commands:
+    - "sed -i 's/^all: libbz2.a bzip2 bzip2recover test$/all: libbz2.a bzip2 bzip2recover/' Makefile"

@@ -49,12 +49,12 @@ class SpecWriter:
                 pattern = rf"^Requires:\s*{re.escape(dep)}(\s*[<>=].*)?$"
                 content = re.sub(pattern, "", content, flags=re.MULTILINE)
 
-        # Remove specific lines
+        # Remove specific lines (substring match - removes lines containing pattern)
         if remove_lines:
             for line_pattern in remove_lines:
-                # Escape and match the line
+                # Escape and match lines containing the pattern
                 escaped = re.escape(line_pattern)
-                content = re.sub(rf"^{escaped}\s*$", "", content, flags=re.MULTILINE)
+                content = re.sub(rf"^.*{escaped}.*$\n?", "", content, flags=re.MULTILINE)
 
         # Add new BuildRequires (after last existing one)
         if adds:
@@ -147,6 +147,18 @@ class SpecWriter:
             content = re.sub(
                 r"^(%(auto)?setup\s+.*)$",
                 f"\\1\n\n{compat_prep}",
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+
+        # Inject custom prep commands (e.g., sed for Makefile fixes)
+        if result.prep_commands:
+            prep_cmds = "\n".join(result.prep_commands)
+            prep_comment = "# Cross-compilation prep fixes (injected by mogrix)"
+            content = re.sub(
+                r"^(%(auto)?setup\s+.*)$",
+                f"\\1\n\n{prep_comment}\n{prep_cmds}",
                 content,
                 count=1,
                 flags=re.MULTILINE,

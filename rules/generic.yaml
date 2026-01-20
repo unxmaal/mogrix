@@ -12,6 +12,15 @@ generic:
     - libacl-devel
     - libattr-devel
     - audit-libs-devel
+    # GPG verification not needed for cross-compilation
+    - gnupg2
+
+  # Remove gpgverify calls - source verification not needed for cross-compilation
+  # Many Fedora packages use %{gpgverify} in %prep to verify source signatures
+  remove_lines:
+    - "%{gpgverify}"
+    # ldconfig scriptlets don't work for cross-compilation
+    - "%ldconfig_scriptlets"
 
   # RPM macros injected directly (replaces sgug-rpm-config)
   rpm_macros:

@@ -28,35 +28,32 @@ make install
 
 ## Quick Start
 
-### Analyze a Spec or SRPM
+### Standard SRPM Workflow (Recommended)
+
+The recommended workflow operates on SRPMs directly. Direct spec file editing should be avoided.
+
+```bash
+# 1. One-time setup of cross-compilation environment
+mogrix setup-cross
+
+# 2. Fetch SRPM from Fedora
+mogrix fetch popt
+
+# 3. Convert SRPM (applies IRIX rules)
+mogrix convert popt-1.19-6.fc40.src.rpm -o converted/
+
+# 4. Cross-compile for IRIX
+mogrix build converted/popt-1.19-6.rse.src.rpm --cross
+
+# 5. Stage for dependent builds
+mogrix stage rpmbuild/RPMS/mipsn32/*.rpm
+```
+
+### Analyze an SRPM
 
 ```bash
 # See what rules would apply to a package
-mogrix analyze path/to/package.spec
 mogrix analyze package-1.0-1.fc40.src.rpm
-```
-
-### Convert an SRPM (Full Workflow)
-
-```bash
-# Extract, convert, and repackage as new SRPM
-mogrix convert package-1.0-1.fc40.src.rpm -o output_dir/
-```
-
-This will:
-1. Extract the SRPM
-2. Convert the spec file using rules
-3. Copy all sources to the output directory
-4. Build a new converted SRPM
-
-### Convert a Spec File Only
-
-```bash
-# Convert just a spec file (outputs to stdout)
-mogrix convert path/to/package.spec
-
-# Save to file
-mogrix convert path/to/package.spec -o output.spec
 ```
 
 ### Batch Conversion
@@ -69,45 +66,68 @@ mogrix batch srpms_directory/ output_directory/
 ### Build a Converted Package
 
 ```bash
-# Build using rpmbuild (dry-run to see what would happen)
-mogrix build converted-package.src.rpm --dry-run
-
-# Actually build (native rpmbuild)
-mogrix build converted-package.src.rpm
-
-# Cross-compile for IRIX (requires cross-toolchain setup)
+# Cross-compile for IRIX (primary use case)
 mogrix build converted-package.src.rpm --cross
 
 # Dry-run to see cross-compilation command
 mogrix build converted-package.src.rpm --cross --dry-run
+
+# Native rpmbuild (for testing on Linux)
+mogrix build converted-package.src.rpm
 ```
 
-### Cross-Compilation for IRIX
+### Stage Cross-Compiled RPMs
 
-The `--cross` flag enables IRIX cross-compilation:
+After cross-compiling packages, stage them to make their headers and libraries available for building dependent packages:
 
 ```bash
-mogrix build converted-package.src.rpm --cross
+# Stage RPMs to /opt/sgug-staging
+mogrix stage rpmbuild/RPMS/mipsn32/popt-*.rpm
+
+# Stage to custom location
+mogrix stage rpmbuild/RPMS/mipsn32/*.rpm --staging-dir /my/staging
+
+# List what's staged
+mogrix stage --list
+
+# Clean staging area
+mogrix stage --clean
 ```
 
-This requires the following setup:
-- **IRIX sysroot** at `/opt/irix-sysroot/`
-- **Cross-toolchain** at `/opt/cross/bin/`:
-  - `irix-cc-bootstrap` - C compiler wrapper
-  - `irix-ld-lld` - Linker wrapper (vvuk's LLD with IRIX support)
-- **RPM macros** at `/opt/sgug-staging/rpmmacros.irix`
+The staging area extracts RPM contents so that subsequent builds can find headers (`-I/opt/sgug-staging/usr/sgug/include`) and libraries (`-L/opt/sgug-staging/usr/sgug/lib32`).
 
-See `/src/plan.md` for detailed toolchain setup instructions.
+### Cross-Compilation Setup
+
+The `--cross` flag enables IRIX cross-compilation. This requires:
+
+**IRIX Sysroot** at `/opt/irix-sysroot/`:
+- Pristine IRIX system headers and libraries
+- Obtained from an IRIX 6.5.30 installation
+
+**Cross-Toolchain** at `/opt/cross/bin/`:
+- `irix-cc-bootstrap` - Clang wrapper for IRIX cross-compilation
+- `irix-ld-lld` - vvuk's LLD with IRIX/MIPS N32 support
+- `mips-sgi-irix6.5-ar`, `mips-sgi-irix6.5-ranlib` - binutils
+
+**RPM Macros** at `/opt/sgug-staging/rpmmacros.irix`:
+- Defines toolchain paths, CFLAGS, LDFLAGS for cross-compilation
+
+**Staging Area** at `/opt/sgug-staging/`:
+- Where cross-compiled packages are extracted for dependency resolution
+
+See `plan.md` for detailed toolchain setup instructions.
 
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `mogrix analyze <spec\|srpm>` | Analyze and show what rules would apply |
-| `mogrix convert <spec\|srpm>` | Convert spec/SRPM (SRPM: full workflow with repackaging) |
-| `mogrix batch <dir> <out>` | Convert multiple SRPMs in batch |
-| `mogrix build <spec\|srpm>` | Build a converted spec or SRPM with rpmbuild |
+| `mogrix setup-cross` | One-time cross-compilation environment setup |
 | `mogrix fetch <packages...>` | Fetch SRPMs from Fedora repositories |
+| `mogrix convert <srpm>` | Convert SRPM (applies IRIX rules, repackages) |
+| `mogrix build <srpm> --cross` | Cross-compile converted SRPM for IRIX |
+| `mogrix stage <rpms...>` | Stage cross-compiled RPMs for dependency resolution |
+| `mogrix analyze <srpm>` | Analyze and show what rules would apply |
+| `mogrix batch <dir> <out>` | Convert multiple SRPMs in batch |
 | `mogrix list-rules` | List available package rules |
 | `mogrix validate-rules` | Validate all rule files |
 

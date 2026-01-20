@@ -25,7 +25,16 @@ CROSS_DIR = Path(__file__).parent.parent / "cross"
 @click.group()
 @click.version_option()
 def main():
-    """Mogrix - SRPM conversion engine for IRIX."""
+    """Mogrix - SRPM conversion engine for IRIX cross-compilation.
+
+    \b
+    Workflow:
+      1. mogrix setup-cross          # One-time setup
+      2. mogrix fetch <package>      # Download SRPM from Fedora
+      3. mogrix convert <srpm>       # Apply IRIX rules
+      4. mogrix build <srpm> --cross # Cross-compile for IRIX
+      5. mogrix stage <rpms>         # Stage for dependent builds
+    """
     pass
 
 
@@ -458,7 +467,7 @@ CROSS_BINDIR = Path("/opt/cross/bin")
 
 
 @main.command()
-@click.argument("spec_or_srpm", type=click.Path(exists=True))
+@click.argument("srpm", type=click.Path(exists=True))
 @click.option(
     "--rpmbuild-dir",
     type=click.Path(),
@@ -482,15 +491,21 @@ CROSS_BINDIR = Path("/opt/cross/bin")
     help="Show what would be done without building",
 )
 def build(
-    spec_or_srpm: str,
+    srpm: str,
     rpmbuild_dir: str | None,
     cross: bool,
     macros: str | None,
     dry_run: bool,
 ):
-    """Build a converted spec file or SRPM.
+    """Build a converted SRPM.
 
-    SPEC_OR_SRPM is a .spec file or .src.rpm to build.
+    SRPM is a .src.rpm file to build (typically from mogrix convert).
+
+    Workflow:
+        1. mogrix fetch popt
+        2. mogrix convert popt-*.src.rpm
+        3. mogrix build <converted>.src.rpm --cross
+        4. mogrix stage ~/rpmbuild/RPMS/mips/*.rpm
 
     Use --cross to enable IRIX cross-compilation, which:
       - Uses the cross-toolchain at /opt/cross/bin/
@@ -499,18 +514,24 @@ def build(
     """
     import subprocess
 
-    input_path = Path(spec_or_srpm)
+    input_path = Path(srpm)
     rpmbuild_path = Path(rpmbuild_dir) if rpmbuild_dir else Path.home() / "rpmbuild"
 
     # Determine if this is a spec or SRPM
     if input_path.suffix == ".spec":
+        console.print("[yellow]Warning: Building from spec file directly.[/yellow]")
+        console.print("[yellow]Recommended workflow: mogrix convert <srpm> then mogrix build <converted.src.rpm>[/yellow]\n")
         spec_path = input_path
         is_srpm = False
     elif input_path.name.endswith(".src.rpm"):
         is_srpm = True
         spec_path = None
     else:
-        console.print("[red]Error: Input must be a .spec file or .src.rpm[/red]")
+        console.print("[red]Error: Input must be a .src.rpm file[/red]")
+        console.print("\nWorkflow:")
+        console.print("  1. mogrix fetch <package>")
+        console.print("  2. mogrix convert <package>.src.rpm")
+        console.print("  3. mogrix build <converted>.src.rpm --cross")
         raise SystemExit(1)
 
     # Resolve macros file
@@ -1162,9 +1183,254 @@ def setup_cross(
     console.print("\n[bold green]Cross-compilation environment set up![/bold green]")
     console.print(f"\n[bold]Staging directory:[/bold] {staging_path}")
     console.print(f"[bold]RPM macros:[/bold] {staging_path.parent.parent / 'rpmmacros.irix'}")
-    console.print("\n[bold]Next steps:[/bold]")
-    console.print("  1. Convert an SRPM: mogrix convert <package>.src.rpm")
-    console.print("  2. Build with cross-compilation: mogrix build <spec> --cross")
+    console.print("\n[bold]Workflow:[/bold]")
+    console.print("  1. Fetch SRPM:    mogrix fetch <package>")
+    console.print("  2. Convert SRPM:  mogrix convert <package>.src.rpm")
+    console.print("  3. Build SRPM:    mogrix build <converted>.src.rpm --cross")
+    console.print("  4. Stage RPMs:    mogrix stage ~/rpmbuild/RPMS/mips/*.rpm")
+
+
+@main.command()
+@click.argument("rpms", nargs=-1, type=click.Path(exists=True))
+@click.option(
+    "--staging-dir",
+    type=click.Path(),
+    default="/opt/sgug-staging",
+    help="Staging root directory (default: /opt/sgug-staging)",
+)
+@click.option(
+    "--clean",
+    is_flag=True,
+    help="Clean staged packages (preserves base cross-compilation setup)",
+)
+@click.option(
+    "--list",
+    "list_staged",
+    is_flag=True,
+    help="List staged packages",
+)
+def stage(
+    rpms: tuple[str, ...],
+    staging_dir: str,
+    clean: bool,
+    list_staged: bool,
+):
+    """Stage cross-compiled RPMs for dependency resolution.
+
+    Install RPMs to the staging area so subsequent builds can find
+    their headers and libraries.
+
+    Workflow:
+        1. mogrix fetch popt
+        2. mogrix convert popt-*.src.rpm
+        3. mogrix build <converted>.src.rpm --cross
+        4. mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+        5. (Now dependent packages can find popt headers/libs)
+
+    Examples:
+        mogrix stage ~/rpmbuild/RPMS/mips/popt-*.mips.rpm
+        mogrix stage ~/rpmbuild/RPMS/mips/*.rpm
+        mogrix stage --list
+        mogrix stage --clean
+    """
+    import subprocess
+
+    staging_path = Path(staging_dir)
+
+    # Files/directories to preserve during clean
+    PRESERVE = {
+        "usr/sgug/bin/irix-cc",
+        "usr/sgug/bin/irix-cxx",
+        "usr/sgug/bin/irix-ld",
+        "usr/sgug/include/dicl-clang-compat",
+        "usr/sgug/include/mogrix-compat",
+        "usr/sgug/lib32/libsoft_float_stubs.a",
+        "rpmmacros.irix",
+    }
+
+    # Pre-existing libraries that came with the staging area (not from our RPMs)
+    PREEXISTING_LIBS = {
+        "libbz2.a", "libformw.a", "libhistory.a", "liblzma.a", "liblzma.la",
+        "libmenuw.a", "libncursesw.a", "libpanelw.a", "libreadline.a",
+        "libtinfow.a", "libz.a",
+    }
+
+    PREEXISTING_HEADERS = {
+        "bzlib.h", "gnumake.h", "lzma.h", "zconf.h", "zlib.h",
+        "lzma", "ncursesw", "readline",
+    }
+
+    if list_staged:
+        _list_staged_packages(staging_path, PREEXISTING_LIBS, PREEXISTING_HEADERS)
+        return
+
+    if clean:
+        _clean_staged_packages(staging_path, PRESERVE, PREEXISTING_LIBS, PREEXISTING_HEADERS)
+        return
+
+    if not rpms:
+        console.print("[yellow]No RPMs specified. Use --help for usage.[/yellow]")
+        console.print("\nExamples:")
+        console.print("  mogrix stage popt-1.19-6.mips.rpm popt-devel-1.19-6.mips.rpm")
+        console.print("  mogrix stage ~/rpmbuild/RPMS/mips/*.rpm")
+        console.print("  mogrix stage --list")
+        console.print("  mogrix stage --clean")
+        return
+
+    # Install RPMs to staging
+    console.print(f"[bold]Staging RPMs to:[/bold] {staging_path}\n")
+
+    for rpm_path in rpms:
+        rpm_file = Path(rpm_path)
+        console.print(f"[bold]Installing:[/bold] {rpm_file.name}")
+
+        try:
+            # Extract RPM to staging directory
+            result = subprocess.run(
+                f"cd {staging_path} && rpm2cpio {rpm_file.absolute()} | cpio -idm",
+                shell=True,
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                console.print(f"  [red]✗ Failed:[/red] {result.stderr}")
+                continue
+
+            console.print(f"  [green]✓ Installed[/green]")
+
+        except Exception as e:
+            console.print(f"  [red]✗ Error:[/red] {e}")
+
+    console.print("\n[bold green]Staging complete![/bold green]")
+    console.print("\nStaged libraries are now available for cross-compilation.")
+
+
+def _list_staged_packages(staging_path: Path, preexisting_libs: set, preexisting_headers: set):
+    """List packages staged in the staging directory."""
+    lib_dir = staging_path / "usr" / "sgug" / "lib32"
+    include_dir = staging_path / "usr" / "sgug" / "include"
+
+    console.print(f"[bold]Staged in:[/bold] {staging_path}\n")
+
+    # List libraries (excluding pre-existing)
+    console.print("[bold]Libraries:[/bold]")
+    if lib_dir.exists():
+        libs = sorted(lib_dir.glob("*.so*")) + sorted(lib_dir.glob("*.a"))
+        staged_libs = [
+            lib for lib in libs
+            if lib.name not in preexisting_libs
+            and not lib.name.startswith("libsoft_float")
+        ]
+        if staged_libs:
+            for lib in staged_libs:
+                console.print(f"  {lib.name}")
+        else:
+            console.print("  [dim](none)[/dim]")
+    else:
+        console.print("  [dim](lib32 directory not found)[/dim]")
+
+    # List headers (excluding pre-existing and compat)
+    console.print("\n[bold]Headers:[/bold]")
+    if include_dir.exists():
+        headers = sorted(include_dir.glob("*.h"))
+        staged_headers = [
+            h for h in headers
+            if h.name not in preexisting_headers
+        ]
+        if staged_headers:
+            for header in staged_headers:
+                console.print(f"  {header.name}")
+        else:
+            console.print("  [dim](none)[/dim]")
+    else:
+        console.print("  [dim](include directory not found)[/dim]")
+
+
+def _clean_staged_packages(
+    staging_path: Path,
+    preserve: set,
+    preexisting_libs: set,
+    preexisting_headers: set,
+):
+    """Clean staged packages while preserving base setup."""
+    import shutil
+
+    lib_dir = staging_path / "usr" / "sgug" / "lib32"
+    include_dir = staging_path / "usr" / "sgug" / "include"
+    bin_dir = staging_path / "usr" / "sgug" / "bin"
+    pkgconfig_dir = lib_dir / "pkgconfig"
+
+    console.print(f"[bold]Cleaning staged packages in:[/bold] {staging_path}\n")
+
+    removed_count = 0
+
+    # Clean libraries (keeping pre-existing and soft_float_stubs)
+    if lib_dir.exists():
+        for lib in lib_dir.glob("*.so*"):
+            if lib.name not in preexisting_libs:
+                console.print(f"  Removing: {lib.name}")
+                lib.unlink()
+                removed_count += 1
+
+        # Remove .a files that aren't pre-existing
+        for lib in lib_dir.glob("*.a"):
+            if lib.name not in preexisting_libs and not lib.name.startswith("libsoft_float"):
+                console.print(f"  Removing: {lib.name}")
+                lib.unlink()
+                removed_count += 1
+
+        # Remove .la files that aren't pre-existing
+        for la in lib_dir.glob("*.la"):
+            if la.name not in preexisting_libs:
+                console.print(f"  Removing: {la.name}")
+                la.unlink()
+                removed_count += 1
+
+    # Clean pkgconfig files
+    if pkgconfig_dir.exists():
+        for pc in pkgconfig_dir.glob("*.pc"):
+            # Keep pre-existing ones
+            if pc.name not in {"liblzma.pc", "zlib.pc", "ncursesw.pc"}:
+                console.print(f"  Removing: pkgconfig/{pc.name}")
+                pc.unlink()
+                removed_count += 1
+
+    # Clean headers (keeping pre-existing and compat directories)
+    if include_dir.exists():
+        for header in include_dir.glob("*.h"):
+            if header.name not in preexisting_headers:
+                console.print(f"  Removing: {header.name}")
+                header.unlink()
+                removed_count += 1
+
+    # Clean binaries (keeping wrappers)
+    if bin_dir.exists():
+        preserve_bins = {"irix-cc", "irix-cxx", "irix-ld"}
+        for binary in bin_dir.iterdir():
+            if binary.is_file() and binary.name not in preserve_bins:
+                console.print(f"  Removing: bin/{binary.name}")
+                binary.unlink()
+                removed_count += 1
+
+    # Clean misc directories that RPMs might have created
+    for subdir in ["etc", "share"]:
+        dir_path = staging_path / "usr" / "sgug" / subdir
+        if dir_path.exists():
+            console.print(f"  Removing: {subdir}/")
+            shutil.rmtree(dir_path)
+            removed_count += 1
+
+    if removed_count > 0:
+        console.print(f"\n[bold green]Cleaned {removed_count} items[/bold green]")
+    else:
+        console.print("[dim]Nothing to clean[/dim]")
+
+    console.print("\n[bold]Preserved:[/bold]")
+    console.print("  - Compiler wrappers (irix-cc, irix-cxx, irix-ld)")
+    console.print("  - Compat headers (dicl-clang-compat, mogrix-compat)")
+    console.print("  - libsoft_float_stubs.a")
+    console.print("  - Pre-existing libraries (zlib, bz2, lzma, ncurses, readline)")
 
 
 if __name__ == "__main__":
