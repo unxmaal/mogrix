@@ -277,6 +277,135 @@ def batch(
 
 
 @main.command()
+@click.argument("srpm_file", type=click.Path(exists=True))
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Output directory for converted spec and sources",
+)
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option(
+    "--headers-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to headers directory",
+)
+@click.option(
+    "--compat-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to compat sources directory",
+)
+def convert_srpm(
+    srpm_file: str,
+    output_dir: str | None,
+    rules_dir: str | None,
+    headers_dir: str | None,
+    compat_dir: str | None,
+):
+    """Convert an SRPM file directly.
+
+    Extracts the SRPM, converts the spec, and outputs to OUTPUT_DIR.
+    """
+    from mogrix.parser.srpm import SRPMExtractor
+
+    srpm_path = Path(srpm_file)
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+    headers_path = Path(headers_dir) if headers_dir else HEADERS_DIR
+    compat_path = Path(compat_dir) if compat_dir else COMPAT_DIR
+
+    # Determine output directory
+    if output_dir:
+        out_path = Path(output_dir)
+    else:
+        out_path = Path.cwd() / f"{srpm_path.stem}-converted"
+
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    console.print(f"[bold]Extracting:[/bold] {srpm_path}")
+
+    # Extract SRPM
+    extractor = SRPMExtractor(srpm_path)
+    extracted_dir, spec_path = extractor.extract_spec()
+
+    console.print(f"[bold]Found spec:[/bold] {spec_path.name}")
+
+    # Parse and convert
+    parser = SpecParser()
+    spec = parser.parse(spec_path)
+
+    loader = RuleLoader(rules_path)
+    engine = RuleEngine(loader)
+    result = engine.apply(spec)
+
+    # Calculate changes
+    original_br = set(spec.buildrequires)
+    final_br = set(result.spec.buildrequires)
+    drops = list(original_br - final_br)
+    adds = list(final_br - original_br)
+
+    # Generate overlays
+    cppflags = None
+    if result.header_overlays:
+        overlay_mgr = HeaderOverlayManager(headers_path)
+        cppflags = overlay_mgr.get_cppflags(result.header_overlays)
+
+    # Generate compat injection
+    compat_sources = None
+    compat_prep = None
+    compat_build = None
+    if result.compat_functions:
+        injector = CompatInjector(compat_path)
+        compat_sources = injector.get_source_entries(result.compat_functions)
+        compat_prep = injector.get_prep_commands(result.compat_functions)
+        compat_build = injector.get_build_commands(result.compat_functions)
+
+    # Write converted spec
+    writer = SpecWriter()
+    content = writer.write(
+        result,
+        drops=drops,
+        adds=adds,
+        cppflags=cppflags,
+        compat_sources=compat_sources,
+        compat_prep=compat_prep,
+        compat_build=compat_build,
+        ac_cv_overrides=result.ac_cv_overrides or None,
+        drop_requires=result.drop_requires or None,
+        remove_lines=result.remove_lines or None,
+    )
+
+    # Save converted spec
+    out_spec = out_path / spec_path.name
+    out_spec.write_text(content)
+
+    # Copy source files
+    import shutil
+
+    for src_file in extracted_dir.iterdir():
+        if src_file.name != spec_path.name:
+            shutil.copy2(src_file, out_path / src_file.name)
+
+    # Clean up temp dir
+    shutil.rmtree(extracted_dir)
+
+    console.print(f"\n[bold green]Converted successfully![/bold green]")
+    console.print(f"[bold]Output:[/bold] {out_path}")
+    console.print(f"[bold]Spec:[/bold] {out_spec}")
+    console.print(f"[bold]Rules applied:[/bold] {len(result.applied_rules)}")
+
+    if result.compat_functions:
+        console.print(f"[bold]Compat functions:[/bold] {', '.join(result.compat_functions)}")
+
+
+@main.command()
 def list_rules():
     """List all available package rules."""
     rules_path = RULES_DIR / "packages"
