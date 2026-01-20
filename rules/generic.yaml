@@ -6,6 +6,12 @@ generic:
     - libselinux-devel
     - kernel-headers
     - alsa-lib-devel
+    - systemtap-sdt-devel
+    - libcap-devel
+    - libcap-ng-devel
+    - libacl-devel
+    - libattr-devel
+    - audit-libs-devel
 
   add_buildrequires:
     - sgug-rpm-config
@@ -14,6 +20,12 @@ generic:
     - selinux
     - systemd
     - udev
+    - inotify
+    - epoll
+    - fanotify
+    - timerfd
+    - libcap
+    - audit
 
   rewrite_paths:
     /usr/lib64: /usr/sgug/lib32
@@ -22,3 +34,8 @@ generic:
 
   header_overlays:
     - generic
+
+  drop_subpackages:
+    - "*-debuginfo"
+    - "*-debugsource"
+    - "*-langpack-*"
