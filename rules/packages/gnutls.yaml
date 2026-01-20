@@ -1,0 +1,51 @@
+# gnutls - TLS library
+# Needs compat functions
+
+package: gnutls
+
+rules:
+  # Compat functions needed
+  inject_compat_functions:
+    - strdup
+    - strndup
+    - asprintf
+    - vasprintf
+    - getline
+
+  # Drop libdicl dependency
+  drop_buildrequires:
+    - libdicl-devel
+    - libdicl
+    - trousers-devel
+    - libidn2-devel
+
+  drop_requires:
+    - libdicl
+    - libdicl-devel
+
+  # Autoconf cache overrides
+  ac_cv_overrides:
+    ac_cv_func_malloc_0_nonnull: "yes"
+    ac_cv_func_realloc_0_nonnull: "yes"
+    gl_cv_func_working_getdelim: "yes"
+
+  # Configure flags
+  configure_flags:
+    add:
+      - --disable-doc
+      - --disable-gtk-doc
+      - --disable-guile
+      - --disable-dane
+      - --disable-hardware-acceleration
+      - --without-tpm
+      - --without-tpm2
+      - --without-idn
+      - --disable-libdane
+      - --disable-valgrind-tests
+    remove:
+      - --enable-ktls
+      - --with-default-trust-store-pkcs11
+
+  # Disable Linux-specific features
+  configure_disable:
+    - seccomp-tests

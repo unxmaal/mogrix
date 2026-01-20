@@ -1,0 +1,29 @@
+# openssl - TLS/SSL crypto library
+# Has sgifixes patches
+
+package: openssl
+
+rules:
+  # Drop Linux-specific dependencies
+  drop_buildrequires:
+    - lksctp-tools-devel
+    - systemtap-sdt-devel
+
+  # Autoconf cache overrides
+  ac_cv_overrides:
+    ac_cv_func_malloc_0_nonnull: "yes"
+    ac_cv_func_realloc_0_nonnull: "yes"
+
+  # OpenSSL uses ./Configure, not autotools
+  # These would need special handling in the emitter
+  # For now, document the needed changes
+  #
+  # Configure options for IRIX:
+  # ./Configure irix-mips3-gcc no-asm no-async no-sctp shared
+  #
+  # Key flags:
+  # - no-asm: IRIX assembler incompatibilities
+  # - no-async: Uses aio which IRIX lacks
+  # - no-sctp: Linux SCTP not on IRIX
+  # - no-ktls: Kernel TLS not available
+  # - no-afalgeng: Linux AF_ALG not available
