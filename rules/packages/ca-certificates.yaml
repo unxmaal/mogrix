@@ -1,0 +1,17 @@
+# ca-certificates - CA certificates bundle
+# Required for TLS verification
+
+package: ca-certificates
+
+rules:
+  # This package is mostly data files
+  # No special compat functions needed
+
+  # Drop p11-kit dependency if not available
+  drop_buildrequires:
+    - p11-kit-devel
+    - p11-kit-trust
+
+  drop_requires:
+    - p11-kit
+    - p11-kit-trust

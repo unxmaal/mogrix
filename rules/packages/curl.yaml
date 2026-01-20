@@ -1,0 +1,51 @@
+# curl - URL transfer library and tool
+# Critical for network operations
+
+package: curl
+
+rules:
+  # Compat functions that may be needed
+  inject_compat_functions:
+    - strdup
+    - strndup
+
+  # Drop problematic dependencies
+  drop_buildrequires:
+    - libssh2-devel
+    - libpsl-devel
+    - libidn2-devel
+    - krb5-devel
+
+  # Autoconf cache overrides
+  ac_cv_overrides:
+    ac_cv_func_malloc_0_nonnull: "yes"
+    ac_cv_func_realloc_0_nonnull: "yes"
+    curl_cv_func_recv_args: "int,void *,size_t,int"
+    curl_cv_func_send_args: "int,const void *,size_t,int"
+
+  # Configure flags
+  configure_flags:
+    add:
+      - --disable-silent-rules
+      - --with-ssl
+      - --with-zlib
+      - --enable-ipv6
+      - --enable-threaded-resolver
+      - --without-libssh2
+      - --without-libpsl
+      - --without-libidn2
+      - --without-brotli
+      - --without-zstd
+      - --without-nghttp2
+      - --without-gssapi
+      - --disable-ldap
+      - --disable-ldaps
+    remove:
+      - --with-libssh2
+      - --with-brotli
+      - --with-nghttp2
+      - --with-gssapi
+
+  configure_disable:
+    - ldap
+    - ldaps
