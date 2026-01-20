@@ -3,6 +3,11 @@
 
 package: lua
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - lua.sgifixes.patch
+
 rules:
   # Autoconf cache overrides
   ac_cv_overrides:

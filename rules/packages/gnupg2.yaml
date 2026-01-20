@@ -3,6 +3,11 @@
 
 package: gnupg2
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - gnupg2.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

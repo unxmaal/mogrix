@@ -1,0 +1,7 @@
+# libdb package rules for IRIX cross-compilation
+package: libdb
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - db185.sgifixes.patch
+

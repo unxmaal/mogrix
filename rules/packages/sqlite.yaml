@@ -1,0 +1,7 @@
+# sqlite package rules for IRIX cross-compilation
+package: sqlite
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - sqlite3.sgifixes.patch
+

@@ -1,0 +1,7 @@
+# gd package rules for IRIX cross-compilation
+package: gd
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - libgd.sgifixes.patch
+

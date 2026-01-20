@@ -1,0 +1,7 @@
+# libtool package rules for IRIX cross-compilation
+package: libtool
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - libtool.sgifixes.patch
+

@@ -1,0 +1,7 @@
+# groff package rules for IRIX cross-compilation
+package: groff
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - groff.sgifixes.patch
+

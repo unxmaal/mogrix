@@ -3,6 +3,11 @@
 
 package: cairo
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - cairo.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

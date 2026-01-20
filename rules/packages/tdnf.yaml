@@ -4,6 +4,18 @@
 
 package: tdnf
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - client-defines.sgifixes.patch
+  - cmakelist-paths.sgifixes.patch
+  - tdnf-client-rpmtrans.sgifixes.patch
+  - tdnf-client.sgifixes.patch
+  - tdnf-common-utils.sgifixes.patch
+  - tdnf-conf.sgifixes.patch
+  - tdnf-pool.sgifixes.patch
+  - tdnf-printfprecision.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

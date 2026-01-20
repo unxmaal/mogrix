@@ -1,0 +1,7 @@
+# gcr package rules for IRIX cross-compilation
+package: gcr
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - gcr.sgifixes.patch
+

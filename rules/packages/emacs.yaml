@@ -1,0 +1,13 @@
+# emacs package rules for IRIX cross-compilation
+package: emacs
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - emacs.sgifixes.patch
+
+# Linux-only dependencies to remove
+drop_buildrequires:
+  - glibc-devel
+  - libacl-devel
+  - libselinux-devel
+

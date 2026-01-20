@@ -3,6 +3,11 @@
 
 package: libxml2
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - libxml2.sgifixes.patch
+
 rules:
   # Compat functions that may be needed
   inject_compat_functions:

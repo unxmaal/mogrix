@@ -3,6 +3,11 @@
 
 package: glib2
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - glib2.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

@@ -1,0 +1,7 @@
+# pixman package rules for IRIX cross-compilation
+package: pixman
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - pixman.sgifixes.patch
+

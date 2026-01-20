@@ -1,0 +1,7 @@
+# m4 package rules for IRIX cross-compilation
+package: m4
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - m4.sgifixes.patch
+

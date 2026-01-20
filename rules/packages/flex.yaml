@@ -1,0 +1,7 @@
+# flex package rules for IRIX cross-compilation
+package: flex
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - flex.sgifixes.patch
+

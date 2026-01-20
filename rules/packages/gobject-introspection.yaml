@@ -3,6 +3,11 @@
 
 package: gobject-introspection
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - gobject-introspection.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

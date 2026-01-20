@@ -3,6 +3,11 @@
 
 package: openssl
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - openssl111d.sgifixes.patch
+
 rules:
   # Drop Linux-specific dependencies
   drop_buildrequires:

@@ -3,6 +3,11 @@
 
 package: p11-kit
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - p11-kit.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

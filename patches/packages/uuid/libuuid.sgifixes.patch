@@ -1,0 +1,152 @@
+diff -u -r util-linux-2.34-orig/Makefile.am util-linux-2.34/Makefile.am
+--- util-linux-2.34-orig/Makefile.am	2019-05-14 12:43:06.000503000 +0000
++++ util-linux-2.34/Makefile.am	2020-04-18 01:20:26.112193920 +0000
+@@ -72,26 +72,26 @@
+ 	po/update-potfiles \
+ 	README.licensing
+ 
+-include tools/Makemodule.am
+-include include/Makemodule.am
+-include lib/Makemodule.am
++# include tools/Makemodule.am
++# include include/Makemodule.am
++# include lib/Makemodule.am
+ include libuuid/Makemodule.am
+-include libblkid/Makemodule.am
+-include libmount/Makemodule.am
+-include libsmartcols/Makemodule.am
+-include libfdisk/Makemodule.am
++# include libblkid/Makemodule.am
++# include libmount/Makemodule.am
++# include libsmartcols/Makemodule.am
++# include libfdisk/Makemodule.am
+ 
+-include schedutils/Makemodule.am
+-include text-utils/Makemodule.am
+-include term-utils/Makemodule.am
+-include login-utils/Makemodule.am
+-include sys-utils/Makemodule.am
+-include misc-utils/Makemodule.am
+-include disk-utils/Makemodule.am
++# include schedutils/Makemodule.am
++# include text-utils/Makemodule.am
++# include term-utils/Makemodule.am
++# include login-utils/Makemodule.am
++# include sys-utils/Makemodule.am
++# include misc-utils/Makemodule.am
++# include disk-utils/Makemodule.am
+ 
+-include bash-completion/Makemodule.am
++# include bash-completion/Makemodule.am
+ 
+-include tests/Makemodule.am
++# include tests/Makemodule.am
+ 
+ # pylibmountexec module must be installed after usrlib_exec libraries,
+ # otherwise the libtool relink step will fail to find libmount.la and
+diff -u -r util-linux-2.34-orig/include/c.h util-linux-2.34/include/c.h
+--- util-linux-2.34-orig/include/c.h	2019-05-21 14:45:49.279524000 +0000
++++ util-linux-2.34/include/c.h	2020-04-18 01:20:26.114356160 +0000
+@@ -5,6 +5,12 @@
+ #ifndef UTIL_LINUX_C_H
+ #define UTIL_LINUX_C_H
+ 
++#if defined(__sgi)
++#include <sys/param.h>
++#include <time.h>
++#include <sys/file.h>
++#endif
++
+ #include <limits.h>
+ #include <stddef.h>
+ #include <stdint.h>
+@@ -212,27 +218,28 @@
+ 		if (adderr)
+ 			fprintf(stderr, ": ");
+ 	}
+-	if (adderr)
+-		fprintf(stderr, "%m");
++	if (adderr) {
++	  fprintf(stderr, "%s",strerror(errno));
++	}
+ 	fprintf(stderr, "\n");
+ 	if (doexit)
+ 		exit(excode);
+ }
+ 
+ #ifndef HAVE_ERR
+-# define err(E, FMT...) errmsg(1, E, 1, FMT)
++# define err(E, ...) errmsg(1, E, 1, __VA_ARGS__)
+ #endif
+ 
+ #ifndef HAVE_ERRX
+-# define errx(E, FMT...) errmsg(1, E, 0, FMT)
++# define errx(E, ...) errmsg(1, E, 0, __VA_ARGS__)
+ #endif
+ 
+ #ifndef HAVE_WARN
+-# define warn(FMT...) errmsg(0, 0, 1, FMT)
++# define warn(...) errmsg(0, 0, 1, __VA_ARGS__)
+ #endif
+ 
+ #ifndef HAVE_WARNX
+-# define warnx(FMT...) errmsg(0, 0, 0, FMT)
++# define warnx(...) errmsg(0, 0, 0, __VA_ARGS__)
+ #endif
+ #endif /* !HAVE_ERR_H */
+ 
+@@ -305,7 +312,12 @@
+  */
+ static inline size_t get_hostname_max(void)
+ {
++
++#if defined(__sgi)
++        long len = MAXHOSTNAMELEN;
++#else
+ 	long len = sysconf(_SC_HOST_NAME_MAX);
++#endif
+ 
+ 	if (0 < len)
+ 		return len;
+diff -u -r util-linux-2.34-orig/lib/randutils.c util-linux-2.34/lib/randutils.c
+--- util-linux-2.34-orig/lib/randutils.c	2018-06-21 10:58:10.352568000 +0000
++++ util-linux-2.34/lib/randutils.c	2020-04-18 01:21:08.339391280 +0000
+@@ -183,7 +183,7 @@
+ const char *random_tell_source(void)
+ {
+ #ifdef HAVE_GETRANDOM
+-	return _("getrandom() function");
++	return "getrandom() function";
+ #else
+ 	size_t i;
+ 	static const char *random_sources[] = {
+@@ -196,7 +196,7 @@
+ 			return random_sources[i];
+ 	}
+ #endif
+-	return _("libc pseudo-random functions");
++	return "libc pseudo-random functions";
+ }
+ 
+ #ifdef TEST_PROGRAM_RANDUTILS
+Only in util-linux-2.34/lib: randutils.c~
+diff -u -r util-linux-2.34-orig/libuuid/src/Makemodule.am util-linux-2.34/libuuid/src/Makemodule.am
+--- util-linux-2.34-orig/libuuid/src/Makemodule.am	2019-02-22 10:17:43.722854000 +0000
++++ util-linux-2.34/libuuid/src/Makemodule.am	2020-04-18 01:20:33.038866720 +0000
+@@ -8,6 +8,7 @@
+ uuidincdir = $(includedir)/uuid
+ uuidinc_HEADERS = libuuid/src/uuid.h
+ 
++# Avoid linking in intl discovered by autoconf
+ usrlib_exec_LTLIBRARIES += libuuid.la
+ 
+ libuuid_la_SOURCES = \
+@@ -31,7 +32,7 @@
+ EXTRA_libuuid_la_DEPENDENCIES = \
+ 	libuuid/src/libuuid.sym
+ 
+-libuuid_la_LIBADD       = $(LDADD) $(SOCKET_LIBS)
++#libuuid_la_LIBADD       = $(LDADD) $(SOCKET_LIBS)
+ 
+ libuuid_la_CFLAGS = \
+ 	$(AM_CFLAGS) \

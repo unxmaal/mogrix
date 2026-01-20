@@ -1,0 +1,7 @@
+# uuid package rules for IRIX cross-compilation
+package: uuid
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - libuuid.sgifixes.patch
+

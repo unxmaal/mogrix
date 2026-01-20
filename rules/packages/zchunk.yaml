@@ -3,6 +3,11 @@
 
 package: zchunk
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - zchunk.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

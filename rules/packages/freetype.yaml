@@ -1,0 +1,7 @@
+# freetype package rules for IRIX cross-compilation
+package: freetype
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - freetype.sgifixes.patch
+

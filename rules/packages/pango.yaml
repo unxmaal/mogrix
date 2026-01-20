@@ -1,0 +1,7 @@
+# pango package rules for IRIX cross-compilation
+package: pango
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - pango.sgifixes.patch
+

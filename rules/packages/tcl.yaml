@@ -1,0 +1,11 @@
+# tcl package rules for IRIX cross-compilation
+package: tcl
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - tcl.sgifixes.patch
+
+# Linux-only dependencies to remove
+drop_buildrequires:
+  - systemtap-sdt-devel
+

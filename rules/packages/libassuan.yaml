@@ -3,6 +3,11 @@
 
 package: libassuan
 
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - libassuan.sgifixes.patch
+
 rules:
   # Compat functions needed
   inject_compat_functions:

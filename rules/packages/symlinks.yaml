@@ -1,0 +1,7 @@
+# symlinks package rules for IRIX cross-compilation
+package: symlinks
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - symlinks.sgifixes.patch
+

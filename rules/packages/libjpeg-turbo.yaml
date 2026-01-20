@@ -1,0 +1,7 @@
+# libjpeg-turbo package rules for IRIX cross-compilation
+package: libjpeg-turbo
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - libjpeg-turbo.sgifixes.patch
+

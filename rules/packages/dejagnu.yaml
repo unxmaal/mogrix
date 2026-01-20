@@ -1,0 +1,7 @@
+# dejagnu package rules for IRIX cross-compilation
+package: dejagnu
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - dejagnu.sgifixes.patch
+

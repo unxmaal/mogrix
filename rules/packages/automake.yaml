@@ -1,0 +1,7 @@
+# automake package rules for IRIX cross-compilation
+package: automake
+
+# IRIX-specific patches from SGUG-RSE
+add_patch:
+  - automake.sgifixes.patch
+
