@@ -20,6 +20,9 @@ class TransformResult:
     ac_cv_overrides: dict[str, str] = field(default_factory=dict)
     drop_requires: list[str] = field(default_factory=list)
     remove_lines: list[str] = field(default_factory=list)
+    comment_conditionals: list[str] = field(default_factory=list)
+    remove_conditionals: list[str] = field(default_factory=list)
+    force_conditionals: dict[str, bool] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -120,6 +123,25 @@ class RuleEngine:
                     f"configure_flags_remove: {cfg['remove']}"
                 )
 
+        # Conditional handling
+        if "comment_conditionals" in rules:
+            result.comment_conditionals.extend(rules["comment_conditionals"])
+            result.applied_rules.append(
+                f"comment_conditionals: {rules['comment_conditionals']}"
+            )
+
+        if "remove_conditionals" in rules:
+            result.remove_conditionals.extend(rules["remove_conditionals"])
+            result.applied_rules.append(
+                f"remove_conditionals: {rules['remove_conditionals']}"
+            )
+
+        if "force_conditionals" in rules:
+            result.force_conditionals.update(rules["force_conditionals"])
+            result.applied_rules.append(
+                f"force_conditionals: {list(rules['force_conditionals'].keys())}"
+            )
+
     def _apply_package_rules(
         self, result: TransformResult, pkg_rules: dict
     ) -> None:
@@ -204,3 +226,22 @@ class RuleEngine:
                 result.applied_rules.append(
                     f"package configure_flags_remove: {cfg['remove']}"
                 )
+
+        # Package-specific conditional handling
+        if "comment_conditionals" in rules:
+            result.comment_conditionals.extend(rules["comment_conditionals"])
+            result.applied_rules.append(
+                f"package comment_conditionals: {rules['comment_conditionals']}"
+            )
+
+        if "remove_conditionals" in rules:
+            result.remove_conditionals.extend(rules["remove_conditionals"])
+            result.applied_rules.append(
+                f"package remove_conditionals: {rules['remove_conditionals']}"
+            )
+
+        if "force_conditionals" in rules:
+            result.force_conditionals.update(rules["force_conditionals"])
+            result.applied_rules.append(
+                f"package force_conditionals: {list(rules['force_conditionals'].keys())}"
+            )

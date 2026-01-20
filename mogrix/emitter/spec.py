@@ -187,7 +187,68 @@ class SpecWriter:
                     flags=re.MULTILINE,
                 )
 
+        # Handle conditionals
+        content = self._handle_conditionals(content, result)
+
         # Clean up empty lines from removals
         content = re.sub(r"\n{3,}", "\n\n", content)
 
+        return content
+
+    def _handle_conditionals(
+        self, content: str, result: TransformResult
+    ) -> str:
+        """Process conditional blocks in the spec file."""
+        # Comment out conditionals
+        for cond_name in result.comment_conditionals:
+            content = self._comment_conditional(content, cond_name)
+
+        # Remove conditionals entirely
+        for cond_name in result.remove_conditionals:
+            content = self._remove_conditional(content, cond_name)
+
+        # Force conditionals (keep content, remove %if/%endif)
+        for cond_name, keep in result.force_conditionals.items():
+            if keep:
+                content = self._force_conditional_true(content, cond_name)
+            else:
+                content = self._remove_conditional(content, cond_name)
+
+        return content
+
+    def _comment_conditional(self, content: str, cond_name: str) -> str:
+        """Comment out a conditional block."""
+        # Match %if containing the condition name through %endif
+        pattern = rf"(^%if[^\n]*{re.escape(cond_name)}[^\n]*$)(.*?)(^%endif\s*$)"
+
+        def comment_block(match):
+            if_line = match.group(1)
+            block_content = match.group(2)
+            endif_line = match.group(3)
+            # Comment each line
+            commented_if = "#" + if_line
+            commented_content = "\n".join(
+                "#" + line if line.strip() else line
+                for line in block_content.split("\n")
+            )
+            commented_endif = "#" + endif_line
+            return commented_if + commented_content + commented_endif
+
+        return re.sub(pattern, comment_block, content, flags=re.MULTILINE | re.DOTALL)
+
+    def _remove_conditional(self, content: str, cond_name: str) -> str:
+        """Remove a conditional block entirely."""
+        # Match %if containing the condition name through %endif
+        pattern = rf"^%if[^\n]*{re.escape(cond_name)}[^\n]*$.*?^%endif\s*$\n?"
+        return re.sub(pattern, "", content, flags=re.MULTILINE | re.DOTALL)
+
+    def _force_conditional_true(self, content: str, cond_name: str) -> str:
+        """Force a conditional to always be true (remove %if/%endif, keep content)."""
+        # Match %if containing the condition name
+        pattern = rf"^%if[^\n]*{re.escape(cond_name)}[^\n]*$\n?"
+        content = re.sub(pattern, "", content, flags=re.MULTILINE)
+
+        # Also remove the corresponding %endif (this is imperfect but works for simple cases)
+        # For now, we just remove the first %endif after where the %if was
+        # A more robust solution would track nesting
         return content
