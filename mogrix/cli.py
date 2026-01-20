@@ -10,11 +10,13 @@ from mogrix.parser.spec import SpecParser
 from mogrix.rules.loader import RuleLoader
 from mogrix.rules.engine import RuleEngine
 from mogrix.emitter.spec import SpecWriter
+from mogrix.headers.overlay import HeaderOverlayManager
 
 console = Console()
 
-# Default rules directory (relative to package)
+# Default directories (relative to package)
 RULES_DIR = Path(__file__).parent.parent / "rules"
+HEADERS_DIR = Path(__file__).parent.parent / "headers"
 
 
 @click.group()
@@ -97,16 +99,28 @@ def analyze(spec_file: str, rules_dir: str | None):
     help="Path to rules directory",
 )
 @click.option(
+    "--headers-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to headers directory",
+)
+@click.option(
     "--output",
     "-o",
     type=click.Path(),
     default=None,
     help="Output file (default: stdout)",
 )
-def convert(spec_file: str, rules_dir: str | None, output: str | None):
+def convert(
+    spec_file: str,
+    rules_dir: str | None,
+    headers_dir: str | None,
+    output: str | None,
+):
     """Convert a spec file using rules."""
     spec_path = Path(spec_file)
     rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+    headers_path = Path(headers_dir) if headers_dir else HEADERS_DIR
 
     # Parse spec
     parser = SpecParser()
@@ -123,9 +137,15 @@ def convert(spec_file: str, rules_dir: str | None, output: str | None):
     drops = list(original_br - final_br)
     adds = list(final_br - original_br)
 
+    # Generate CPPFLAGS for header overlays
+    cppflags = None
+    if result.header_overlays:
+        overlay_mgr = HeaderOverlayManager(headers_path)
+        cppflags = overlay_mgr.get_cppflags(result.header_overlays)
+
     # Write modified spec
     writer = SpecWriter()
-    content = writer.write(result, drops=drops, adds=adds)
+    content = writer.write(result, drops=drops, adds=adds, cppflags=cppflags)
 
     if output:
         Path(output).write_text(content)

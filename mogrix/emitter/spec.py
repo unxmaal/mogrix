@@ -12,6 +12,7 @@ class SpecWriter:
         result: TransformResult,
         drops: list[str] | None = None,
         adds: list[str] | None = None,
+        cppflags: str | None = None,
     ) -> str:
         """Generate modified spec content from transform result."""
         content = result.spec.raw_content
@@ -63,6 +64,19 @@ class SpecWriter:
         # Rewrite paths
         for old_path, new_path in result.path_rewrites.items():
             content = content.replace(old_path, new_path)
+
+        # Inject CPPFLAGS for header overlays
+        if cppflags:
+            # Insert CPPFLAGS export right after %build line
+            cppflags_line = f'export CPPFLAGS="{cppflags} $CPPFLAGS"'
+            if "%build" in content:
+                content = re.sub(
+                    r"^(%build)(\s*\n)",
+                    f"\\1\\2{cppflags_line}\n",
+                    content,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
 
         # Clean up empty lines from removals
         content = re.sub(r"\n{3,}", "\n\n", content)

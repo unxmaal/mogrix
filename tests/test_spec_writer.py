@@ -107,3 +107,33 @@ install -d %{buildroot}/usr/lib64
 
     assert "/usr/sgug/lib32" in output
     assert "/usr/lib64" not in output
+
+
+def test_writer_injects_cppflags():
+    """Writer injects CPPFLAGS for header overlays after %build."""
+    original = """Name: test
+Version: 1.0
+
+%build
+%configure
+make
+"""
+    spec = SpecFile(
+        name="test",
+        version="1.0",
+        raw_content=original,
+    )
+    result = TransformResult(
+        spec=spec,
+        header_overlays=["generic"],
+    )
+    writer = SpecWriter()
+
+    output = writer.write(result, cppflags="-I/usr/sgug/include/mogrix-compat/generic")
+
+    assert "CPPFLAGS" in output
+    assert "-I/usr/sgug/include/mogrix-compat/generic" in output
+    # CPPFLAGS should come right after %build
+    build_idx = output.find("%build")
+    cppflags_idx = output.find("CPPFLAGS")
+    assert build_idx < cppflags_idx
