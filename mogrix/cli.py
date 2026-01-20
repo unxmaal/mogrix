@@ -197,5 +197,99 @@ def convert(
         print(content)
 
 
+@main.command()
+@click.argument("specs_dir", type=click.Path(exists=True))
+@click.argument("output_dir", type=click.Path())
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option(
+    "--headers-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to headers directory",
+)
+@click.option(
+    "--compat-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to compat sources directory",
+)
+def batch(
+    specs_dir: str,
+    output_dir: str,
+    rules_dir: str | None,
+    headers_dir: str | None,
+    compat_dir: str | None,
+):
+    """Convert multiple spec files in batch.
+
+    SPECS_DIR is a directory containing .spec files.
+    OUTPUT_DIR is where converted specs will be written.
+    """
+    from mogrix.batch import BatchConverter
+
+    specs_path = Path(specs_dir)
+    output_path = Path(output_dir)
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+    headers_path = Path(headers_dir) if headers_dir else HEADERS_DIR
+    compat_path = Path(compat_dir) if compat_dir else COMPAT_DIR
+
+    converter = BatchConverter(
+        specs_path,
+        rules_dir=rules_path,
+        headers_dir=headers_path,
+        compat_dir=compat_path,
+    )
+
+    console.print(f"[bold]Discovering specs in:[/bold] {specs_path}")
+    specs = converter.discover_specs()
+    console.print(f"Found {len(specs)} spec files\n")
+
+    console.print(f"[bold]Converting to:[/bold] {output_path}\n")
+    results = converter.convert_all(output_path)
+
+    # Display results
+    summary = converter.get_summary(results)
+
+    table = Table(title="Conversion Results")
+    table.add_column("Package", style="cyan")
+    table.add_column("Status", style="green")
+    table.add_column("Rules Applied", style="dim")
+
+    for r in results:
+        status = "[green]OK[/green]" if r["status"] == "success" else "[red]ERROR[/red]"
+        rules_count = str(len(r.get("applied_rules", [])))
+        table.add_row(r["package"], status, rules_count)
+
+    console.print(table)
+
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  Total: {summary['total']}")
+    console.print(f"  Success: [green]{summary['success']}[/green]")
+    if summary["errors"] > 0:
+        console.print(f"  Errors: [red]{summary['errors']}[/red]")
+        for err in summary["error_packages"]:
+            console.print(f"    - {err['package']}: {err['error']}")
+
+
+@main.command()
+def list_rules():
+    """List all available package rules."""
+    rules_path = RULES_DIR / "packages"
+    if not rules_path.exists():
+        console.print("[red]No package rules found[/red]")
+        return
+
+    rules = sorted(rules_path.glob("*.yaml"))
+    console.print(f"[bold]Available package rules ({len(rules)}):[/bold]\n")
+
+    for rule_file in rules:
+        console.print(f"  - {rule_file.stem}")
+
+
 if __name__ == "__main__":
     main()
