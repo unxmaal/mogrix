@@ -1,0 +1,24 @@
+generic:
+  drop_buildrequires:
+    - systemd
+    - systemd-devel
+    - libselinux
+    - libselinux-devel
+    - kernel-headers
+    - alsa-lib-devel
+
+  add_buildrequires:
+    - sgug-rpm-config
+
+  configure_disable:
+    - selinux
+    - systemd
+    - udev
+
+  rewrite_paths:
+    /usr/lib64: /usr/sgug/lib32
+    /usr/lib: /usr/sgug/lib32
+    /usr/include: /usr/sgug/include
+
+  header_overlays:
+    - generic
