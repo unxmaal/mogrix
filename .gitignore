@@ -50,6 +50,8 @@ Thumbs.db
 
 # Mogrix working directories
 workdir/
+converted/
+usr/
 
 # RPM build artifacts (if building locally)
 *.src.rpm
