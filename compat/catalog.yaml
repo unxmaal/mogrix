@@ -58,11 +58,22 @@ functions:
     header: stdlib.h
     description: Safe array reallocation with overflow check
 
+  secure_getenv:
+    file: stdlib/secure_getenv.c
+    header: stdlib.h
+    description: Secure environment variable access (GNU extension)
+
   # error functions
   strerror_r:
     file: error/strerror_r.c
     header: string.h
     description: Thread-safe strerror
+
+  # rld interface stubs
+  _rld_new_interface:
+    file: rld/rld_new_interface.c
+    header: rld_interface.h
+    description: IRIX rld interface stub for cross-compilation
 
 # Common function sets for package classes
 sets:

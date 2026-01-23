@@ -363,6 +363,7 @@ def _generate_converted_spec(
         export_vars=result.export_vars if result.export_vars else None,
         skip_find_lang=result.skip_find_lang,
         install_cleanup=result.install_cleanup if result.install_cleanup else None,
+        spec_replacements=result.spec_replacements if result.spec_replacements else None,
     )
 
 

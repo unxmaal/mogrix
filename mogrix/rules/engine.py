@@ -30,6 +30,7 @@ class TransformResult:
     export_vars: dict[str, str] = field(default_factory=dict)
     skip_find_lang: bool = False
     install_cleanup: list[str] = field(default_factory=list)
+    spec_replacements: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -287,4 +288,11 @@ class RuleEngine:
             result.install_cleanup.extend(rules["install_cleanup"])
             result.applied_rules.append(
                 f"install_cleanup: {len(rules['install_cleanup'])} commands"
+            )
+
+        # Spec file text replacements (for fixing macros, etc.)
+        if "spec_replacements" in rules:
+            result.spec_replacements.extend(rules["spec_replacements"])
+            result.applied_rules.append(
+                f"spec_replacements: {len(rules['spec_replacements'])} patterns"
             )

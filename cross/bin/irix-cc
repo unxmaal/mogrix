@@ -24,6 +24,9 @@ LD="${STAGING}/bin/irix-ld"
 #
 # Define IRIX C++ namespace macros as empty for C code
 CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3"
+# Force-include our stdarg.h BEFORE anything else to define va_list correctly
+# IRIX's stdio_core.h defines va_list as char* which conflicts with clang builtins
+CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"

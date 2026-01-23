@@ -4,7 +4,22 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-01-23)
 
-**Phase 6: TDNF RUNNING ON IRIX - GOAL ACHIEVED**
+**Phase 6.5: VALIDATING MOGRIX WORKFLOW**
+
+Now that tdnf runs on IRIX, we're validating that the mogrix workflow (fetch → convert → rpmbuild) produces working packages without manual intervention. This surfaces any missing compat fixes that need to be added to mogrix.
+
+### Workflow Validation Progress
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| zlib | DONE | Works out of the box |
+| bzip2 | DONE | Works out of the box |
+| openssl | IN PROGRESS | Multiple compat fixes needed (see HANDOFF.md) |
+| curl | PENDING | |
+| rpm | PENDING | |
+| tdnf | PENDING | |
+
+**Previous milestone: TDNF RUNNING ON IRIX - GOAL ACHIEVED**
 
 ### Major Milestone: tdnf Package Manager Works on IRIX
 

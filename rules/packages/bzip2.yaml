@@ -10,7 +10,23 @@
 package: bzip2
 
 rules:
+  # Export CC for cross-compilation (bzip2 uses Makefile, not autotools)
+  export_vars:
+    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
+    AR: "/opt/cross/bin/llvm-ar"
+    RANLIB: "/opt/cross/bin/llvm-ranlib"
+
   # Remove test from "all" target to avoid running MIPS binary on build host
   # The Makefile has: all: libbz2.a bzip2 bzip2recover test
   prep_commands:
     - "sed -i 's/^all: libbz2.a bzip2 bzip2recover test$/all: libbz2.a bzip2 bzip2recover/' Makefile"
+
+  # Replace undefined %{__global_ldflags} with empty string
+  # Fedora spec uses this macro but we don't define it in cross-compilation
+  spec_replacements:
+    - pattern: "%{__global_ldflags}"
+      replacement: ""
+    # Fix bash brace expansion in mkdir (sh doesn't support it)
+    # Original: mkdir -p $RPM_BUILD_ROOT{%{_bindir},%{_mandir}/man1,%{_libdir}/pkgconfig,%{_includedir}}
+    - pattern: "mkdir -p $RPM_BUILD_ROOT{%{_bindir},%{_mandir}/man1,%{_libdir}/pkgconfig,%{_includedir}}"
+      replacement: "mkdir -p $RPM_BUILD_ROOT%{_bindir} $RPM_BUILD_ROOT%{_mandir}/man1 $RPM_BUILD_ROOT%{_libdir}/pkgconfig $RPM_BUILD_ROOT%{_includedir}"

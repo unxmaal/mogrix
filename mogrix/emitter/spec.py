@@ -24,6 +24,7 @@ class SpecWriter:
         export_vars: dict[str, str] | None = None,
         skip_find_lang: bool = False,
         install_cleanup: list[str] | None = None,
+        spec_replacements: list[dict[str, str]] | None = None,
     ) -> str:
         """Generate modified spec content from transform result."""
         content = result.spec.raw_content
@@ -37,6 +38,14 @@ class SpecWriter:
                 macro_lines.append(f"%define {name} {value}")
             macro_lines.append("")
             content = "\n".join(macro_lines) + content
+
+        # Apply spec file text replacements (for fixing macros, etc.)
+        if spec_replacements:
+            for replacement in spec_replacements:
+                pattern = replacement.get("pattern", "")
+                repl = replacement.get("replacement", "")
+                if pattern:
+                    content = content.replace(pattern, repl)
 
         # Remove dropped BuildRequires
         for dep in drops:

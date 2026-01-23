@@ -1,7 +1,51 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-23
-**Status**: GOAL ACHIEVED - tdnf package manager runs on IRIX 6.5
+**Status**: Validating mogrix workflow with tdnf dependency chain
+
+## Current Session: Mogrix Workflow Validation
+
+Testing the full mogrix fetch → convert → rpmbuild workflow for the tdnf dependency chain.
+
+### Package Validation Status
+
+| Package | Mogrix Workflow | Notes |
+|---------|-----------------|-------|
+| zlib | DONE | No issues |
+| bzip2 | DONE | No issues |
+| openssl | IN PROGRESS | 3.2.1 - multiple fixes needed (see below) |
+| curl | PENDING | Next after openssl |
+| rpm | PENDING | |
+| tdnf | PENDING | |
+
+### OpenSSL 3.2.1 Fixes Required
+
+The OpenSSL 3.2.1 build from Fedora 40 required several new compat additions:
+
+**Compat Headers Created:**
+- `sys/socket.h` - Undefine `_SGI_SOURCE` to get XPG msghdr with msg_flags
+- `sys/random.h` - Stub for getrandom() (returns -1/ENOSYS)
+- `string.h` - Declaration for strerror_r()
+- `ctype.h` - Inline isblank() function
+- `complex.h` - Standalone implementation (avoids IRIX __c99 check and va_list conflicts)
+
+**Compat Functions Added:**
+- `strerror_r` (GNU-style, returns char*) - `compat/error/strerror_r.c`
+- `_rld_new_interface` stub - `compat/rld/rld_new_interface.c`
+
+**irix-ld Wrapper Updates:**
+- Filter out `-static-libgcc` (GCC-specific flag)
+- Convert `-soname,name` to `-soname name` (GNU ld format)
+
+**openssl.yaml spec_replacements:**
+- sslarch forced to irix-mips3-gcc with no-asm no-async
+- FIPS disabled (requires Linux-specific link.h, dladdr)
+- kTLS disabled (kernel TLS, Linux-specific)
+- SCTP disabled (Linux SCTP not available)
+- GCC-specific compiler flags removed
+- EX_LIBS passed to make for compat library linking
+- All FIPS-related patches commented out
+- Perl `rename` command replaced with shell loop (pending test)
 
 ## Solution Summary
 

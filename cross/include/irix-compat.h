@@ -393,3 +393,17 @@ static inline long timegm(struct tm *tm)
 #endif
 
 #endif /* IRIX_COMPAT_H */
+
+/* C99 functions missing from IRIX headers when not in __c99 mode */
+#ifndef _IRIX_COMPAT_C99_FUNCS
+#define _IRIX_COMPAT_C99_FUNCS
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern long long strtoll(const char * __restrict, char ** __restrict, int);
+extern unsigned long long strtoull(const char * __restrict, char ** __restrict, int);
+extern long long atoll(const char *);
+#ifdef __cplusplus
+}
+#endif
+#endif /* _IRIX_COMPAT_C99_FUNCS */

@@ -5,6 +5,13 @@
 package: zlib
 
 rules:
+  # Export CC for cross-compilation (zlib uses ./configure not %configure)
+  export_vars:
+    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+    AR: "/opt/cross/bin/llvm-ar"
+    RANLIB: "/opt/cross/bin/llvm-ranlib"
+
   # Configure flags
   configure_flags:
     add:

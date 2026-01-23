@@ -1,12 +1,8 @@
 # openssl - TLS/SSL crypto library
-# Has sgifixes patches
+# Uses ./Configure (perl script), not autotools
+# Cross-compilation requires overriding the default arch detection
 
 package: openssl
-
-
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - openssl111d.sgifixes.patch
 
 rules:
   # Drop Linux-specific dependencies
@@ -14,16 +10,78 @@ rules:
     - lksctp-tools-devel
     - systemtap-sdt-devel
 
-  # OpenSSL uses ./Configure, not autotools
-  # These would need special handling in the emitter
-  # For now, document the needed changes
-  #
-  # Configure options for IRIX:
-  # ./Configure irix-mips3-gcc no-asm no-async no-sctp shared
-  #
-  # Key flags:
-  # - no-asm: IRIX assembler incompatibilities
-  # - no-async: Uses aio which IRIX lacks
-  # - no-sctp: Linux SCTP not on IRIX
-  # - no-ktls: Kernel TLS not available
-  # - no-afalgeng: Linux AF_ALG not available
+  # Compat functions needed for IRIX
+  inject_compat_functions:
+    - secure_getenv
+    - strerror_r
+    - _rld_new_interface
+
+  # Export CC for cross-compilation
+  export_vars:
+    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
+    AR: "/opt/cross/bin/llvm-ar"
+    RANLIB: "/opt/cross/bin/llvm-ranlib"
+
+  # Override the default arch detection to force IRIX settings
+  # Original: sslarch=%{_os}-%{_target_cpu}
+  # We need: sslarch=irix-mips3-gcc with IRIX-specific flags
+  spec_replacements:
+    # Force IRIX architecture for cross-compilation
+    # Note: no-ktls and no-afalgeng are not in 1.1.1g, only use flags supported by the version
+    - pattern: "sslarch=%{_os}-%{_target_cpu}"
+      replacement: "sslarch=irix-mips3-gcc\nsslflags=\"no-asm no-async\""
+    # Disable FIPS - requires Linux-specific link.h and dladdr() for self-test
+    - pattern: "enable-fips"
+      replacement: "no-fips"
+    # Disable kTLS (kernel TLS offload) - Linux-specific
+    - pattern: "enable-ktls"
+      replacement: "no-ktls"
+    # Comment out x86_64 sslflags override (conflicts with IRIX cross-compilation)
+    - pattern: "sslflags=enable-ec_nistp_64_gcc_128"
+      replacement: "# sslflags=enable-ec_nistp_64_gcc_128 # disabled for IRIX cross-compilation"
+    # Remove enable-sctp (Linux SCTP not available on IRIX)
+    - pattern: "enable-sctp"
+      replacement: "no-sctp"
+    # Remove GCC-specific flags that clang doesn't support
+    - pattern: "-Wa,--generate-missing-build-notes=yes"
+      replacement: ""
+    # Remove undefined Fedora macros
+    - pattern: "%{__global_ldflags}"
+      replacement: ""
+    # Add compat library to make command (LIBS env var doesn't propagate to make)
+    - pattern: "make -s %{?_smp_mflags} all"
+      replacement: "make -s %{?_smp_mflags} EX_LIBS=\"-L$COMPAT_DIR -lmogrix-compat\" all"
+    # Disable FIPS patches - they require Linux-specific functions (dladdr, Dl_info, stpcpy)
+    # that are not available on IRIX and FIPS compliance is not needed
+    - pattern: "Patch42: openssl-1.1.1-fips.patch"
+      replacement: "# Patch42: openssl-1.1.1-fips.patch # disabled for IRIX"
+    - pattern: "Patch48: openssl-1.1.1-fips-post-rand.patch"
+      replacement: "# Patch48: openssl-1.1.1-fips-post-rand.patch # disabled for IRIX"
+    - pattern: "Patch62: openssl-1.1.1-fips-curves.patch"
+      replacement: "# Patch62: openssl-1.1.1-fips-curves.patch # disabled for IRIX"
+    - pattern: "Patch65: openssl-1.1.1-fips-drbg-selftest.patch"
+      replacement: "# Patch65: openssl-1.1.1-fips-drbg-selftest.patch # disabled for IRIX"
+    - pattern: "Patch66: openssl-1.1.1-fips-dh.patch"
+      replacement: "# Patch66: openssl-1.1.1-fips-dh.patch # disabled for IRIX"
+    - pattern: "Patch70: openssl-1.1.1-rewire-fips-drbg.patch"
+      replacement: "# Patch70: openssl-1.1.1-rewire-fips-drbg.patch # disabled for IRIX"
+    - pattern: "Patch53: openssl-1.1.1-fips-crng-test.patch"
+      replacement: "# Patch53: openssl-1.1.1-fips-crng-test.patch # disabled for IRIX"
+    # Disable FIPS patch applications
+    - pattern: "%patch42 -p1 -b .fips"
+      replacement: "# %patch42 -p1 -b .fips # disabled for IRIX"
+    - pattern: "%patch48 -p1 -b .fips-post-rand"
+      replacement: "# %patch48 -p1 -b .fips-post-rand # disabled for IRIX"
+    - pattern: "%patch62 -p1 -b .fips-curves"
+      replacement: "# %patch62 -p1 -b .fips-curves # disabled for IRIX"
+    - pattern: "%patch65 -p1 -b .fips-drbg-selftest"
+      replacement: "# %patch65 -p1 -b .fips-drbg-selftest # disabled for IRIX"
+    - pattern: "%patch66 -p1 -b .fips-dh"
+      replacement: "# %patch66 -p1 -b .fips-dh # disabled for IRIX"
+    - pattern: "%patch70 -p1 -b .rewire-fips-drbg"
+      replacement: "# %patch70 -p1 -b .rewire-fips-drbg # disabled for IRIX"
+    - pattern: "%patch53 -p1 -b .fips-crng-test"
+      replacement: "# %patch53 -p1 -b .fips-crng-test # disabled for IRIX"
+    # Replace Perl rename command with shell loop (rename not available)
+    - pattern: "rename so.%{soversion} so.%{version} $RPM_BUILD_ROOT%{_libdir}/*.so.%{soversion}"
+      replacement: "for f in $RPM_BUILD_ROOT%{_libdir}/*.so.%{soversion}; do mv \"$f\" \"${f%.%{soversion}}.%{version}\"; done"

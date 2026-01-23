@@ -17,13 +17,27 @@ STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
 LLD="${IRIX_LLD:-/opt/cross/bin/ld.lld-irix}"
 GNULD="${IRIX_GNULD:-/opt/cross/bin/mips-sgi-irix6.5-ld.bfd}"
 
-# Check if -shared is in arguments (shared library build)
+# Filter out GCC-specific flags that don't apply to clang/lld
+# and check for -shared in a single pass
+# Also convert some flag formats for GNU ld compatibility
 is_shared=0
+filtered_args=""
 for arg in "$@"; do
     case "$arg" in
         -shared)
             is_shared=1
-            break
+            filtered_args="$filtered_args $arg"
+            ;;
+        -static-libgcc)
+            # Skip GCC-specific flag - not meaningful for clang/lld
+            ;;
+        -soname,*)
+            # Convert -soname,name to -soname name (GNU ld format)
+            soname_val="${arg#-soname,}"
+            filtered_args="$filtered_args -soname $soname_val"
+            ;;
+        *)
+            filtered_args="$filtered_args $arg"
             ;;
     esac
 done
@@ -31,7 +45,7 @@ done
 if [ "$is_shared" = "1" ]; then
     # Shared library: use GNU ld (produces correct IRIX segment layout)
     # GNU ld creates 2 LOAD segments; LLD creates 3 which crashes IRIX rld
-    exec $GNULD "$@"
+    exec $GNULD $filtered_args
 else
     # Executable: use LLD with CRT files and soft float stubs
     # Use fixed CRT files (with .MIPS.events sections stripped)
@@ -42,7 +56,7 @@ else
       --allow-shlib-undefined \
       -dynamic-linker /lib32/rld \
       $CRT1 \
-      "$@" \
+      $filtered_args \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
       -L$STAGING/lib32 \
