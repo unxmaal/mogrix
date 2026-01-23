@@ -1,6 +1,6 @@
 # Mogrix
 
-SRPM conversion engine for IRIX. Transforms Fedora SRPMs into IRIX-compatible packages.
+TransMOGrifies Linux SRPMs into IRIX-compatible packages.
 
 ## Overview
 
