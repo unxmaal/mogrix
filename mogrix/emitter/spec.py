@@ -21,6 +21,9 @@ class SpecWriter:
         drop_requires: list[str] | None = None,
         remove_lines: list[str] | None = None,
         rpm_macros: dict[str, str] | None = None,
+        export_vars: dict[str, str] | None = None,
+        skip_find_lang: bool = False,
+        install_cleanup: list[str] | None = None,
     ) -> str:
         """Generate modified spec content from transform result."""
         content = result.spec.raw_content
@@ -191,6 +194,20 @@ class SpecWriter:
                     flags=re.MULTILINE,
                 )
 
+        # Inject export_vars (e.g., LD for libtool)
+        if export_vars:
+            export_lines = "\n".join(
+                f"export {var}={val}" for var, val in export_vars.items()
+            )
+            if "%build" in content:
+                content = re.sub(
+                    r"^(%build)(\s*\n)",
+                    f"\\1\\2# Use our IRIX linker wrapper for libtool\n{export_lines}\n",
+                    content,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+
         # Inject compat build commands (after %build and CPPFLAGS)
         if compat_build:
             if "%build" in content:
@@ -208,6 +225,36 @@ class SpecWriter:
 
         # Handle subpackage dropping
         content = self._handle_subpackages(content, result)
+
+        # Skip find_lang (for packages with NLS disabled)
+        if skip_find_lang:
+            # Comment out %find_lang lines
+            content = re.sub(
+                r"^(%find_lang\s+.*)$",
+                r"# Skip find_lang for cross-compilation (NLS disabled)\n#\1",
+                content,
+                flags=re.MULTILINE,
+            )
+            # Remove -f lang references from %files
+            content = re.sub(
+                r"^(%files.*)\s+-f\s+\S+\.lang(.*)$",
+                r"\1\2",
+                content,
+                flags=re.MULTILINE,
+            )
+
+        # Install cleanup commands (e.g., remove .la files)
+        if install_cleanup:
+            cleanup_cmds = "\n".join(install_cleanup)
+            cleanup_comment = "# Install cleanup (injected by mogrix)"
+            # Insert after %make_install or %install
+            content = re.sub(
+                r"^(%make_install)(\s*)$",
+                f"\\1\\2\n\n{cleanup_comment}\n{cleanup_cmds}",
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
 
         # Clean up empty lines from removals
         content = re.sub(r"\n{3,}", "\n\n", content)

@@ -1,0 +1,49 @@
+#!/bin/ksh
+# sgug-exec: Run commands with SGUG-RSE environment
+# Unlike sgugshell, this uses native IRIX ksh so it can bootstrap itself
+# Usage: sgug-exec <command> [args...]
+
+# Clear conflicting environment
+unset PKG_CONFIG_PATH
+unset LDFLAGS
+unset CFLAGS
+unset CPPFLAGS
+unset CXXFLAGS
+unset PERL
+unset M4
+unset SED
+unset GREP
+unset BISON
+unset YACC
+unset SHELL
+unset SHELL_PATH
+unset CONFIG_SHELL
+unset LD_LIBRARY_PATH
+unset LD_LIBRARYN32_PATH
+unset LD_LIBRARYN64_PATH
+unset GCC_ROOT
+unset CC
+unset CXX
+unset LD
+unset AR
+unset RANLIB
+unset PYTHONPATH
+unset PYTHONHOME
+unset HOST
+
+SGUG_ROOT=/usr/sgug
+SGUG_BIN=$SGUG_ROOT/bin
+SGUG_SBIN=$SGUG_ROOT/sbin
+SGUG_LIB=$SGUG_ROOT/lib32
+
+export PATH=$SGUG_BIN:$SGUG_SBIN:/usr/bin/X11:/usr/bin:/bin:/usr/sbin:/usr/bsd
+export LD_LIBRARYN32_PATH=$SGUG_LIB:/usr/lib32:/lib32:/usr/lib:/lib
+export MANPATH=$SGUG_ROOT/share/man:/usr/share/catman/a_man:/usr/share/catman/g_man:/usr/share/catman/p_man:/usr/share/catman/u_man
+export LC_ALL=C
+
+if [ $# -eq 0 ]; then
+    echo "Usage: sgug-exec <command> [args...]" >&2
+    exit 1
+fi
+
+exec "$@"

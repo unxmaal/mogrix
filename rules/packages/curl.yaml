@@ -30,7 +30,7 @@ rules:
       - --with-ssl
       - --with-zlib
       - --enable-ipv6
-      - --enable-threaded-resolver
+      - --disable-threaded-resolver
       - --without-libssh2
       - --without-libpsl
       - --without-libidn2
@@ -49,3 +49,6 @@ rules:
   configure_disable:
     - ldap
     - ldaps
+
+  # Skip tests during cross-compilation
+  skip_check: true

@@ -40,7 +40,19 @@ functions:
     header: stdio.h
     description: Print to allocated string (va_list version)
 
+  fopencookie:
+    file: stdio/fopencookie.c
+    header: stdio/fopencookie.h
+    description: Custom stream I/O (glibc extension for libsolv)
+    requires_pthread: true
+    notes: Portable implementation based on musl community code
+
   # stdlib functions
+  strtof:
+    file: strtof.c
+    header: stdlib.h
+    description: Convert string to float (IRIX libc lacks this)
+
   reallocarray:
     file: stdlib/reallocarray.c
     header: stdlib.h

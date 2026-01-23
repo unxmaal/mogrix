@@ -1,5 +1,6 @@
 # libxml2 - XML parsing library
-# Has sgifixes patches
+# Successfully cross-compiled for IRIX N32
+# Note: pthread causes crashes on IRIX, so threads are disabled
 
 package: libxml2
 
@@ -25,10 +26,19 @@ rules:
       - --disable-silent-rules
       - --without-python
       - --without-icu
-      - --with-zlib
-      - --with-lzma
+      - --without-zlib
+      - --without-lzma
+      - --without-threads    # CRITICAL: pthread crashes IRIX rld
+      - --without-tls
     remove:
       - --with-python
+      - --with-zlib
+      - --with-lzma
+      - --with-threads
+      - --with-tls
 
   configure_disable:
     - static
+
+  # Skip check - can't run cross-compiled tests
+  skip_check: true

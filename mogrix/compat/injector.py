@@ -102,6 +102,9 @@ class CompatInjector:
     def get_build_commands(self, function_names: list[str]) -> str:
         """Generate %build commands to compile compat sources.
 
+        Creates a static archive to avoid glob expansion issues with libtool.
+        The archive is linked via -L and -l flags which work reliably.
+
         Returns:
             String with commands for %build section
         """
@@ -110,11 +113,13 @@ class CompatInjector:
             return ""
 
         lines = [
-            "# Compile mogrix compat sources",
+            "# Compile mogrix compat sources into static archive",
+            "COMPAT_DIR=$(pwd)/mogrix-compat",
             "for f in mogrix-compat/*.c; do",
             '  %{__cc} %{optflags} -c "$f" -o "${f%.c}.o"',
             "done",
-            'export LIBS="mogrix-compat/*.o $LIBS"',
+            '%{__ar} rcs "$COMPAT_DIR/libmogrix-compat.a" "$COMPAT_DIR"/*.o',
+            'export LIBS="-L$COMPAT_DIR -lmogrix-compat $LIBS"',
         ]
 
         return "\n".join(lines)

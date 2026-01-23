@@ -27,6 +27,9 @@ class TransformResult:
     drop_subpackages: list[str] = field(default_factory=list)
     rpm_macros: dict[str, str] = field(default_factory=dict)
     prep_commands: list[str] = field(default_factory=list)
+    export_vars: dict[str, str] = field(default_factory=dict)
+    skip_find_lang: bool = False
+    install_cleanup: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -265,4 +268,23 @@ class RuleEngine:
             result.prep_commands.extend(rules["prep_commands"])
             result.applied_rules.append(
                 f"prep_commands: {len(rules['prep_commands'])} commands"
+            )
+
+        # Environment variables to export in %build
+        if "export_vars" in rules:
+            result.export_vars.update(rules["export_vars"])
+            result.applied_rules.append(
+                f"export_vars: {list(rules['export_vars'].keys())}"
+            )
+
+        # Skip find_lang (for packages with NLS disabled)
+        if rules.get("skip_find_lang"):
+            result.skip_find_lang = True
+            result.applied_rules.append("skip_find_lang: true")
+
+        # Install cleanup commands (run at end of %install)
+        if "install_cleanup" in rules:
+            result.install_cleanup.extend(rules["install_cleanup"])
+            result.applied_rules.append(
+                f"install_cleanup: {len(rules['install_cleanup'])} commands"
             )

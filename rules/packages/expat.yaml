@@ -19,10 +19,20 @@ rules:
     add:
       - --disable-silent-rules
       - --without-docbook
+      - --without-examples
+      - --without-tests
 
   # Skip man pages (no docbook for cross-compilation)
   skip_manpages: true
 
-  # Remove duplicate docs installed by make install
+  # Skip find_lang (no translations)
+  skip_find_lang: true
+
+  # Make options to skip doc directory (no xmlto for cross-compilation)
+  make_env:
+    SUBDIRS: "lib xmlwf"
+
+  # Remove duplicate docs and .la files
   install_cleanup:
     - "rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/expat"
+    - "find $RPM_BUILD_ROOT -name '*.la' -delete"

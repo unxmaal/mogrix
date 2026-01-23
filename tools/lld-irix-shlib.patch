@@ -1,0 +1,79 @@
+From: Mogrix Project
+Subject: [PATCH] LLD: Skip IRIX-incompatible ELF features for shared libraries
+
+IRIX 6.5's ELF parser predates several modern MIPS ELF features:
+- PT_MIPS_ABIFLAGS program header (and .MIPS.abiflags section)
+- PT_GNU_STACK program header
+- PT_PHDR in shared libraries
+
+When these are present, IRIX's tools (including odump and rld) crash
+trying to parse the ELF file. This patch conditionally skips these
+features when targeting IRIX (ELFOSABI_IRIX).
+
+---
+ lld/ELF/Writer.cpp | 26 +++++++++++++++++---------
+ 1 file changed, 17 insertions(+), 9 deletions(-)
+
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -326,8 +326,11 @@ template <class ELFT> void Writer<ELFT>::createSyntheticSections() {
+       in.mipsRldMap = std::make_unique<MipsRldMapSection>();
+       add(*in.mipsRldMap);
+     }
+-    if ((in.mipsAbiFlags = MipsAbiFlagsSection<ELFT>::create()))
+-      add(*in.mipsAbiFlags);
++    // IRIX's ELF parser predates MIPS ABIFLAGS and crashes when it sees them
++    if (config->osabi != ELFOSABI_IRIX) {
++      if ((in.mipsAbiFlags = MipsAbiFlagsSection<ELFT>::create()))
++        add(*in.mipsAbiFlags);
++    }
+     if ((in.mipsOptions = MipsOptionsSection<ELFT>::create()))
+       add(*in.mipsOptions);
+     if ((in.mipsReginfo = MipsReginfoSection<ELFT>::create()))
+@@ -2073,8 +2076,11 @@ template <class ELFT> void Writer<ELFT>::createPhdrs() {
+       if (config->emachine == EM_MIPS) {
+         // Add separate segments for MIPS-specific sections.
+         // IRIX requires PT_MIPS_OPTIONS to be before the DYNAMIC phdr.
++        // However, IRIX's ELF parser predates PT_MIPS_ABIFLAGS and crashes on it.
+         int loc = config->osabi == ELFOSABI_IRIX ? 2 : -1;
+-        addPhdrForSection(part, SHT_MIPS_ABIFLAGS, PT_MIPS_ABIFLAGS, PF_R, loc);
++        if (config->osabi != ELFOSABI_IRIX) {
++          addPhdrForSection(part, SHT_MIPS_ABIFLAGS, PT_MIPS_ABIFLAGS, PF_R, loc);
++        }
+         addPhdrForSection(part, SHT_MIPS_REGINFO, PT_MIPS_REGINFO, PF_R, loc);
+         addPhdrForSection(part, SHT_MIPS_OPTIONS, PT_MIPS_OPTIONS, PF_R, loc);
+       }
+@@ -2315,10 +2321,14 @@ template <class ELFT> void Writer<ELFT>::createPhdrs() {
+   // nmagic or omagic output does not have PT_PHDR, PT_INTERP, or the readonly
+   // PT_LOAD.
+   if (!config->nmagic && !config->omagic) {
+-    // The first phdr entry is PT_PHDR which describes the program header
+-    // itself.
+-    if (isMain)
+-      addHdr(PT_PHDR, PF_R)->add(Out::programHeaders);
+-    else
+-      addHdr(PT_PHDR, PF_R)->add(part.programHeaders->getParent());
++    // The first phdr entry is PT_PHDR which describes the program header itself.
++    // IRIX shared libraries don't have PT_PHDR - it confuses IRIX's ELF parser.
++    // Only skip PT_PHDR for IRIX shared libraries, not executables.
++    bool skipPhdr = config->osabi == ELFOSABI_IRIX && config->shared;
++    if (!skipPhdr) {
++      if (isMain)
++        addHdr(PT_PHDR, PF_R)->add(Out::programHeaders);
++      else
++        addHdr(PT_PHDR, PF_R)->add(part.programHeaders->getParent());
++    }
+
+     // PT_INTERP must be the second entry if exists.
+     if (OutputSection *cmd = findSection(".interp", partNo))
+@@ -2424,7 +2434,9 @@ template <class ELFT> void Writer<ELFT>::createPhdrs() {
+       addHdr(PT_GNU_EH_FRAME, part.ehFrameHdr->getParent()->getPhdrFlags())
+           ->add(part.ehFrameHdr->getParent());
+
+-  if (config->zGnustack != GnuStackKind::None) {
++  // IRIX predates PT_GNU_STACK and its ELF parser can crash on it
++  if (config->zGnustack != GnuStackKind::None &&
++      config->osabi != ELFOSABI_IRIX) {
+     unsigned perm = PF_R | PF_W;
+     if (config->zGnustack == GnuStackKind::Exec)
+       perm |= PF_X;

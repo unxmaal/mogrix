@@ -9,6 +9,11 @@
 #include <errno.h>
 #include <math.h>
 
+/* HUGE_VALF may not be defined on IRIX - define it ourselves */
+#ifndef HUGE_VALF
+#define HUGE_VALF ((float)HUGE_VAL)
+#endif
+
 float strtof(const char *nptr, char **endptr)
 {
     double d;

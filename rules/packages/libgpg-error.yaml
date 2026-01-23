@@ -1,5 +1,16 @@
 # libgpg-error - GnuPG error library
 # Needs compat functions for IRIX
+#
+# IMPORTANT: Cross-compilation requires generating a platform-specific lock object file.
+# Before building, you must:
+#   1. Cross-compile src/gen-posix-lock-obj.c for IRIX:
+#      irix-cc -DHAVE_CONFIG_H -I.. -I. -DUSE_POSIX_THREADS=1 -o gen-posix-lock-obj-irix gen-posix-lock-obj.c -lpthread
+#   2. Run it on IRIX to generate the lock object header:
+#      ./gen-posix-lock-obj-irix > src/syscfg/lock-obj-pub.irix6.5.h
+#   3. The output shows IRIX needs 32 bytes for pthread_mutex_t (vs 24 on Linux MIPS)
+#
+# The generated file should contain:
+#   typedef struct { long _vers; union { volatile char _priv[32]; ... } u; } gpgrt_lock_t;
 
 package: libgpg-error
 
@@ -30,3 +41,6 @@ rules:
       - --disable-doc
     remove:
       - --with-libiconv-prefix
+
+  # Skip tests during cross-compilation
+  skip_check: true

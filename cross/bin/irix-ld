@@ -1,11 +1,12 @@
 #!/bin/sh
 #
-# IRIX linker wrapper using vvuk's LLD with IRIX support
+# IRIX linker wrapper with automatic linker selection
 #
-# This wrapper provides a simple interface for linking IRIX N32 binaries
-# using the patched LLD that generates proper IRIX-compatible ELF files.
-#
-# Includes soft_float_stubs for missing compiler-rt long double functions.
+# Selects the appropriate linker based on the build type:
+# - Shared libraries (-shared flag): Uses GNU ld (mips-sgi-irix6.5-ld.bfd)
+#   GNU ld produces the correct 2-LOAD-segment layout that IRIX expects
+# - Executables: Uses vvuk's LLD (ld.lld-irix)
+#   LLD works fine for executables and is faster
 #
 # Deployed by: mogrix setup-cross
 #
@@ -14,19 +15,38 @@
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
 STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
 LLD="${IRIX_LLD:-/opt/cross/bin/ld.lld-irix}"
+GNULD="${IRIX_GNULD:-/opt/cross/bin/mips-sgi-irix6.5-ld.bfd}"
 
-# Use fixed CRT files (with .MIPS.events sections stripped)
-CRT1=$SYSROOT/usr/lib32/mips3/fixed/crt1.o
-CRTN=$SYSROOT/usr/lib32/mips3/fixed/crtn.o
+# Check if -shared is in arguments (shared library build)
+is_shared=0
+for arg in "$@"; do
+    case "$arg" in
+        -shared)
+            is_shared=1
+            break
+            ;;
+    esac
+done
 
-exec $LLD \
-  --allow-shlib-undefined \
-  -dynamic-linker /lib32/rld \
-  $CRT1 \
-  "$@" \
-  -L$SYSROOT/lib32 \
-  -L$SYSROOT/usr/lib32 \
-  -L$STAGING/lib32 \
-  -lsoft_float_stubs \
-  -lc \
-  $CRTN
+if [ "$is_shared" = "1" ]; then
+    # Shared library: use GNU ld (produces correct IRIX segment layout)
+    # GNU ld creates 2 LOAD segments; LLD creates 3 which crashes IRIX rld
+    exec $GNULD "$@"
+else
+    # Executable: use LLD with CRT files and soft float stubs
+    # Use fixed CRT files (with .MIPS.events sections stripped)
+    CRT1=$SYSROOT/usr/lib32/mips3/fixed/crt1.o
+    CRTN=$SYSROOT/usr/lib32/mips3/fixed/crtn.o
+
+    exec $LLD \
+      --allow-shlib-undefined \
+      -dynamic-linker /lib32/rld \
+      $CRT1 \
+      "$@" \
+      -L$SYSROOT/lib32 \
+      -L$SYSROOT/usr/lib32 \
+      -L$STAGING/lib32 \
+      -lsoft_float_stubs \
+      -lc \
+      $CRTN
+fi

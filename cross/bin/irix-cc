@@ -85,7 +85,13 @@ elif [ "$link_only" = "true" ]; then
             -o)
                 next_is_output=true
                 ;;
-            # Skip compile-only flags
+            # Translate -Wl,xxx to xxx (linker passthrough flags)
+            -Wl,*)
+                # Strip -Wl, prefix and add the actual linker flag
+                ld_flag=$(echo "$arg" | sed 's/^-Wl,//')
+                link_args="$link_args $ld_flag"
+                ;;
+            # Skip compile-only flags (but not -Wl which is handled above)
             -D*|-I*|-W*|-O*|-g|-g[0-9]|-std=*|-c|-Q*|-f*|-m*)
                 ;;
             # Skip compiler flags that LLD doesn't understand
@@ -111,6 +117,7 @@ else
     libs=""
     next_is_output=false
 
+    link_args=""
     for arg in "$@"; do
         if [ "$next_is_output" = "true" ]; then
             output="$arg"
@@ -127,14 +134,27 @@ else
             *.o|*.a)
                 objects="$objects $arg"
                 ;;
+            *.so|*.so.*)
+                # Direct shared library references
+                libs="$libs $arg"
+                ;;
             -l*|-L*)
                 libs="$libs $arg"
+                ;;
+            # Translate -Wl,xxx to xxx for linker (strip -Wl, prefix)
+            -Wl,*)
+                ld_flag=$(echo "$arg" | sed 's/^-Wl,//')
+                link_args="$link_args $ld_flag"
                 ;;
             -D*|-I*|-W*|-O*|-g*|-f*|-m*|-std=*|-Q*)
                 other_args="$other_args $arg"
                 ;;
             # Skip link-only flags during compile phase
             -static|-dynamic|-Bdynamic|-Bstatic)
+                ;;
+            -shared)
+                # Pass -shared to the linker
+                link_args="$link_args -shared"
                 ;;
             *)
                 # Pass through other args
@@ -161,5 +181,5 @@ else
     done
 
     # Link everything
-    exec $LD -o "$output" $compiled_objs $objects $libs
+    exec $LD $link_args -o "$output" $compiled_objs $objects $libs
 fi

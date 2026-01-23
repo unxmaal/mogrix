@@ -360,6 +360,9 @@ def _generate_converted_spec(
         drop_requires=result.drop_requires if result.drop_requires else None,
         remove_lines=result.remove_lines if result.remove_lines else None,
         rpm_macros=result.rpm_macros if result.rpm_macros else None,
+        export_vars=result.export_vars if result.export_vars else None,
+        skip_find_lang=result.skip_find_lang,
+        install_cleanup=result.install_cleanup if result.install_cleanup else None,
     )
 
 
@@ -559,12 +562,13 @@ def build(
     # 2. Skip %check section (can't run IRIX binaries on Linux host)
     # 3. Force the target triple so configure gets --host=mips-sgi-irix6.5
     # 4. Set _arch for BUILDROOT path expansion
+    # Note: _target_os must be 'irix' (not 'irix6.5') for native rpm compatibility
     if cross:
         cmd.append("--nodeps")
         cmd.append("--nocheck")
         cmd.extend(["--define", "_target mips-sgi-irix6.5"])
         cmd.extend(["--define", "_target_cpu mips"])
-        cmd.extend(["--define", "_target_os irix6.5"])
+        cmd.extend(["--define", "_target_os irix"])
         cmd.extend(["--define", "_arch mips"])
 
     # Add source/spec directories

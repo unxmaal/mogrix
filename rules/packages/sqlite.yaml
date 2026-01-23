@@ -1,7 +1,23 @@
-# sqlite package rules for IRIX cross-compilation
 package: sqlite
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - sqlite3.sgifixes.patch
+rules:
+  # Disable tcl support - not available for IRIX cross-compilation
+  bcond_invert:
+    - tcl
+    - sqldiff
 
+  # Disable test suite - can't run x86 tests when cross-compiling for MIPS
+  skip_check: true
+
+  # ac_cv overrides for cross-compilation
+  ac_cv_overrides:
+    ac_cv_func_malloc_0_nonnull: "yes"
+    ac_cv_func_realloc_0_nonnull: "yes"
+
+  configure_flags:
+    add:
+      - --disable-static
+    remove:
+      # These are Linux-specific features not available on IRIX
+      - --enable-threadsafe
+      - --enable-threads-override-locks

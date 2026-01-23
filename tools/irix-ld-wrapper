@@ -1,0 +1,27 @@
+#!/bin/sh
+# IRIX cross-linker wrapper
+# Uses GNU ld for shared libraries (correct segment layout for IRIX)
+# Uses LLD for executables (works fine, faster)
+
+GNULD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd
+LLD=/opt/cross/bin/ld.lld
+SYSROOT=/opt/irix-sysroot
+
+# Check if -shared is in arguments
+is_shared=0
+for arg in "$@"; do
+    case "$arg" in
+        -shared)
+            is_shared=1
+            break
+            ;;
+    esac
+done
+
+if [ "$is_shared" = "1" ]; then
+    # Shared library: use GNU ld (produces correct IRIX segment layout)
+    exec $GNULD "$@"
+else
+    # Executable: use LLD (works fine for executables)
+    exec $LLD "$@"
+fi

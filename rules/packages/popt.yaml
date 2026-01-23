@@ -30,9 +30,10 @@ rules:
   configure_opts:
     - --disable-nls
 
-  # Export LD for libtool to find our IRIX linker
+  # Export LD for libtool - use GNU ld for IRIX-compatible shared libraries
+  # GNU ld produces correct 2-LOAD-segment layout; LLD's 3-segment layout crashes IRIX
   export_vars:
-    LD: "/opt/sgug-staging/usr/sgug/bin/irix-ld"
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
 
   # Remove .la files (not needed)
   install_cleanup:
