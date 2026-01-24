@@ -1218,11 +1218,17 @@ def setup_cross(
     is_flag=True,
     help="List staged packages",
 )
+@click.option(
+    "--with-devel/--no-devel",
+    default=True,
+    help="Automatically include matching -devel packages (default: enabled)",
+)
 def stage(
     rpms: tuple[str, ...],
     staging_dir: str,
     clean: bool,
     list_staged: bool,
+    with_devel: bool,
 ):
     """Stage cross-compiled RPMs for dependency resolution.
 
@@ -1280,16 +1286,35 @@ def stage(
     if not rpms:
         console.print("[yellow]No RPMs specified. Use --help for usage.[/yellow]")
         console.print("\nExamples:")
-        console.print("  mogrix stage popt-1.19-6.mips.rpm popt-devel-1.19-6.mips.rpm")
+        console.print("  mogrix stage popt-1.19-6.mips.rpm  # Auto-includes popt-devel")
         console.print("  mogrix stage ~/rpmbuild/RPMS/mips/*.rpm")
+        console.print("  mogrix stage --no-devel popt-1.19-6.mips.rpm  # Skip -devel")
         console.print("  mogrix stage --list")
         console.print("  mogrix stage --clean")
         return
 
+    # Expand RPM list to include -devel packages if --with-devel
+    import re
+    expanded_rpms = list(rpms)
+    if with_devel:
+        for rpm_path in rpms:
+            rpm_file = Path(rpm_path)
+            # Parse RPM name: name-version-release.arch.rpm
+            # e.g., libxml2-2.10.4-3.mips.rpm -> libxml2, 2.10.4-3.mips
+            match = re.match(r'^(.+?)-(\d+[\d\.\-]+\w+)\.rpm$', rpm_file.name)
+            if match and '-devel-' not in rpm_file.name:
+                pkg_name = match.group(1)
+                version_arch = match.group(2)
+                devel_name = f"{pkg_name}-devel-{version_arch}.rpm"
+                devel_path = rpm_file.parent / devel_name
+                if devel_path.exists() and str(devel_path) not in expanded_rpms:
+                    expanded_rpms.append(str(devel_path))
+                    console.print(f"[dim]Auto-including:[/dim] {devel_name}")
+
     # Install RPMs to staging
     console.print(f"[bold]Staging RPMs to:[/bold] {staging_path}\n")
 
-    for rpm_path in rpms:
+    for rpm_path in expanded_rpms:
         rpm_file = Path(rpm_path)
         console.print(f"[bold]Installing:[/bold] {rpm_file.name}")
 
