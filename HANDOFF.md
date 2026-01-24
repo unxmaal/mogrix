@@ -38,16 +38,13 @@ This provides:
 - pkg-config `.pc` files (e.g., `libxml-2.0.pc`)
 - Header files
 
+3. **Multiarch header auto-fix** - `mogrix stage` automatically creates mips64 variants of multiarch headers:
+   - `luaconf-mips64.h` from `luaconf-x86_64.h`
+   - `openssl/configuration-mips64.h` from `openssl/configuration-x86_64.h`
+
 ### Remaining Manual Workarounds
 
-Only multiarch header dispatch still needs manual intervention:
-
-| Fix | Location | Notes |
-|-----|----------|-------|
-| luaconf-mips64.h | `/opt/sgug-staging/usr/sgug/include/luaconf-mips64.h` | Copy of luaconf-x86_64.h |
-| openssl configuration-mips64.h | `/opt/sgug-staging/usr/sgug/include/openssl/configuration-mips64.h` | Copy of configuration-x86_64.h |
-
-**TODO**: Add post-stage hooks to auto-generate multiarch headers.
+**None!** All staging workarounds are now automated.
 
 ---
 
