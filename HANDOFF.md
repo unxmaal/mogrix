@@ -321,25 +321,25 @@ ln -sf libxml2.so.2.10.4 /opt/sgug-staging/usr/sgug/lib32/libxml2.so
 
 ## Next Steps
 
-### Build and test gpgcheck.c port
+### Test tdnf on IRIX Hardware
 
-The add_patch feature is implemented and gpgcheck patch is ready.
+**Build verified successful (2026-01-24).** All patches apply and compile.
 
-1. **Build tdnf**:
+1. **Copy RPMs to IRIX**:
    ```bash
-   .venv/bin/mogrix build srpms/tdnf-3.5.14-1.ph5.src-converted/tdnf-3.5.14-1.src.rpm --cross
+   scp ~/rpmbuild/RPMS/mips/tdnf*.rpm edodd@192.168.0.81:/tmp/
    ```
 
-2. **If patch fails to apply**: Adjust line numbers in `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch`
+2. **Test on IRIX**:
+   - Install tdnf and dependencies
+   - Verify tdnf runs with GPG verification enabled
+   - Test basic package operations
 
-3. **Test on IRIX hardware**:
-   - Copy all MIPS RPMs to IRIX
-   - Install and verify tdnf runs
-   - Test package operations WITH GPG verification
-
-4. **Create bootstrap repository**:
-   - Host all built RPMs
+3. **Create bootstrap repository**:
+   - Host all built MIPS RPMs
    - Configure tdnf.conf for IRIX
+
+4. **Optional**: Fix `tdnf-client-rpmtrans.sgifixes.patch` (GPG key URL variable expansion - enhancement only)
 
 ## Known Issues
 
@@ -366,9 +366,14 @@ The gpgcheck.c port is implemented via patch. The add_patch feature was added to
 **Files changed this session:**
 - `mogrix/rules/engine.py` - Added add_patches field
 - `mogrix/cli.py` - Added PATCHES_DIR, patch copying logic
-- `mogrix/emitter/spec.py` - Added patch_sources, patch_prep injection
-- `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch` - The actual port
-- `rules/packages/tdnf.yaml` - Uses add_patch instead of stub
+- `mogrix/emitter/spec.py` - Added patch_sources, patch_prep injection; fixed %autosetup handling
+- `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch` - Port gpgcheck.c to rpm 4.19 API
+- `patches/packages/tdnf/client-defines.sgifixes.patch` - Updated for tdnf 3.5.14
+- `patches/packages/tdnf/cmakelist-paths.sgifixes.patch` - Updated for tdnf 3.5.14
+- `patches/packages/tdnf/tdnf-conf.sgifixes.patch` - Updated for tdnf 3.5.14
+- `patches/packages/tdnf/tdnf-pool.sgifixes.patch` - Updated for tdnf 3.5.14
+- `patches/packages/tdnf/tdnf-printfprecision.sgifixes.patch` - Updated for tdnf 3.5.14
+- `rules/packages/tdnf.yaml` - Uses add_patch, fixed cleanup paths
 
 **Note:** We evaluated switching to dnf but it requires Python as core runtime. Python3 WAS successfully ported to IRIX earlier, but tdnf (pure C) remains the simpler path for now.
 
