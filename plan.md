@@ -283,6 +283,41 @@ libxml2 → libsolv → curl → rpm → tdnf
 | Without fixing #3 | Works but error-prone |
 | With all fixes applied | HIGH confidence |
 
+#### 5. Port tdnf gpgcheck.c to rpm 4.19 API
+
+**Before building tdnf**, port gpgcheck.c to the rpm 4.19 PGP API. The current stub disables all GPG verification.
+
+**The problem:** tdnf's gpgcheck.c was written for older rpm API:
+```
+OLD (tdnf uses):          NEW (rpm 4.19 has):
+─────────────────         ────────────────────
+pgpDig (type)         →   pgpDigParams
+pgpNewDig()           →   (removed - different init)
+pgpFreeDig()          →   pgpDigParamsFree()
+pgpPrtPkts()          →   pgpPrtParams()
+```
+
+**Scope:** 637 lines, 8 functions to port:
+- TDNFGPGCheck
+- ReadGPGKeyFile
+- AddKeyFileToKeyring
+- AddKeyPktToKeyring
+- VerifyRpmSig
+- TDNFImportGPGKeyFile
+- TDNFGPGCheckPackage
+- TDNFFetchRemoteGPGKey
+
+**Approach:** Create a patched gpgcheck.c in mogrix patches that uses the new API. Remove the stub from tdnf.yaml.
+
+#### 6. Clean up patch-modifying rules
+
+Review all rules files for patterns that modify patch content. For each:
+1. Apply the modification directly to the patch file
+2. Remove the rule
+3. Patches should be final, authoritative versions
+
+**Principle:** Patches ARE knowledge storage. Don't add indirection by having rules modify patches.
+
 ### After Knowledge Gaps Fixed
 
 1. **Test clean build** - Remove staging, rebuild from scratch

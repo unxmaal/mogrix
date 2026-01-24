@@ -30,6 +30,35 @@ The next session will hit the same problem. The next package will hit the same p
 | Common pattern | `rules/generic.yaml` or new class |
 | Build system quirk | Document in rules + fix |
 
+### Patches: Apply Changes Directly, Don't Rule Them
+
+**SGUG-RSE patches are a starting point, not the final answer.**
+
+If you find yourself writing a rule that modifies a patch file:
+```yaml
+# BAD - rule that modifies a patch
+spec_replacements:
+  - pattern: "some text in the patch"
+    replacement: "fixed text"
+```
+
+**STOP.** Instead:
+1. Apply the modification directly to the patch file in `mogrix/patches/`
+2. Delete the rule that was doing the modification
+3. The patch file should be the final, correct version
+
+**Why?**
+- Patches ARE knowledge storage - they should contain the complete fix
+- Rules that modify patches add unnecessary indirection
+- Debugging is harder when fixes are split between patches and rules
+- The goal is: patch applies cleanly, no further modification needed
+
+**Workflow for inherited SGUG-RSE patches:**
+1. Copy the `.sgifixes.patch` to mogrix
+2. If it needs changes for our toolchain, edit the patch directly
+3. The mogrix patch becomes the authoritative version
+4. No rules should reference or modify patch content
+
 ### Before Ending a Session
 
 Ask yourself:

@@ -169,7 +169,25 @@ Cross-compiled dynamically-linked executables and shared libraries work on IRIX:
 
 4. **Verify clean build** - Can we rebuild from fresh staging?
 
-### After Knowledge Gaps Fixed
+### Next Session: Clean Dependency Chain Build
+
+**Build order for tdnf (all have existing rules):**
+```
+1. zlib
+2. bzip2
+3. popt
+4. openssl
+5. libxml2
+6. curl
+7. libsolv (needs fopencookie)
+8. rpm (already built, verify)
+9. Port gpgcheck.c to rpm 4.19 API
+10. tdnf (with proper GPG support)
+```
+
+**Goal:** Verify all existing rules work without manual intervention. If any package fails, fix the rule and document.
+
+### After Clean Build Validated
 
 1. **Test tdnf on IRIX**
    - Copy RPMs to IRIX
@@ -195,6 +213,30 @@ Cross-compiled dynamically-linked executables and shared libraries work on IRIX:
 |---------|--------------|--------------|
 | cmake cross-compile settings | tdnf.yaml | cmake class (future) |
 | Python bindings disable | tdnf.yaml | python class (future) |
+
+### Known Technical Debt
+
+**tdnf gpgcheck.c needs porting to rpm 4.19 API:**
+
+The gpgcheck.c file is stubbed because it uses OLD rpm PGP API that changed in rpm 4.19:
+
+| Old API (tdnf uses) | New API (rpm 4.19) |
+|---------------------|-------------------|
+| `pgpDig` type | `pgpDigParams` |
+| `pgpNewDig()` | (removed) |
+| `pgpFreeDig()` | `pgpDigParamsFree()` |
+| `pgpPrtPkts()` | `pgpPrtParams()` |
+
+**Scope:** 637 lines, 8 functions. Focused porting task.
+
+**Impact of current stub:**
+- Package signature verification disabled
+- Repository GPG checks don't work
+- Security implications for production
+
+**Fix:** Create patched gpgcheck.c using new API, add to mogrix patches, remove stub from tdnf.yaml.
+
+**Note:** We evaluated switching to dnf but it requires Python as core runtime. Python3 WAS successfully ported to IRIX earlier, but tdnf (pure C) remains the simpler path for now.
 
 ### Compat Functions Implemented
 
