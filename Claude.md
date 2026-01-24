@@ -79,7 +79,7 @@ configure_flags:
     - "--without-threads"
   remove:
     - "--enable-shared"
-compat_functions:
+inject_compat_functions:
   - strdup
   - getline
 export_vars:
@@ -91,6 +91,19 @@ spec_replacements:
   - pattern: "mkdir -p $RPM_BUILD_ROOT{dir1,dir2}"
     replacement: "mkdir -p $RPM_BUILD_ROOT/dir1 $RPM_BUILD_ROOT/dir2"
 ```
+
+### Global Rules (generic.yaml)
+
+The following are handled globally for all packages:
+
+| Rule | Effect |
+|------|--------|
+| `skip_check: true` | Comments out %check section (tests can't run cross-compiled) |
+| `_pkgdocdir` macro | Defined as `%{_docdir}/%{name}` |
+| `_docdir` macro | Defined as `/usr/sgug/share/doc` |
+| Linux-specific BuildRequires | Dropped (systemd, libselinux, kernel-headers, etc.) |
+| `%{gpgverify}` | Removed (source verification not needed) |
+| `%ldconfig_scriptlets` | Removed (don't work for cross-compilation) |
 
 ### Testing on IRIX
 
@@ -137,6 +150,10 @@ sudo rpm -Uvh /tmp/<package>-*.rpm
 - Never use emoji in commits or anywhere else
 
 ## Cross-Compilation - SOLVED
+Note this vm is allocated 12 cores, so you can set these:
+export MAKEFLAGS=-j12
+export NINJA_FLAGS=-j12
+
 
 ### Dynamic Linking (SOLVED)
 
@@ -237,5 +254,10 @@ mogrix convert <package>.src.rpm -v
 3. **Arch mismatch warnings**: The RPM will show arch warnings because the host is x86_64 but
    binaries are MIPS. This is expected for cross-compilation.
 
-4. **Fedora-specific macros**: Some specs use `%{__global_ldflags}`, `%{optflags}`, etc.
-   These may not be defined in cross-compilation. Either define them or replace with empty string.
+4. **Fedora-specific macros**: Some specs use `%{__global_ldflags}`, `%{optflags}`, `%{_pkgdocdir}` etc.
+   Common macros (`_pkgdocdir`, `_docdir`) are now injected by generic.yaml. Others may need
+   spec_replacements to define or replace them.
+
+5. **Shell compatibility**: rpmbuild uses `/bin/sh` (dash on Ubuntu) for scriptlets.
+   - `pushd`/`popd` don't work - replace with POSIX subshell: `(cd dir && command)`
+   - Brace expansion after variables doesn't work: `$VAR{a,b}` → use explicit paths

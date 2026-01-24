@@ -23,6 +23,7 @@ class SpecWriter:
         rpm_macros: dict[str, str] | None = None,
         export_vars: dict[str, str] | None = None,
         skip_find_lang: bool = False,
+        skip_check: bool = False,
         install_cleanup: list[str] | None = None,
         spec_replacements: list[dict[str, str]] | None = None,
     ) -> str:
@@ -250,6 +251,28 @@ class SpecWriter:
                 r"\1\2",
                 content,
                 flags=re.MULTILINE,
+            )
+
+        # Skip check section (for cross-compilation where tests can't run)
+        if skip_check:
+            # Comment out the contents of %check section
+            # Match from %check to the next section (%install, %files, %post, %pre, %changelog, etc.)
+            def comment_check_section(match):
+                check_line = match.group(1)
+                section_content = match.group(2)
+                next_section = match.group(3)
+                # Comment out the content, but keep the %check marker
+                commented_content = "\n".join(
+                    "# " + line if line.strip() else line
+                    for line in section_content.split("\n")
+                )
+                return f"{check_line}\n# Tests skipped for cross-compilation (binaries can't run on host)\n{commented_content}{next_section}"
+
+            content = re.sub(
+                r"^(%check)\s*\n(.*?)(^%(?:install|files|pre|post|preun|postun|changelog|package|description)\b)",
+                comment_check_section,
+                content,
+                flags=re.MULTILINE | re.DOTALL,
             )
 
         # Install cleanup commands (e.g., remove .la files)

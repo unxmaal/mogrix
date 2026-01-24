@@ -2,11 +2,19 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-01-23)
+## Current Status (2026-01-24)
 
 **Phase 6.5: VALIDATING MOGRIX WORKFLOW**
 
-Now that tdnf runs on IRIX, we're validating that the mogrix workflow (fetch → convert → rpmbuild) produces working packages without manual intervention. This surfaces any missing compat fixes that need to be added to mogrix.
+Now that tdnf runs on IRIX, we're validating that the mogrix workflow (fetch → convert → rpmbuild) produces working packages without manual intervention.
+
+### Mogrix Refactoring Complete
+
+After OpenSSL validation exposed several common issues, mogrix was refactored:
+
+1. **`skip_check` rule implemented** - Automatically comments out %check section for cross-compilation
+2. **Common macros added** - `_docdir`, `_pkgdocdir`, `_pkglicensedir` injected into all specs
+3. **openssl.yaml cleaned up** - Organized into categories, removed redundant rules
 
 ### Workflow Validation Progress
 
@@ -14,8 +22,8 @@ Now that tdnf runs on IRIX, we're validating that the mogrix workflow (fetch →
 |---------|--------|-------|
 | zlib | DONE | Works out of the box |
 | bzip2 | DONE | Works out of the box |
-| openssl | IN PROGRESS | Multiple compat fixes needed (see HANDOFF.md) |
-| curl | PENDING | |
+| openssl | DONE | 3.2.1 - RPMs built (MIPS N32) |
+| curl | PENDING | Next |
 | rpm | PENDING | |
 | tdnf | PENDING | |
 
@@ -154,6 +162,7 @@ This design follows the insight that libdicl's true value was never the library 
 | Fetch command | Done | `mogrix/cli.py` |
 | **export_vars rule** | Done | Set env vars in %build |
 | **skip_find_lang rule** | Done | Handle NLS disabled |
+| **skip_check rule** | Done | Comment out %check for cross-compilation |
 | **install_cleanup rule** | Done | Post-install cleanup |
 | **GNU ld auto-selection** | Done | `cross/bin/irix-ld` |
 

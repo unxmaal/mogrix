@@ -362,6 +362,7 @@ def _generate_converted_spec(
         rpm_macros=result.rpm_macros if result.rpm_macros else None,
         export_vars=result.export_vars if result.export_vars else None,
         skip_find_lang=result.skip_find_lang,
+        skip_check=result.skip_check,
         install_cleanup=result.install_cleanup if result.install_cleanup else None,
         spec_replacements=result.spec_replacements if result.spec_replacements else None,
     )

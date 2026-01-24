@@ -53,6 +53,9 @@ generic:
     _infodir: /usr/sgug/share/info
     _sysconfdir: /usr/sgug/etc
     _localstatedir: /usr/sgug/var
+    _docdir: /usr/sgug/share/doc
+    _pkgdocdir: "%{_docdir}/%{name}"
+    _pkglicensedir: "%{_datadir}/licenses/%{name}"
 
   configure_disable:
     - selinux

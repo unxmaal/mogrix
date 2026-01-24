@@ -29,6 +29,7 @@ class TransformResult:
     prep_commands: list[str] = field(default_factory=list)
     export_vars: dict[str, str] = field(default_factory=dict)
     skip_find_lang: bool = False
+    skip_check: bool = False
     install_cleanup: list[str] = field(default_factory=list)
     spec_replacements: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -159,6 +160,11 @@ class RuleEngine:
                 f"remove_lines: {len(rules['remove_lines'])} patterns"
             )
 
+        # Skip check section (for cross-compilation where tests can't run)
+        if rules.get("skip_check"):
+            result.skip_check = True
+            result.applied_rules.append("skip_check: true")
+
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""
         rules = pkg_rules.get("rules", pkg_rules)
@@ -282,6 +288,11 @@ class RuleEngine:
         if rules.get("skip_find_lang"):
             result.skip_find_lang = True
             result.applied_rules.append("skip_find_lang: true")
+
+        # Skip check section (for cross-compilation where tests can't run)
+        if rules.get("skip_check"):
+            result.skip_check = True
+            result.applied_rules.append("skip_check: true")
 
         # Install cleanup commands (run at end of %install)
         if "install_cleanup" in rules:
