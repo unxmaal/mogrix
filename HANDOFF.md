@@ -1,11 +1,11 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-24
-**Status**: FULL DEPENDENCY CHAIN VALIDATED - gpgcheck.c port IMPLEMENTED, needs build test
+**Status**: gpgcheck.c PORT VERIFIED - Build successful with GPG verification enabled
 
 ---
 
-## gpgcheck.c Port: IMPLEMENTED
+## gpgcheck.c Port: VERIFIED BUILD SUCCESS
 
 **Updated 2026-01-24.**
 
@@ -20,33 +20,48 @@
    - Ports AddKeyPktToKeyring() to use rpmKeyringAddKey directly
    - Ports VerifyRpmSig() to use pgpPrtParams + rpmKeyringVerifySig
 
-3. **Updated tdnf.yaml**: Using add_patch rule instead of stub
+3. **Updated all SGUG-RSE patches for tdnf 3.5.14**:
+   - `client-defines.sgifixes.patch` - Updated line numbers for new source
+   - `cmakelist-paths.sgifixes.patch` - Updated for SYSTEMD_DIR conditional
+   - `tdnf-conf.sgifixes.patch` - Updated for config value change
+   - `tdnf-pool.sgifixes.patch` - Updated for pszArch conditional
+   - `tdnf-printfprecision.sgifixes.patch` - Updated for pr_info/pr_crit APIs
+   - `tdnf-client-rpmtrans.sgifixes.patch` - DISABLED (needs further work)
 
-### API Changes in Patch
+4. **Fixed mogrix emitter for %autosetup**: Skip injecting `%patch` commands when spec uses `%autosetup` (which applies all patches automatically)
 
-| Old API | New API |
-|---------|---------|
+5. **Fixed install cleanup paths**: Use `%{_prefix}`, `%{_sysconfdir}` macros instead of hardcoded paths
+
+### API Changes in gpgcheck Patch
+
+| Old API (tdnf uses) | New API (rpm 4.19) |
+|---------------------|-------------------|
 | `pgpDig` | `pgpDigParams` |
 | `pgpNewDig()` | (removed) |
 | `pgpPrtPkts()` | `pgpPrtParams()` |
 | `pgpFreeDig()` | `pgpDigParamsFree()` |
+| `rpmPubkeyDig()` | (removed) |
 | `rpmKeyringLookup()` | `rpmKeyringVerifySig()` |
 
-### Current State
+### Build Result
 
-- Conversion works: `mogrix convert` now copies patches and injects Patch entries
-- 9 patches added including gpgcheck-rpm419.sgifixes.patch
-- **NEXT: Build and verify the patch applies cleanly**
+**BUILD SUCCESSFUL!**
 
-### To Complete
-
-```bash
-.venv/bin/mogrix build srpms/tdnf-3.5.14-1.ph5.src-converted/tdnf-3.5.14-1.src.rpm --cross
+```
+$ file tdnf
+ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV),
+dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
 ```
 
-If build fails on patch, check:
-1. Patch line numbers may need adjustment (gpgcheck.c may have changed)
-2. Context lines may not match exactly
+Built RPMs:
+- tdnf-3.5.14-1.mips.rpm
+- tdnf-cli-libs-3.5.14-1.mips.rpm
+- tdnf-devel-3.5.14-1.mips.rpm
+
+### Remaining Work
+
+1. **Test on IRIX hardware**: Verify tdnf runs with GPG verification enabled
+2. **Fix tdnf-client-rpmtrans.sgifixes.patch**: GPG key URL variable expansion moved to gpgcheck.c in 3.5.14
 
 ---
 
