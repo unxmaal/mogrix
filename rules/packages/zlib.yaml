@@ -11,8 +11,14 @@ rules:
     LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
     AR: "/opt/cross/bin/llvm-ar"
     RANLIB: "/opt/cross/bin/llvm-ranlib"
+    # zlib configure uses LDSHARED for shared library linking
+    LDSHARED: "/opt/sgug-staging/usr/sgug/bin/irix-cc -shared"
 
-  # Configure flags
-  configure_flags:
-    add:
-      - --disable-static
+  # zlib uses its own configure, not autoconf
+  # Tell it we're cross-compiling for IRIX so it uses correct shared lib settings
+  spec_replacements:
+    # Add --uname=IRIX to make zlib configure use IRIX shared lib settings
+    - pattern: "./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}"
+      replacement: "./configure --uname=IRIX --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}"
+    - pattern: "./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix} --dfltcc"
+      replacement: "./configure --uname=IRIX --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}"

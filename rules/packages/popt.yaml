@@ -32,3 +32,15 @@ rules:
   # Package-specific autoconf cache overrides
   ac_cv_overrides:
     ac_cv_func_strerror_r_char_p: "no"
+    # IRIX doesn't have these wide character functions
+    ac_cv_func_mbsnrtowcs: "no"
+    ac_cv_func_mbsrtowcs: "no"
+
+  # Libtool needs help finding the right linker - the wrapper handles this
+  spec_replacements:
+    # Fix libtool linker detection - use irix-cc which internally uses correct linker
+    - pattern: "export LD=\"/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\""
+      replacement: |
+        export LD="/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+        # Tell libtool to use our CC for linking (handles linker selection internally)
+        export lt_cv_prog_compiler_static_works=no

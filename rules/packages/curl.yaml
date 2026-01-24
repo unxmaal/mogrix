@@ -57,6 +57,11 @@ rules:
     - ldap
     - ldaps
 
+  # Remove unpackaged minimal library files
+  install_cleanup:
+    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurl.la.minimal"
+    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurl.so.minimal"
+
   # Shell syntax fixes and cross-compilation adjustments
   spec_replacements:
     # Fix brace expansion - mkdir
@@ -79,6 +84,18 @@ rules:
     - pattern: "--enable-threaded-resolver"
       replacement: "--disable-threaded-resolver"
     # Remove missing files from %files section (disabled features)
-    # Note: man page is installed even with --disable-manual, so keep it
     - pattern: "%{_datadir}/zsh"
       replacement: "# %{_datadir}/zsh # zsh completions not built"
+    # Fix brace expansion in mv commands - shell doesn't support {a,b} expansion
+    - pattern: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl{,.minimal}"
+      replacement: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl ${RPM_BUILD_ROOT}%{_bindir}/curl.minimal"
+    - pattern: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl{,-%{version}}"
+      replacement: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl ${RPM_BUILD_ROOT}%{_bindir}/curl-%{version}"
+    # curl uses out-of-tree builds - add CC/CPPFLAGS/LDFLAGS exports inside subshells
+    - pattern: "# configure minimal build\n("
+      replacement: "# configure minimal build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/sgug-staging/usr/sgug/bin/irix-ld\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+    - pattern: "# configure full build\n("
+      replacement: "# configure full build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/sgug-staging/usr/sgug/bin/irix-ld\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+    # Replace %configure with ../configure for out-of-tree builds
+    - pattern: "    %configure $common_configure_opts   \\"
+      replacement: "    ../configure --prefix=/usr/sgug --exec-prefix=/usr/sgug --bindir=/usr/sgug/bin --sbindir=/usr/sgug/sbin --libdir=/usr/sgug/lib32 --includedir=/usr/sgug/include --datadir=/usr/sgug/share --mandir=/usr/sgug/share/man --infodir=/usr/sgug/share/info --sysconfdir=/usr/sgug/etc --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu $common_configure_opts \\"
