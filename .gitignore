@@ -61,3 +61,7 @@ usr/
 *.tmp
 *.temp
 *.log
+
+# Build artifacts
+srpms/
+compat/runtime/
