@@ -21,20 +21,33 @@ All 12 packages produce valid **ELF 32-bit MSB, MIPS N32** binaries for IRIX 6.5
 
 **READ THIS FIRST.** The mission of mogrix is storing knowledge. If you make a fix and don't write it into mogrix rules, that knowledge is LOST.
 
-### Staging Directory Workarounds (Created Outside Rules)
+### Staging Improvements (FIXED)
 
-These workarounds were created directly in staging during builds. They work but ideally should be automated:
+**FIXED**: RPM architecture naming and -devel package staging:
+
+1. **`--target mips-sgi-irix` flag added to rpmbuild** - All packages (including -devel) now correctly named with `mips` architecture instead of `x86_64`
+
+2. **Auto-devel staging** - `mogrix stage` now automatically includes matching -devel packages:
+   ```bash
+   mogrix stage libxml2-2.10.4-3.mips.rpm
+   # Automatically also stages libxml2-devel-2.10.4-3.mips.rpm
+   ```
+
+This provides:
+- Unversioned `.so` symlinks (e.g., `libxml2.so`)
+- pkg-config `.pc` files (e.g., `libxml-2.0.pc`)
+- Header files
+
+### Remaining Manual Workarounds
+
+Only multiarch header dispatch still needs manual intervention:
 
 | Fix | Location | Notes |
 |-----|----------|-------|
-| luaconf-mips64.h | `/opt/sgug-staging/usr/sgug/include/luaconf-mips64.h` | Copy of luaconf-x86_64.h for multiarch dispatch |
+| luaconf-mips64.h | `/opt/sgug-staging/usr/sgug/include/luaconf-mips64.h` | Copy of luaconf-x86_64.h |
 | openssl configuration-mips64.h | `/opt/sgug-staging/usr/sgug/include/openssl/configuration-mips64.h` | Copy of configuration-x86_64.h |
-| libxml2.so symlink | `/opt/sgug-staging/usr/sgug/lib32/libxml2.so` | Symlink to libxml2.so.2.10.4 |
-| libcurl.so symlink | `/opt/sgug-staging/usr/sgug/lib32/libcurl.so` | Symlink to libcurl.so.4.8.0 |
-| libxml-2.0.pc | `/opt/sgug-staging/usr/sgug/lib32/pkgconfig/libxml-2.0.pc` | Manual pkg-config file |
-| libcurl.pc | `/opt/sgug-staging/usr/sgug/lib32/pkgconfig/libcurl.pc` | Manual pkg-config file |
 
-**Action Item**: Future work should automate these via mogrix staging commands or -devel RPM installation.
+**TODO**: Add post-stage hooks to auto-generate multiarch headers.
 
 ---
 
