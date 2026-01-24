@@ -1,36 +1,59 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-24
-**Status**: FULL DEPENDENCY CHAIN VALIDATED - tdnf REBUILT WITH GPGCHECK STUB
+**Status**: FULL DEPENDENCY CHAIN VALIDATED - gpgcheck.c port PENDING
 
 ---
 
-## gpgcheck.c Status: STUBBED
+## URGENT: gpgcheck.c Port PENDING
 
 **Updated 2026-01-24.**
 
-### Decision
+### Status
 
-After analysis, the rpm 4.19 API is significantly different from the old API that tdnf was written for. A full port would require reworking the signature verification flow completely, including handling of DIGEST_CTX.
+The gpgcheck.c port was attempted but blocked by implementation issues. **GPG verification is required** - stubbing is NOT acceptable.
 
-For IRIX, we stub the gpgcheck functions. This means:
-- GPG signature verification is disabled
-- Packages install without signature checks
-- This is acceptable for a bootstrap/development environment
+### What Was Attempted
 
-### Stub Implementation
+1. Created patch file `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch` with correct API changes
+2. Discovered `add_patch` rule in mogrix is not implemented - patches don't get copied
+3. Tried inline sed transformations - complex sed patterns mangled the code
+4. **Incorrectly** fell back to stubbing - THIS NEEDS TO BE FIXED
 
-The stub is generated inline in `rules/packages/tdnf.yaml` during the build phase. Key functions stubbed:
-- TDNFGPGCheck, TDNFGPGCheckPackage - return success (0)
-- VerifyRpmSig, AddKeyPktToKeyring - return success
-- ReadGPGKeyFile, TDNFImportGPGKeyFile - return 1 (soft error, not fatal)
+### What Needs To Be Done
 
-### Future Work
+**Option A: Implement add_patch in mogrix**
+- Add code to `mogrix/cli.py` `_convert_srpm_full()` to copy patches from `patches/packages/<pkg>/`
+- Use `PatchCatalog` class that already exists in `mogrix/patches/catalog.py`
+- Then recreate and apply the gpgcheck patch properly
 
-If GPG verification is needed, options:
-1. Build gpgme stack for IRIX (libgpg-error, libgcrypt, libassuan, libksba, gnupg2, gpgme)
-2. Rebuild tdnf with gpgme support
-3. Or implement full rpm 4.19 signature verification API
+**Option B: Use better text replacement**
+- Instead of complex sed, use perl or python for the replacements
+- Example: `perl -i -p0e 's/old pattern/new pattern/gs' file`
+- Or write a small python script that does the replacement
+
+**Option C: Manual patch application**
+- Manually copy patch file to SRPM sources directory before building
+- Add Patch entry to spec file manually
+
+### API Changes Required (already documented)
+
+| Old API (tdnf uses) | New API (rpm 4.19) |
+|---------------------|-------------------|
+| `pgpDig` | `pgpDigParams` |
+| `pgpNewDig()` | (removed) - use pgpPrtParams() |
+| `pgpFreeDig()` | `pgpDigParamsFree()` |
+| `pgpPrtPkts()` | `pgpPrtParams()` |
+| `rpmKeyringLookup()` | `rpmKeyringVerifySig()` |
+
+### Functions To Port
+
+1. **AddKeyPktToKeyring()** - Remove pgpDig/rpmPubkeyDig, simplify to just rpmKeyringAddKey
+2. **VerifyRpmSig()** - Use pgpPrtParams + rpmKeyringVerifySig
+
+### Current State
+
+tdnf.yaml has a **temporary stub** that must be replaced with proper port.
 
 ---
 
@@ -122,7 +145,7 @@ dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
 | Fix | Description |
 |-----|-------------|
 | sqlite3_stub | Stub implementation (no sqlite3 on IRIX) |
-| gpgcheck_stub | GPG verification stubbed (rpm 4.19 API incompatible) |
+| **gpgcheck.c** | **PENDING PORT** - currently stubbed, must be fixed |
 | qsort_r | GNU extension compat |
 | strsep | BSD extension compat |
 | strings.h | For strcasecmp/strncasecmp |
@@ -290,22 +313,25 @@ ln -sf libxml2.so.2.10.4 /opt/sgug-staging/usr/sgug/lib32/libxml2.so
 
 ## Next Steps
 
-### Ready for IRIX Testing
+### PRIORITY: Fix gpgcheck.c port
 
-All staging automation is now complete. tdnf has been rebuilt (2026-01-24) with gpgcheck stubbed. Next steps:
+**GPG verification is required.** The current stub is temporary and must be replaced.
+
+1. **Implement add_patch in mogrix** OR use perl/python for text replacement
+2. **Recreate the gpgcheck patch** and apply it properly
+3. **Rebuild tdnf** with working GPG verification
+4. **Verify** signature checking works
+
+### After gpgcheck.c is fixed
 
 1. **Test on IRIX hardware**:
-   - Copy all MIPS RPMs to IRIX: `/home/edodd/rpmbuild/RPMS/mips/`
+   - Copy all MIPS RPMs to IRIX
    - Install and verify tdnf runs
-   - Test basic package operations (GPG verification disabled)
+   - Test package operations WITH GPG verification
 
 2. **Create bootstrap repository**:
    - Host all built RPMs
    - Configure tdnf.conf for IRIX
-
-3. **Optional: Enable GPG verification** (future):
-   - Build gpgme stack for IRIX
-   - Rebuild tdnf with gpgme support
 
 ## Known Issues
 
@@ -325,9 +351,18 @@ All staging automation is now complete. tdnf has been rebuilt (2026-01-24) with 
 
 ### Known Technical Debt
 
-**tdnf gpgcheck.c - STUBBED (see top of document)**
+**tdnf gpgcheck.c - MUST BE PORTED (see top of document)**
 
-GPG signature verification is disabled. The rpm 4.19 API is significantly different from what tdnf expects. Stubbing is acceptable for bootstrap/development.
+GPG signature verification is currently stubbed but **must be fixed**. The stub is NOT acceptable.
+
+Blockers encountered:
+1. mogrix `add_patch` rule not implemented
+2. Complex sed patterns failed
+
+Solutions available:
+1. Implement add_patch in mogrix (use existing PatchCatalog class)
+2. Use perl/python instead of sed for text replacement
+3. Try other creative approaches
 
 **Note:** We evaluated switching to dnf but it requires Python as core runtime. Python3 WAS successfully ported to IRIX earlier, but tdnf (pure C) remains the simpler path for now.
 
