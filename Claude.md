@@ -1,6 +1,47 @@
 # Claude Code Instructions for Mogrix
 
-## CRITICAL: Using Mogrix Properly
+## CRITICAL: Mogrix is a Knowledge Repository
+
+**Mogrix's primary mission is STORING KNOWLEDGE.** Every fix you discover for building Linux packages on IRIX MUST be written into mogrix rules so it never needs to be discovered again.
+
+### The Cardinal Sin
+
+**NEVER make a fix outside of mogrix rules.**
+
+If you:
+- Edit a file in `/opt/sgug-staging/` directly
+- Apply a sed command during debugging
+- Modify a header in the build directory
+- Fix anything manually during a build
+
+...and that fix is NOT stored in mogrix rules, **you have failed the mission**.
+
+The next session will hit the same problem. The next package will hit the same problem. All that knowledge is LOST.
+
+### The Golden Rule
+
+**Every fix goes into mogrix:**
+
+| Fix Type | Where to Store |
+|----------|----------------|
+| Missing compat function | `compat/catalog.yaml` + implementation |
+| Header issue | `cross/include/dicl-clang-compat/` |
+| Package-specific fix | `rules/packages/<package>.yaml` |
+| Common pattern | `rules/generic.yaml` or new class |
+| Build system quirk | Document in rules + fix |
+
+### Before Ending a Session
+
+Ask yourself:
+1. Did I make any fixes outside of mogrix source?
+2. Are those fixes now stored in mogrix rules?
+3. Could someone rebuild from scratch using only mogrix?
+
+If the answer to #3 is "no", you have more work to do.
+
+---
+
+## Using Mogrix Properly
 
 **Mogrix is an SRPM conversion tool.** It converts Fedora SRPMs into IRIX-compatible SRPMs that build without additional manual intervention.
 

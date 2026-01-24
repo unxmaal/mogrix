@@ -237,27 +237,57 @@ This design follows the insight that libdicl's true value was never the library 
 
 ## Next Steps
 
-### Immediate Priority
+### IMMEDIATE: Fix Knowledge Gaps in Mogrix
 
-1. **Configure tdnf on IRIX**
-   - Create /etc/tdnf/tdnf.conf configuration file
-   - Set up repository configuration
-   - Test basic operations (repolist, search, info)
+**tdnf is built, but we made fixes OUTSIDE of mogrix that will break on a clean start.**
 
-2. **Build RPM packages**
-   - Package libsolv, tdnf as RPMs
-   - Test rpm installation on IRIX
-   - Create bootstrap repository
+The following fixes exist only in staging or were applied manually and MUST be added to mogrix:
 
-3. **Complete dependency chain as RPMs**
-   - All dependencies need to be packaged
-   - Test full package management workflow
+#### 1. CRITICAL: dicl-clang-compat/sys/stat.h (NOT IN MOGRIX)
 
-### Future Work
+The file `/opt/sgug-staging/usr/sgug/include/dicl-clang-compat/sys/stat.h` was manually created/edited but does NOT exist in `mogrix/cross/include/dicl-clang-compat/sys/`.
 
-1. Add global `install_cleanup` rule to remove .la files
-2. Integrate interpreter fix into mogrix toolchain templates
-3. Document the `/lib32/rld` interpreter requirement
+**Fix:** Copy to mogrix source:
+```bash
+cp /opt/sgug-staging/usr/sgug/include/dicl-clang-compat/sys/stat.h \
+   mogrix/cross/include/dicl-clang-compat/sys/stat.h
+```
+
+#### 2. Move generic patterns from tdnf.yaml to generic.yaml
+
+These patterns in `rules/packages/tdnf.yaml` apply to ALL packages:
+
+| Pattern | Should be in |
+|---------|--------------|
+| `%systemd_post`, `%systemd_preun`, etc. | generic.yaml remove_lines |
+| strings.h for strcasecmp | Header overlay or auto-fix |
+| cmake cross-compilation boilerplate | New cmake class |
+
+#### 3. Create cmake class
+
+Extract the 20+ line cmake cross-compilation settings into `rules/classes/cmake.yaml` so cmake packages can inherit it instead of duplicating.
+
+#### 4. Document build order
+
+Add to BOOTSTRAP.md:
+```
+libxml2 → libsolv → curl → rpm → tdnf
+```
+
+### Confidence Assessment
+
+| If we start clean now... | Result |
+|--------------------------|--------|
+| Without fixing #1 | FAIL - blkcnt64_t undefined |
+| Without fixing #2 | Works but wasteful duplication |
+| Without fixing #3 | Works but error-prone |
+| With all fixes applied | HIGH confidence |
+
+### After Knowledge Gaps Fixed
+
+1. **Test clean build** - Remove staging, rebuild from scratch
+2. **Configure tdnf on IRIX** - Create config, test repolist
+3. **Create bootstrap repository** - Package all deps as RPMs
 
 ---
 

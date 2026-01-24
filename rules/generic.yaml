@@ -31,6 +31,15 @@ generic:
     # libdicl setup lines - mogrix injects compat functions directly
     - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
     - 'export LIBS="-ldicl-0.1"'
+    # systemd scriptlets - IRIX has no systemd
+    - "%systemd_post"
+    - "%systemd_preun"
+    - "%systemd_postun"
+    - "%systemd_postun_with_restart"
+    - "%systemd_user_post"
+    - "%systemd_user_preun"
+    - "%systemd_user_postun"
+    - "%systemd_user_postun_with_restart"
 
   # Skip %check section - cannot run cross-compiled tests on build host
   skip_check: true

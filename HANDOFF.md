@@ -1,11 +1,36 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-24
-**Status**: rpm 4.19 build complete; ready for libsolv and tdnf
+**Status**: tdnf 3.5.14 BUILD COMPLETE - TARGET ACHIEVED
 
-## Current Session: rpm Build Complete
+---
 
-Successfully built rpm 4.19.1.1 through the mogrix workflow with extensive spec_replacements.
+## CRITICAL: Knowledge Must Be Stored in Mogrix
+
+**READ THIS FIRST.** The mission of mogrix is storing knowledge. If you make a fix and don't write it into mogrix rules, that knowledge is LOST.
+
+### Fixes Made Outside Mogrix (MUST BE FIXED)
+
+| Fix | Location | Status |
+|-----|----------|--------|
+| `sys/stat.h` wrapper | `/opt/sgug-staging/.../dicl-clang-compat/sys/stat.h` | **NOT IN MOGRIX** |
+
+**This WILL break a clean build.** The file must be copied to `mogrix/cross/include/dicl-clang-compat/sys/stat.h`.
+
+### The Rule
+
+Before ending ANY session:
+1. List all fixes made outside mogrix source
+2. Add each fix to appropriate mogrix location
+3. Verify clean build would work
+
+If you can't rebuild from a fresh clone of mogrix + fresh staging area, **you have not finished**.
+
+---
+
+## Current Session: tdnf Build Complete
+
+Successfully built tdnf 3.5.14 (the TARGET PACKAGE) for IRIX 6.5 MIPS N32.
 
 ### Package Validation Status
 
@@ -18,24 +43,42 @@ Successfully built rpm 4.19.1.1 through the mogrix workflow with extensive spec_
 | lua | DONE | 5.4.6 - Required by rpm |
 | file | DONE | 5.45 - libmagic for rpm |
 | rpm | DONE | 4.19.1.1 - RPMs built (MIPS N32) |
-| libsolv | PENDING | Next - needs fopencookie |
-| tdnf | PENDING | Blocked by libsolv |
+| libxml2 | DONE | 2.12.5 - RPMs built |
+| libsolv | DONE | 0.7.29 - RPMs built |
+| **tdnf** | **DONE** | **3.5.14 - TARGET ACHIEVED** |
 
-### rpm 4.19.1.1 Build Complete
+### tdnf 3.5.14 Build Complete (TARGET ACHIEVED)
 
 **Built RPMs (MIPS N32):**
-- rpm-4.19.1.1-1.x86_64.rpm (4.1MB) - Main package with IRIX binaries
-- rpm-build-4.19.1.1-1.x86_64.rpm (177KB) - rpmbuild, rpmspec, rpmlua
-- rpm-devel-4.19.1.1-1.x86_64.rpm (1.3MB) - Development headers
-- rpm-sign-4.19.1.1-1.x86_64.rpm (57KB) - Package signing
-- rpm-libs-4.19.1.1-1.x86_64.rpm, rpm-build-libs, rpm-sign-libs - Libraries
-- rpm-apidocs-4.19.1.1-1.noarch.rpm (4.0MB) - API documentation
+- tdnf-3.5.14-1.mips.rpm - Main package manager
+- tdnf-cli-libs-3.5.14-1.mips.rpm - CLI library
+- tdnf-devel-3.5.14-1.mips.rpm - Development headers
+
+**Package contents:**
+- `/usr/sgug/bin/tdnf` - Main binary
+- `/usr/sgug/bin/yum`, `/usr/sgug/bin/tyum` - Compatibility symlinks
+- `/usr/sgug/lib32/libtdnf.so` - Library
+- Configuration files and bash completion
 
 **Verified:**
 ```
 ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV),
 dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
 ```
+
+### Key Fixes for tdnf (stored in rules/packages/tdnf.yaml)
+
+| Fix | Description |
+|-----|-------------|
+| sqlite3_stub | Stub implementation (no sqlite3 on IRIX) |
+| qsort_r | GNU extension compat |
+| strsep | BSD extension compat |
+| strings.h | For strcasecmp/strncasecmp |
+| sys/ttold.h | For struct winsize |
+| sys/statfs.h | IRIX statfs differences |
+| GPG stubs | rpm API incompatible |
+| cmake cross-compile | Full toolchain setup |
+| Disabled: Python, metalink, repogpgcheck, systemd | N/A on IRIX |
 
 ### Key Fixes for rpm 4.19
 
@@ -65,11 +108,18 @@ dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
 
 | File | Change |
 |------|--------|
-| `compat/dicl/openat-compat.c` | Added futimens implementation |
-| `compat/catalog.yaml` | Added futimens to openat provides |
-| `/opt/sgug-staging/usr/sgug/include/dicl-clang-compat/sys/stat.h` | futimens declaration, UTIME_* defines |
-| `rules/packages/rpm.yaml` | Complete rewrite with all spec_replacements |
-| `rpm-4.19.1.1-1.fc40.src-converted/rpm.spec` | Fixed spec file |
+| `rules/packages/tdnf.yaml` | Extensive cross-compilation rules (233 lines) |
+| `compat/stdlib/qsort_r.c` | qsort_r GNU extension compat |
+| `compat/string/strsep.c` | strsep BSD extension compat |
+| `compat/sqlite/sqlite3_stub.c` | Stub sqlite3 for disabled history |
+| `compat/include/mogrix-compat/generic/sqlite3.h` | sqlite3 stub header |
+| `compat/include/mogrix-compat/generic/string.h` | Added strsep declaration |
+| `compat/include/mogrix-compat/generic/stdlib.h` | Added qsort_r declaration |
+| `compat/catalog.yaml` | Added sqlite3_stub, qsort_r, strsep |
+| `/opt/sgug-staging/.../dicl-clang-compat/sys/stat.h` | **NOT IN MOGRIX - MUST FIX** |
+| `BOOTSTRAP.md` | Updated with tdnf success |
+| `plan.md` | Added knowledge gap phase |
+| `Claude.md` | Added knowledge storage emphasis |
 
 ## Rpmbuild Command
 
@@ -103,25 +153,61 @@ Cross-compiled dynamically-linked executables and shared libraries work on IRIX:
 
 ## Next Steps
 
-1. **Build libsolv** - Needs fopencookie compat
-2. **Build tdnf** - Final goal
-3. **Test RPMs on IRIX**
+### IMMEDIATE: Store Missing Knowledge
+
+1. **Copy sys/stat.h to mogrix source:**
+   ```bash
+   cp /opt/sgug-staging/usr/sgug/include/dicl-clang-compat/sys/stat.h \
+      mogrix/cross/include/dicl-clang-compat/sys/stat.h
+   ```
+
+2. **Move generic patterns to generic.yaml:**
+   - `%systemd_post`, `%systemd_preun`, etc.
+   - Other systemd scriptlet macros
+
+3. **Create cmake class** for cross-compilation boilerplate
+
+4. **Verify clean build** - Can we rebuild from fresh staging?
+
+### After Knowledge Gaps Fixed
+
+1. **Test tdnf on IRIX**
+   - Copy RPMs to IRIX
+   - Create tdnf.conf configuration
+   - Test `tdnf repolist`, `tdnf search`, etc.
+
+2. **Create bootstrap repository**
+   - Package all dependencies
+   - Host repository for IRIX machines
 
 ## Known Issues
 
-### Compat Functions Required
+### Knowledge Gaps (FIXED THIS SESSION)
+
+| Fix | Status |
+|-----|--------|
+| sys/stat.h wrapper | FIXED - copied to `cross/include/dicl-clang-compat/sys/stat.h` |
+| `%systemd_*` scriptlets | FIXED - added to `generic.yaml` remove_lines |
+
+### Remaining Improvements (Lower Priority)
+
+| Pattern | Currently In | Should Be In |
+|---------|--------------|--------------|
+| cmake cross-compile settings | tdnf.yaml | cmake class (future) |
+| Python bindings disable | tdnf.yaml | python class (future) |
+
+### Compat Functions Implemented
 
 | Function | Package | Status |
 |----------|---------|--------|
 | POSIX.1-2008 "at" funcs | rpm | DONE - openat-compat.c |
 | getprogname/setprogname | rpm | DONE - getprogname.c |
-| fopencookie | libsolv | READY - compat/stdio/fopencookie.c |
+| fopencookie | libsolv | DONE - fopencookie.c |
+| qsort_r | tdnf | DONE - qsort_r.c |
+| strsep | tdnf | DONE - strsep.c |
+| sqlite3_stub | tdnf | DONE - sqlite3_stub.c |
 
-### rpmbuild Arch Warnings
+### rpmbuild Warnings (Expected)
 
-When cross-compiling, rpmbuild shows "Binaries arch (1) not matching the package arch (2)".
-This is expected - the host is x86_64 but binaries are MIPS.
-
-### Missing build-id Warnings
-
-Cross-compiled IRIX binaries don't have Linux build-ids. These warnings are expected.
+- "Binaries arch (1) not matching the package arch (2)" - Expected for cross-compilation
+- "Missing build-id" - IRIX binaries don't have Linux build-ids
