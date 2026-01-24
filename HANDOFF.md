@@ -1,87 +1,39 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-24
-**Status**: FULL DEPENDENCY CHAIN VALIDATED - gpgcheck.c port IN PROGRESS
+**Status**: FULL DEPENDENCY CHAIN VALIDATED - gpgcheck.c port COMPLETE
 
 ---
 
-## URGENT: gpgcheck.c Port In Progress
+## gpgcheck.c Port COMPLETE
 
-**NEXT SESSION MUST CONTINUE THIS WORK.**
+**Port completed 2026-01-24.**
 
-### What Was Happening
+### What Was Done
 
-We were porting tdnf's gpgcheck.c from the old rpm PGP API to the new rpm 4.19 API. This is the last piece needed for proper GPG signature verification.
+Ported tdnf's gpgcheck.c from old rpm 4.x PGP API to rpm 4.19 API.
 
-### Files Downloaded/Examined
+**Patch created**: `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch`
 
-1. **Original gpgcheck.c**: Downloaded to `/tmp/gpgcheck-original.c` (637 lines)
-   - Source: `https://github.com/vmware/tdnf/raw/v3.5.14/client/gpgcheck.c`
+### API Changes Made
 
-2. **rpm 4.19 headers examined**:
-   - `/opt/sgug-staging/usr/sgug/include/rpm/rpmpgp.h` - New pgpDigParams API
-   - `/opt/sgug-staging/usr/sgug/include/rpm/rpmkeyring.h` - New keyring API
-
-### API Changes Required
-
-| Old API (tdnf uses) | New API (rpm 4.19) | Notes |
-|---------------------|-------------------|-------|
-| `pgpDig` type | `pgpDigParams` | Type renamed |
-| `pgpNewDig()` | (removed) | No equivalent - use pgpPrtParams() |
+| Old API | New API | Change |
+|---------|---------|--------|
+| `pgpDig` | `pgpDigParams` | Type renamed |
+| `pgpNewDig()` | (removed) | Use pgpPrtParams() instead |
 | `pgpFreeDig()` | `pgpDigParamsFree()` | Function renamed |
-| `pgpPrtPkts()` | `pgpPrtParams()` | Function renamed, different signature |
-| `rpmPubkeyDig()` | `rpmPubkeyPgpDigParams()` | Returns pgpDigParams instead of pgpDig |
-| `rpmKeyringLookup()` | `rpmKeyringVerifySig()` | Different API for signature verification |
+| `pgpPrtPkts()` | `pgpPrtParams()` | Different signature, parses directly |
+| `rpmPubkeyDig()` | (removed) | No longer needed - simplified logic |
+| `rpmKeyringLookup()` | `rpmKeyringVerifySig()` | Pass NULL for DIGEST_CTX for key lookup |
 
-### Functions That Need Porting (8 total)
+### Functions Ported
 
-1. **AddKeyPktToKeyring()** (lines 145-198) - Uses `pgpDig`, `rpmPubkeyDig()`, `rpmKeyringLookup()`
-2. **VerifyRpmSig()** (lines 200-298) - Uses `pgpDig`, `pgpNewDig()`, `pgpPrtPkts()`, `pgpFreeDig()`, `rpmKeyringLookup()`
-3. TDNFGPGCheck() - Calls the above functions
-4. ReadGPGKeyFile() - No API changes needed
-5. AddKeyFileToKeyring() - Calls AddKeyPktToKeyring
-6. TDNFImportGPGKeyFile() - No API changes needed
-7. TDNFGPGCheckPackage() - Uses some verification flags
-8. TDNFFetchRemoteGPGKey() - No API changes needed
+1. **AddKeyPktToKeyring()** - Simplified: just call rpmKeyringAddKey directly (returns 1 if already present)
+2. **VerifyRpmSig()** - Use pgpPrtParams + rpmKeyringVerifySig with NULL ctx
 
-### Key Changes in rpm 4.19 API
+### Rules Updated
 
-**Old pattern (what tdnf does):**
-```c
-pgpDig pDigest = pgpNewDig();
-pgpPrtPkts(data, len, pDigest, 0);
-rpmKeyringLookup(pKeyring, pDigest);
-pgpFreeDig(pDigest);
-```
-
-**New pattern (what we need):**
-```c
-pgpDigParams sig = NULL;
-pgpPrtParams(data, len, PGPTAG_SIGNATURE, &sig);
-// Use rpmKeyringVerifySig() for verification
-pgpDigParamsFree(sig);
-```
-
-### Where To Store The Fix
-
-Create a patch file: `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch`
-
-Then update `rules/packages/tdnf.yaml`:
-1. Add the patch to `add_patch` list
-2. Remove the gpgcheck_stub.c creation from spec_replacements
-3. Remove the sed that comments out gpgcheck.c from CMakeLists.txt
-
-### Current tdnf.yaml gpgcheck stub location
-
-Lines ~92-108 in `rules/packages/tdnf.yaml` create the stub:
-```yaml
-# Remove gpgcheck.c (uses rpm 4.x APIs we don't have) and provide stub
-sed -i 's|gpgcheck.c|# gpgcheck.c  # disabled - rpm API incompatible|' client/CMakeLists.txt
-cat > client/gpgcheck_stub.c << 'GPGSTUB'
-...
-```
-
-This needs to be replaced with the proper ported gpgcheck.c.
+- `rules/packages/tdnf.yaml`: Added patch to add_patch list, removed stub creation
 
 ---
 
@@ -178,7 +130,7 @@ dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
 | strings.h | For strcasecmp/strncasecmp |
 | sys/ttold.h | For struct winsize |
 | sys/statfs.h | IRIX statfs differences |
-| GPG stubs | rpm API incompatible |
+| gpgcheck-rpm419.patch | Port gpgcheck.c to rpm 4.19 API |
 | cmake cross-compile | Full toolchain setup |
 | Disabled: Python, metalink, repogpgcheck, systemd | N/A on IRIX |
 
@@ -343,20 +295,20 @@ ln -sf libxml2.so.2.10.4 /opt/sgug-staging/usr/sgug/lib32/libxml2.so
 
 ### Ready for IRIX Testing
 
-All staging automation is now complete. Next steps:
+All staging automation is now complete. gpgcheck.c has been ported to rpm 4.19 API. Next steps:
 
-1. **Test on IRIX hardware**:
+1. **Rebuild tdnf with gpgcheck.c port**:
+   - Run `mogrix convert tdnf` to regenerate SRPM with new patch
+   - Build and verify GPG verification works
+
+2. **Test on IRIX hardware**:
    - Copy all MIPS RPMs to IRIX
    - Install and verify tdnf runs
-   - Test basic package operations
+   - Test basic package operations including GPG verification
 
-2. **Create bootstrap repository**:
+3. **Create bootstrap repository**:
    - Host all built RPMs
    - Configure tdnf.conf for IRIX
-
-3. **Port gpgcheck.c to rpm 4.19 API** (Lower Priority):
-   - Currently stubbed
-   - Needed for package signature verification
 
 ## Known Issues
 
@@ -376,17 +328,9 @@ All staging automation is now complete. Next steps:
 
 ### Known Technical Debt
 
-**tdnf gpgcheck.c - PORT IN PROGRESS (see top of document)**
+**tdnf gpgcheck.c - PORTED (see top of document)**
 
-The gpgcheck.c file is currently stubbed. Porting was started this session but ran out of context.
-
-**SEE THE "URGENT: gpgcheck.c Port In Progress" SECTION AT TOP for full details.**
-
-Summary:
-- Original source downloaded to `/tmp/gpgcheck-original.c`
-- rpm 4.19 headers examined in `/opt/sgug-staging/usr/sgug/include/rpm/`
-- API mapping documented
-- Next step: Create the actual patch file
+The gpgcheck.c file has been ported to rpm 4.19 API via `gpgcheck-rpm419.sgifixes.patch`.
 
 **Note:** We evaluated switching to dnf but it requires Python as core runtime. Python3 WAS successfully ported to IRIX earlier, but tdnf (pure C) remains the simpler path for now.
 

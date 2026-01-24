@@ -15,6 +15,7 @@ add_patch:
   - tdnf-conf.sgifixes.patch
   - tdnf-pool.sgifixes.patch
   - tdnf-printfprecision.sgifixes.patch
+  - gpgcheck-rpm419.sgifixes.patch  # Port gpgcheck.c to rpm 4.19 API
 
 rules:
   # Compat functions needed
@@ -90,22 +91,7 @@ rules:
         # Add sys/types.h and sys/bsd_types.h right after the header guard
         sed -i '/#define __CLIENT_INCLUDES_H__/a #include <sys/bsd_types.h>' client/includes.h
         sed -i '/#define __CLIENT_INCLUDES_H__/a #include <sys/types.h>' client/includes.h
-        # Remove gpgcheck.c (uses rpm 4.x APIs we don't have) and provide stub
-        sed -i 's|gpgcheck.c|# gpgcheck.c  # disabled - rpm API incompatible|' client/CMakeLists.txt
-        cat > client/gpgcheck_stub.c << 'GPGSTUB'
-        /* Stub GPG check functions - GPG verification disabled for IRIX */
-        #include <stdint.h>
-        #include <stdlib.h>
-        uint32_t TDNFGPGCheck(void *pTdnf, void *pPkgInfo, void *pRepo) { (void)pTdnf; (void)pPkgInfo; (void)pRepo; return 0; }
-        uint32_t ReadGPGKeyFile(const char *f, char **k, size_t *s) { (void)f; *k = NULL; *s = 0; return 1; }
-        uint32_t AddKeyFileToKeyring(const char *f, void *k) { (void)f; (void)k; return 0; }
-        uint32_t AddKeyPktToKeyring(const void *p, size_t s, void *k) { (void)p; (void)s; (void)k; return 0; }
-        uint32_t VerifyRpmSig(void *k, const char *f) { (void)k; (void)f; return 0; }
-        uint32_t TDNFImportGPGKeyFile(void *t, void *r, const char *f) { (void)t; (void)r; (void)f; return 0; }
-        uint32_t TDNFGPGCheckPackage(void *t, void *r, void *p, void *h) { (void)t; (void)r; (void)p; (void)h; return 0; }
-        uint32_t TDNFFetchRemoteGPGKey(void *t, void *r, const char *k, char **l) { (void)t; (void)r; (void)k; *l = NULL; return 0; }
-        GPGSTUB
-        sed -i '/# gpgcheck.c/a \    gpgcheck_stub.c' client/CMakeLists.txt
+        # gpgcheck.c ported to rpm 4.19 API via gpgcheck-rpm419.sgifixes.patch
         # Add sys/statfs.h for IRIX (statfs is not in sys/vfs.h on IRIX)
         sed -i '/#include <sys\/vfs.h>/a #include <sys/statfs.h>' client/includes.h
         # Add sys/ttold.h for struct winsize (unconditional), sys/termios.h for TIOCGWINSZ, sys/ioccom.h for _IOR
