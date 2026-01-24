@@ -261,23 +261,20 @@ ln -sf libxml2.so.2.10.4 /opt/sgug-staging/usr/sgug/lib32/libxml2.so
 
 ## Next Steps
 
-### Remaining Improvements
+### Ready for IRIX Testing
 
-1. **Automate staging workarounds**:
-   - Multiarch header copies
-   - .so symlink creation
-   - pkg-config file generation (or install -devel RPMs)
+All staging automation is now complete. Next steps:
 
-2. **Test on IRIX hardware**:
+1. **Test on IRIX hardware**:
    - Copy all MIPS RPMs to IRIX
    - Install and verify tdnf runs
    - Test basic package operations
 
-3. **Create bootstrap repository**:
+2. **Create bootstrap repository**:
    - Host all built RPMs
    - Configure tdnf.conf for IRIX
 
-4. **Port gpgcheck.c to rpm 4.19 API**:
+3. **Port gpgcheck.c to rpm 4.19 API** (Lower Priority):
    - Currently stubbed
    - Needed for package signature verification
 

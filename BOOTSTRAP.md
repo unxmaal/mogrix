@@ -90,19 +90,29 @@ See `mogrix/rules/packages/` for:
 - [x] Test package (test-hello) built and validated
 - [x] FC40 zlib SRPM built and validated
 - [x] Integration with mogrix-converted SRPMs
+- [x] RPM architecture naming fixed (--target mips-sgi-irix)
+- [x] Auto-devel package staging
+- [x] Multiarch header handling
 - [x] **TARGET PACKAGE (tdnf) BUILT SUCCESSFULLY!**
 
-#### Successfully Built Package Chain
+#### Full Validated Build Chain (2026-01-24)
 
-| Package | Version | Status | Notes |
-|---------|---------|--------|-------|
-| libxml2 | 2.12.5 | ✓ Built | Base XML library |
-| libsolv | 0.7.29 | ✓ Built | Package dependency solver |
-| curl | 8.6.0 | ✓ Built | URL transfer library |
-| rpm | 4.19.1.1 | ✓ Built | Package manager base |
-| **tdnf** | **3.5.14** | **✓ Built** | **Target: Tiny DNF package manager** |
+| # | Package | Version | Status | Notes |
+|---|---------|---------|--------|-------|
+| 1 | zlib | 1.2.13 | ✓ Built | Compression |
+| 2 | bzip2 | 1.0.8 | ✓ Built | Compression |
+| 3 | popt | 1.19 | ✓ Built | Option parsing |
+| 4 | openssl | 3.1.1 | ✓ Built | TLS/SSL |
+| 5 | libxml2 | 2.10.4 | ✓ Built | XML parsing |
+| 6 | curl | 8.2.1 | ✓ Built | HTTP/HTTPS |
+| 7 | xz | 5.4.6 | ✓ Built | Compression |
+| 8 | lua | 5.4.6 | ✓ Built | Scripting (rpm) |
+| 9 | file | 5.45 | ✓ Built | libmagic |
+| 10 | rpm | 4.19.1.1 | ✓ Built | Package manager core |
+| 11 | libsolv | 0.7.28 | ✓ Built | Dependency solver |
+| 12 | **tdnf** | **3.5.14** | **✓ Built** | **TARGET ACHIEVED** |
 
-All packages produce MIPS N32 ELF binaries compatible with IRIX 6.5.
+All packages produce valid **ELF 32-bit MSB, MIPS N32** binaries for IRIX 6.5.
 
 #### tdnf Package Contents
 - `/usr/sgug/bin/tdnf` - Main binary
@@ -110,27 +120,24 @@ All packages produce MIPS N32 ELF binaries compatible with IRIX 6.5.
 - `/usr/sgug/lib32/libtdnf.so` - Library
 - Configuration and completions
 
-## Known Issues
+## Resolved Issues
 
-### Static vs Shared Libraries
-- **Static linking works** - All Phase A packages use static libraries
-- **Shared library linking has issues** - Base address conflicts, needs more investigation
-- **Current approach**: Static linking for bootstrap, revisit shared libs later
+### Dynamic Linking (SOLVED)
+- **Shared libraries**: Use GNU ld (`mips-sgi-irix6.5-ld.bfd`) for correct 2-LOAD segment layout
+- **Executables**: Use LLD with `--dynamic-linker=/lib32/rld`
+- The `irix-ld` wrapper handles linker selection automatically
 
-### Linker Settings (irix-ld wrapper)
-Current `/opt/sgug-staging/usr/sgug/bin/irix-ld`:
-- Executables: `--image-base=0x10000000`, interpreter `/usr/lib32/libc.so.1`
-- Shared libs: `--image-base=0x5ffe0000` (untested)
+### Staging Automation (SOLVED)
+- **-devel packages**: Auto-included by `mogrix stage`
+- **Multiarch headers**: Auto-created (luaconf-mips64.h, configuration-mips64.h)
+- **RPM arch naming**: `--target mips-sgi-irix` produces .mips.rpm files
 
-### Common Source Fixes Required
-These patterns appear across many packages:
-- `getprogname.c` - IRIX procfs simplified (returns "?")
-- `HAVE_EACCESS` - Disabled (IRIX lacks eaccess)
-- `vfork/fork` - Macro conflicts resolved
-- GNU glob extensions - Guarded with `#ifndef __sgi`
-- `vasnprintf` - `USE_SNPRINTF` disabled (NULL buffer crash)
-- `PATH_MAX` - Defined using IRIX `MAXPATHLEN`
-- `libsoft_float_stubs.a` - For compiler-rt long double functions
+### Common Compat Functions (Implemented)
+All stored in `compat/` and `compat/catalog.yaml`:
+- POSIX.1-2008 "at" functions (openat, fstatat, etc.)
+- getprogname/setprogname, getline, strdup/strndup
+- fopencookie, timegm, mkdtemp, qsort_r
+- asprintf/vasprintf, getopt_long, strcasestr, strsep
 
 ## Next Steps
 

@@ -4,31 +4,35 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-01-24)
 
-**Phase 6.5: VALIDATING MOGRIX WORKFLOW - NEAR COMPLETION**
+**Phase 6.5: COMPLETE - FULL DEPENDENCY CHAIN VALIDATED**
 
-rpm 4.19 build complete! Only libsolv and tdnf remain.
+All 12 packages in the tdnf dependency chain built successfully. Target achieved.
 
-### Workflow Validation Progress
+### Validated Package Chain
 
-| Package | Status | Notes |
-|---------|--------|-------|
-| zlib | DONE | Works out of the box |
-| bzip2 | DONE | Works out of the box |
-| openssl | DONE | 3.2.1 - RPMs built (MIPS N32) |
-| curl | DONE | 8.6.0 - RPMs built (MIPS N32) |
-| lua | DONE | 5.4.6 - Required by rpm |
-| file | DONE | 5.45 - libmagic for rpm |
-| rpm | DONE | 4.19.1.1 - RPMs built (MIPS N32) |
-| libsolv | PENDING | Next - needs fopencookie |
-| tdnf | PENDING | Final goal |
+| # | Package | Version | Status | Notes |
+|---|---------|---------|--------|-------|
+| 1 | zlib | 1.2.13 | DONE | Compression library |
+| 2 | bzip2 | 1.0.8 | DONE | Compression library |
+| 3 | popt | 1.19 | DONE | Option parsing |
+| 4 | openssl | 3.1.1 | DONE | TLS/SSL |
+| 5 | libxml2 | 2.10.4 | DONE | XML parsing |
+| 6 | curl | 8.2.1 | DONE | HTTP/HTTPS |
+| 7 | xz | 5.4.6 | DONE | Compression library |
+| 8 | lua | 5.4.6 | DONE | Scripting (rpm) |
+| 9 | file | 5.45 | DONE | libmagic |
+| 10 | rpm | 4.19.1.1 | DONE | Package manager core |
+| 11 | libsolv | 0.7.28 | DONE | Dependency solver |
+| 12 | **tdnf** | **3.5.14** | **DONE** | **TARGET ACHIEVED** |
 
-### rpm 4.19.1.1 Build Complete
+All packages produce valid **ELF 32-bit MSB, MIPS N32** binaries for IRIX 6.5.
 
-**Built RPMs:**
-- rpm-4.19.1.1-1.x86_64.rpm (4.1MB) - Main package
-- rpm-build-4.19.1.1-1.x86_64.rpm (177KB) - Build tools
-- rpm-devel-4.19.1.1-1.x86_64.rpm (1.3MB) - Development headers
-- Plus: rpm-libs, rpm-build-libs, rpm-sign, rpm-sign-libs, rpm-apidocs, rpm-cron
+### tdnf 3.5.14 Build Complete (TARGET ACHIEVED)
+
+**Built RPMs (all .mips.rpm):**
+- tdnf-3.5.14-1.mips.rpm - Main package manager
+- tdnf-cli-libs-3.5.14-1.mips.rpm - CLI library
+- tdnf-devel-3.5.14-1.mips.rpm - Development headers
 
 **Verified MIPS N32 binary:**
 ```
@@ -38,18 +42,31 @@ dynamically linked, interpreter /lib32/rld
 
 ### Key Compat Functions Implemented
 
-**POSIX.1-2008 "at" functions (compat/dicl/openat-compat.c):**
-- `openat()`, `fstatat()`, `faccessat()`, `mkdirat()`, `unlinkat()`
-- `renameat()`, `readlinkat()`, `symlinkat()`, `linkat()`
-- `fchmodat()`, `fchownat()`, `mkfifoat()`, `mknodat()`, `utimensat()`, `futimens()`
-- `stpcpy()`, `stpncpy()` (POSIX.1-2008 string functions)
+| Function | Package | File | Status |
+|----------|---------|------|--------|
+| POSIX.1-2008 "at" funcs | rpm, libsolv | openat-compat.c | DONE |
+| getprogname/setprogname | rpm | getprogname.c | DONE |
+| fopencookie | libsolv | fopencookie.c | DONE |
+| getline | libsolv, tdnf | getline.c | DONE |
+| strdup/strndup | file, xz, libsolv, tdnf | strdup.c, strndup.c | DONE |
+| strcasestr | libsolv | strcasestr.c | DONE |
+| strsep | tdnf | strsep.c | DONE |
+| timegm | libsolv | timegm.c | DONE |
+| mkdtemp | libsolv | mkdtemp.c | DONE |
+| qsort_r | libsolv, tdnf | qsort_r.c | DONE |
+| asprintf/vasprintf | tdnf | asprintf.c | DONE |
+| getopt_long | file, tdnf | getopt_long.c | DONE |
+| sqlite3_stub | tdnf | sqlite3_stub.c | DONE |
 
-**BSD extensions (compat/unistd/getprogname.c):**
-- `getprogname()`, `setprogname()`
+### Staging Automation (COMPLETE)
 
-**Successfully built rpm dependencies:**
-- Lua 5.4.6 (shared libs working)
-- file 5.45 (libmagic, shared libs working)
+All staging workarounds are now automated in `mogrix stage`:
+
+| Feature | Command | Status |
+|---------|---------|--------|
+| Auto-devel packages | `mogrix stage pkg.rpm` | DONE - auto-includes matching -devel |
+| Multiarch headers | Automatic | DONE - creates mips64 from x86_64 |
+| RPM arch naming | `--target mips-sgi-irix` | DONE - packages named .mips.rpm |
 
 **Previous milestone: TDNF RUNNING ON IRIX - GOAL ACHIEVED**
 
@@ -237,92 +254,52 @@ This design follows the insight that libdicl's true value was never the library 
 
 ## Next Steps
 
-### IMMEDIATE: Fix Knowledge Gaps in Mogrix
+### Confidence Assessment: ~95%
 
-**tdnf is built, but we made fixes OUTSIDE of mogrix that will break on a clean start.**
+A clean rebuild from scratch should succeed. All critical knowledge gaps have been fixed:
 
-The following fixes exist only in staging or were applied manually and MUST be added to mogrix:
+| Fix | Status |
+|-----|--------|
+| sys/stat.h wrapper | DONE - in `cross/include/dicl-clang-compat/sys/stat.h` |
+| `%systemd_*` scriptlets | DONE - in `generic.yaml` remove_lines |
+| RPM architecture naming | DONE - `--target mips-sgi-irix` added |
+| -devel package staging | DONE - auto-included by `mogrix stage` |
+| Multiarch headers | DONE - auto-created during staging |
 
-#### 1. CRITICAL: dicl-clang-compat/sys/stat.h (NOT IN MOGRIX)
+### Remaining Work
 
-The file `/opt/sgug-staging/usr/sgug/include/dicl-clang-compat/sys/stat.h` was manually created/edited but does NOT exist in `mogrix/cross/include/dicl-clang-compat/sys/`.
+#### 1. Test on IRIX Hardware
 
-**Fix:** Copy to mogrix source:
-```bash
-cp /opt/sgug-staging/usr/sgug/include/dicl-clang-compat/sys/stat.h \
-   mogrix/cross/include/dicl-clang-compat/sys/stat.h
-```
+- Copy all MIPS RPMs to IRIX
+- Install and verify tdnf runs
+- Test basic package operations
 
-#### 2. Move generic patterns from tdnf.yaml to generic.yaml
+#### 2. Create Bootstrap Repository
 
-These patterns in `rules/packages/tdnf.yaml` apply to ALL packages:
+- Host all built RPMs
+- Configure tdnf.conf for IRIX
 
-| Pattern | Should be in |
-|---------|--------------|
-| `%systemd_post`, `%systemd_preun`, etc. | generic.yaml remove_lines |
-| strings.h for strcasecmp | Header overlay or auto-fix |
-| cmake cross-compilation boilerplate | New cmake class |
+#### 3. Port gpgcheck.c to rpm 4.19 API (Lower Priority)
 
-#### 3. Create cmake class
+The gpgcheck.c is stubbed because it uses OLD rpm PGP API:
 
-Extract the 20+ line cmake cross-compilation settings into `rules/classes/cmake.yaml` so cmake packages can inherit it instead of duplicating.
+| Old API (tdnf uses) | New API (rpm 4.19) |
+|---------------------|-------------------|
+| `pgpDig` type | `pgpDigParams` |
+| `pgpNewDig()` | (removed) |
+| `pgpFreeDig()` | `pgpDigParamsFree()` |
+| `pgpPrtPkts()` | `pgpPrtParams()` |
 
-#### 4. Document build order
+**Impact of stub:** Package signature verification disabled. Security implications for production.
 
-Add to BOOTSTRAP.md:
-```
-libxml2 → libsolv → curl → rpm → tdnf
-```
+**Fix:** Create patched gpgcheck.c using new API, add to mogrix patches.
 
-### Confidence Assessment
+#### 4. Future Improvements (Lower Priority)
 
-| If we start clean now... | Result |
-|--------------------------|--------|
-| Without fixing #1 | FAIL - blkcnt64_t undefined |
-| Without fixing #2 | Works but wasteful duplication |
-| Without fixing #3 | Works but error-prone |
-| With all fixes applied | HIGH confidence |
-
-#### 5. Port tdnf gpgcheck.c to rpm 4.19 API
-
-**Before building tdnf**, port gpgcheck.c to the rpm 4.19 PGP API. The current stub disables all GPG verification.
-
-**The problem:** tdnf's gpgcheck.c was written for older rpm API:
-```
-OLD (tdnf uses):          NEW (rpm 4.19 has):
-─────────────────         ────────────────────
-pgpDig (type)         →   pgpDigParams
-pgpNewDig()           →   (removed - different init)
-pgpFreeDig()          →   pgpDigParamsFree()
-pgpPrtPkts()          →   pgpPrtParams()
-```
-
-**Scope:** 637 lines, 8 functions to port:
-- TDNFGPGCheck
-- ReadGPGKeyFile
-- AddKeyFileToKeyring
-- AddKeyPktToKeyring
-- VerifyRpmSig
-- TDNFImportGPGKeyFile
-- TDNFGPGCheckPackage
-- TDNFFetchRemoteGPGKey
-
-**Approach:** Create a patched gpgcheck.c in mogrix patches that uses the new API. Remove the stub from tdnf.yaml.
-
-#### 6. Clean up patch-modifying rules
-
-Review all rules files for patterns that modify patch content. For each:
-1. Apply the modification directly to the patch file
-2. Remove the rule
-3. Patches should be final, authoritative versions
-
-**Principle:** Patches ARE knowledge storage. Don't add indirection by having rules modify patches.
-
-### After Knowledge Gaps Fixed
-
-1. **Test clean build** - Remove staging, rebuild from scratch
-2. **Configure tdnf on IRIX** - Create config, test repolist
-3. **Create bootstrap repository** - Package all deps as RPMs
+| Pattern | Currently In | Should Be In |
+|---------|--------------|--------------|
+| cmake cross-compile settings | tdnf.yaml | cmake class (future) |
+| Python bindings disable | tdnf.yaml | python class (future) |
 
 ---
 

@@ -364,9 +364,11 @@ All packages produce valid ELF 32-bit MSB MIPS N32 binaries.
 
 After building each package, stage it for dependent builds:
 ```bash
-PYTHONPATH=. python3 -c "from mogrix.cli import main; main(['stage', 'package.mips.rpm'])"
+source .venv/bin/activate
+mogrix stage package.mips.rpm
 ```
 
-For cmake packages, you may also need to:
-1. Create .so symlinks: `ln -sf libfoo.so.X.Y.Z /opt/sgug-staging/usr/sgug/lib32/libfoo.so`
-2. Create pkg-config files if -devel RPM isn't installed
+The stage command now handles everything automatically:
+- **Auto-devel**: Automatically includes matching -devel packages (headers, .so symlinks, .pc files)
+- **Multiarch headers**: Creates mips64 variants from x86_64 (luaconf-mips64.h, configuration-mips64.h)
+- **No manual workarounds needed**: Just run `mogrix stage` and all dependencies are ready
