@@ -1,9 +1,11 @@
+diff --git a/client/gpgcheck.c b/client/gpgcheck.c
+index 6cdec98..bca6c4a 100644
 --- a/client/gpgcheck.c
 +++ b/client/gpgcheck.c
-@@ -145,6 +145,12 @@ error:
+@@ -142,6 +142,12 @@ error:
      goto cleanup;
  }
-
+ 
 +/*
 + * rpm 4.19 API port:
 + * - pgpDig removed, use rpmKeyringAddKey directly
@@ -13,27 +15,19 @@
  uint32_t
  AddKeyPktToKeyring(
      rpmKeyring pKeyring,
-@@ -153,7 +159,7 @@ AddKeyPktToKeyring(
+@@ -150,7 +156,7 @@ AddKeyPktToKeyring(
      )
  {
      uint32_t dwError = 0;
 -    pgpDig pDig = NULL;
 +    int rc;
      rpmPubkey pPubkey = NULL;
-
+ 
      if(!pKeyring || !pPkt || nPktLen == 0)
-@@ -162,33 +168,21 @@ AddKeyPktToKeyring(
+@@ -166,27 +172,16 @@ AddKeyPktToKeyring(
          BAIL_ON_TDNF_ERROR(dwError);
      }
-
--    pPubkey = rpmPubkeyNew (pPkt, nPktLen);
-+    pPubkey = rpmPubkeyNew(pPkt, nPktLen);
-     if(!pPubkey)
-     {
-         dwError = ERROR_TDNF_CREATE_PUBKEY_FAILED;
-         BAIL_ON_TDNF_ERROR(dwError);
-     }
-
+ 
 -    pDig = rpmPubkeyDig(pPubkey);
 -    if(!pDig)
 +    /* rpm 4.19: Just add the key directly */
@@ -43,7 +37,9 @@
          dwError = ERROR_TDNF_CREATE_PUBKEY_FAILED;
          BAIL_ON_TDNF_ERROR(dwError);
      }
--
++    /* rc == 0 or rc == 1 both mean success */
++    dwError = 0;
+ 
 -    dwError = rpmKeyringLookup(pKeyring, pDig);
 -    if(dwError == RPMRC_OK)
 -    {
@@ -58,16 +54,13 @@
 -        }
 -        BAIL_ON_TDNF_ERROR(dwError);
 -    }
-+    /* rc == 0 or rc == 1 both mean success */
-+    dwError = 0;
-+
  cleanup:
      return dwError;
  error:
-@@ -199,6 +193,14 @@ error:
+@@ -197,6 +192,14 @@ error:
      goto cleanup;
  }
-
+ 
 +/*
 + * rpm 4.19 API port:
 + * - pgpDig removed, use pgpDigParams
@@ -79,20 +72,20 @@
  uint32_t
  VerifyRpmSig(
      rpmKeyring pKeyring,
-@@ -210,7 +212,8 @@ VerifyRpmSig(
+@@ -208,7 +211,8 @@ VerifyRpmSig(
      rpmts pTS = NULL;
      rpmtd pTD = NULL;
      Header pPkgHeader = NULL;
 -    pgpDig pDigest = NULL;
 +    pgpDigParams pDigest = NULL;
 +    rpmRC rc;
-
+ 
      if(!pKeyring || IsNullOrEmptyString(pszPkgFile))
      {
-@@ -254,18 +257,22 @@ VerifyRpmSig(
+@@ -253,14 +257,18 @@ VerifyRpmSig(
          BAIL_ON_TDNF_ERROR(dwError);
      }
-
+ 
 -    pDigest = pgpNewDig();
 -    if(pgpPrtPkts(pTD->data, pTD->count, pDigest, 0))
 +    /* rpm 4.19: use pgpPrtParams instead of pgpNewDig + pgpPrtPkts */
@@ -101,7 +94,7 @@
          dwError = ERROR_TDNF_RPM_GPG_PARSE_FAILED;
          BAIL_ON_TDNF_ERROR(dwError);
      }
-
+ 
 -    if(rpmKeyringLookup(pKeyring, pDigest) != RPMRC_OK)
 +    /* rpm 4.19: rpmKeyringVerifySig replaces rpmKeyringLookup
 +     * Pass NULL for DIGEST_CTX - checking if key is present.
@@ -111,11 +104,7 @@
      {
          dwError = ERROR_TDNF_RPM_GPG_NO_MATCH;
          BAIL_ON_TDNF_ERROR(dwError);
-     }
-
- cleanup:
-     if(pFD_t)
-@@ -274,7 +281,7 @@ cleanup:
+@@ -273,7 +281,7 @@ cleanup:
      }
      if(pDigest)
      {

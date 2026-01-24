@@ -187,16 +187,19 @@ class SpecWriter:
                 flags=re.MULTILINE,
             )
 
-        # Inject patch application commands (after %setup or %autosetup)
+        # Inject patch application commands (after %setup)
+        # NOTE: Skip if spec uses %autosetup - it applies all patches automatically
         if patch_prep:
-            patch_comment = "# Apply mogrix patches"
-            content = re.sub(
-                r"^(%(auto)?setup\s+.*)$",
-                f"\\1\n\n{patch_comment}\n{patch_prep}",
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
+            uses_autosetup = bool(re.search(r"^%autosetup\b", content, re.MULTILINE))
+            if not uses_autosetup:
+                patch_comment = "# Apply mogrix patches"
+                content = re.sub(
+                    r"^(%setup\s+.*)$",
+                    f"\\1\n\n{patch_comment}\n{patch_prep}",
+                    content,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
 
         # Inject custom prep commands (e.g., sed for Makefile fixes)
         if result.prep_commands:

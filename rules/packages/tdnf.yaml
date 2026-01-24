@@ -9,7 +9,8 @@ package: tdnf
 add_patch:
   - client-defines.sgifixes.patch
   - cmakelist-paths.sgifixes.patch
-  - tdnf-client-rpmtrans.sgifixes.patch
+  # TODO: Fix for 3.5.14 - GPG key URL variable expansion moved to gpgcheck.c
+  # - tdnf-client-rpmtrans.sgifixes.patch
   - tdnf-client.sgifixes.patch
   - tdnf-common-utils.sgifixes.patch
   - tdnf-conf.sgifixes.patch
@@ -133,14 +134,14 @@ rules:
     - pattern: "%{cmake_install}"
       replacement: |
         cd _build && make install DESTDIR=%{buildroot}
-        # Clean up files we don't want (systemd, plugins, automatic)
-        rm -rf %{buildroot}/lib/systemd
-        rm -rf %{buildroot}/etc/motdgen.d
-        rm -rf %{buildroot}/etc/tdnf/automatic.conf
-        rm -rf %{buildroot}/etc/tdnf/pluginconf.d
+        # Clean up files we don't want (systemd, plugins, automatic, motdgen)
+        rm -rf %{buildroot}%{_prefix}/lib/systemd
+        rm -rf %{buildroot}%{_sysconfdir}/motdgen.d
+        rm -rf %{buildroot}%{_sysconfdir}/%{name}/automatic.conf
+        rm -rf %{buildroot}%{_sysconfdir}/%{name}/pluginconf.d
         rm -f %{buildroot}%{_bindir}/%{name}-automatic
         rm -f %{buildroot}%{_bindir}/tdnf-automatic
-        rm -f %{buildroot}/etc/tdnf/tdnf.conf
+        rm -f %{buildroot}%{_sysconfdir}/%{name}/tdnf.conf
     # Skip python bindings build (can't run cross-compiled python)
     - pattern: "%make_build -C %{__cmake_builddir} python"
       replacement: "# Skip python bindings for cross-compilation"
