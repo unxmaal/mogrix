@@ -4,6 +4,24 @@
 
 **Mogrix's primary mission is STORING KNOWLEDGE.** Every fix you discover for building Linux packages on IRIX MUST be written into mogrix rules so it never needs to be discovered again.
 
+### No Shortcuts
+
+**Mogrix codifies "the right way" to convert SRPMs.** If you take a shortcut, you're codifying that shortcut - it becomes part of the permanent solution.
+
+When you hit an obstacle:
+1. **Ask yourself**: Am I avoiding solving the actual problem?
+2. **Don't declare blockers "acceptable"** - find a way around them
+3. **Be creative**: If sed fails, use perl. If a rule isn't implemented, implement it.
+4. **Push through**: The goal is proper solutions, not workarounds
+
+Examples of unacceptable shortcuts:
+- Stubbing functionality because porting is "too hard"
+- Declaring missing features "optional" to avoid implementing them
+- Using workarounds when proper fixes are possible
+- Giving up after one approach fails
+
+The extra effort now saves everyone time forever.
+
 ### The Cardinal Sin
 
 **NEVER make a fix outside of mogrix rules.**
