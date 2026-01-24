@@ -10,6 +10,7 @@ rules:
     - strndup
     - getline
     - asprintf
+    - getopt_long
 
   # Drop libdicl dependency
   drop_buildrequires:

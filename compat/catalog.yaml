@@ -96,6 +96,15 @@ functions:
     header: string.h
     description: Thread-safe strerror
 
+  # getopt_long (GNU extension for long options)
+  getopt_long:
+    file: functions/getopt_long.c
+    header: getopt.h
+    description: Parse long options (GNU extension)
+    provides:
+      - getopt_long
+      - getopt_long_only
+
   # Program name functions (BSD/GNU extension)
   getprogname:
     file: unistd/getprogname.c

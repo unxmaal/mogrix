@@ -1,0 +1,103 @@
+# xz - LZMA compression utilities and library
+# Provides liblzma needed by rpm and libsolv
+
+package: xz
+
+rules:
+  # Skip tests - can't run cross-compiled binaries
+  skip_check: true
+
+  # Compat functions that may be needed
+  inject_compat_functions:
+    - strdup
+    - strndup
+
+  # Drop problematic dependencies
+  drop_buildrequires:
+    - gnupg2   # Not needed for cross-compilation
+
+  # Configure flags
+  configure_flags:
+    add:
+      - --disable-silent-rules
+      - --disable-doc         # Don't build documentation
+      - --disable-scripts     # Don't install shell scripts (they need grep)
+      - --disable-xz          # Don't build xz binary (saves complexity)
+      - --disable-xzdec       # Don't build xzdec binary
+      - --disable-lzmadec     # Don't build lzmadec binary
+      - --disable-lzmainfo    # Don't build lzmainfo binary
+      - --enable-shared
+      - --enable-static
+
+  # Remove profile.d colorization scripts since we disabled scripts
+  spec_replacements:
+    # Remove Source100/101 since they conflict with mogrix compat sources
+    - pattern: "Source100:	colorxzgrep.sh"
+      replacement: "# Source100: colorxzgrep.sh - removed (conflict with mogrix compat)"
+    - pattern: "Source101:	colorxzgrep.csh"
+      replacement: "# Source101: colorxzgrep.csh - removed (conflict with mogrix compat)"
+    # Remove grep dependency (not needed when scripts are disabled)
+    - pattern: "Requires:	grep >= 2.20-5"
+      replacement: "# Requires: grep >= 2.20-5 - not needed (scripts disabled)"
+    # Skip find_lang since we build minimal
+    - pattern: "%find_lang %name"
+      replacement: "# %find_lang %name - skipped (minimal build)"
+    # Skip profile.d installation since scripts are disabled
+    - pattern: "mkdir -p %{buildroot}%{profiledir}"
+      replacement: "# mkdir -p %{buildroot}%{profiledir} - skipped (scripts disabled)"
+    - pattern: "install -p -m 644 %{SOURCE100} %{buildroot}%{profiledir}"
+      replacement: "# install colorxzgrep.sh - skipped"
+    - pattern: "install -p -m 644 %{SOURCE101} %{buildroot}%{profiledir}"
+      replacement: "# install colorxzgrep.csh - skipped"
+    # Simplify %files section - we're only building the library
+    - pattern: "%files -f %{name}.lang"
+      replacement: "%files"
+    # Remove bindir entries (disabled)
+    - pattern: "%{_bindir}/*xz*"
+      replacement: "# %{_bindir}/*xz* - binaries disabled"
+    # Remove manpages for binaries
+    - pattern: "%{_mandir}/man1/*xz*"
+      replacement: "# %{_mandir}/man1/*xz* - binaries disabled"
+    # Remove language-specific manpages
+    - pattern: "%lang(de) %{_mandir}/de/man1/*xz*"
+      replacement: ""
+    - pattern: "%lang(fr) %{_mandir}/fr/man1/*xz*"
+      replacement: ""
+    - pattern: "%lang(ko) %{_mandir}/ko/man1/*xz*"
+      replacement: ""
+    - pattern: "%lang(ro) %{_mandir}/ro/man1/*xz*"
+      replacement: ""
+    - pattern: "%lang(uk) %{_mandir}/uk/man1/*xz*"
+      replacement: ""
+    - pattern: "%lang(pt_BR) %{_mandir}/pt_BR/man1/*xz*"
+      replacement: ""
+    # Remove profiledir
+    - pattern: "%{profiledir}/*"
+      replacement: ""
+    # Remove lzma-compat files
+    - pattern: "%{_bindir}/*lz*"
+      replacement: "# %{_bindir}/*lz* - binaries disabled"
+    - pattern: "%{_mandir}/man1/*lz*"
+      replacement: "# %{_mandir}/man1/*lz* - binaries disabled"
+    - pattern: "%lang(de) %{_mandir}/de/man1/*lz*"
+      replacement: ""
+    - pattern: "%lang(fr) %{_mandir}/fr/man1/*lz*"
+      replacement: ""
+    - pattern: "%lang(ko) %{_mandir}/ko/man1/*lz*"
+      replacement: ""
+    - pattern: "%lang(ro) %{_mandir}/ro/man1/*lz*"
+      replacement: ""
+    - pattern: "%lang(uk) %{_mandir}/uk/man1/*lz*"
+      replacement: ""
+    - pattern: "%lang(pt_BR) %{_mandir}/pt_BR/man1/*lz*"
+      replacement: ""
+    # Include all library files (versioned and unversioned)
+    - pattern: "%{_libdir}/lib*.so.5*"
+      replacement: "%{_libdir}/liblzma.so*"
+    # Remove doc directory entries (--disable-doc)
+    - pattern: "%doc %{_pkgdocdir}"
+      replacement: "# %doc %{_pkgdocdir} - docs disabled"
+    - pattern: "%exclude %_pkgdocdir/examples*"
+      replacement: ""
+    - pattern: "%doc %_pkgdocdir/examples*"
+      replacement: "# %doc examples* - docs disabled"

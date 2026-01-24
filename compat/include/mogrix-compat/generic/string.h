@@ -16,6 +16,35 @@ extern "C" {
 #endif
 
 /*
+ * strdup - duplicate a string (POSIX.1-2001)
+ * strndup - duplicate n bytes of a string (POSIX.1-2008)
+ *
+ * IRIX may not have declarations in strict C99 mode.
+ */
+#include <stddef.h>  /* for size_t */
+
+#ifndef strdup
+char *strdup(const char *s);
+#endif
+
+#ifndef strndup
+char *strndup(const char *s, size_t n);
+#endif
+
+/*
+ * stpcpy/stpncpy - copy string returning pointer to end (POSIX.1-2008)
+ *
+ * IRIX may not have declarations in strict C99 mode.
+ */
+#ifndef stpcpy
+char *stpcpy(char *dest, const char *src);
+#endif
+
+#ifndef stpncpy
+char *stpncpy(char *dest, const char *src, size_t n);
+#endif
+
+/*
  * strcasestr - case-insensitive substring search (GNU extension)
  *
  * IRIX doesn't have strcasestr. We provide our own implementation.

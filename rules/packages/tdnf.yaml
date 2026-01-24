@@ -27,6 +27,7 @@ rules:
     - sqlite3_stub  # Stub sqlite3 - history features disabled at runtime
     - qsort_r  # GNU extension for qsort with user data
     - strsep  # BSD extension for token extraction
+    - getopt_long  # GNU getopt_long for tdnf-history-util
 
   # Drop problematic dependencies (libdicl handled in generic.yaml)
   drop_buildrequires:

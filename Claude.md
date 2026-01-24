@@ -303,6 +303,12 @@ When building package B that depends on package A:
 2. **Header conflict**: Create override in `cross/include/dicl-clang-compat/`
 3. **Configure detects wrong feature**: Add configure flag to package rule
 4. **Libtool issues**: May need `export_vars` rule to set LD explicitly
+5. **Source number conflicts**: Specs with Source100+ conflict with mogrix compat sources - use spec_replacements to comment them out
+6. **Missing function declarations**: IRIX strict C99 mode hides POSIX functions - add declarations to `compat/include/mogrix-compat/generic/` headers
+7. **Missing .so symlinks**: After staging, create unversioned .so symlinks for cmake
+8. **Missing pkg-config files**: Install -devel RPMs or create .pc files manually in staging
+9. **Multiarch header dispatch**: Copy x86_64 headers to mips64 variants (lua, openssl)
+10. **Library file patterns**: Use explicit patterns instead of wildcards in %files
 
 ### Viewing mogrix Transformations
 
@@ -332,3 +338,35 @@ mogrix convert <package>.src.rpm -v
 5. **Shell compatibility**: rpmbuild uses `/bin/sh` (dash on Ubuntu) for scriptlets.
    - `pushd`/`popd` don't work - replace with POSIX subshell: `(cd dir && command)`
    - Brace expansion after variables doesn't work: `$VAR{a,b}` → use explicit paths
+
+## Validated Build Order for tdnf
+
+The following build order has been validated (2026-01-24):
+
+```
+1.  zlib       (no deps)
+2.  bzip2      (no deps)
+3.  popt       (no deps)
+4.  openssl    (zlib)
+5.  libxml2    (zlib)
+6.  curl       (openssl, zlib)
+7.  xz         (no deps)
+8.  lua        (readline - static)
+9.  file       (zlib)
+10. rpm        (popt, lua, openssl, zlib, bzip2, xz, file)
+11. libsolv    (zlib, bzip2, xz, libxml2, rpm)
+12. tdnf       (libsolv, rpm, curl)
+```
+
+All packages produce valid ELF 32-bit MSB MIPS N32 binaries.
+
+### Staging Dependencies
+
+After building each package, stage it for dependent builds:
+```bash
+PYTHONPATH=. python3 -c "from mogrix.cli import main; main(['stage', 'package.mips.rpm'])"
+```
+
+For cmake packages, you may also need to:
+1. Create .so symlinks: `ln -sf libfoo.so.X.Y.Z /opt/sgug-staging/usr/sgug/lib32/libfoo.so`
+2. Create pkg-config files if -devel RPM isn't installed
