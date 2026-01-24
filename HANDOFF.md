@@ -1,59 +1,52 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-24
-**Status**: FULL DEPENDENCY CHAIN VALIDATED - gpgcheck.c port PENDING
+**Status**: FULL DEPENDENCY CHAIN VALIDATED - gpgcheck.c port IMPLEMENTED, needs build test
 
 ---
 
-## URGENT: gpgcheck.c Port PENDING
+## gpgcheck.c Port: IMPLEMENTED
 
 **Updated 2026-01-24.**
 
-### Status
+### What Was Done
 
-The gpgcheck.c port was attempted but blocked by implementation issues. **GPG verification is required** - stubbing is NOT acceptable.
+1. **Implemented `add_patch` feature in mogrix** - patches now copied from `patches/packages/<pkg>/`
+   - Modified `mogrix/rules/engine.py`: Added `add_patches` field to TransformResult
+   - Modified `mogrix/cli.py`: Added PATCHES_DIR, patch copying, spec injection
+   - Modified `mogrix/emitter/spec.py`: Added patch_sources and patch_prep injection
 
-### What Was Attempted
+2. **Created gpgcheck patch**: `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch`
+   - Ports AddKeyPktToKeyring() to use rpmKeyringAddKey directly
+   - Ports VerifyRpmSig() to use pgpPrtParams + rpmKeyringVerifySig
 
-1. Created patch file `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch` with correct API changes
-2. Discovered `add_patch` rule in mogrix is not implemented - patches don't get copied
-3. Tried inline sed transformations - complex sed patterns mangled the code
-4. **Incorrectly** fell back to stubbing - THIS NEEDS TO BE FIXED
+3. **Updated tdnf.yaml**: Using add_patch rule instead of stub
 
-### What Needs To Be Done
+### API Changes in Patch
 
-**Option A: Implement add_patch in mogrix**
-- Add code to `mogrix/cli.py` `_convert_srpm_full()` to copy patches from `patches/packages/<pkg>/`
-- Use `PatchCatalog` class that already exists in `mogrix/patches/catalog.py`
-- Then recreate and apply the gpgcheck patch properly
-
-**Option B: Use better text replacement**
-- Instead of complex sed, use perl or python for the replacements
-- Example: `perl -i -p0e 's/old pattern/new pattern/gs' file`
-- Or write a small python script that does the replacement
-
-**Option C: Manual patch application**
-- Manually copy patch file to SRPM sources directory before building
-- Add Patch entry to spec file manually
-
-### API Changes Required (already documented)
-
-| Old API (tdnf uses) | New API (rpm 4.19) |
-|---------------------|-------------------|
+| Old API | New API |
+|---------|---------|
 | `pgpDig` | `pgpDigParams` |
-| `pgpNewDig()` | (removed) - use pgpPrtParams() |
-| `pgpFreeDig()` | `pgpDigParamsFree()` |
+| `pgpNewDig()` | (removed) |
 | `pgpPrtPkts()` | `pgpPrtParams()` |
+| `pgpFreeDig()` | `pgpDigParamsFree()` |
 | `rpmKeyringLookup()` | `rpmKeyringVerifySig()` |
-
-### Functions To Port
-
-1. **AddKeyPktToKeyring()** - Remove pgpDig/rpmPubkeyDig, simplify to just rpmKeyringAddKey
-2. **VerifyRpmSig()** - Use pgpPrtParams + rpmKeyringVerifySig
 
 ### Current State
 
-tdnf.yaml has a **temporary stub** that must be replaced with proper port.
+- Conversion works: `mogrix convert` now copies patches and injects Patch entries
+- 9 patches added including gpgcheck-rpm419.sgifixes.patch
+- **NEXT: Build and verify the patch applies cleanly**
+
+### To Complete
+
+```bash
+.venv/bin/mogrix build srpms/tdnf-3.5.14-1.ph5.src-converted/tdnf-3.5.14-1.src.rpm --cross
+```
+
+If build fails on patch, check:
+1. Patch line numbers may need adjustment (gpgcheck.c may have changed)
+2. Context lines may not match exactly
 
 ---
 
@@ -145,7 +138,7 @@ dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
 | Fix | Description |
 |-----|-------------|
 | sqlite3_stub | Stub implementation (no sqlite3 on IRIX) |
-| **gpgcheck.c** | **PENDING PORT** - currently stubbed, must be fixed |
+| gpgcheck-rpm419.patch | Port to rpm 4.19 API (needs build test) |
 | qsort_r | GNU extension compat |
 | strsep | BSD extension compat |
 | strings.h | For strcasecmp/strncasecmp |
@@ -313,23 +306,23 @@ ln -sf libxml2.so.2.10.4 /opt/sgug-staging/usr/sgug/lib32/libxml2.so
 
 ## Next Steps
 
-### PRIORITY: Fix gpgcheck.c port
+### Build and test gpgcheck.c port
 
-**GPG verification is required.** The current stub is temporary and must be replaced.
+The add_patch feature is implemented and gpgcheck patch is ready.
 
-1. **Implement add_patch in mogrix** OR use perl/python for text replacement
-2. **Recreate the gpgcheck patch** and apply it properly
-3. **Rebuild tdnf** with working GPG verification
-4. **Verify** signature checking works
+1. **Build tdnf**:
+   ```bash
+   .venv/bin/mogrix build srpms/tdnf-3.5.14-1.ph5.src-converted/tdnf-3.5.14-1.src.rpm --cross
+   ```
 
-### After gpgcheck.c is fixed
+2. **If patch fails to apply**: Adjust line numbers in `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch`
 
-1. **Test on IRIX hardware**:
+3. **Test on IRIX hardware**:
    - Copy all MIPS RPMs to IRIX
    - Install and verify tdnf runs
    - Test package operations WITH GPG verification
 
-2. **Create bootstrap repository**:
+4. **Create bootstrap repository**:
    - Host all built RPMs
    - Configure tdnf.conf for IRIX
 
@@ -351,18 +344,16 @@ ln -sf libxml2.so.2.10.4 /opt/sgug-staging/usr/sgug/lib32/libxml2.so
 
 ### Known Technical Debt
 
-**tdnf gpgcheck.c - MUST BE PORTED (see top of document)**
+**tdnf gpgcheck.c - IMPLEMENTED (see top of document)**
 
-GPG signature verification is currently stubbed but **must be fixed**. The stub is NOT acceptable.
+The gpgcheck.c port is implemented via patch. The add_patch feature was added to mogrix.
 
-Blockers encountered:
-1. mogrix `add_patch` rule not implemented
-2. Complex sed patterns failed
-
-Solutions available:
-1. Implement add_patch in mogrix (use existing PatchCatalog class)
-2. Use perl/python instead of sed for text replacement
-3. Try other creative approaches
+**Files changed this session:**
+- `mogrix/rules/engine.py` - Added add_patches field
+- `mogrix/cli.py` - Added PATCHES_DIR, patch copying logic
+- `mogrix/emitter/spec.py` - Added patch_sources, patch_prep injection
+- `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch` - The actual port
+- `rules/packages/tdnf.yaml` - Uses add_patch instead of stub
 
 **Note:** We evaluated switching to dnf but it requires Python as core runtime. Python3 WAS successfully ported to IRIX earlier, but tdnf (pure C) remains the simpler path for now.
 

@@ -33,6 +33,7 @@ class TransformResult:
     install_cleanup: list[str] = field(default_factory=list)
     spec_replacements: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    add_patches: list[str] = field(default_factory=list)  # Patch filenames to add
 
 
 class RuleEngine:
@@ -168,6 +169,13 @@ class RuleEngine:
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""
         rules = pkg_rules.get("rules", pkg_rules)
+
+        # Handle add_patch at top level (outside rules section)
+        if "add_patch" in pkg_rules:
+            result.add_patches.extend(pkg_rules["add_patch"])
+            result.applied_rules.append(
+                f"add_patch: {len(pkg_rules['add_patch'])} patches"
+            )
 
         # Inject compat functions
         if "inject_compat_functions" in rules:
@@ -306,4 +314,11 @@ class RuleEngine:
             result.spec_replacements.extend(rules["spec_replacements"])
             result.applied_rules.append(
                 f"spec_replacements: {len(rules['spec_replacements'])} patterns"
+            )
+
+        # Patches to add from mogrix patches directory
+        if "add_patch" in rules:
+            result.add_patches.extend(rules["add_patch"])
+            result.applied_rules.append(
+                f"add_patch: {len(rules['add_patch'])} patches"
             )

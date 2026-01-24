@@ -17,6 +17,8 @@ class SpecWriter:
         compat_sources: str | None = None,
         compat_prep: str | None = None,
         compat_build: str | None = None,
+        patch_sources: str | None = None,
+        patch_prep: str | None = None,
         ac_cv_overrides: dict[str, str] | None = None,
         drop_requires: list[str] | None = None,
         remove_lines: list[str] | None = None,
@@ -155,11 +157,42 @@ class SpecWriter:
                     lines.insert(last_source_idx, src_line)
                 content = "\n".join(lines)
 
+        # Inject Patch entries (after last Source/Patch line)
+        if patch_sources:
+            lines = content.splitlines()
+            last_source_idx = -1
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if (
+                    stripped.startswith("Source") or stripped.startswith("Patch")
+                ) and ":" in stripped:
+                    last_source_idx = i
+
+            if last_source_idx >= 0:
+                # Insert after last Source/Patch line with a comment
+                lines.insert(last_source_idx + 1, "# Mogrix patches (IRIX compatibility)")
+                last_source_idx += 1
+                for patch_line in patch_sources.splitlines():
+                    last_source_idx += 1
+                    lines.insert(last_source_idx, patch_line)
+                content = "\n".join(lines)
+
         # Inject compat prep commands (after %setup or %autosetup)
         if compat_prep:
             content = re.sub(
                 r"^(%(auto)?setup\s+.*)$",
                 f"\\1\n\n{compat_prep}",
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+
+        # Inject patch application commands (after %setup or %autosetup)
+        if patch_prep:
+            patch_comment = "# Apply mogrix patches"
+            content = re.sub(
+                r"^(%(auto)?setup\s+.*)$",
+                f"\\1\n\n{patch_comment}\n{patch_prep}",
                 content,
                 count=1,
                 flags=re.MULTILINE,

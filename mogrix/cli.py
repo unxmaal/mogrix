@@ -19,6 +19,7 @@ console = Console()
 RULES_DIR = Path(__file__).parent.parent / "rules"
 HEADERS_DIR = Path(__file__).parent.parent / "headers"
 COMPAT_DIR = Path(__file__).parent.parent / "compat"
+PATCHES_DIR = Path(__file__).parent.parent / "patches"
 CROSS_DIR = Path(__file__).parent.parent / "cross"
 
 
@@ -278,6 +279,27 @@ def _convert_srpm_full(
                 shutil.copy2(compat_file, dest_file)
             console.print(f"[bold]Compat sources:[/bold] {len(compat_files)} files ({', '.join(f.name for f in compat_files)})")
 
+        # Copy patch files from mogrix patches directory if add_patch is specified
+        patch_files = []
+        if result.add_patches:
+            patches_pkg_dir = PATCHES_DIR / "packages" / spec.name
+            for patch_name in result.add_patches:
+                patch_path = patches_pkg_dir / patch_name
+                if patch_path.exists():
+                    dest_file = out_path / patch_name
+                    shutil.copy2(patch_path, dest_file)
+                    patch_files.append(patch_name)
+                else:
+                    console.print(f"[yellow]Warning:[/yellow] Patch not found: {patch_path}")
+            if patch_files:
+                console.print(f"[bold]Patches added:[/bold] {len(patch_files)} files ({', '.join(patch_files)})")
+
+        # Regenerate spec content with patches if any were added
+        if patch_files:
+            content = _generate_converted_spec(
+                spec, result, headers_path, compat_path, patch_files
+            )
+
         # Write converted spec (overwriting the original)
         converted_spec_path = out_path / spec_path.name
         converted_spec_path.write_text(content)
@@ -322,6 +344,7 @@ def _generate_converted_spec(
     result,
     headers_path: Path,
     compat_path: Path,
+    patch_files: list[str] | None = None,
 ) -> str:
     """Generate the converted spec content."""
     # Determine what was dropped/added
@@ -346,6 +369,20 @@ def _generate_converted_spec(
         compat_prep = injector.get_prep_commands(result.compat_functions)
         compat_build = injector.get_build_commands(result.compat_functions)
 
+    # Generate patch entries and prep commands
+    patch_sources = None
+    patch_prep = None
+    if patch_files:
+        # Generate Patch entries (start at 200 to avoid conflicts)
+        patch_entries = []
+        patch_cmds = []
+        for i, patch_name in enumerate(patch_files):
+            patch_num = 200 + i
+            patch_entries.append(f"Patch{patch_num}: {patch_name}")
+            patch_cmds.append(f"%patch -P{patch_num} -p1")
+        patch_sources = "\n".join(patch_entries)
+        patch_prep = "\n".join(patch_cmds)
+
     # Write modified spec
     writer = SpecWriter()
     return writer.write(
@@ -356,6 +393,8 @@ def _generate_converted_spec(
         compat_sources=compat_sources,
         compat_prep=compat_prep,
         compat_build=compat_build,
+        patch_sources=patch_sources,
+        patch_prep=patch_prep,
         ac_cv_overrides=result.ac_cv_overrides if result.ac_cv_overrides else None,
         drop_requires=result.drop_requires if result.drop_requires else None,
         remove_lines=result.remove_lines if result.remove_lines else None,
