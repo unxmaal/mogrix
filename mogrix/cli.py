@@ -564,10 +564,13 @@ def build(
     # 2. Skip %check section (can't run IRIX binaries on Linux host)
     # 3. Force the target triple so configure gets --host=mips-sgi-irix6.5
     # 4. Set _arch for BUILDROOT path expansion
+    # 5. Use --target to ensure RPMs are named with target architecture
     # Note: _target_os must be 'irix' (not 'irix6.5') for native rpm compatibility
     if cross:
         cmd.append("--nodeps")
         cmd.append("--nocheck")
+        # --target ensures RPM filenames use target arch (mips) not host (x86_64)
+        cmd.extend(["--target", "mips-sgi-irix"])
         cmd.extend(["--define", "_target mips-sgi-irix6.5"])
         cmd.extend(["--define", "_target_cpu mips"])
         cmd.extend(["--define", "_target_os irix"])
