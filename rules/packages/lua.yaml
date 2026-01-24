@@ -1,12 +1,7 @@
 # lua - Lua scripting language
-# Has sgifixes patches
+# Required by rpm for embedded scripting
 
 package: lua
-
-
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - lua.sgifixes.patch
 
 rules:
   # Autoconf cache overrides
@@ -14,9 +9,23 @@ rules:
     ac_cv_func_malloc_0_nonnull: "yes"
     ac_cv_func_realloc_0_nonnull: "yes"
 
-  # Lua uses a custom Makefile, not autotools
-  # Build typically involves:
-  # make PLAT=generic MYCFLAGS="..." MYLDFLAGS="..."
-  #
-  # For IRIX, may need:
-  # -DLUA_USE_POSIX -DLUA_USE_DLOPEN
+  # Force shared library building
+  configure_flags:
+    add:
+      - --enable-shared
+
+  # Fix libtool to allow shared library building on cross-compilation
+  spec_replacements:
+    # After libtool configuration, force shared library support and fix IRIX soname
+    - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
+      replacement: |
+        sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+        # Force libtool to build shared libraries for IRIX cross-compilation
+        sed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool
+        sed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool
+        # Fix IRIX soname handling (libtool defaults don't work for IRIX cross-compile)
+        sed -i 's|^soname_spec=.*|soname_spec="\\\$libname\\\$release\\\$shared_ext\\\$major"|g' libtool
+        sed -i 's|^library_names_spec=.*|library_names_spec="\\\$libname\\\$release\\\$shared_ext\\\$versuffix \\\$libname\\\$release\\\$shared_ext\\\$major \\\$libname\\\$shared_ext"|g' libtool
+    # Add versioned shared library to %files libs (libtool generates .0.0 suffix)
+    - pattern: "%{_libdir}/liblua-%{major_version}.so"
+      replacement: "%{_libdir}/liblua-%{major_version}.so*"

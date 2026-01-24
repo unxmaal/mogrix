@@ -193,7 +193,7 @@ class SpecWriter:
         # Inject ac_cv overrides (autoconf cache variables)
         if ac_cv_overrides:
             ac_cv_lines = "\n".join(
-                f"export {var}={val}" for var, val in ac_cv_overrides.items()
+                f'export {var}="{val}"' for var, val in ac_cv_overrides.items()
             )
             if "%build" in content:
                 content = re.sub(
@@ -207,7 +207,7 @@ class SpecWriter:
         # Inject export_vars (e.g., LD for libtool)
         if export_vars:
             export_lines = "\n".join(
-                f"export {var}={val}" for var, val in export_vars.items()
+                f'export {var}="{val}"' for var, val in export_vars.items()
             )
             if "%build" in content:
                 content = re.sub(

@@ -13,6 +13,16 @@ functions:
     header: string.h
     description: Duplicate at most n bytes of a string
 
+  strcasestr:
+    file: string/strcasestr.c
+    header: string.h
+    description: Case-insensitive substring search (GNU extension)
+
+  strsep:
+    file: string/strsep.c
+    header: string.h
+    description: Extract token from string (BSD extension)
+
   # stdio functions
   getline:
     file: stdio/getline.c
@@ -63,17 +73,129 @@ functions:
     header: stdlib.h
     description: Secure environment variable access (GNU extension)
 
+  mkdtemp:
+    file: stdlib/mkdtemp.c
+    header: stdlib.h
+    description: Create a unique temporary directory (BSD/POSIX)
+
+  qsort_r:
+    file: stdlib/qsort_r.c
+    header: stdlib.h
+    description: qsort with user data pointer (GNU extension)
+    notes: Not thread-safe - uses global state for emulation
+
+  # time functions
+  timegm:
+    file: time/timegm.c
+    header: time.h
+    description: Convert broken-down time to time_t in UTC (GNU extension)
+
   # error functions
   strerror_r:
     file: error/strerror_r.c
     header: string.h
     description: Thread-safe strerror
 
+  # Program name functions (BSD/GNU extension)
+  getprogname:
+    file: unistd/getprogname.c
+    header: stdlib.h
+    description: Get program name (BSD extension)
+    provides:
+      - getprogname
+      - setprogname
+
+  setprogname:
+    file: unistd/getprogname.c
+    header: stdlib.h
+    description: Set program name (BSD extension)
+
   # rld interface stubs
   _rld_new_interface:
     file: rld/rld_new_interface.c
     header: rld_interface.h
     description: IRIX rld interface stub for cross-compilation
+
+  # SQLite3 stub for packages that optionally use sqlite3 (e.g., tdnf history)
+  sqlite3_stub:
+    file: sqlite/sqlite3_stub.c
+    header: sqlite3.h
+    description: Stub sqlite3 implementation for IRIX (history features disabled)
+    notes: All functions return error codes - history functionality will not work
+
+  # POSIX.1-2008 "at" functions (IRIX lacks these)
+  openat:
+    file: dicl/openat-compat.c
+    header: fcntl.h
+    description: Open file relative to directory file descriptor
+    provides:
+      - openat
+      - fstatat
+      - faccessat
+      - mkdirat
+      - unlinkat
+      - renameat
+      - readlinkat
+      - symlinkat
+      - linkat
+      - fchmodat
+      - fchownat
+      - mkfifoat
+      - mknodat
+      - utimensat
+      - futimens
+      - stpcpy
+      - stpncpy
+
+  fstatat:
+    file: dicl/openat-compat.c
+    header: sys/stat.h
+    description: Get file status relative to directory fd
+
+  faccessat:
+    file: dicl/openat-compat.c
+    header: unistd.h
+    description: Check permissions relative to directory fd
+
+  mkdirat:
+    file: dicl/openat-compat.c
+    header: sys/stat.h
+    description: Create directory relative to directory fd
+
+  unlinkat:
+    file: dicl/openat-compat.c
+    header: unistd.h
+    description: Remove file/directory relative to directory fd
+
+  renameat:
+    file: dicl/openat-compat.c
+    header: stdio.h
+    description: Rename file relative to directory fds
+
+  readlinkat:
+    file: dicl/openat-compat.c
+    header: unistd.h
+    description: Read symbolic link relative to directory fd
+
+  symlinkat:
+    file: dicl/openat-compat.c
+    header: unistd.h
+    description: Create symbolic link relative to directory fd
+
+  linkat:
+    file: dicl/openat-compat.c
+    header: unistd.h
+    description: Create hard link relative to directory fds
+
+  fchmodat:
+    file: dicl/openat-compat.c
+    header: sys/stat.h
+    description: Change file mode relative to directory fd
+
+  fchownat:
+    file: dicl/openat-compat.c
+    header: unistd.h
+    description: Change file owner relative to directory fd
 
 # Common function sets for package classes
 sets:
@@ -88,6 +210,20 @@ sets:
     - strndup
     - getline
     - asprintf
+
+  # POSIX.1-2008 "at" functions for packages requiring directory-relative ops
+  posix_at:
+    - openat
+    - fstatat
+    - faccessat
+    - mkdirat
+    - unlinkat
+    - renameat
+    - readlinkat
+    - symlinkat
+    - linkat
+    - fchmodat
+    - fchownat
 
   # Full compat set (replaces libdicl)
   full:

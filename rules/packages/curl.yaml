@@ -15,6 +15,15 @@ rules:
     - libpsl-devel
     - libidn2-devel
     - krb5-devel
+    - openssl-devel
+
+  # Use cross-compiled OpenSSL from staging
+  export_vars:
+    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
+    CPPFLAGS: "-I/opt/sgug-staging/usr/sgug/include $CPPFLAGS"
+    LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS"
 
   # Package-specific autoconf cache overrides
   ac_cv_overrides:
@@ -47,3 +56,29 @@ rules:
   configure_disable:
     - ldap
     - ldaps
+
+  # Shell syntax fixes and cross-compilation adjustments
+  spec_replacements:
+    # Fix brace expansion - mkdir
+    - pattern: "mkdir build-{full,minimal}"
+      replacement: "mkdir build-full build-minimal"
+    # Fix brace expansion - sed
+    - pattern: "build-{full,minimal}/libtool"
+      replacement: "build-full/libtool build-minimal/libtool"
+    # Disable LDAP in full build (we don't have cross-compiled LDAP)
+    - pattern: "--enable-ldap"
+      replacement: "--disable-ldap"
+    - pattern: "--enable-ldaps"
+      replacement: "--disable-ldaps"
+    # Disable other features we don't have for cross-compilation
+    - pattern: "--with-libpsl"
+      replacement: "--without-libpsl"
+    - pattern: "--with-libssh"
+      replacement: "--without-libssh"
+    # Disable threaded resolver (pthreads issues on IRIX)
+    - pattern: "--enable-threaded-resolver"
+      replacement: "--disable-threaded-resolver"
+    # Remove missing files from %files section (disabled features)
+    # Note: man page is installed even with --disable-manual, so keep it
+    - pattern: "%{_datadir}/zsh"
+      replacement: "# %{_datadir}/zsh # zsh completions not built"

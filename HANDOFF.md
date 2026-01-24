@@ -1,28 +1,11 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-24
-**Status**: Mogrix refactored; ready for curl validation
+**Status**: rpm 4.19 build complete; ready for libsolv and tdnf
 
-## Current Session: Mogrix Refactoring
+## Current Session: rpm Build Complete
 
-After completing OpenSSL 3.2.1 validation, refactored mogrix to improve maintainability.
-
-### Mogrix Improvements Made
-
-1. **Implemented `skip_check` rule properly**
-   - Added to `TransformResult` in engine.py
-   - Handles both generic and package-specific rules
-   - Comments out %check section contents automatically
-   - Enabled globally in generic.yaml
-
-2. **Added common macros to generic.yaml**
-   - `_docdir`, `_pkgdocdir`, `_pkglicensedir` now injected into all specs
-   - No more manual replacements needed for these common Fedora macros
-
-3. **Refactored openssl.yaml**
-   - Removed redundant rules (now handled globally)
-   - Organized into clear categories with comments
-   - Cleaner, more maintainable
+Successfully built rpm 4.19.1.1 through the mogrix workflow with extensive spec_replacements.
 
 ### Package Validation Status
 
@@ -30,43 +13,70 @@ After completing OpenSSL 3.2.1 validation, refactored mogrix to improve maintain
 |---------|-----------------|-------|
 | zlib | DONE | No issues |
 | bzip2 | DONE | No issues |
-| openssl | DONE | 3.2.1 - spec fixes applied, RPMs built |
-| curl | PENDING | Next |
-| rpm | PENDING | |
-| tdnf | PENDING | |
+| openssl | DONE | 3.2.1 - RPMs built |
+| curl | DONE | 8.6.0 - RPMs built |
+| lua | DONE | 5.4.6 - Required by rpm |
+| file | DONE | 5.45 - libmagic for rpm |
+| rpm | DONE | 4.19.1.1 - RPMs built (MIPS N32) |
+| libsolv | PENDING | Next - needs fopencookie |
+| tdnf | PENDING | Blocked by libsolv |
 
-### OpenSSL 3.2.1 Build Complete
+### rpm 4.19.1.1 Build Complete
 
 **Built RPMs (MIPS N32):**
-- openssl-3.2.1-2.x86_64.rpm (1.4MB)
-- openssl-libs-3.2.1-2.x86_64.rpm (7.0MB)
-- openssl-devel-3.2.1-2.x86_64.rpm (2.1MB)
-- openssl-perl-3.2.1-2.x86_64.rpm (25KB)
+- rpm-4.19.1.1-1.x86_64.rpm (4.1MB) - Main package with IRIX binaries
+- rpm-build-4.19.1.1-1.x86_64.rpm (177KB) - rpmbuild, rpmspec, rpmlua
+- rpm-devel-4.19.1.1-1.x86_64.rpm (1.3MB) - Development headers
+- rpm-sign-4.19.1.1-1.x86_64.rpm (57KB) - Package signing
+- rpm-libs-4.19.1.1-1.x86_64.rpm, rpm-build-libs, rpm-sign-libs - Libraries
+- rpm-apidocs-4.19.1.1-1.noarch.rpm (4.0MB) - API documentation
 
-**Key fixes in openssl.yaml:**
-- sslarch forced to irix-mips3-gcc with no-asm no-async
-- FIPS, kTLS, SCTP disabled (Linux-specific)
-- All FIPS patches commented out
-- Perl `rename` → shell loop
-- Brace expansion fix for `install -d`
-- pushd/popd → POSIX subshell
+**Verified:**
+```
+ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV),
+dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
+```
+
+### Key Fixes for rpm 4.19
+
+**POSIX.1-2008 "at" functions (compat/dicl/openat-compat.c):**
+- openat, fstatat, faccessat, mkdirat, unlinkat, renameat
+- readlinkat, symlinkat, linkat, fchmodat, fchownat
+- mkfifoat, mknodat, utimensat, futimens
+- stpcpy, stpncpy
+
+**getprogname/setprogname (compat/unistd/getprogname.c):**
+- BSD extension for program name access
+
+**cmake cross-compilation settings:**
+- CMAKE_SYSTEM_NAME=IRIX
+- CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS with compat library
+- All HAVE_* cache variables for compat functions
+- Disabled: NLS, Python, plugins, SELinux, audit, dbus, systemd
+
+**Extensive spec_replacements in rpm.yaml:**
+- bcond changes to disable optional features
+- Skip systemd unit file installation
+- Comment out all plugin %files entries
+- Fix library versioning for IRIX
+- Post-install merge of lib/ to lib32/
 
 ## Files Modified This Session
 
 | File | Change |
 |------|--------|
-| `mogrix/rules/engine.py` | Added skip_check to TransformResult and rule handling |
-| `mogrix/emitter/spec.py` | Added skip_check logic to comment %check contents |
-| `mogrix/cli.py` | Wired skip_check parameter to SpecWriter |
-| `rules/generic.yaml` | Added _docdir, _pkgdocdir, _pkglicensedir macros; skip_check enabled |
-| `rules/packages/openssl.yaml` | Refactored - organized and cleaned up |
-| `/opt/sgug-staging/rpmmacros.irix` | Added common macros (backup location) |
+| `compat/dicl/openat-compat.c` | Added futimens implementation |
+| `compat/catalog.yaml` | Added futimens to openat provides |
+| `/opt/sgug-staging/usr/sgug/include/dicl-clang-compat/sys/stat.h` | futimens declaration, UTIME_* defines |
+| `rules/packages/rpm.yaml` | Complete rewrite with all spec_replacements |
+| `rpm-4.19.1.1-1.fc40.src-converted/rpm.spec` | Fixed spec file |
 
-## Mogrix Test Status
+## Rpmbuild Command
 
-- **107 tests passing**
-- All existing functionality preserved
-- OpenSSL build verified working after refactoring
+```bash
+# For packages needing --nodeps (cross-compilation skips BuildRequires check)
+rpmbuild -ba --nodeps /path/to/spec.spec
+```
 
 ## Solution Summary
 
@@ -84,26 +94,6 @@ Cross-compiled dynamically-linked executables and shared libraries work on IRIX:
 | mips-sgi-irix6.5-ld.bfd | Shared libraries | GNU ld for correct segment layout |
 | llvm-ar | Static libraries | Standard archiver |
 
-## Workflow
-
-Standard mogrix workflow:
-
-```bash
-# Activate environment
-source .venv/bin/activate
-
-# Fetch, convert, build
-mogrix fetch <package>
-mogrix convert workdir/<package>-*.src.rpm -o workdir/converted/
-rpmbuild --rebuild workdir/converted/<package>-*.src.rpm --nodeps \
-    --define "_topdir $HOME/rpmbuild" \
-    --define "__cc /opt/sgug-staging/usr/sgug/bin/irix-cc" \
-    --define "__ld /opt/sgug-staging/usr/sgug/bin/irix-ld"
-
-# Test on IRIX
-scp ~/rpmbuild/RPMS/x86_64/<package>-*.rpm edodd@192.168.0.81:/tmp/
-```
-
 ## Environment
 
 - **IRIX Host**: `ssh edodd@192.168.0.81`
@@ -113,21 +103,25 @@ scp ~/rpmbuild/RPMS/x86_64/<package>-*.rpm edodd@192.168.0.81:/tmp/
 
 ## Next Steps
 
-1. **Validate curl** through mogrix workflow
-2. Continue with rpm, tdnf validation
-3. Test built RPMs on IRIX
+1. **Build libsolv** - Needs fopencookie compat
+2. **Build tdnf** - Final goal
+3. **Test RPMs on IRIX**
 
 ## Known Issues
 
-### Shell Compatibility
-- rpmbuild uses `/bin/sh` (dash on Ubuntu) for scriptlets
-- pushd/popd don't work - need POSIX subshell replacement
-- Brace expansion after variables doesn't work - need explicit paths
+### Compat Functions Required
 
-### Libtool Relinking
-Cross-compiled executables may have hardcoded build-directory paths in RUNPATH.
-Workaround: set `LD_LIBRARY_PATH` on IRIX.
+| Function | Package | Status |
+|----------|---------|--------|
+| POSIX.1-2008 "at" funcs | rpm | DONE - openat-compat.c |
+| getprogname/setprogname | rpm | DONE - getprogname.c |
+| fopencookie | libsolv | READY - compat/stdio/fopencookie.c |
 
-### IRIX pthread/dlopen
-Libraries using pthreads work when directly linked but may crash via dlopen().
-Workaround: Build with `--without-threads` where possible.
+### rpmbuild Arch Warnings
+
+When cross-compiling, rpmbuild shows "Binaries arch (1) not matching the package arch (2)".
+This is expected - the host is x86_64 but binaries are MIPS.
+
+### Missing build-id Warnings
+
+Cross-compiled IRIX binaries don't have Linux build-ids. These warnings are expected.

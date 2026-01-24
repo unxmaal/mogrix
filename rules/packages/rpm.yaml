@@ -1,12 +1,8 @@
 # rpm - RPM Package Manager
-# Has sgifixes patches, needs compat functions
+# rpm 4.19 uses cmake for builds
+# Critical for package management bootstrap
 
 package: rpm
-
-
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - rpm.sgifixes.patch
 
 rules:
   # Compat functions needed
@@ -16,48 +12,186 @@ rules:
     - getline
     - asprintf
     - vasprintf
+    - openat  # Provides all POSIX.1-2008 "at" functions
+    - getprogname  # BSD extension for program name
 
-  # Drop problematic dependencies (libdicl handled in generic.yaml)
+  # Drop problematic dependencies
   drop_buildrequires:
     - libselinux-devel
     - libcap-devel
     - libacl-devel
     - audit-libs-devel
     - systemd-devel
+    - dbus-devel
+    - fapolicyd-devel
+    - libfsverity-devel
+    - ima-evm-utils-devel
+    - libsqlite3x-devel
+    - python3-devel
+    - sequoia-sq
+    - sequoia-policy-config-devel
 
   drop_requires:
     - libselinux
     - audit-libs
 
-  # Package-specific autoconf cache overrides
-  ac_cv_overrides:
-    ac_cv_func_mmap_fixed_mapped: "no"
+  # Use cross-compiled deps from staging
+  export_vars:
+    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
+    CPPFLAGS: "-I/opt/sgug-staging/usr/sgug/include $CPPFLAGS"
+    LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS"
 
-  # Configure flags
-  configure_flags:
-    add:
-      - --disable-silent-rules
-      - --without-selinux
-      - --without-cap
-      - --without-acl
-      - --without-audit
-      - --disable-plugins
-      - --disable-inhibit-plugin
-      - --disable-ima
-      - --disable-fsverity
-      - --with-crypto=openssl
-    remove:
-      - --enable-bdb-ro
-      - --enable-sqlite
-      - --enable-ndb
-      - --with-cap
-      - --with-acl
-
-  configure_disable:
-    - selinux
-    - plugins
-    - nls
-
-  # Comment out systemd conditionals
-  comment_conditionals:
-    - with_systemd
+  # cmake spec replacements for cross-compilation
+  spec_replacements:
+    # Replace cmake call with cross-compilation settings (single line continuation)
+    - pattern: "cmake \\\n      -DCMAKE_INSTALL_PREFIX"
+      replacement: "cmake \\\n      -DCMAKE_SYSTEM_NAME=IRIX \\\n      -DCMAKE_C_COMPILER=%{__cc} \\\n      -DCMAKE_CXX_COMPILER=%{__cxx} \\\n      -DCMAKE_AR=%{__ar} \\\n      -DCMAKE_RANLIB=%{__ranlib} \\\n      -DCMAKE_EXE_LINKER_FLAGS=\"$COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n      -DCMAKE_SHARED_LINKER_FLAGS=\"$COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n      -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n      -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n      -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n      -DLUA_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DLUA_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/liblua.so \\\n      -DZLIB_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libz.so \\\n      -DZLIB_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DBZIP2_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libbz2.so \\\n      -DBZIP2_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/libbz2.so \\\n      -DBZIP2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DBZIP2_INCLUDE_DIRS=/opt/sgug-staging/usr/sgug/include \\\n      -DLIBLZMA_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/liblzma.so \\\n      -DLIBLZMA_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DOPENSSL_ROOT_DIR=/opt/sgug-staging/usr/sgug \\\n      -DOPENSSL_CRYPTO_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libcrypto.so \\\n      -DOPENSSL_SSL_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libssl.so \\\n      -DPOPT_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libpopt.so \\\n      -DPOPT_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DIconv_LIBRARY= \\\n      -DIconv_INCLUDE_DIR=/opt/irix-sysroot/usr/include \\\n      -DIconv_IS_BUILT_IN=TRUE \\\n      -DENABLE_NLS=OFF \\\n      -DENABLE_OPENMP=OFF \\\n      -DENABLE_PYTHON=OFF \\\n      -DENABLE_PLUGINS=OFF \\\n      -DENABLE_TESTSUITE=OFF \\\n      -DENABLE_SQLITE=OFF \\\n      -DENABLE_NDB=OFF \\\n      -DENABLE_BDB_RO=OFF \\\n      -DENABLE_CUTF8=OFF \\\n      -DWITH_CAP=OFF \\\n      -DWITH_ACL=OFF \\\n      -DWITH_SELINUX=OFF \\\n      -DWITH_AUDIT=OFF \\\n      -DWITH_DBUS=OFF \\\n      -DWITH_FAPOLICYD=OFF \\\n      -DWITH_FSVERITY=OFF \\\n      -DWITH_IMAEVM=OFF \\\n      -DWITH_ARCHIVE=OFF \\\n      -DWITH_READLINE=OFF \\\n      -DWITH_INTERNAL_OPENPGP=ON \\\n      -DWITH_OPENSSL=ON \\\n      -DMAGIC_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libmagic.so \\\n      -DMAGIC_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DHAVE_BASENAME=1 \\\n      -DHAVE_DIRNAME=1 \\\n      -DHAVE_GETCWD=1 \\\n      -DHAVE_MKSTEMP=1 \\\n      -DHAVE_REALPATH=1 \\\n      -DHAVE_SETENV=1 \\\n      -DHAVE_UNSETENV=1 \\\n      -DHAVE_GETLINE=1 \\\n      -DHAVE_ASPRINTF=1 \\\n      -DHAVE_VASPRINTF=1 \\\n      -DHAVE_OPENAT=1 \\\n      -DHAVE_FSTATAT=1 \\\n      -DHAVE_FACCESSAT=1 \\\n      -DHAVE_MKDIRAT=1 \\\n      -DHAVE_UNLINKAT=1 \\\n      -DHAVE_RENAMEAT=1 \\\n      -DHAVE_READLINKAT=1 \\\n      -DHAVE_SYMLINKAT=1 \\\n      -DHAVE_LINKAT=1 \\\n      -DHAVE_FCHMODAT=1 \\\n      -DHAVE_FCHOWNAT=1 \\\n      -DHAVE_MKFIFOAT=1 \\\n      -DHAVE_MKNODAT=1 \\\n      -DHAVE_UTIMENSAT=1 \\\n      -DHAVE_FUTIMENS=1 \\\n      -DHAVE_STPCPY=1 \\\n      -DHAVE_STPNCPY=1 \\\n      -DHAVE_SETPROGNAME=1 \\\n      -DCMAKE_INSTALL_PREFIX=/usr/sgug \\\n      -DCMAKE_INSTALL_LIBDIR=lib32 \\\n      -DCMAKE_INSTALL_SHAREDSTATEDIR:PATH=/usr/sgug/var/lib"
+    # Remove the original CMAKE_INSTALL settings that will conflict
+    - pattern: "-DCMAKE_INSTALL_PREFIX=%{_usr} \\\n      -DCMAKE_INSTALL_SHAREDSTATEDIR:PATH=%{_var}/lib"
+      replacement: ""
+    # Remove conditional cmake options (we set them unconditionally above)
+    - pattern: "%{?with_bdb_ro:-DENABLE_BDB_RO=ON}"
+      replacement: ""
+    - pattern: "%{!?with_ndb:-DENABLE_NDB=OFF}"
+      replacement: ""
+    - pattern: "%{!?with_sqlite:-DENABLE_SQLITE=OFF}"
+      replacement: ""
+    - pattern: "%{!?with_plugins:-DENABLE_PLUGINS=OFF}"
+      replacement: ""
+    - pattern: "%{?with_fsverity:-DWITH_FSVERITY=ON}"
+      replacement: ""
+    - pattern: "%{?with_libimaevm:-DWITH_IMAEVM=ON}"
+      replacement: ""
+    - pattern: "%{!?with_libarchive:-DWITH_ARCHIVE=OFF}"
+      replacement: ""
+    - pattern: "%{!?with_check:-DENABLE_TESTSUITE=OFF}"
+      replacement: ""
+    - pattern: "%{!?with_sequoia:-DWITH_INTERNAL_OPENPGP=ON}"
+      replacement: ""
+    - pattern: "%{!?with_sequoia:-DWITH_OPENSSL=ON }"
+      replacement: ""
+    # Comment out po subdirectory since we have ENABLE_NLS=OFF but rpm's CMakeLists.txt
+    # unconditionally adds it (bug in rpm cmake)
+    # Also add IRIX platform defines to fts.c
+    # Also fix BZip2 imported target for cross-compilation
+    - pattern: "%autosetup -n rpm-%{srcver} -p1"
+      replacement: "%autosetup -n rpm-%{srcver} -p1\n\n# Disable po directory processing (NLS is off)\nsed -i 's/^\\tadd_subdirectory(po)/#\\tadd_subdirectory(po)/' CMakeLists.txt\n\n# Add IRIX platform defines to fts.c (replace sun block to add sgi first)\nsed -i 's/^#if defined(sun)/#if defined(__sgi)\\n#   define __errno_location()\\t(\\&errno)\\n#   define dirfd(dirp)\\t\\t((dirp)->dd_fd)\\n#endif\\n#if defined(sun)/' misc/fts.c\n\n# Fix BZip2 imported target - set IMPORTED_LOCATION after find_package\nsed -i '/^find_package(BZip2)/a if(BZIP2_FOUND)\\n  set_target_properties(BZip2::BZip2 PROPERTIES IMPORTED_LOCATION \\\"${BZIP2_LIBRARIES}\\\")\\nendif()' CMakeLists.txt"
+    # Skip rpmdb --initdb during install (can't run IRIX binaries on Linux host)
+    - pattern: "for be in %{?with_ndb:ndb} %{?with_sqlite:sqlite}; do"
+      replacement: "# Skip rpmdb --initdb for cross-compilation (IRIX binary can't run on Linux)\n# for be in %{?with_ndb:ndb} %{?with_sqlite:sqlite}; do\nfor be in; do"
+    # Force symlink creation to avoid conflict with cmake-installed file
+    - pattern: "ln -s ../../bin/find-debuginfo"
+      replacement: "ln -sf ../../bin/find-debuginfo"
+    # Skip find_lang since NLS is disabled and there are no .mo files
+    - pattern: "%find_lang rpm"
+      replacement: "# %find_lang rpm - skipped (NLS disabled)"
+    # Remove lang file reference from %files since NLS is disabled
+    - pattern: "%files -f _build/rpm.lang"
+      replacement: "%files"
+    # Remove systemd unit files (not applicable to IRIX)
+    - pattern: "%{_unitdir}/rpmdb-rebuild.service"
+      replacement: "# %{_unitdir}/rpmdb-rebuild.service - systemd not available on IRIX"
+    - pattern: "%{_unitdir}/rpmdb-migrate.service"
+      replacement: "# %{_unitdir}/rpmdb-migrate.service - systemd not available on IRIX"
+    # Remove rpm2archive (requires libarchive which is disabled)
+    - pattern: "%{_bindir}/rpm2archive"
+      replacement: "# %{_bindir}/rpm2archive - not built (libarchive disabled)"
+    - pattern: "%{_mandir}/man8/rpm2archive.8*"
+      replacement: "# %{_mandir}/man8/rpm2archive.8* - not built (libarchive disabled)"
+    # Remove rpmsort (not built in minimal config)
+    - pattern: "%{_bindir}/rpmsort"
+      replacement: "# %{_bindir}/rpmsort - not built in minimal config"
+    # Remove plugins man page (plugins disabled)
+    - pattern: "%{_mandir}/man8/rpm-plugins.8*"
+      replacement: "# %{_mandir}/man8/rpm-plugins.8* - not built (plugins disabled)"
+    # Fix library names (IRIX/cross-compiled without version suffixes)
+    - pattern: "%{_libdir}/librpmio.so.%{sover}"
+      replacement: "# %{_libdir}/librpmio.so.%{sover} - versioned libs not built for IRIX"
+    - pattern: "%{_libdir}/librpm.so.%{sover}"
+      replacement: "# %{_libdir}/librpm.so.%{sover} - versioned libs not built for IRIX"
+    - pattern: "%{_libdir}/librpmio.so.%{sover}.*"
+      replacement: "%{_libdir}/librpmio.so"
+    - pattern: "%{_libdir}/librpm.so.%{sover}.*"
+      replacement: "%{_libdir}/librpm.so"
+    - pattern: "%{_libdir}/librpmbuild.so.%{sover}"
+      replacement: "# %{_libdir}/librpmbuild.so.%{sover} - versioned libs not built for IRIX"
+    - pattern: "%{_libdir}/librpmbuild.so.%{sover}.*"
+      replacement: "%{_libdir}/librpmbuild.so"
+    - pattern: "%{_libdir}/librpmsign.so.%{sover}"
+      replacement: "# %{_libdir}/librpmsign.so.%{sover} - versioned libs not built for IRIX"
+    - pattern: "%{_libdir}/librpmsign.so.%{sover}.*"
+      replacement: "%{_libdir}/librpmsign.so"
+    # Remove plugins directory (plugins disabled)
+    - pattern: "%dir %{_libdir}/rpm-plugins"
+      replacement: "# %dir %{_libdir}/rpm-plugins - plugins disabled"
+    # Use rm -f to avoid failure if README.md doesn't exist
+    - pattern: "rm $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md"
+      replacement: "rm -f $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md\n\n# Merge rpm lib files from lib to lib32 for N32 ABI\nif [ -d $RPM_BUILD_ROOT/usr/sgug/lib/rpm ]; then\n  mkdir -p $RPM_BUILD_ROOT/usr/sgug/lib32/rpm\n  cp -a $RPM_BUILD_ROOT/usr/sgug/lib/rpm/* $RPM_BUILD_ROOT/usr/sgug/lib32/rpm/\n  rm -rf $RPM_BUILD_ROOT/usr/sgug/lib/rpm\nfi"
+    # Remove Python bindings files (Python disabled) - use empty replacement to drop lines
+    - pattern: "%dir %{python3_sitearch}/rpm\n"
+      replacement: ""
+    - pattern: "%{python3_sitearch}/rpm-%{rpmver}*.egg-info\n"
+      replacement: ""
+    - pattern: "%{python3_sitearch}/rpm/__init__.py\n"
+      replacement: ""
+    - pattern: "%{python3_sitearch}/rpm/transaction.py\n"
+      replacement: ""
+    - pattern: "%{python3_sitearch}/rpm/_rpm.so\n"
+      replacement: ""
+    - pattern: "%{python3_sitearch}/rpm/__pycache__/\n"
+      replacement: ""
+    # Remove example files that don't exist
+    - pattern: "%{_defaultdocdir}/rpm/examples/*.py"
+      replacement: ""
+    # Remove selinux plugin files (SELinux disabled)
+    - pattern: "%{_libdir}/rpm-plugins/selinux.so"
+      replacement: ""
+    - pattern: "%{_mandir}/man8/rpm-plugin-selinux.8*"
+      replacement: ""
+    # Remove syslog plugin files (plugins disabled)
+    - pattern: "%{_libdir}/rpm-plugins/syslog.so"
+      replacement: ""
+    - pattern: "%{_mandir}/man8/rpm-plugin-syslog.8*"
+      replacement: ""
+    # Remove systemd-inhibit plugin files (plugins disabled)
+    - pattern: "%{_libdir}/rpm-plugins/systemd_inhibit.so"
+      replacement: ""
+    - pattern: "%{_mandir}/man8/rpm-plugin-systemd-inhibit.8*"
+      replacement: ""
+    # Remove fapolicyd plugin files (plugins disabled)
+    - pattern: "%{_libdir}/rpm-plugins/fapolicyd.so"
+      replacement: ""
+    - pattern: "%{_mandir}/man8/rpm-plugin-fapolicyd.8*"
+      replacement: ""
+    # Remove prioreset plugin files (plugins disabled)
+    - pattern: "%{_libdir}/rpm-plugins/prioreset.so"
+      replacement: ""
+    - pattern: "%{_mandir}/man8/rpm-plugin-prioreset.8*"
+      replacement: ""
+    # Remove audit plugin files (plugins disabled)
+    - pattern: "%{_libdir}/rpm-plugins/audit.so"
+      replacement: ""
+    - pattern: "%{_mandir}/man8/rpm-plugin-audit.8*"
+      replacement: ""
+    # Remove dbus-announce plugin files (plugins disabled)
+    - pattern: "%{_libdir}/rpm-plugins/dbus_announce.so"
+      replacement: ""
+    - pattern: "%{_mandir}/man8/rpm-plugin-dbus-announce.8*"
+      replacement: ""
+    - pattern: "%{_datadir}/dbus-1/system.d/org.rpm.conf"
+      replacement: ""
+    # Disable optional features via bcond (libarchive, libimaevm, fsverity)
+    - pattern: "%bcond_without libarchive"
+      replacement: "%bcond_with libarchive"
+    - pattern: "%bcond_without libimaevm"
+      replacement: "%bcond_with libimaevm"
+    - pattern: "%if 0%{?rhel}\n%bcond_with fsverity\n%else\n%bcond_without fsverity\n%endif"
+      replacement: "%bcond_with fsverity"
+    # Skip systemd unit file installation
+    - pattern: "mkdir -p $RPM_BUILD_ROOT%{_unitdir}\ninstall -m 644 %{SOURCE10} $RPM_BUILD_ROOT/%{_unitdir}\ninstall -m 644 %{SOURCE20} $RPM_BUILD_ROOT/%{_unitdir}"
+      replacement: "# Skip systemd unit file installation (not needed for IRIX)\n# mkdir -p $RPM_BUILD_ROOT%{_unitdir}\n# install -m 644 %{SOURCE10} $RPM_BUILD_ROOT/%{_unitdir}\n# install -m 644 %{SOURCE20} $RPM_BUILD_ROOT/%{_unitdir}"
+    # Fix documentation file handling to include all installed docs
+    - pattern: "%doc CREDITS docs/manual/[a-z]*\n%doc %{_defaultdocdir}/rpm/CONTRIBUTING.md\n%doc %{_defaultdocdir}/rpm/COPYING\n%doc %{_defaultdocdir}/rpm/INSTALL\n%doc %{_defaultdocdir}/rpm/README"
+      replacement: "%doc CREDITS docs/manual/[a-z]*\n%{_defaultdocdir}/rpm/"

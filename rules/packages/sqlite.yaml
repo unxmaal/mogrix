@@ -13,3 +13,13 @@ rules:
       # These are Linux-specific features not available on IRIX
       - --enable-threadsafe
       - --enable-threads-override-locks
+
+  # Comment out the conditional %check wrapper - the %if needs to be disabled too
+  spec_replacements:
+    - pattern: "%if %{with check}"
+      replacement: "# %if %{with check} - disabled for cross-compilation"
+    - pattern: "%endif #with check"
+      replacement: "# %endif #with check"
+    - pattern: "%check"
+      replacement: |
+        # %check - skipped for cross-compilation

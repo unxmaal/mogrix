@@ -4,17 +4,9 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-01-24)
 
-**Phase 6.5: VALIDATING MOGRIX WORKFLOW**
+**Phase 6.5: VALIDATING MOGRIX WORKFLOW - NEAR COMPLETION**
 
-Now that tdnf runs on IRIX, we're validating that the mogrix workflow (fetch → convert → rpmbuild) produces working packages without manual intervention.
-
-### Mogrix Refactoring Complete
-
-After OpenSSL validation exposed several common issues, mogrix was refactored:
-
-1. **`skip_check` rule implemented** - Automatically comments out %check section for cross-compilation
-2. **Common macros added** - `_docdir`, `_pkgdocdir`, `_pkglicensedir` injected into all specs
-3. **openssl.yaml cleaned up** - Organized into categories, removed redundant rules
+rpm 4.19 build complete! Only libsolv and tdnf remain.
 
 ### Workflow Validation Progress
 
@@ -23,9 +15,41 @@ After OpenSSL validation exposed several common issues, mogrix was refactored:
 | zlib | DONE | Works out of the box |
 | bzip2 | DONE | Works out of the box |
 | openssl | DONE | 3.2.1 - RPMs built (MIPS N32) |
-| curl | PENDING | Next |
-| rpm | PENDING | |
-| tdnf | PENDING | |
+| curl | DONE | 8.6.0 - RPMs built (MIPS N32) |
+| lua | DONE | 5.4.6 - Required by rpm |
+| file | DONE | 5.45 - libmagic for rpm |
+| rpm | DONE | 4.19.1.1 - RPMs built (MIPS N32) |
+| libsolv | PENDING | Next - needs fopencookie |
+| tdnf | PENDING | Final goal |
+
+### rpm 4.19.1.1 Build Complete
+
+**Built RPMs:**
+- rpm-4.19.1.1-1.x86_64.rpm (4.1MB) - Main package
+- rpm-build-4.19.1.1-1.x86_64.rpm (177KB) - Build tools
+- rpm-devel-4.19.1.1-1.x86_64.rpm (1.3MB) - Development headers
+- Plus: rpm-libs, rpm-build-libs, rpm-sign, rpm-sign-libs, rpm-apidocs, rpm-cron
+
+**Verified MIPS N32 binary:**
+```
+ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV),
+dynamically linked, interpreter /lib32/rld
+```
+
+### Key Compat Functions Implemented
+
+**POSIX.1-2008 "at" functions (compat/dicl/openat-compat.c):**
+- `openat()`, `fstatat()`, `faccessat()`, `mkdirat()`, `unlinkat()`
+- `renameat()`, `readlinkat()`, `symlinkat()`, `linkat()`
+- `fchmodat()`, `fchownat()`, `mkfifoat()`, `mknodat()`, `utimensat()`, `futimens()`
+- `stpcpy()`, `stpncpy()` (POSIX.1-2008 string functions)
+
+**BSD extensions (compat/unistd/getprogname.c):**
+- `getprogname()`, `setprogname()`
+
+**Successfully built rpm dependencies:**
+- Lua 5.4.6 (shared libs working)
+- file 5.45 (libmagic, shared libs working)
 
 **Previous milestone: TDNF RUNNING ON IRIX - GOAL ACHIEVED**
 

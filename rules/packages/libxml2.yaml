@@ -10,6 +10,9 @@ add_patch:
   - libxml2.sgifixes.patch
 
 rules:
+  # Skip tests - can't run cross-compiled binaries
+  skip_check: true
+
   # Compat functions that may be needed
   inject_compat_functions:
     - strdup
@@ -34,3 +37,24 @@ rules:
 
   configure_disable:
     - static
+
+  # Remove Python subpackage since we build --without-python
+  spec_replacements:
+    - pattern: "%package -n python3-libxml2"
+      replacement: "# Disabled: %package -n python3-libxml2"
+    - pattern: "%description -n python3-libxml2"
+      replacement: "# Disabled: %description -n python3-libxml2"
+    - pattern: "%files -n python3-libxml2"
+      replacement: "# Disabled: %files -n python3-libxml2"
+    - pattern: "%{python3_sitearch}/libxml2mod.so"
+      replacement: ""
+    - pattern: "%{python3_sitelib}/libxml2.py"
+      replacement: ""
+    - pattern: "%{python3_sitelib}/__pycache__/libxml2.*"
+      replacement: ""
+    - pattern: "%{python3_sitelib}/drv_libxml2.py"
+      replacement: ""
+    - pattern: "%{python3_sitelib}/__pycache__/drv_libxml2.*"
+      replacement: ""
+    - pattern: "%doc doc/apibuild.py"
+      replacement: ""

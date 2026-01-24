@@ -8,8 +8,6 @@
  * is primarily used for error messages and is not critical.
  */
 
-#if defined(__sgi)
-
 #include <stdlib.h>
 
 /* Global to store program name if set via setprogname */
@@ -36,5 +34,3 @@ setprogname(const char *name)
         _progname = base;
     }
 }
-
-#endif /* __sgi */

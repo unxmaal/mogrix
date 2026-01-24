@@ -24,6 +24,9 @@ rules:
     - getline
     - asprintf
     - vasprintf
+    - sqlite3_stub  # Stub sqlite3 - history features disabled at runtime
+    - qsort_r  # GNU extension for qsort with user data
+    - strsep  # BSD extension for token extraction
 
   # Drop problematic dependencies (libdicl handled in generic.yaml)
   drop_buildrequires:
@@ -42,3 +45,188 @@ rules:
   comment_conditionals:
     - with_systemd
     - systemd
+
+  # Skip tests - can't run cross-compiled binaries
+  skip_check: true
+
+  # Use cross-compiled deps from staging
+  export_vars:
+    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
+
+  # Fix the %check section and cmake macros for cross-compilation
+  spec_replacements:
+    # Remove the entire conditional-wrapped %check block (can't just comment - macros still expand)
+    - pattern: |
+        %if 0%{?with_check}
+        %check
+        pip3 install flake8
+        %make_build -C %{__cmake_builddir} check
+        %endif
+      replacement: |
+        # Tests skipped for cross-compilation
+    # Replace cmake macro with cross-compilation settings
+    - pattern: |
+        %{cmake} \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DCMAKE_INSTALL_LIBDIR:PATH=%{_libdir} \
+          -DSYSTEMD_DIR=%{_unitdir} \
+          -DHISTORY_DB_DIR=%{hist_db_dir}
+      replacement: |
+        # Disable Python bindings - can't cross-compile these
+        sed -i 's|add_subdirectory.*python.*|# & (disabled for cross-compilation)|' CMakeLists.txt
+        # Disable repogpgcheck plugin - requires gpgme which we don't have
+        sed -i 's|add_subdirectory.*repogpgcheck.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
+        # Disable metalink plugin - also requires gpgme
+        sed -i 's|add_subdirectory.*metalink.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
+        # Add strings.h include for strcasecmp on IRIX (needed in multiple files)
+        find . -name "*.c" -exec grep -l "strcasecmp\|strncasecmp" {} \; | while read f; do
+          sed -i '1i #include <strings.h>' "$f"
+        done
+        # Fix IRIX header order - ensure BSD types are defined before sys/vfs.h
+        # Add sys/types.h and sys/bsd_types.h right after the header guard
+        sed -i '/#define __CLIENT_INCLUDES_H__/a #include <sys/bsd_types.h>' client/includes.h
+        sed -i '/#define __CLIENT_INCLUDES_H__/a #include <sys/types.h>' client/includes.h
+        # Remove gpgcheck.c (uses rpm 4.x APIs we don't have) and provide stub
+        sed -i 's|gpgcheck.c|# gpgcheck.c  # disabled - rpm API incompatible|' client/CMakeLists.txt
+        cat > client/gpgcheck_stub.c << 'GPGSTUB'
+        /* Stub GPG check functions - GPG verification disabled for IRIX */
+        #include <stdint.h>
+        #include <stdlib.h>
+        uint32_t TDNFGPGCheck(void *pTdnf, void *pPkgInfo, void *pRepo) { (void)pTdnf; (void)pPkgInfo; (void)pRepo; return 0; }
+        uint32_t ReadGPGKeyFile(const char *f, char **k, size_t *s) { (void)f; *k = NULL; *s = 0; return 1; }
+        uint32_t AddKeyFileToKeyring(const char *f, void *k) { (void)f; (void)k; return 0; }
+        uint32_t AddKeyPktToKeyring(const void *p, size_t s, void *k) { (void)p; (void)s; (void)k; return 0; }
+        uint32_t VerifyRpmSig(void *k, const char *f) { (void)k; (void)f; return 0; }
+        uint32_t TDNFImportGPGKeyFile(void *t, void *r, const char *f) { (void)t; (void)r; (void)f; return 0; }
+        uint32_t TDNFGPGCheckPackage(void *t, void *r, void *p, void *h) { (void)t; (void)r; (void)p; (void)h; return 0; }
+        uint32_t TDNFFetchRemoteGPGKey(void *t, void *r, const char *k, char **l) { (void)t; (void)r; (void)k; *l = NULL; return 0; }
+        GPGSTUB
+        sed -i '/# gpgcheck.c/a \    gpgcheck_stub.c' client/CMakeLists.txt
+        # Add sys/statfs.h for IRIX (statfs is not in sys/vfs.h on IRIX)
+        sed -i '/#include <sys\/vfs.h>/a #include <sys/statfs.h>' client/includes.h
+        # Add sys/ttold.h for struct winsize (unconditional), sys/termios.h for TIOCGWINSZ, sys/ioccom.h for _IOR
+        sed -i '1i #include <sys/ioctl.h>' tools/cli/lib/output.c
+        sed -i '1i #include <sys/termios.h>' tools/cli/lib/output.c
+        sed -i '1i #include <sys/ttold.h>' tools/cli/lib/output.c
+        sed -i '1i #include <sys/ioccom.h>' tools/cli/lib/output.c
+        # Add rpm/rpmmacro.h for rpmDefineMacro
+        sed -i '/#include <rpm\/header.h>/a #include <rpm/rpmmacro.h>' client/includes.h
+        # Fix statfs call for IRIX (different signature and struct)
+        # IRIX: statfs(path, buf, len, 0) and uses f_bfree instead of f_bavail
+        sed -i 's/statfs(pConf->pszCacheDir, \&stfs)/statfs(pConf->pszCacheDir, \&stfs, sizeof(stfs), 0)/' client/packageutils.c
+        sed -i 's/stfs.f_bavail/stfs.f_bfree/' client/packageutils.c
+        export COMPAT_DIR=$(pwd)/mogrix-compat
+        cmake -B _build -S . \
+          -DCMAKE_SYSTEM_NAME=IRIX \
+          -DCMAKE_C_COMPILER=%{__cc} \
+          -DCMAKE_CXX_COMPILER=%{__cxx} \
+          -DCMAKE_AR=%{__ar} \
+          -DCMAKE_RANLIB=%{__ranlib} \
+          -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+          -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
+          -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include" \
+          -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
+          -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
+          -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
+          -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
+          -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+          -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DBUILD_SHARED_LIBS=ON \
+          -DHISTORY_DB_DIR=%{hist_db_dir} \
+          -DWITHOUT_SYSTEMD=ON
+    # Use make instead of cmake_build/cmake_install
+    - pattern: "%{cmake_build}"
+      replacement: "cd _build && make %{?_smp_mflags}"
+    - pattern: "%{cmake_install}"
+      replacement: |
+        cd _build && make install DESTDIR=%{buildroot}
+        # Clean up files we don't want (systemd, plugins, automatic)
+        rm -rf %{buildroot}/lib/systemd
+        rm -rf %{buildroot}/etc/motdgen.d
+        rm -rf %{buildroot}/etc/tdnf/automatic.conf
+        rm -rf %{buildroot}/etc/tdnf/pluginconf.d
+        rm -f %{buildroot}%{_bindir}/%{name}-automatic
+        rm -f %{buildroot}%{_bindir}/tdnf-automatic
+        rm -f %{buildroot}/etc/tdnf/tdnf.conf
+    # Skip python bindings build (can't run cross-compiled python)
+    - pattern: "%make_build -C %{__cmake_builddir} python"
+      replacement: "# Skip python bindings for cross-compilation"
+    # Remove systemd service installation
+    - pattern: "rm %{buildroot}%{_unitdir}/%{name}-cache-updateinfo.{timer,service}"
+      replacement: "# Skip systemd cleanup (not built)"
+    # Skip Python bindings installation (not built)
+    - pattern: |
+        pushd %{__cmake_builddir}/python
+        %py3_install
+        popd
+      replacement: |
+        # Skip Python bindings installation (not built for cross-compilation)
+    # Fix shared library patterns for non-versioned libs
+    - pattern: "%{_libdir}/libtdnf.so.*"
+      replacement: "%{_libdir}/libtdnf.so"
+    - pattern: "%{_libdir}/libtdnfcli.so.*"
+      replacement: "%{_libdir}/libtdnfcli.so"
+    # Remove disabled plugin files
+    - pattern: "%{_tdnfpluginsdir}/libtdnfmetalink.so"
+      replacement: "# disabled: %{_tdnfpluginsdir}/libtdnfmetalink.so"
+    - pattern: "%{_tdnfpluginsdir}/libtdnfrepogpgcheck.so"
+      replacement: "# disabled: %{_tdnfpluginsdir}/libtdnfrepogpgcheck.so"
+    # Remove motdgen file if not installed
+    - pattern: "%{_sysconfdir}/motdgen.d/02-%{name}-updateinfo.sh"
+      replacement: "# not installed: %{_sysconfdir}/motdgen.d/02-%{name}-updateinfo.sh"
+    # Remove requires for disabled plugins
+    - pattern: "Requires:   %{name}-plugin-repogpgcheck = %{version}-%{release}"
+      replacement: "# disabled: Requires:   %{name}-plugin-repogpgcheck = %{version}-%{release}"
+    - pattern: "Requires:   %{name}-plugin-metalink = %{version}-%{release}"
+      replacement: "# disabled: Requires:   %{name}-plugin-metalink = %{version}-%{release}"
+    # Comment out plugin config directories and files
+    - pattern: "%dir %{_sysconfdir}/tdnf/pluginconf.d"
+      replacement: "# disabled: %dir %{_sysconfdir}/tdnf/pluginconf.d"
+    - pattern: "%dir %{_sysconfdir}/%{name}/pluginconf.d"
+      replacement: "# disabled: %dir %{_sysconfdir}/%{name}/pluginconf.d"
+    - pattern: "%config(noreplace) %{_sysconfdir}/tdnf/pluginconf.d/tdnfmetalink.conf"
+      replacement: "# disabled: %config(noreplace) %{_sysconfdir}/tdnf/pluginconf.d/tdnfmetalink.conf"
+    - pattern: "%config(noreplace) %{_sysconfdir}/%{name}/pluginconf.d/tdnfrepogpgcheck.conf"
+      replacement: "# disabled: %config(noreplace) %{_sysconfdir}/%{name}/pluginconf.d/tdnfrepogpgcheck.conf"
+    # Remove python package requires
+    - pattern: "Requires:   %{name}-python = %{version}-%{release}"
+      replacement: "# disabled: Requires:   %{name}-python = %{version}-%{release}"
+    - pattern: "Requires:   python3-pytest"
+      replacement: "# disabled: Requires:   python3-pytest"
+    - pattern: "Requires:   python3-requests"
+      replacement: "# disabled: Requires:   python3-requests"
+    # Comment out python files section
+    - pattern: "%{python3_sitelib}/*"
+      replacement: "# disabled: %{python3_sitelib}/*"
+    # Disable automatic package (requires systemd)
+    - pattern: "Requires:   %{name}-automatic = %{version}-%{release}"
+      replacement: "# disabled: Requires:   %{name}-automatic = %{version}-%{release}"
+    - pattern: "%{_bindir}/%{name}-automatic"
+      replacement: "# disabled: %{_bindir}/%{name}-automatic"
+    - pattern: "%config(noreplace) %{_sysconfdir}/%{name}/automatic.conf"
+      replacement: "# disabled: %config(noreplace) %{_sysconfdir}/%{name}/automatic.conf"
+    - pattern: "%{_unitdir}/%{name}-automatic.timer"
+      replacement: "# disabled: %{_unitdir}/%{name}-automatic.timer"
+    - pattern: "%{_unitdir}/%{name}-automatic.service"
+      replacement: "# disabled: %{_unitdir}/%{name}-automatic.service"
+    - pattern: "%{_unitdir}/%{name}-automatic-install.timer"
+      replacement: "# disabled: %{_unitdir}/%{name}-automatic-install.timer"
+    - pattern: "%{_unitdir}/%{name}-automatic-install.service"
+      replacement: "# disabled: %{_unitdir}/%{name}-automatic-install.service"
+    - pattern: "%{_unitdir}/%{name}-automatic-notifyonly.timer"
+      replacement: "# disabled: %{_unitdir}/%{name}-automatic-notifyonly.timer"
+    - pattern: "%{_unitdir}/%{name}-automatic-notifyonly.service"
+      replacement: "# disabled: %{_unitdir}/%{name}-automatic-notifyonly.service"
+    # Disable systemd scriptlets
+    - pattern: "%systemd_post %{automatic_services}"
+      replacement: "# disabled: %systemd_post %{automatic_services}"
+    - pattern: "%systemd_preun %{automatic_services}"
+      replacement: "# disabled: %systemd_preun %{automatic_services}"
+    - pattern: "%systemd_postun_with_restart %{automatic_services}"
+      replacement: "# disabled: %systemd_postun_with_restart %{automatic_services}"

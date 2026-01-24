@@ -21,7 +21,24 @@
 #include <sys/types.h>
 #include <errno.h>
 
-#include "fopencookie.h"
+/*
+ * Include our stdio.h compat wrapper which provides the fopencookie
+ * types and declaration. The compat wrapper uses _MOGRIX_FOPENCOOKIE_DECL
+ * to guard against double-definition.
+ */
+#ifndef _MOGRIX_FOPENCOOKIE_DECL
+#define _MOGRIX_FOPENCOOKIE_DECL
+
+typedef struct cookie_io_functions_t {
+    ssize_t (*read)(void *, char *, size_t);
+    ssize_t (*write)(void *, const char *, size_t);
+    int (*seek)(void *, off_t *, int);
+    int (*close)(void *);
+} cookie_io_functions_t;
+
+FILE *fopencookie(void *cookie, const char *mode, cookie_io_functions_t io);
+
+#endif /* _MOGRIX_FOPENCOOKIE_DECL */
 
 struct ctx {
     int fd;

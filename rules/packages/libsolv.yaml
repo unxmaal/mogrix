@@ -1,12 +1,10 @@
 # libsolv - Package dependency solver
-# Has sgifixes patches, needs compat functions
+# Uses cmake, needs fopencookie compat
 
 package: libsolv
-
-
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - libsolv.sgifixes.patch
+# Aliases for packages that use macros in Name field
+aliases:
+  - "lib%{libname}"
 
 rules:
   # Compat functions needed
@@ -15,11 +13,198 @@ rules:
     - strndup
     - getline
     - fopencookie
+    - strcasestr
+    - timegm
+    - mkdtemp
+    - openat  # provides openat, fstatat, futimens, etc.
 
-  # libsolv uses CMake, these are cmake options
-  # -DENABLE_RPMDB=ON
-  # -DENABLE_RPMMD=ON
-  # -DENABLE_RPMPKG=ON
-  # -DENABLE_COMPS=ON
-  # -DWITH_LIBXML2=ON
-  # -DENABLE_COMPLEX_DEPS=ON
+  # Drop problematic dependencies
+  drop_buildrequires:
+    - ninja-build
+    - python3-devel
+    - python3-setuptools
+    - swig
+    - perl-devel
+    - perl-generators
+    - ruby-devel
+    - rubygems
+    - libzstd-devel
+    - zchunk-devel
+
+  # Use cross-compiled deps from staging
+  export_vars:
+    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
+
+  # cmake spec replacements for cross-compilation
+  spec_replacements:
+    # Disable bindings (can't run cross-compiled code for swig)
+    - pattern: "%bcond_without python_bindings"
+      replacement: "%bcond_with python_bindings"
+    - pattern: "%bcond_without perl_bindings"
+      replacement: "%bcond_with perl_bindings"
+    - pattern: "%bcond_without ruby_bindings"
+      replacement: "%bcond_with ruby_bindings"
+    # Disable optional features not needed for tdnf
+    - pattern: "%bcond_without zchunk"
+      replacement: "%bcond_with zchunk"
+    - pattern: "%bcond_without zstd"
+      replacement: "%bcond_with zstd"
+    - pattern: "%bcond_without conda"
+      replacement: "%bcond_with conda"
+    # Disable extra repos not needed for tdnf
+    - pattern: "%bcond_without helix_repo"
+      replacement: "%bcond_with helix_repo"
+    - pattern: "%bcond_without suse_repo"
+      replacement: "%bcond_with suse_repo"
+    - pattern: "%bcond_without debian_repo"
+      replacement: "%bcond_with debian_repo"
+    - pattern: "%bcond_without arch_repo"
+      replacement: "%bcond_with arch_repo"
+    - pattern: "%bcond_without multi_semantics"
+      replacement: "%bcond_with multi_semantics"
+    - pattern: "%bcond_without appdata"
+      replacement: "%bcond_with appdata"
+    - pattern: "%bcond_without comps"
+      replacement: "%bcond_with comps"
+    # Replace cmake call with cross-compilation settings
+    - pattern: "%cmake -GNinja"
+      replacement: |
+        export COMPAT_DIR=$(pwd)/mogrix-compat
+        cmake -B _build -S . \
+          -DCMAKE_SYSTEM_NAME=IRIX \
+          -DCMAKE_C_COMPILER=%{__cc} \
+          -DCMAKE_CXX_COMPILER=%{__cxx} \
+          -DCMAKE_AR=%{__ar} \
+          -DCMAKE_RANLIB=%{__ranlib} \
+          -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+          -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
+          -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic" \
+          -DCMAKE_EXE_LINKER_FLAGS="$COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
+          -DCMAKE_SHARED_LINKER_FLAGS="$COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
+          -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+          -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+          -DRPM_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \
+          -DRPMDB_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/librpm.so \
+          -DRPMIO_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/librpmio.so \
+          -DLIBXML2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include/libxml2 \
+          -DLIBXML2_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libxml2.so \
+          -DZLIB_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libz.so \
+          -DZLIB_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \
+          -DBZIP2_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/libbz2.so \
+          -DBZIP2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \
+          -DLZMA_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/liblzma.so \
+          -DLZMA_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \
+          -DFEDORA=1 \
+          -DENABLE_RPMDB=ON \
+          -DENABLE_RPMDB_BYRPMHEADER=ON \
+          -DENABLE_RPMDB_LIBRPM=ON \
+          -DENABLE_RPMPKG_LIBRPM=ON \
+          -DENABLE_RPMMD=ON \
+          -DUSE_VENDORDIRS=ON \
+          -DWITH_LIBXML2=ON \
+          -DENABLE_LZMA_COMPRESSION=ON \
+          -DENABLE_BZIP2_COMPRESSION=ON \
+          -DENABLE_COMPLEX_DEPS=ON \
+          -DENABLE_ZSTD_COMPRESSION=OFF \
+          -DENABLE_ZCHUNK_COMPRESSION=OFF \
+          -DENABLE_COMPS=OFF \
+          -DENABLE_APPDATA=OFF \
+          -DENABLE_HELIXREPO=OFF \
+          -DENABLE_SUSEREPO=OFF \
+          -DENABLE_DEBIAN=OFF \
+          -DENABLE_ARCHREPO=OFF \
+          -DMULTI_SEMANTICS=OFF \
+          -DENABLE_CONDA=OFF \
+          -DENABLE_PERL=OFF \
+          -DENABLE_RUBY=OFF \
+          -DENABLE_PYTHON=OFF \
+          -DHAVE_FOPENCOOKIE=1
+    # Comment out all original cmake continuation lines (our replacement above handles them)
+    # These lines remain in the spec after %cmake -GNinja replacement and must be neutralized
+    # The original lines have lots of trailing whitespace - include some to avoid matching our replacement
+    - pattern: "  -DFEDORA=1                                              \\"
+      replacement: "  # -DFEDORA=1 \\"
+    - pattern: "  -DENABLE_RPMDB=ON                                       \\"
+      replacement: "  # -DENABLE_RPMDB=ON \\"
+    - pattern: "  -DENABLE_RPMDB_BYRPMHEADER=ON                           \\"
+      replacement: "  # -DENABLE_RPMDB_BYRPMHEADER=ON \\"
+    - pattern: "  -DENABLE_RPMDB_LIBRPM=ON                                \\"
+      replacement: "  # -DENABLE_RPMDB_LIBRPM=ON \\"
+    - pattern: "  -DENABLE_RPMPKG_LIBRPM=ON                               \\"
+      replacement: "  # -DENABLE_RPMPKG_LIBRPM=ON \\"
+    - pattern: "  -DENABLE_RPMMD=ON                                       \\"
+      replacement: "  # -DENABLE_RPMMD=ON \\"
+    - pattern: "  -DENABLE_COMPS=%{__cmake_switch -b comps}               \\"
+      replacement: "  # -DENABLE_COMPS (handled above) \\"
+    - pattern: "  -DENABLE_APPDATA=%{__cmake_switch -b appdata}           \\"
+      replacement: "  # -DENABLE_APPDATA (handled above) \\"
+    - pattern: "  -DUSE_VENDORDIRS=ON                                     \\"
+      replacement: "  # -DUSE_VENDORDIRS=ON \\"
+    - pattern: "  -DWITH_LIBXML2=ON                                       \\"
+      replacement: "  # -DWITH_LIBXML2=ON \\"
+    - pattern: "  -DENABLE_LZMA_COMPRESSION=ON                            \\"
+      replacement: "  # -DENABLE_LZMA_COMPRESSION=ON \\"
+    - pattern: "  -DENABLE_BZIP2_COMPRESSION=ON                           \\"
+      replacement: "  # -DENABLE_BZIP2_COMPRESSION=ON \\"
+    - pattern: "  -DENABLE_ZSTD_COMPRESSION=%{__cmake_switch -b zstd}     \\"
+      replacement: "  # -DENABLE_ZSTD_COMPRESSION (handled above) \\"
+    - pattern: "  -DENABLE_ZCHUNK_COMPRESSION=%{__cmake_switch -b zchunk} \\"
+      replacement: "  # -DENABLE_ZCHUNK_COMPRESSION (handled above) \\"
+    - pattern: "  -DWITH_SYSTEM_ZCHUNK=ON                                 \\"
+      replacement: "  # -DWITH_SYSTEM_ZCHUNK=ON \\"
+    - pattern: "  -DENABLE_HELIXREPO=%{__cmake_switch -b helix_repo}      \\"
+      replacement: "  # -DENABLE_HELIXREPO (handled above) \\"
+    - pattern: "  -DENABLE_SUSEREPO=%{__cmake_switch -b suse_repo}        \\"
+      replacement: "  # -DENABLE_SUSEREPO (handled above) \\"
+    - pattern: "  -DENABLE_DEBIAN=%{__cmake_switch -b debian_repo}        \\"
+      replacement: "  # -DENABLE_DEBIAN (handled above) \\"
+    - pattern: "  -DENABLE_ARCHREPO=%{__cmake_switch -b arch_repo}        \\"
+      replacement: "  # -DENABLE_ARCHREPO (handled above) \\"
+    - pattern: "  -DMULTI_SEMANTICS=%{__cmake_switch -b multi_semantics}  \\"
+      replacement: "  # -DMULTI_SEMANTICS (handled above) \\"
+    - pattern: "  -DENABLE_COMPLEX_DEPS=%{__cmake_switch -b complex_deps} \\"
+      replacement: "  # -DENABLE_COMPLEX_DEPS (handled above) \\"
+    - pattern: "  -DENABLE_CONDA=%{__cmake_switch -b conda}               \\"
+      replacement: "  # -DENABLE_CONDA (handled above) \\"
+    - pattern: "  -DENABLE_PERL=%{__cmake_switch -b perl_bindings}        \\"
+      replacement: "  # -DENABLE_PERL (handled above) \\"
+    - pattern: "  -DENABLE_RUBY=%{__cmake_switch -b ruby_bindings}        \\"
+      replacement: "  # -DENABLE_RUBY (handled above) \\"
+    - pattern: "  -DENABLE_PYTHON=%{__cmake_switch -b python_bindings}    \\"
+      replacement: "  # -DENABLE_PYTHON (handled above) \\"
+    - pattern: "  -DPYTHON_EXECUTABLE=%{python3}                          \\"
+      replacement: "  # -DPYTHON_EXECUTABLE (disabled) \\"
+    # Use make instead of ninja
+    - pattern: "%cmake_build"
+      replacement: "cd _build && make %{?_smp_mflags}"
+    - pattern: "%cmake_install"
+      replacement: "cd _build && make install DESTDIR=%{buildroot}"
+    # Remove bindings from %files since we disabled them
+    - pattern: "%files -n python3-%{libname}"
+      replacement: "# Disabled: %files -n python3-%{libname}"
+    - pattern: "%{python3_sitearch}/*"
+      replacement: ""
+    - pattern: "%files -n perl-%{libname}"
+      replacement: "# Disabled: %files -n perl-%{libname}"
+    - pattern: "%{perl_vendorarch}/*"
+      replacement: ""
+    - pattern: "%files -n ruby-%{libname}"
+      replacement: "# Disabled: %files -n ruby-%{libname}"
+    - pattern: "%{ruby_vendorarchdir}/*"
+      replacement: ""
+    # Fix library file patterns - IRIX doesn't have versioned .so files
+    - pattern: "%{_libdir}/%{name}.so.*"
+      replacement: "%{_libdir}/%{name}.so"
+    - pattern: "%{_libdir}/%{name}ext.so.*"
+      replacement: "%{_libdir}/%{name}ext.so"
+    # Remove devel package .so entries since main package now owns them
+    - pattern: |
+        %files devel
+        %{_libdir}/%{name}.so
+        %{_libdir}/%{name}ext.so
+      replacement: |
+        %files devel
+        # .so files owned by main package (no versioned libs on IRIX)

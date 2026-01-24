@@ -60,6 +60,7 @@ Headers that override IRIX system headers to fix compatibility issues:
 | `string.h` | Add strerror_r declaration |
 | `ctype.h` | Add isblank() function |
 | `complex.h` | Standalone _Complex support (avoids IRIX va_list conflict) |
+| `inttypes.h` | C99 format macros (PRIu64, PRId64, etc.) |
 | `sys/socket.h` | Force XPG msghdr with msg_flags field |
 | `sys/random.h` | Stub getrandom() returning -1/ENOSYS |
 | `sys/types.h` | Type compatibility fixes |

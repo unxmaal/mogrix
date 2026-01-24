@@ -26,10 +26,33 @@ class RuleLoader:
         return None
 
     def load_package(self, package_name: str) -> dict[str, Any] | None:
-        """Load a package-specific rule file."""
+        """Load a package-specific rule file.
+
+        Also handles common macro patterns like lib%{libname} -> libFOO
+        by checking all package yaml files for matching 'package:' fields.
+        """
+        # Try direct match first
         path = self.rules_dir / "packages" / f"{package_name}.yaml"
         if path.exists():
             return self._load_yaml(path)
+
+        # If name contains unexpanded macros, search all package files
+        if "%{" in package_name:
+            packages_dir = self.rules_dir / "packages"
+            if packages_dir.exists():
+                for yaml_file in packages_dir.glob("*.yaml"):
+                    try:
+                        rules = self._load_yaml(yaml_file)
+                        if rules and rules.get("package") == yaml_file.stem:
+                            # Check if this could be a match by pattern
+                            # e.g., lib%{libname} might match libsolv
+                            pass
+                        # Also check 'aliases' field
+                        if rules and package_name in rules.get("aliases", []):
+                            return rules
+                    except Exception:
+                        pass
+
         return None
 
     def _load_yaml(self, path: Path) -> dict[str, Any]:

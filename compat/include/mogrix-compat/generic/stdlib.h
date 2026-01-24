@@ -27,6 +27,25 @@ float strtof(const char *nptr, char **endptr);
 long double strtold(const char *nptr, char **endptr);
 #endif
 
+/*
+ * mkdtemp - create a unique temporary directory (BSD/POSIX)
+ *
+ * IRIX may not have mkdtemp. We provide our own implementation.
+ */
+#ifndef mkdtemp
+char *mkdtemp(char *template);
+#endif
+
+/*
+ * qsort_r - qsort with user-provided argument (GNU extension)
+ *
+ * IRIX doesn't have qsort_r. We provide an implementation using global state.
+ * Note: Not thread-safe.
+ */
+void qsort_r(void *base, size_t nmemb, size_t size,
+             int (*compar)(const void *, const void *, void *),
+             void *arg);
+
 #ifdef __cplusplus
 }
 #endif
