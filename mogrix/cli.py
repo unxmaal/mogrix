@@ -1336,8 +1336,50 @@ def stage(
         except Exception as e:
             console.print(f"  [red]✗ Error:[/red] {e}")
 
+    # Fix multiarch headers (create mips64 variants from x86_64)
+    _fix_multiarch_headers(staging_path)
+
     console.print("\n[bold green]Staging complete![/bold green]")
     console.print("\nStaged libraries are now available for cross-compilation.")
+
+
+def _fix_multiarch_headers(staging_path: Path) -> None:
+    """Create mips64 variants of multiarch headers.
+
+    Some packages (lua, openssl) use multiarch header dispatch where the main
+    header includes an architecture-specific header like:
+        #include <luaconf-x86_64.h>  // on x86_64
+        #include <luaconf-mips64.h>  // on mips64
+
+    Since we're cross-compiling for mips64 but building on x86_64, the x86_64
+    headers get installed. We need to create mips64 copies.
+    """
+    import shutil
+
+    include_dir = staging_path / "usr" / "sgug" / "include"
+
+    # Known multiarch headers: (x86_64 source, mips64 target)
+    MULTIARCH_HEADERS = [
+        # Lua
+        ("luaconf-x86_64.h", "luaconf-mips64.h"),
+        # OpenSSL
+        ("openssl/configuration-x86_64.h", "openssl/configuration-mips64.h"),
+        ("openssl/opensslconf-x86_64.h", "openssl/opensslconf-mips64.h"),
+    ]
+
+    fixed_any = False
+    for src_name, dst_name in MULTIARCH_HEADERS:
+        src_path = include_dir / src_name
+        dst_path = include_dir / dst_name
+
+        if src_path.exists() and not dst_path.exists():
+            # Ensure parent directory exists
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_path, dst_path)
+            if not fixed_any:
+                console.print("\n[bold]Fixing multiarch headers:[/bold]")
+                fixed_any = True
+            console.print(f"  Created {dst_name} from {src_name}")
 
 
 def _list_staged_packages(staging_path: Path, preexisting_libs: set, preexisting_headers: set):
