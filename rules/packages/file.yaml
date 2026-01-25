@@ -51,7 +51,15 @@ rules:
       replacement: "%bcond_with python3"
     # Force libtool to build shared libraries for cross-compilation
     - pattern: "# remove hardcoded library paths from local libtool"
-      replacement: "# Fix libtool to build shared libs for cross-compilation\nsed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool\nsed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool\nsed -i 's|^soname_spec=.*|soname_spec=\"\\\\$libname\\\\$release\\\\$shared_ext.\\\\$major\"|g' libtool\nsed -i 's|^library_names_spec=.*|library_names_spec=\"\\\\$libname\\\\$release\\\\$shared_ext.\\\\$versuffix \\\\$libname\\\\$release\\\\$shared_ext.\\\\$major \\\\$libname\\\\$shared_ext\"|g' libtool\n# remove hardcoded library paths from local libtool"
+      replacement: |
+        # Fix libtool to build shared libs for cross-compilation
+        sed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool
+        sed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool
+        sed -i 's|^soname_spec=.*|soname_spec="\\$libname\\$release\\$shared_ext.\\$major"|g' libtool
+        sed -i 's|^library_names_spec=.*|library_names_spec="\\$libname\\$release\\$shared_ext.\\$versuffix \\$libname\\$release\\$shared_ext.\\$major \\$libname\\$shared_ext"|g' libtool
+        # Add mogrix-compat library to src/Makefile LIBS
+        sed -i "s|^LIBS = |LIBS = -L$(pwd)/mogrix-compat -lmogrix-compat |g" src/Makefile
+        # remove hardcoded library paths from local libtool
     # Change file-libs %files to handle both .so and .so.* patterns
     - pattern: "%{_libdir}/*so.*"
       replacement: "%{_libdir}/*.so*"

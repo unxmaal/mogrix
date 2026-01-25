@@ -18,40 +18,29 @@ rules:
     - openssl-devel
 
   # Use cross-compiled OpenSSL from staging
+  # Export LD for libtool - use GNU ld (LLD doesn't support -print-search-dirs)
   export_vars:
     PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
     PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
     PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
     CPPFLAGS: "-I/opt/sgug-staging/usr/sgug/include $CPPFLAGS"
     LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS"
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
 
   # Package-specific autoconf cache overrides
   ac_cv_overrides:
     curl_cv_func_recv_args: "int,void *,size_t,int"
     curl_cv_func_send_args: "int,const void *,size_t,int"
+    # Override libtool's LD detection - force GNU ld.bfd (LLD doesn't support -print-search-dirs)
+    lt_cv_path_LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
 
-  # Configure flags
+  # Configure flags - only add, don't remove (removal mangles line continuations)
   configure_flags:
     add:
       - --disable-silent-rules
-      - --with-ssl=/opt/sgug-staging/usr/sgug
-      - --with-zlib=/opt/sgug-staging/usr/sgug
       - --enable-ipv6
-      - --disable-threaded-resolver
-      - --without-libssh2
-      - --without-libpsl
-      - --without-libidn2
-      - --without-brotli
-      - --without-zstd
-      - --without-nghttp2
-      - --without-gssapi
       - --disable-ldap
       - --disable-ldaps
-    remove:
-      - --with-libssh2
-      - --with-brotli
-      - --with-nghttp2
-      - --with-gssapi
 
   configure_disable:
     - ldap
@@ -93,9 +82,21 @@ rules:
       replacement: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl ${RPM_BUILD_ROOT}%{_bindir}/curl-%{version}"
     # curl uses out-of-tree builds - add CC/CPPFLAGS/LDFLAGS exports inside subshells
     - pattern: "# configure minimal build\n("
-      replacement: "# configure minimal build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/sgug-staging/usr/sgug/bin/irix-ld\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+      replacement: "# configure minimal build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
     - pattern: "# configure full build\n("
-      replacement: "# configure full build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/sgug-staging/usr/sgug/bin/irix-ld\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+      replacement: "# configure full build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
     # Replace %configure with ../configure for out-of-tree builds
     - pattern: "    %configure $common_configure_opts   \\"
       replacement: "    ../configure --prefix=/usr/sgug --exec-prefix=/usr/sgug --bindir=/usr/sgug/bin --sbindir=/usr/sgug/sbin --libdir=/usr/sgug/lib32 --includedir=/usr/sgug/include --datadir=/usr/sgug/share --mandir=/usr/sgug/share/man --infodir=/usr/sgug/share/info --sysconfdir=/usr/sgug/etc --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu $common_configure_opts \\"
+    # Let OpenSSL be detected via pkg-config (which is properly configured)
+    - pattern: "--with-ssl --with-ca-bundle"
+      replacement: "--with-openssl --with-ca-bundle"
+    # Disable features we don't have cross-compiled libraries for
+    - pattern: "--with-gssapi"
+      replacement: "--without-gssapi"
+    - pattern: "--with-libidn2"
+      replacement: "--without-libidn2"
+    - pattern: "--with-nghttp2"
+      replacement: "--without-nghttp2"
+    - pattern: "--with-brotli"
+      replacement: "--without-brotli"

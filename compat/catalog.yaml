@@ -119,6 +119,20 @@ functions:
     header: stdlib.h
     description: Set program name (BSD extension)
 
+  # POSIX spawn functions (IRIX lacks these)
+  posix_spawn:
+    file: runtime/spawn.c
+    header: spawn.h
+    description: Spawn a new process
+    provides:
+      - posix_spawn
+      - posix_spawnp
+
+  posix_spawnp:
+    file: runtime/spawn.c
+    header: spawn.h
+    description: Spawn a new process, searching PATH
+
   # rld interface stubs
   _rld_new_interface:
     file: rld/rld_new_interface.c

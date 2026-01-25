@@ -43,4 +43,29 @@
 #endif
 #endif
 
+/*
+ * POSIX.1-2008 *at() functions
+ * These operate relative to a directory file descriptor.
+ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Access and permissions */
+int faccessat(int dirfd, const char *pathname, int mode, int flags);
+int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags);
+
+/* File/directory operations */
+int unlinkat(int dirfd, const char *pathname, int flags);
+int renameat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath);
+
+/* Symbolic links */
+int symlinkat(const char *target, int newdirfd, const char *linkpath);
+ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t bufsiz);
+int linkat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath, int flags);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* _MOGRIX_COMPAT_UNISTD_H */

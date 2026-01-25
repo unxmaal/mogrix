@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-25 15:25
-**Status**: Ready to build curl
+**Last Updated**: 2026-01-25 16:45
+**Status**: COMPLETE - All packages built successfully
 
 ---
 
@@ -22,13 +22,13 @@ Validate mogrix workflow by building tdnf dependency chain one package at a time
 | 3 | popt | 1.19 | **COMPLETE** | Required stpcpy compat, libtool fixes |
 | 4 | openssl | 3.2.1 | **COMPLETE** | Built first try |
 | 5 | libxml2 | 2.12.5 | **COMPLETE** | Required libtool fixes |
-| 6 | curl | 8.6.0 | PENDING | |
-| 7 | xz | 5.4.6 | PENDING | |
-| 8 | lua | 5.4.6 | PENDING | |
-| 9 | file | 5.45 | PENDING | |
-| 10 | rpm | 4.19.1.1 | PENDING | Known blocker: spawn.h |
-| 11 | libsolv | 0.7.28 | PENDING | |
-| 12 | **tdnf** | **3.5.14** | PENDING | **TARGET** |
+| 6 | curl | 8.6.0 | **COMPLETE** | Required irix-cc wrapper fixes for clang diagnostics & __mips64 |
+| 7 | xz | 5.4.6 | **COMPLETE** | Required libtool fix (library-only build) |
+| 8 | lua | 5.4.6 | **COMPLETE** | Built first try |
+| 9 | file | 5.45 | **COMPLETE** | Required compat lib linking fix |
+| 10 | rpm | 4.19.1.1 | **COMPLETE** | Required spawn.h, fcntl.h, sys/stat.h, unistd.h compat |
+| 11 | libsolv | 0.7.28 | **COMPLETE** | Built first try |
+| 12 | **tdnf** | **3.5.14** | **COMPLETE** | **TARGET - All builds successful!** |
 
 ---
 
@@ -135,6 +135,35 @@ IRIX libc is missing some C99 functions (llabs), but Clang provides them as buil
 | `llabs()` | stdlib.h | long long absolute value (C99) - extern decl for Clang builtin |
 | `UINT64_C()` etc | stdint.h | Integer constant macros (C99) |
 
+### irix-cc Wrapper Must Handle Clang Diagnostic Options
+Libtool and configure scripts call the compiler with diagnostic flags like `-print-search-dirs`, `-print-prog-name`, etc. The irix-cc wrapper was incorrectly passing these to the linker (because no .c files = link mode). Fixed by adding special case handling at the start of irix-cc:
+```bash
+case "$1" in
+    -print-search-dirs|-print-prog-name*|-print-file-name*|-print-libgcc-file-name)
+        exec $CLANG $CLANG_FLAGS "$@"
+        ;;
+    --version|-v|-dumpversion|-dumpmachine|-print-multiarch)
+        exec $CLANG $CLANG_FLAGS "$@"
+        ;;
+esac
+```
+
+### irix-ld Wrapper Must Handle GNU ld Options
+Similarly, the irix-ld wrapper must pass options like `-print-search-dirs` to GNU ld.bfd instead of LLD:
+```bash
+case "$1" in
+    -print-search-dirs|-print-prog-name*|-v|--version)
+        exec $GNULD "$@"
+        ;;
+esac
+```
+
+### Clang __mips64 Macro Breaks OpenSSL Multiarch Headers
+Clang defines `__mips64=1` even for N32 ABI. OpenSSL's multiarch `configuration.h` checks `__mips64` before `__mips`, so it tries to include `configuration-mips64.h` instead of `configuration-mips.h`. Fixed by adding to irix-cc:
+```bash
+CLANG_FLAGS="$CLANG_FLAGS -U__mips64 -U__mips64__ -D__mips=1"
+```
+
 ---
 
 ## Environment
@@ -149,7 +178,21 @@ IRIX libc is missing some C99 functions (llabs), but Clang provides them as buil
 
 ---
 
-## Next Steps
+## Completed
 
-1. Build bzip2
-2. Continue through dependency chain
+All 12 packages in the tdnf dependency chain have been successfully cross-compiled for IRIX:
+
+1. zlib-ng 2.1.6
+2. bzip2 1.0.8
+3. popt 1.19
+4. openssl 3.2.1
+5. libxml2 2.12.5
+6. curl 8.6.0
+7. xz 5.4.6
+8. lua 5.4.6
+9. file 5.45
+10. rpm 4.19.1.1
+11. libsolv 0.7.28
+12. **tdnf 3.5.14**
+
+All packages are available in `/home/edodd/rpmbuild/RPMS/mips/`

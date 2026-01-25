@@ -34,6 +34,16 @@ rules:
     # Skip autoreconf - the tarball has pre-generated configure
     - pattern: "autoreconf -fi"
       replacement: "# autoreconf -fi - skipped (pre-generated configure available)"
+    # Fix libtool for IRIX - enable shared library building
+    - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
+      replacement: |
+        sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+        # Fix libtool for IRIX - enable shared library building
+        sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool
+        sed -i 's/deplibs_check_method="unknown"/deplibs_check_method="pass_all"/g' libtool
+        sed -i 's/^version_type=none$/version_type=linux/g' libtool
+        sed -i 's/^soname_spec=""$/soname_spec="\\$libname\\${shared_ext}\\$major"/g' libtool
+        sed -i 's/^library_names_spec=""$/library_names_spec="\\$libname\\${shared_ext}\\$versuffix \\$libname\\${shared_ext}\\$major \\$libname\\${shared_ext}"/g' libtool
     # Remove Source100/101 since they conflict with mogrix compat sources
     - pattern: "Source100:	colorxzgrep.sh"
       replacement: "# Source100: colorxzgrep.sh - removed (conflict with mogrix compat)"

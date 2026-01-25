@@ -8,6 +8,8 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 Clean rebuild of tdnf chain with strict stop-on-error. Goal is to verify mogrix rules are complete.
 
+**Progress: 6/12 packages complete (50%)**
+
 ### Validation Approach
 
 1. Clean environment completely
@@ -18,29 +20,40 @@ Clean rebuild of tdnf chain with strict stop-on-error. Goal is to verify mogrix 
 
 ### Package Chain
 
-| # | Package | Version | Status |
-|---|---------|---------|--------|
-| 1 | zlib | 1.2.13 | PENDING |
-| 2 | bzip2 | 1.0.8 | PENDING |
-| 3 | popt | 1.19 | PENDING |
-| 4 | openssl | 3.2.1 | PENDING |
-| 5 | libxml2 | 2.12.5 | PENDING |
-| 6 | curl | 8.6.0 | PENDING |
-| 7 | xz | 5.4.6 | PENDING |
-| 8 | lua | 5.4.6 | PENDING |
-| 9 | file | 5.45 | PENDING |
-| 10 | rpm | 4.19.1.1 | PENDING |
-| 11 | libsolv | 0.7.28 | PENDING |
-| 12 | **tdnf** | **3.5.14** | PENDING |
+| # | Package | Version | Status | Notes |
+|---|---------|---------|--------|-------|
+| 1 | zlib-ng | 2.1.6 | **COMPLETE** | FC40 replaced zlib with zlib-ng; cmake-based |
+| 2 | bzip2 | 1.0.8 | **COMPLETE** | Built first try |
+| 3 | popt | 1.19 | **COMPLETE** | Required stpcpy compat, libtool fixes |
+| 4 | openssl | 3.2.1 | **COMPLETE** | Built first try |
+| 5 | libxml2 | 2.12.5 | **COMPLETE** | Required libtool fixes |
+| 6 | curl | 8.6.0 | **COMPLETE** | Required irix-cc wrapper fixes |
+| 7 | xz | 5.4.6 | PENDING | Next up |
+| 8 | lua | 5.4.6 | PENDING | |
+| 9 | file | 5.45 | PENDING | |
+| 10 | rpm | 4.19.1.1 | PENDING | Known blocker: spawn.h |
+| 11 | libsolv | 0.7.28 | PENDING | |
+| 12 | **tdnf** | **3.5.14** | PENDING | **TARGET** |
 
 ### Known Gaps from Earlier Attempt
 
 | Issue | Status |
 |-------|--------|
-| `__mips=1` in irix-cc | Fixed in cross/bin/irix-cc |
+| `__mips=1` in irix-cc | Fixed - also added `-U__mips64` |
 | unistd.h sysconf compat | Fixed in compat/include |
 | spawn.h for rpm | **NOT FIXED** |
 | multiarch symlinks (OpenSSL, lua) | Manual staging workaround only |
+| irix-cc diagnostic options | Fixed - handles -print-search-dirs etc |
+| irix-ld diagnostic options | Fixed - passes to GNU ld.bfd |
+
+### Toolchain Fixes (Session 2026-01-25)
+
+| Fix | File | Description |
+|-----|------|-------------|
+| Clang diagnostic options | `/opt/sgug-staging/usr/sgug/bin/irix-cc` | Handle -print-search-dirs, --version, etc. by passing to clang instead of linker |
+| GNU ld diagnostic options | `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Handle -print-search-dirs by passing to GNU ld.bfd |
+| `__mips64` macro | `/opt/sgug-staging/usr/sgug/bin/irix-cc` | Undefine `__mips64`/`__mips64__` for N32 ABI (breaks OpenSSL multiarch headers) |
+| stpcpy compat | `compat/runtime/stpcpy.c` | IRIX libc doesn't have stpcpy |
 
 ### Key Compat Functions Implemented
 
@@ -214,7 +227,18 @@ This design follows the insight that libdicl's true value was never the library 
 - **107 tests**, all passing
 - Covers: parser, rules, engine, emitter, headers, compat, patches, CLI, batch, deps
 
-### Cross-Compilation Validated on IRIX
+### Cross-Compilation Validated (Phase 7 - FC40)
+
+| Package | Version | Type | Result |
+|---------|---------|------|--------|
+| zlib-ng | 2.1.6 | shared lib | Works |
+| bzip2 | 1.0.8 | shared lib | Works |
+| popt | 1.19 | shared lib | Works |
+| openssl | 3.2.1 | shared lib | Works |
+| libxml2 | 2.12.5 | shared lib | Works |
+| curl | 8.6.0 | shared lib + exe | Works |
+
+### Historical Validation (Earlier Sessions)
 
 | Package | Type | Result |
 |---------|------|--------|
@@ -223,11 +247,7 @@ This design follows the insight that libdicl's true value was never the library 
 | coreutils | executables | Works |
 | tar, gzip, sed, grep | executables | Works |
 | make, patch | executables | Works |
-| zlib, bzip2, xz | static/shared libs | Works |
 | ncurses, readline | static libs | Works |
-| popt | shared lib | Works (dlopen validated) |
-| openssl | shared lib | Works (dlopen with RTLD_LAZY) |
-| curl | dynamically linked exe | Works (HTTP/HTTPS) |
 | libsolv | shared lib | Works |
 | libsolvext | shared lib | Works (with fopencookie) |
 | **dumpsolv** | **dynamically linked exe** | **Works** |
@@ -256,6 +276,17 @@ This design follows the insight that libdicl's true value was never the library 
 
 ## Next Steps
 
+### Immediate: Complete Package Chain (6/12 done)
+
+| Package | Notes |
+|---------|-------|
+| xz | Next - compression library |
+| lua | Scripting for rpm |
+| file | Magic file detection |
+| rpm | Key milestone - has spawn.h blocker |
+| libsolv | Dependency resolver |
+| tdnf | **GOAL** |
+
 ### Confidence Assessment: ~95%
 
 A clean rebuild from scratch should succeed. All critical knowledge gaps have been fixed:
@@ -267,8 +298,11 @@ A clean rebuild from scratch should succeed. All critical knowledge gaps have be
 | RPM architecture naming | DONE - `--target mips-sgi-irix` added |
 | -devel package staging | DONE - auto-included by `mogrix stage` |
 | Multiarch headers | DONE - auto-created during staging |
+| irix-cc diagnostic options | DONE - handles -print-search-dirs |
+| irix-ld diagnostic options | DONE - passes to GNU ld.bfd |
+| __mips64 for N32 ABI | DONE - undefined in irix-cc |
 
-### Remaining Work
+### After Package Chain Complete
 
 #### 1. Test on IRIX Hardware
 
@@ -436,3 +470,40 @@ Exit: 66  # Expected - no config file
 - IRIX header ordering requirements (time.h before sys/time.h)
 - MIPSpro builtin type definitions needed
 - scandir/alphasort hidden behind _SGIAPI when _XOPEN_SOURCE defined
+
+### RESOLVED: Libtool Shared Library Generation
+
+**Status**: SOLVED - Post-configure sed commands
+
+**Problem**: Libtool detects IRIX as "unknown" platform and refuses to build shared libraries.
+
+**Solution**: Add these sed commands after %configure in spec files:
+```bash
+sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool
+sed -i 's/deplibs_check_method="unknown"/deplibs_check_method="pass_all"/g' libtool
+sed -i 's/^version_type=none$/version_type=linux/g' libtool
+sed -i 's/^soname_spec=""$/soname_spec="\\$libname\\${shared_ext}\\$major"/g' libtool
+sed -i 's/^library_names_spec=""$/library_names_spec="\\$libname\\${shared_ext}\\$versuffix \\$libname\\${shared_ext}\\$major \\$libname\\${shared_ext}"/g' libtool
+```
+
+### RESOLVED: IRIX Feature Macro Chain
+
+**Status**: DOCUMENTED - Use `_XOPEN_SOURCE=600` for snprintf/vsnprintf
+
+**Problem**: Many packages define `_POSIX_SOURCE` or `_POSIX_C_SOURCE`, which breaks IRIX's `_SGIAPI` macro chain and hides functions like snprintf/vsnprintf.
+
+**Solution**: Add `-D_XOPEN_SOURCE=600` to CFLAGS. This enables `_XOPEN5` which exposes snprintf/vsnprintf regardless of POSIX macros.
+
+**Background**: IRIX `<standards.h>` uses:
+- `_NO_POSIX` = true only if neither `_POSIX_SOURCE` nor `_POSIX_C_SOURCE` defined
+- `_SGIAPI` requires `_NO_POSIX` to be true
+- `_XOPEN5` = `_XOPEN_SOURCE >= 500`
+- snprintf/vsnprintf require: `defined(__c99) || ((_XOPEN5 || _SGIAPI) && _NO_ANSIMODE)`
+
+### RESOLVED: Clang __mips64 for N32 ABI
+
+**Status**: SOLVED - Undefine in irix-cc wrapper
+
+**Problem**: Clang defines `__mips64=1` even for N32 ABI (which is 32-bit). This breaks OpenSSL's multiarch `configuration.h` which checks `__mips64` before `__mips`.
+
+**Solution**: Add `-U__mips64 -U__mips64__` to CLANG_FLAGS in irix-cc wrapper.
