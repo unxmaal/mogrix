@@ -16,9 +16,18 @@
 extern "C" {
 #endif
 
-/* Spawn file actions - placeholder (not fully implemented) */
+/*
+ * Spawn file actions - stores up to 16 actions to perform in child
+ */
+#define _MOGRIX_SPAWN_MAX_ACTIONS 16
+
 typedef struct {
-    int __dummy;
+    int count;
+    struct {
+        int type;       /* 0=close, 1=dup2, 2=open */
+        int fd;         /* fd to close or dup2 target */
+        int newfd;      /* for dup2: source fd */
+    } actions[_MOGRIX_SPAWN_MAX_ACTIONS];
 } posix_spawn_file_actions_t;
 
 /* Spawn attributes - placeholder (not fully implemented) */
@@ -49,6 +58,14 @@ int posix_spawnp(pid_t *pid, const char *file,
                  const posix_spawn_file_actions_t *file_actions,
                  const posix_spawnattr_t *attrp,
                  char *const argv[], char *const envp[]);
+
+/*
+ * File actions management functions
+ */
+int posix_spawn_file_actions_init(posix_spawn_file_actions_t *file_actions);
+int posix_spawn_file_actions_destroy(posix_spawn_file_actions_t *file_actions);
+int posix_spawn_file_actions_addclose(posix_spawn_file_actions_t *file_actions, int fd);
+int posix_spawn_file_actions_adddup2(posix_spawn_file_actions_t *file_actions, int fd, int newfd);
 
 #ifdef __cplusplus
 }

@@ -4,45 +4,60 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-01-25)
 
-**Phase 7: STRICT VALIDATION - One package at a time**
+**Phase 8: FRESH VALIDATION ROUND**
 
-Clean rebuild of tdnf chain with strict stop-on-error. Goal is to verify mogrix rules are complete.
+Previous round completed all 12 packages but required fixes along the way. This round validates that all fixes are captured in mogrix rules and compat headers.
 
-**Progress: 6/12 packages complete (50%)**
+**Progress: 0/12 packages (starting fresh)**
 
 ### Validation Approach
 
-1. Clean environment completely
+1. Clean environment completely (`./cleanup.sh`)
 2. Build each package individually
 3. **STOP immediately on any failure**
 4. **Report success** before proceeding to next package
-5. Fix any mogrix rule gaps before continuing
+5. All fixes should already be in mogrix - no new fixes expected
 
 ### Package Chain
 
 | # | Package | Version | Status | Notes |
 |---|---------|---------|--------|-------|
-| 1 | zlib-ng | 2.1.6 | **COMPLETE** | FC40 replaced zlib with zlib-ng; cmake-based |
-| 2 | bzip2 | 1.0.8 | **COMPLETE** | Built first try |
-| 3 | popt | 1.19 | **COMPLETE** | Required stpcpy compat, libtool fixes |
-| 4 | openssl | 3.2.1 | **COMPLETE** | Built first try |
-| 5 | libxml2 | 2.12.5 | **COMPLETE** | Required libtool fixes |
-| 6 | curl | 8.6.0 | **COMPLETE** | Required irix-cc wrapper fixes |
-| 7 | xz | 5.4.6 | PENDING | Next up |
+| 1 | zlib-ng | 2.1.6 | PENDING | cmake-based, needs _XOPEN_SOURCE=600 |
+| 2 | bzip2 | 1.0.8 | PENDING | |
+| 3 | popt | 1.19 | PENDING | stpcpy compat, libtool fixes |
+| 4 | openssl | 3.2.1 | PENDING | |
+| 5 | libxml2 | 2.12.5 | PENDING | libtool fixes |
+| 6 | curl | 8.6.0 | PENDING | __mips64 fix, LD export |
+| 7 | xz | 5.4.6 | PENDING | libtool fixes |
 | 8 | lua | 5.4.6 | PENDING | |
-| 9 | file | 5.45 | PENDING | |
-| 10 | rpm | 4.19.1.1 | PENDING | Known blocker: spawn.h |
+| 9 | file | 5.45 | PENDING | compat lib linking |
+| 10 | rpm | 4.19.1.1 | PENDING | spawn.h, fcntl.h, sys/stat.h compat |
 | 11 | libsolv | 0.7.28 | PENDING | |
 | 12 | **tdnf** | **3.5.14** | PENDING | **TARGET** |
 
-### Known Gaps from Earlier Attempt
+### Previous Round Summary (Completed 2026-01-25)
+
+All 12 packages built successfully. Key fixes added during that round:
+
+| Fix | Files | Description |
+|-----|-------|-------------|
+| spawn.h compat | `compat/include/.../spawn.h`, `compat/runtime/spawn.c` | posix_spawn/posix_spawnp via fork+exec |
+| fcntl.h compat | `compat/include/.../fcntl.h` | O_NOFOLLOW, O_CLOEXEC, AT_* constants, openat decl |
+| sys/stat.h compat | `compat/include/.../sys/stat.h` | fstatat, mkdirat, fchmodat, etc. declarations |
+| unistd.h updates | `compat/include/.../unistd.h` | faccessat, fchownat, unlinkat, etc. declarations |
+| xz libtool fix | `rules/packages/xz.yaml` | Post-configure sed for shared libs |
+| file compat linking | `rules/packages/file.yaml` | Add mogrix-compat to src/Makefile LIBS |
+
+### All Known Gaps Fixed
 
 | Issue | Status |
 |-------|--------|
 | `__mips=1` in irix-cc | Fixed - also added `-U__mips64` |
 | unistd.h sysconf compat | Fixed in compat/include |
-| spawn.h for rpm | **NOT FIXED** |
-| multiarch symlinks (OpenSSL, lua) | Manual staging workaround only |
+| spawn.h for rpm | **FIXED** - new compat header + implementation |
+| POSIX.1-2008 *at functions | **FIXED** - declarations in fcntl.h, sys/stat.h, unistd.h |
+| AT_SYMLINK_NOFOLLOW, O_NOFOLLOW | **FIXED** - defined in fcntl.h |
+| multiarch symlinks (OpenSSL, lua) | Auto-handled by staging |
 | irix-cc diagnostic options | Fixed - handles -print-search-dirs etc |
 | irix-ld diagnostic options | Fixed - passes to GNU ld.bfd |
 
@@ -54,22 +69,27 @@ Clean rebuild of tdnf chain with strict stop-on-error. Goal is to verify mogrix 
 | GNU ld diagnostic options | `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Handle -print-search-dirs by passing to GNU ld.bfd |
 | `__mips64` macro | `/opt/sgug-staging/usr/sgug/bin/irix-cc` | Undefine `__mips64`/`__mips64__` for N32 ABI (breaks OpenSSL multiarch headers) |
 | stpcpy compat | `compat/runtime/stpcpy.c` | IRIX libc doesn't have stpcpy |
+| spawn.h compat | `compat/include/.../spawn.h` + `compat/runtime/spawn.c` | posix_spawn/posix_spawnp for rpm |
+| fcntl.h compat | `compat/include/.../fcntl.h` | O_NOFOLLOW, AT_* constants for rpm |
+| sys/stat.h compat | `compat/include/.../sys/stat.h` | fstatat, mkdirat, etc. for rpm |
+| unistd.h updates | `compat/include/.../unistd.h` | POSIX.1-2008 *at function declarations |
 
 ### Key Compat Functions Implemented
 
 | Function | Package | File | Status |
 |----------|---------|------|--------|
 | POSIX.1-2008 "at" funcs | rpm, libsolv | openat-compat.c | DONE |
+| posix_spawn/posix_spawnp | rpm | spawn.c | DONE |
 | getprogname/setprogname | rpm | getprogname.c | DONE |
 | fopencookie | libsolv | fopencookie.c | DONE |
-| getline | libsolv, tdnf | getline.c | DONE |
+| getline | libsolv, tdnf, file | getline.c | DONE |
 | strdup/strndup | file, xz, libsolv, tdnf | strdup.c, strndup.c | DONE |
 | strcasestr | libsolv | strcasestr.c | DONE |
 | strsep | tdnf | strsep.c | DONE |
 | timegm | libsolv | timegm.c | DONE |
 | mkdtemp | libsolv | mkdtemp.c | DONE |
 | qsort_r | libsolv, tdnf | qsort_r.c | DONE |
-| asprintf/vasprintf | tdnf | asprintf.c | DONE |
+| asprintf/vasprintf | tdnf, file | asprintf.c | DONE |
 | getopt_long | file, tdnf | getopt_long.c | DONE |
 | sqlite3_stub | tdnf | sqlite3_stub.c | DONE |
 
@@ -276,24 +296,38 @@ This design follows the insight that libdicl's true value was never the library 
 
 ## Next Steps
 
-### Immediate: Complete Package Chain (6/12 done)
+### Immediate: Validation Round (0/12 done)
+
+All fixes from previous round are captured. This round validates clean build from scratch.
 
 | Package | Notes |
 |---------|-------|
-| xz | Next - compression library |
+| zlib-ng | First - cmake-based compression |
+| bzip2 | Simple compression |
+| popt | Option parsing, first libtool |
+| openssl | TLS/crypto |
+| libxml2 | XML parsing |
+| curl | HTTP client |
+| xz | LZMA compression |
 | lua | Scripting for rpm |
 | file | Magic file detection |
-| rpm | Key milestone - has spawn.h blocker |
+| rpm | Package manager |
 | libsolv | Dependency resolver |
 | tdnf | **GOAL** |
 
-### Confidence Assessment: ~95%
+### Confidence Assessment: ~99%
 
-A clean rebuild from scratch should succeed. All critical knowledge gaps have been fixed:
+Previous round completed all 12 packages. All fixes are now captured in:
+- mogrix rules (YAML files in `rules/packages/`)
+- compat headers (`compat/include/mogrix-compat/generic/`)
+- compat runtime (`compat/runtime/`)
 
 | Fix | Status |
 |-----|--------|
-| sys/stat.h wrapper | DONE - in `cross/include/dicl-clang-compat/sys/stat.h` |
+| sys/stat.h wrapper | DONE - fstatat, mkdirat, fchmodat etc. |
+| fcntl.h wrapper | DONE - O_NOFOLLOW, AT_* constants |
+| unistd.h wrapper | DONE - *at function declarations |
+| spawn.h compat | DONE - posix_spawn/posix_spawnp |
 | `%systemd_*` scriptlets | DONE - in `generic.yaml` remove_lines |
 | RPM architecture naming | DONE - `--target mips-sgi-irix` added |
 | -devel package staging | DONE - auto-included by `mogrix stage` |
@@ -301,6 +335,7 @@ A clean rebuild from scratch should succeed. All critical knowledge gaps have be
 | irix-cc diagnostic options | DONE - handles -print-search-dirs |
 | irix-ld diagnostic options | DONE - passes to GNU ld.bfd |
 | __mips64 for N32 ABI | DONE - undefined in irix-cc |
+| libtool shared lib fixes | DONE - in package YAML rules |
 
 ### After Package Chain Complete
 

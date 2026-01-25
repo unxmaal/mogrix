@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-25 16:45
-**Status**: COMPLETE - All packages built successfully
+**Last Updated**: 2026-01-25 17:15
+**Status**: VALIDATION ROUND COMPLETE - 12/12 packages built successfully!
 
 ---
 
@@ -19,16 +19,16 @@ Validate mogrix workflow by building tdnf dependency chain one package at a time
 |---|---------|---------|--------|-------|
 | 1 | **zlib-ng** | 2.1.6 | **COMPLETE** | FC40 replaced zlib with zlib-ng; cmake-based |
 | 2 | bzip2 | 1.0.8 | **COMPLETE** | Built first try |
-| 3 | popt | 1.19 | **COMPLETE** | Required stpcpy compat, libtool fixes |
+| 3 | popt | 1.19 | **COMPLETE** | Built first try (stpcpy already in mogrix) |
 | 4 | openssl | 3.2.1 | **COMPLETE** | Built first try |
-| 5 | libxml2 | 2.12.5 | **COMPLETE** | Required libtool fixes |
-| 6 | curl | 8.6.0 | **COMPLETE** | Required irix-cc wrapper fixes for clang diagnostics & __mips64 |
-| 7 | xz | 5.4.6 | **COMPLETE** | Required libtool fix (library-only build) |
+| 5 | libxml2 | 2.12.5 | **COMPLETE** | Built first try |
+| 6 | curl | 8.6.0 | **COMPLETE** | Built first try |
+| 7 | xz | 5.4.6 | **COMPLETE** | Built first try |
 | 8 | lua | 5.4.6 | **COMPLETE** | Built first try |
-| 9 | file | 5.45 | **COMPLETE** | Required compat lib linking fix |
-| 10 | rpm | 4.19.1.1 | **COMPLETE** | Required spawn.h, fcntl.h, sys/stat.h, unistd.h compat |
+| 9 | file | 5.45 | **COMPLETE** | Required posix_spawn_file_actions_* functions |
+| 10 | rpm | 4.19.1.1 | **COMPLETE** | Built first try (after file compat fix) |
 | 11 | libsolv | 0.7.28 | **COMPLETE** | Built first try |
-| 12 | **tdnf** | **3.5.14** | **COMPLETE** | **TARGET - All builds successful!** |
+| 12 | **tdnf** | **3.5.14** | **COMPLETE** | **TARGET ACHIEVED** - from Photon OS SRPM |
 
 ---
 
@@ -134,6 +134,39 @@ IRIX libc is missing some C99 functions (llabs), but Clang provides them as buil
 |----------|--------|---------|
 | `llabs()` | stdlib.h | long long absolute value (C99) - extern decl for Clang builtin |
 | `UINT64_C()` etc | stdint.h | Integer constant macros (C99) |
+| `stpcpy()` | string.h | Copy string returning pointer to end |
+| `posix_spawn()` | spawn.h | Spawn process (POSIX.1-2008) - fork+exec implementation |
+| `posix_spawnp()` | spawn.h | Spawn process with PATH search |
+| `posix_spawn_file_actions_init()` | spawn.h | Initialize file actions for spawn |
+| `posix_spawn_file_actions_destroy()` | spawn.h | Destroy file actions |
+| `posix_spawn_file_actions_addclose()` | spawn.h | Add close action for spawn |
+| `posix_spawn_file_actions_adddup2()` | spawn.h | Add dup2 action for spawn |
+| `openat()` | fcntl.h | Open file relative to directory fd |
+| `fstatat()` | sys/stat.h | Stat file relative to directory fd |
+| `mkdirat()` | sys/stat.h | Create directory relative to directory fd |
+| `fchmodat()` | sys/stat.h | Chmod relative to directory fd |
+| `utimensat()` | sys/stat.h | Set timestamps relative to directory fd |
+| `futimens()` | sys/stat.h | Set timestamps via fd |
+| `faccessat()` | unistd.h | Access check relative to directory fd |
+| `fchownat()` | unistd.h | Chown relative to directory fd |
+| `unlinkat()` | unistd.h | Unlink relative to directory fd |
+| `renameat()` | unistd.h | Rename relative to directory fds |
+| `symlinkat()` | unistd.h | Symlink relative to directory fd |
+| `readlinkat()` | unistd.h | Readlink relative to directory fd |
+| `linkat()` | unistd.h | Hard link relative to directory fds |
+
+### New Compat Constants Added
+| Constant | Header | Purpose |
+|----------|--------|---------|
+| `O_NOFOLLOW` | fcntl.h | Don't follow symlinks (defined as 0 - no-op) |
+| `O_CLOEXEC` | fcntl.h | Close-on-exec (defined as 0 - use fcntl instead) |
+| `AT_FDCWD` | fcntl.h | Current working directory for *at() functions |
+| `AT_SYMLINK_NOFOLLOW` | fcntl.h | Don't follow symlinks in *at() |
+| `AT_REMOVEDIR` | fcntl.h | Remove directory instead of file |
+| `AT_SYMLINK_FOLLOW` | fcntl.h | Follow symlinks in linkat() |
+| `AT_EACCESS` | fcntl.h | Use effective IDs in faccessat() |
+| `_SC_NPROCESSORS_ONLN` | unistd.h | Maps to IRIX's _SC_NPROC_ONLN |
+| `_SC_PHYS_PAGES` | unistd.h | Physical memory pages (stub) |
 
 ### irix-cc Wrapper Must Handle Clang Diagnostic Options
 Libtool and configure scripts call the compiler with diagnostic flags like `-print-search-dirs`, `-print-prog-name`, etc. The irix-cc wrapper was incorrectly passing these to the linker (because no .c files = link mode). Fixed by adding special case handling at the start of irix-cc:
@@ -178,21 +211,47 @@ CLANG_FLAGS="$CLANG_FLAGS -U__mips64 -U__mips64__ -D__mips=1"
 
 ---
 
-## Completed
+## Previous Round Summary
 
-All 12 packages in the tdnf dependency chain have been successfully cross-compiled for IRIX:
+The previous validation round successfully built all 12 packages, but required many fixes along the way. Those fixes have now been captured in:
 
-1. zlib-ng 2.1.6
-2. bzip2 1.0.8
-3. popt 1.19
-4. openssl 3.2.1
-5. libxml2 2.12.5
-6. curl 8.6.0
-7. xz 5.4.6
-8. lua 5.4.6
-9. file 5.45
-10. rpm 4.19.1.1
-11. libsolv 0.7.28
-12. **tdnf 3.5.14**
+- Package YAML files (`rules/packages/*.yaml`)
+- Compat headers (`compat/include/mogrix-compat/generic/`)
+- Compat runtime (`compat/runtime/`)
+- Toolchain wrappers (`/opt/cross/bin/irix-cc`, `irix-ld`)
 
-All packages are available in `/home/edodd/rpmbuild/RPMS/mips/`
+This fresh validation round will verify that all fixes are properly captured and builds succeed from a clean state.
+
+---
+
+## Validation Complete!
+
+All 12 packages in the tdnf dependency chain have been successfully built for IRIX cross-compilation.
+
+**Built RPMs available in:** `~/rpmbuild/RPMS/mips/`
+
+Key packages:
+- `tdnf-3.5.14-1.mips.rpm` - The target package manager
+- `rpm-4.19.1.1-1.mips.rpm` - RPM package manager
+- `libsolv-0.7.28-1.mips.rpm` - SAT solver for package dependencies
+
+**Note**: tdnf is not in Fedora - it's from VMware's Photon OS. The SRPM is in `srpms/tdnf-3.5.14-1.ph5.src-converted/`.
+
+---
+
+## What Worked This Session
+
+1. **All 12 packages built successfully** - mogrix rules captured all necessary fixes
+2. **Direct wget downloads** work better than `mogrix fetch` for reliability
+3. **Existing Photon OS SRPM** for tdnf in `srpms/` directory worked perfectly
+4. **posix_spawn_file_actions_*** functions needed for `file` package - added to compat layer
+
+---
+
+## What Failed / Gotchas
+
+1. **mogrix fetch sometimes puts SRPMs in wrong directory** (SOURCES instead of SRPMS)
+2. **Previously-converted SRPMs may linger** - always clean up converted directories before converting
+3. **"source 100 defined multiple times" error** means SRPM was already converted - delete and re-fetch fresh
+4. **tdnf is NOT in Fedora** - it's from VMware Photon OS, use existing SRPM in `srpms/` directory
+5. **file package needed posix_spawn file actions** - added `posix_spawn_file_actions_init/destroy/addclose/adddup2` to spawn.h/spawn.c
