@@ -2,43 +2,45 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-01-24)
+## Current Status (2026-01-25)
 
-**Phase 6.5: COMPLETE - FULL DEPENDENCY CHAIN VALIDATED**
+**Phase 7: STRICT VALIDATION - One package at a time**
 
-All 12 packages in the tdnf dependency chain built successfully. Target achieved.
+Clean rebuild of tdnf chain with strict stop-on-error. Goal is to verify mogrix rules are complete.
 
-### Validated Package Chain
+### Validation Approach
 
-| # | Package | Version | Status | Notes |
-|---|---------|---------|--------|-------|
-| 1 | zlib | 1.2.13 | DONE | Compression library |
-| 2 | bzip2 | 1.0.8 | DONE | Compression library |
-| 3 | popt | 1.19 | DONE | Option parsing |
-| 4 | openssl | 3.1.1 | DONE | TLS/SSL |
-| 5 | libxml2 | 2.10.4 | DONE | XML parsing |
-| 6 | curl | 8.2.1 | DONE | HTTP/HTTPS |
-| 7 | xz | 5.4.6 | DONE | Compression library |
-| 8 | lua | 5.4.6 | DONE | Scripting (rpm) |
-| 9 | file | 5.45 | DONE | libmagic |
-| 10 | rpm | 4.19.1.1 | DONE | Package manager core |
-| 11 | libsolv | 0.7.28 | DONE | Dependency solver |
-| 12 | **tdnf** | **3.5.14** | **DONE** | **TARGET ACHIEVED** |
+1. Clean environment completely
+2. Build each package individually
+3. **STOP immediately on any failure**
+4. **Report success** before proceeding to next package
+5. Fix any mogrix rule gaps before continuing
 
-All packages produce valid **ELF 32-bit MSB, MIPS N32** binaries for IRIX 6.5.
+### Package Chain
 
-### tdnf 3.5.14 Build Complete (TARGET ACHIEVED)
+| # | Package | Version | Status |
+|---|---------|---------|--------|
+| 1 | zlib | 1.2.13 | PENDING |
+| 2 | bzip2 | 1.0.8 | PENDING |
+| 3 | popt | 1.19 | PENDING |
+| 4 | openssl | 3.2.1 | PENDING |
+| 5 | libxml2 | 2.12.5 | PENDING |
+| 6 | curl | 8.6.0 | PENDING |
+| 7 | xz | 5.4.6 | PENDING |
+| 8 | lua | 5.4.6 | PENDING |
+| 9 | file | 5.45 | PENDING |
+| 10 | rpm | 4.19.1.1 | PENDING |
+| 11 | libsolv | 0.7.28 | PENDING |
+| 12 | **tdnf** | **3.5.14** | PENDING |
 
-**Built RPMs (all .mips.rpm):**
-- tdnf-3.5.14-1.mips.rpm - Main package manager
-- tdnf-cli-libs-3.5.14-1.mips.rpm - CLI library
-- tdnf-devel-3.5.14-1.mips.rpm - Development headers
+### Known Gaps from Earlier Attempt
 
-**Verified MIPS N32 binary:**
-```
-ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV),
-dynamically linked, interpreter /lib32/rld
-```
+| Issue | Status |
+|-------|--------|
+| `__mips=1` in irix-cc | Fixed in cross/bin/irix-cc |
+| unistd.h sysconf compat | Fixed in compat/include |
+| spawn.h for rpm | **NOT FIXED** |
+| multiarch symlinks (OpenSSL, lua) | Manual staging workaround only |
 
 ### Key Compat Functions Implemented
 

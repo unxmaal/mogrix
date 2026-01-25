@@ -8,13 +8,19 @@ rules:
   ac_cv_overrides:
     ac_cv_func_malloc_0_nonnull: "yes"
     ac_cv_func_realloc_0_nonnull: "yes"
+    # Tell configure we have long long support
+    ac_cv_sizeof_long_long: "8"
 
   # Force shared library building
   configure_flags:
     add:
       - --enable-shared
 
-  # Fix libtool to allow shared library building on cross-compilation
+  # Export CFLAGS
+  export_vars:
+    CFLAGS: "-O2 -g -DLUA_USE_LINUX"
+
+  # Fix libtool and luaconf.h for cross-compilation
   spec_replacements:
     # After libtool configuration, force shared library support and fix IRIX soname
     - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
@@ -26,6 +32,12 @@ rules:
         # Fix IRIX soname handling (libtool defaults don't work for IRIX cross-compile)
         sed -i 's|^soname_spec=.*|soname_spec="\\\$libname\\\$release\\\$shared_ext\\\$major"|g' libtool
         sed -i 's|^library_names_spec=.*|library_names_spec="\\\$libname\\\$release\\\$shared_ext\\\$versuffix \\\$libname\\\$release\\\$shared_ext\\\$major \\\$libname\\\$shared_ext"|g' libtool
+    # Patch luaconf.h.template to enable LUA_32BITS (IRIX long long detection fails)
+    - pattern: "sed -i 's|@pkgdatadir@|%{_datadir}|g' src/luaconf.h.template"
+      replacement: |
+        sed -i 's|@pkgdatadir@|%{_datadir}|g' src/luaconf.h.template
+        # Enable LUA_32BITS for IRIX (long long detection is problematic)
+        sed -i 's/^#define LUA_32BITS[[:space:]]*0/#define LUA_32BITS 1/' src/luaconf.h.template
     # Add versioned shared library to %files libs (libtool generates .0.0 suffix)
     - pattern: "%{_libdir}/liblua-%{major_version}.so"
       replacement: "%{_libdir}/liblua-%{major_version}.so*"

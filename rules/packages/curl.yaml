@@ -34,8 +34,8 @@ rules:
   configure_flags:
     add:
       - --disable-silent-rules
-      - --with-ssl
-      - --with-zlib
+      - --with-ssl=/opt/sgug-staging/usr/sgug
+      - --with-zlib=/opt/sgug-staging/usr/sgug
       - --enable-ipv6
       - --disable-threaded-resolver
       - --without-libssh2

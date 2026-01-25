@@ -1,404 +1,132 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-24
-**Status**: gpgcheck.c PORT VERIFIED - Build successful with GPG verification enabled
+**Last Updated**: 2026-01-25 12:30
+**Status**: STARTING FRESH - Clean validation with strict stop-on-error
 
 ---
 
-## gpgcheck.c Port: VERIFIED BUILD SUCCESS
+## Goal
 
-**Updated 2026-01-24.**
+Validate mogrix workflow by building tdnf dependency chain one package at a time.
 
-### What Was Done
+**Critical expectation**: `mogrix convert` should work perfectly for each package. If it doesn't, that's a bug in mogrix rules that must be fixed before proceeding.
 
-1. **Implemented `add_patch` feature in mogrix** - patches now copied from `patches/packages/<pkg>/`
-   - Modified `mogrix/rules/engine.py`: Added `add_patches` field to TransformResult
-   - Modified `mogrix/cli.py`: Added PATCHES_DIR, patch copying, spec injection
-   - Modified `mogrix/emitter/spec.py`: Added patch_sources and patch_prep injection
+## Approach
 
-2. **Created gpgcheck patch**: `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch`
-   - Ports AddKeyPktToKeyring() to use rpmKeyringAddKey directly
-   - Ports VerifyRpmSig() to use pgpPrtParams + rpmKeyringVerifySig
-
-3. **Updated all SGUG-RSE patches for tdnf 3.5.14**:
-   - `client-defines.sgifixes.patch` - Updated line numbers for new source
-   - `cmakelist-paths.sgifixes.patch` - Updated for SYSTEMD_DIR conditional
-   - `tdnf-conf.sgifixes.patch` - Updated for config value change
-   - `tdnf-pool.sgifixes.patch` - Updated for pszArch conditional
-   - `tdnf-printfprecision.sgifixes.patch` - Updated for pr_info/pr_crit APIs
-   - `tdnf-client-rpmtrans.sgifixes.patch` - DISABLED (needs further work)
-
-4. **Fixed mogrix emitter for %autosetup**: Skip injecting `%patch` commands when spec uses `%autosetup` (which applies all patches automatically)
-
-5. **Fixed install cleanup paths**: Use `%{_prefix}`, `%{_sysconfdir}` macros instead of hardcoded paths
-
-### API Changes in gpgcheck Patch
-
-| Old API (tdnf uses) | New API (rpm 4.19) |
-|---------------------|-------------------|
-| `pgpDig` | `pgpDigParams` |
-| `pgpNewDig()` | (removed) |
-| `pgpPrtPkts()` | `pgpPrtParams()` |
-| `pgpFreeDig()` | `pgpDigParamsFree()` |
-| `rpmPubkeyDig()` | (removed) |
-| `rpmKeyringLookup()` | `rpmKeyringVerifySig()` |
-
-### Build Result
-
-**BUILD SUCCESSFUL!**
-
-```
-$ file tdnf
-ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV),
-dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
-```
-
-Built RPMs:
-- tdnf-3.5.14-1.mips.rpm
-- tdnf-cli-libs-3.5.14-1.mips.rpm
-- tdnf-devel-3.5.14-1.mips.rpm
-
-### Remaining Work
-
-1. **Test on IRIX hardware**: Verify tdnf runs with GPG verification enabled
-2. **Fix tdnf-client-rpmtrans.sgifixes.patch**: GPG key URL variable expansion moved to gpgcheck.c in 3.5.14
+1. Clean build environment completely
+2. For each package in order:
+   - Fetch fresh FC40 SRPM
+   - Run `mogrix convert`
+   - Run `rpmbuild --rebuild`
+   - **STOP immediately if either step fails**
+   - **NOTIFY user on success** before proceeding
+3. Install successful builds to staging before next package
 
 ---
 
-## Current Status: Full Validation Complete
+## Build Order
 
-The complete dependency chain for tdnf has been successfully built and validated:
-
-```
-zlib → bzip2 → popt → openssl → libxml2 → curl → xz → lua → file → rpm → libsolv → tdnf
-```
-
-All 12 packages produce valid **ELF 32-bit MSB, MIPS N32** binaries for IRIX 6.5.
-
----
-
-## CRITICAL: Knowledge Must Be Stored in Mogrix
-
-**READ THIS FIRST.** The mission of mogrix is storing knowledge. If you make a fix and don't write it into mogrix rules, that knowledge is LOST.
-
-### Staging Improvements (FIXED)
-
-**FIXED**: RPM architecture naming and -devel package staging:
-
-1. **`--target mips-sgi-irix` flag added to rpmbuild** - All packages (including -devel) now correctly named with `mips` architecture instead of `x86_64`
-
-2. **Auto-devel staging** - `mogrix stage` now automatically includes matching -devel packages:
-   ```bash
-   mogrix stage libxml2-2.10.4-3.mips.rpm
-   # Automatically also stages libxml2-devel-2.10.4-3.mips.rpm
-   ```
-
-This provides:
-- Unversioned `.so` symlinks (e.g., `libxml2.so`)
-- pkg-config `.pc` files (e.g., `libxml-2.0.pc`)
-- Header files
-
-3. **Multiarch header auto-fix** - `mogrix stage` automatically creates mips64 variants of multiarch headers:
-   - `luaconf-mips64.h` from `luaconf-x86_64.h`
-   - `openssl/configuration-mips64.h` from `openssl/configuration-x86_64.h`
-
-### Remaining Manual Workarounds
-
-**None!** All staging workarounds are now automated.
+| # | Package | Version | Status | Notes |
+|---|---------|---------|--------|-------|
+| 1 | zlib | 1.2.13 | PENDING | |
+| 2 | bzip2 | 1.0.8 | PENDING | |
+| 3 | popt | 1.19 | PENDING | |
+| 4 | openssl | 3.2.1 | PENDING | |
+| 5 | libxml2 | 2.12.5 | PENDING | |
+| 6 | curl | 8.6.0 | PENDING | |
+| 7 | xz | 5.4.6 | PENDING | |
+| 8 | lua | 5.4.6 | PENDING | |
+| 9 | file | 5.45 | PENDING | |
+| 10 | rpm | 4.19.1.1 | PENDING | Known blocker: spawn.h |
+| 11 | libsolv | 0.7.28 | PENDING | |
+| 12 | **tdnf** | **3.5.14** | PENDING | **TARGET** |
 
 ---
 
-## Validated Package Chain (2026-01-24)
+## Known Issues from Previous Attempt
 
-Successfully built the complete dependency chain for tdnf on IRIX 6.5 MIPS N32.
+These were encountered in today's earlier run. Some may need to be added to mogrix:
 
-### Package Validation Status
+| Issue | Description | Fix Location |
+|-------|-------------|--------------|
+| `__mips` undefined | OpenSSL multiarch headers need it | `cross/bin/irix-cc` (DONE) |
+| configuration-mips64.h | Symlink needed in staging | Manual - needs automation |
+| luaconf-mips64.h | Symlink needed in staging | Manual - needs automation |
+| `_SC_NPROCESSORS_ONLN` | IRIX uses `_SC_NPROC_ONLN` | `compat/.../unistd.h` (DONE) |
+| spawn.h missing | rpm 4.19 needs posix_spawn | NOT FIXED |
 
-| # | Package | Version | Mogrix Workflow | Binary Verification |
-|---|---------|---------|-----------------|---------------------|
-| 1 | zlib | 1.2.13 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 2 | bzip2 | 1.0.8 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 3 | popt | 1.19 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 4 | openssl | 3.1.1 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 5 | libxml2 | 2.10.4 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 6 | curl | 8.2.1 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 7 | xz | 5.4.6 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 8 | lua | 5.4.6 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 9 | file | 5.45 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 10 | rpm | 4.19.1.1 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 11 | libsolv | 0.7.28 | DONE | ELF 32-bit MSB, MIPS N32 |
-| 12 | **tdnf** | **3.5.14** | **DONE** | **ELF 32-bit MSB, MIPS N32** |
+---
 
-### tdnf 3.5.14 Build Complete (TARGET ACHIEVED)
-
-**Built RPMs (MIPS N32):**
-- tdnf-3.5.14-1.mips.rpm - Main package manager
-- tdnf-cli-libs-3.5.14-1.mips.rpm - CLI library
-- tdnf-devel-3.5.14-1.mips.rpm - Development headers
-
-**Package contents:**
-- `/usr/sgug/bin/tdnf` - Main binary
-- `/usr/sgug/bin/yum`, `/usr/sgug/bin/tyum` - Compatibility symlinks
-- `/usr/sgug/lib32/libtdnf.so` - Library
-- Configuration files and bash completion
-
-**Verified:**
-```
-ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV),
-dynamically linked, interpreter /lib32/rld, with debug_info, not stripped
-```
-
-### Key Fixes for tdnf (stored in rules/packages/tdnf.yaml)
-
-| Fix | Description |
-|-----|-------------|
-| sqlite3_stub | Stub implementation (no sqlite3 on IRIX) |
-| gpgcheck-rpm419.patch | Port to rpm 4.19 API (needs build test) |
-| qsort_r | GNU extension compat |
-| strsep | BSD extension compat |
-| strings.h | For strcasecmp/strncasecmp |
-| sys/ttold.h | For struct winsize |
-| sys/statfs.h | IRIX statfs differences |
-| cmake cross-compile | Full toolchain setup |
-| Disabled: Python, metalink, repogpgcheck, systemd | N/A on IRIX |
-
-### Key Fixes for rpm 4.19
-
-**POSIX.1-2008 "at" functions (compat/dicl/openat-compat.c):**
-- openat, fstatat, faccessat, mkdirat, unlinkat, renameat
-- readlinkat, symlinkat, linkat, fchmodat, fchownat
-- mkfifoat, mknodat, utimensat, futimens
-- stpcpy, stpncpy
-
-**getprogname/setprogname (compat/unistd/getprogname.c):**
-- BSD extension for program name access
-
-**cmake cross-compilation settings:**
-- CMAKE_SYSTEM_NAME=IRIX
-- CMAKE_EXE_LINKER_FLAGS and CMAKE_SHARED_LINKER_FLAGS with compat library
-- All HAVE_* cache variables for compat functions
-- Disabled: NLS, Python, plugins, SELinux, audit, dbus, systemd
-
-**Extensive spec_replacements in rpm.yaml:**
-- bcond changes to disable optional features
-- Skip systemd unit file installation
-- Comment out all plugin %files entries
-- Fix library versioning for IRIX
-- Post-install merge of lib/ to lib32/
-
-## Files Modified This Session
-
-| File | Change |
-|------|--------|
-| `rules/packages/tdnf.yaml` | Extensive cross-compilation rules (233 lines) |
-| `compat/stdlib/qsort_r.c` | qsort_r GNU extension compat |
-| `compat/string/strsep.c` | strsep BSD extension compat |
-| `compat/sqlite/sqlite3_stub.c` | Stub sqlite3 for disabled history |
-| `compat/include/mogrix-compat/generic/sqlite3.h` | sqlite3 stub header |
-| `compat/include/mogrix-compat/generic/string.h` | Added strsep declaration |
-| `compat/include/mogrix-compat/generic/stdlib.h` | Added qsort_r declaration |
-| `compat/catalog.yaml` | Added sqlite3_stub, qsort_r, strsep |
-| `/opt/sgug-staging/.../dicl-clang-compat/sys/stat.h` | **NOT IN MOGRIX - MUST FIX** |
-| `BOOTSTRAP.md` | Updated with tdnf success |
-| `plan.md` | Added knowledge gap phase |
-| `Claude.md` | Added knowledge storage emphasis |
-
-## Rpmbuild Command
+## Cleanup Commands
 
 ```bash
-# For packages needing --nodeps (cross-compilation skips BuildRequires check)
-rpmbuild -ba --nodeps /path/to/spec.spec
+# Clean staging (keep toolchain wrappers in bin/)
+sudo rm -rf /opt/sgug-staging/usr/sgug/lib32/*
+sudo rm -rf /opt/sgug-staging/usr/sgug/include/*
+
+# Restore compat headers from mogrix
+cp -r /home/edodd/projects/github/unxmaal/mogrix/cross/include/* /opt/sgug-staging/usr/sgug/include/
+cp -r /home/edodd/projects/github/unxmaal/mogrix/compat/include/* /opt/sgug-staging/usr/sgug/include/
+
+# Clean rpmbuild
+rm -rf ~/rpmbuild/BUILD/* ~/rpmbuild/BUILDROOT/* ~/rpmbuild/RPMS/mips/*
+
+# Verify
+ls /opt/sgug-staging/usr/sgug/lib32/   # Should be empty
+ls ~/rpmbuild/RPMS/mips/               # Should be empty
 ```
 
-## Solution Summary
+---
 
-Cross-compiled dynamically-linked executables and shared libraries work on IRIX:
+## Per-Package Workflow
 
-1. **Shared libraries**: Use GNU ld (`mips-sgi-irix6.5-ld.bfd`) for correct 2-LOAD segment layout
-2. **Executables**: Use LLD with `--dynamic-linker=/lib32/rld` interpreter
+```bash
+# 1. Fetch SRPM (if not already present)
+mogrix fetch <package>
 
-### Key Technical Details
+# 2. Convert (MUST succeed without errors)
+mogrix convert ~/rpmbuild/SRPMS/<package>-*.fc40.src.rpm
 
-| Tool | Use Case | Notes |
-|------|----------|-------|
-| clang | Compilation | Via irix-cc wrapper |
-| ld.lld-irix | Executables | LLD with `--dynamic-linker=/lib32/rld` |
-| mips-sgi-irix6.5-ld.bfd | Shared libraries | GNU ld for correct segment layout |
-| llvm-ar | Static libraries | Standard archiver |
+# 3. Build
+rpmbuild --rebuild ~/rpmbuild/SRPMS/<package>-*-converted/<package>-*.src.rpm \
+    --define "_topdir $HOME/rpmbuild" \
+    --target mips-sgi-irix \
+    --define "__cc /opt/sgug-staging/usr/sgug/bin/irix-cc" \
+    --define "__ld /opt/sgug-staging/usr/sgug/bin/irix-ld" \
+    --define "_prefix /usr/sgug" \
+    --define "_libdir /usr/sgug/lib32" \
+    --define "_arch mips" \
+    --nocheck \
+    --nodeps
+
+# 4. Stage for next package
+rpm2cpio ~/rpmbuild/RPMS/mips/<package>*.rpm | cpio -idmv -D /opt/sgug-staging
+```
+
+---
 
 ## Environment
 
-- **IRIX Host**: `ssh edodd@192.168.0.81`
-- **SGUG shell**: `/usr/sgug/bin/sgugshell`
-- **Cross toolchain**: `/opt/cross/bin/`
-- **Staging**: `/opt/sgug-staging/usr/sgug/`
+| Purpose | Path |
+|---------|------|
+| Mogrix project | `/home/edodd/projects/github/unxmaal/mogrix/` |
+| Cross toolchain | `/opt/cross/bin/` |
+| Staging area | `/opt/sgug-staging/usr/sgug/` |
+| IRIX sysroot | `/opt/irix-sysroot/` |
+| Python venv | `.venv/bin/activate` |
 
-## Lessons Learned (2026-01-24 Validation Session)
+---
 
-### Source Number Conflicts in Specs
+## Reference: Compat Functions in Mogrix
 
-**Problem**: xz.spec defines Source100 and Source101 for colorxzgrep scripts, which conflicts with mogrix compat sources that start at Source100.
-
-**Solution**: Use spec_replacements to comment out conflicting source lines:
-```yaml
-spec_replacements:
-  - pattern: "Source100:	colorxzgrep.sh"
-    replacement: "# Source100: colorxzgrep.sh - removed (conflict with mogrix compat)"
-```
-
-**Stored in**: `rules/packages/xz.yaml`
-
-### Missing Function Declarations in Strict C99 Mode
-
-**Problem**: IRIX headers don't declare some POSIX functions in strict C99 mode.
-
-**Functions affected and where declarations are stored**:
-| Function | Header | File |
-|----------|--------|------|
-| strdup, strndup | string.h | `compat/include/mogrix-compat/generic/string.h` |
-| stpcpy, stpncpy | string.h | `compat/include/mogrix-compat/generic/string.h` |
-| strcasestr | string.h | `compat/include/mogrix-compat/generic/string.h` |
-| strsep | string.h | `compat/include/mogrix-compat/generic/string.h` |
-| setenv, unsetenv | stdlib.h | `compat/include/mogrix-compat/generic/stdlib.h` |
-| getprogname, setprogname | stdlib.h | `compat/include/mogrix-compat/generic/stdlib.h` |
-| mkdtemp | stdlib.h | `compat/include/mogrix-compat/generic/stdlib.h` |
-| qsort_r | stdlib.h | `compat/include/mogrix-compat/generic/stdlib.h` |
-
-### GNU getopt_long Implementation
-
-**Problem**: IRIX lacks GNU getopt_long, used by file (libmagic) and tdnf-history-util.
-
-**Solution**: Created full getopt_long implementation with:
-- `compat/functions/getopt_long.c` - Implementation
-- `compat/include/mogrix-compat/generic/getopt.h` - Header with struct option
-
-**Stored in**: `compat/catalog.yaml` as `getopt_long` entry
-
-### Multiarch Header Dispatch
-
-**Problem**: Packages like lua and openssl use multiarch header dispatch (e.g., `#include <luaconf-mips64.h>`), but MIPS headers don't exist.
-
-**Workaround**: Copy x86_64 headers to mips64 variants in staging:
-```bash
-cp luaconf-x86_64.h /opt/sgug-staging/usr/sgug/include/luaconf-mips64.h
-cp configuration-x86_64.h /opt/sgug-staging/usr/sgug/include/openssl/configuration-mips64.h
-```
-
-**TODO**: Automate this via mogrix staging commands or -devel package post-install.
-
-### Missing .so Symlinks in Staging
-
-**Problem**: After staging libraries, only versioned .so files exist (e.g., libxml2.so.2.10.4), but cmake needs unversioned symlinks (libxml2.so).
-
-**Solution**: Create symlinks manually:
-```bash
-ln -sf libxml2.so.2.10.4 /opt/sgug-staging/usr/sgug/lib32/libxml2.so
-```
-
-**TODO**: Automate via mogrix stage command or -devel package installation.
-
-### Missing pkg-config Files
-
-**Problem**: Some -devel packages don't install pkg-config files, breaking cmake FindPackage.
-
-**Files created manually**:
-- `libxml-2.0.pc` - For libxml2
-- `libcurl.pc` - For curl
-
-**TODO**: Install -devel RPMs to staging to get pkg-config files automatically.
-
-### Library File Pattern Issues
-
-**Problem**: Spec file patterns like `%{_libdir}/lib*.so.5*` don't match IRIX library naming.
-
-**Solution**: Use explicit patterns in spec_replacements:
-```yaml
-- pattern: "%{_libdir}/lib*.so.5*"
-  replacement: "%{_libdir}/liblzma.so*"
-```
-
-**Stored in**: `rules/packages/xz.yaml`
-
-## Next Steps
-
-### Test tdnf on IRIX Hardware
-
-**Build verified successful (2026-01-24).** All patches apply and compile.
-
-1. **Copy RPMs to IRIX**:
-   ```bash
-   scp ~/rpmbuild/RPMS/mips/tdnf*.rpm edodd@192.168.0.81:/tmp/
-   ```
-
-2. **Test on IRIX**:
-   - Install tdnf and dependencies
-   - Verify tdnf runs with GPG verification enabled
-   - Test basic package operations
-
-3. **Create bootstrap repository**:
-   - Host all built MIPS RPMs
-   - Configure tdnf.conf for IRIX
-
-4. **Optional**: Fix `tdnf-client-rpmtrans.sgifixes.patch` (GPG key URL variable expansion - enhancement only)
-
-## Known Issues
-
-### Knowledge Gaps (FIXED THIS SESSION)
-
-| Fix | Status |
-|-----|--------|
-| sys/stat.h wrapper | FIXED - copied to `cross/include/dicl-clang-compat/sys/stat.h` |
-| `%systemd_*` scriptlets | FIXED - added to `generic.yaml` remove_lines |
-
-### Remaining Improvements (Lower Priority)
-
-| Pattern | Currently In | Should Be In |
-|---------|--------------|--------------|
-| cmake cross-compile settings | tdnf.yaml | cmake class (future) |
-| Python bindings disable | tdnf.yaml | python class (future) |
-
-### Known Technical Debt
-
-**tdnf gpgcheck.c - IMPLEMENTED (see top of document)**
-
-The gpgcheck.c port is implemented via patch. The add_patch feature was added to mogrix.
-
-**Files changed this session:**
-- `mogrix/rules/engine.py` - Added add_patches field
-- `mogrix/cli.py` - Added PATCHES_DIR, patch copying logic
-- `mogrix/emitter/spec.py` - Added patch_sources, patch_prep injection; fixed %autosetup handling
-- `patches/packages/tdnf/gpgcheck-rpm419.sgifixes.patch` - Port gpgcheck.c to rpm 4.19 API
-- `patches/packages/tdnf/client-defines.sgifixes.patch` - Updated for tdnf 3.5.14
-- `patches/packages/tdnf/cmakelist-paths.sgifixes.patch` - Updated for tdnf 3.5.14
-- `patches/packages/tdnf/tdnf-conf.sgifixes.patch` - Updated for tdnf 3.5.14
-- `patches/packages/tdnf/tdnf-pool.sgifixes.patch` - Updated for tdnf 3.5.14
-- `patches/packages/tdnf/tdnf-printfprecision.sgifixes.patch` - Updated for tdnf 3.5.14
-- `rules/packages/tdnf.yaml` - Uses add_patch, fixed cleanup paths
-
-**Note:** We evaluated switching to dnf but it requires Python as core runtime. Python3 WAS successfully ported to IRIX earlier, but tdnf (pure C) remains the simpler path for now.
-
-### Compat Functions Implemented
-
-| Function | Package | File | Status |
-|----------|---------|------|--------|
-| POSIX.1-2008 "at" funcs | rpm, libsolv | openat-compat.c | DONE |
-| getprogname/setprogname | rpm | getprogname.c | DONE |
-| fopencookie | libsolv | fopencookie.c | DONE |
-| getline | libsolv, tdnf | getline.c | DONE |
-| strdup/strndup | file, xz, libsolv, tdnf | strdup.c, strndup.c | DONE |
-| strcasestr | libsolv | strcasestr.c | DONE |
-| strsep | tdnf | strsep.c | DONE |
-| timegm | libsolv | timegm.c | DONE |
-| mkdtemp | libsolv | mkdtemp.c | DONE |
-| qsort_r | libsolv, tdnf | qsort_r.c | DONE |
-| asprintf/vasprintf | tdnf | asprintf.c | DONE |
-| getopt_long | file, tdnf | getopt_long.c | DONE |
-| sqlite3_stub | tdnf | sqlite3_stub.c | DONE |
-| qsort_r | tdnf | DONE - qsort_r.c |
-| strsep | tdnf | DONE - strsep.c |
-| sqlite3_stub | tdnf | DONE - sqlite3_stub.c |
-
-### rpmbuild Warnings (Expected)
-
-- "Binaries arch (1) not matching the package arch (2)" - Expected for cross-compilation
-- "Missing build-id" - IRIX binaries don't have Linux build-ids
+| Function | Used By | File |
+|----------|---------|------|
+| strdup/strndup | file, xz, libsolv, tdnf, curl | string/strdup.c |
+| getline | libsolv, tdnf | stdio/getline.c |
+| asprintf/vasprintf | tdnf | stdio/asprintf.c |
+| fopencookie | libsolv | stdio/fopencookie.c |
+| openat family | rpm, libsolv | dicl/openat-compat.c |
+| getprogname | rpm | unistd/getprogname.c |
+| qsort_r | libsolv, tdnf | stdlib/qsort_r.c |
+| getopt_long | file, tdnf | functions/getopt_long.c |
+| sqlite3_stub | tdnf | sqlite/sqlite3_stub.c |

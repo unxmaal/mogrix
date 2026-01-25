@@ -31,6 +31,9 @@ rules:
 
   # Remove profile.d colorization scripts since we disabled scripts
   spec_replacements:
+    # Skip autoreconf - the tarball has pre-generated configure
+    - pattern: "autoreconf -fi"
+      replacement: "# autoreconf -fi - skipped (pre-generated configure available)"
     # Remove Source100/101 since they conflict with mogrix compat sources
     - pattern: "Source100:	colorxzgrep.sh"
       replacement: "# Source100: colorxzgrep.sh - removed (conflict with mogrix compat)"

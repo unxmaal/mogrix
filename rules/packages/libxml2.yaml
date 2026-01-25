@@ -4,10 +4,8 @@
 
 package: libxml2
 
-
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - libxml2.sgifixes.patch
+# Note: The old SGUG patch (libxml2.sgifixes.patch) was for xml2-config.in libdir handling
+# which is no longer needed in libxml2 2.12.x - it now uses @libdir@ from configure
 
 rules:
   # Skip tests - can't run cross-compiled binaries
@@ -37,6 +35,16 @@ rules:
 
   configure_disable:
     - static
+
+  # Disable the check targets in Makefile.in (cross-compiled binaries can't run on host)
+  prep_commands:
+    - "sed -i 's/^check-local:.*/check-local:/' Makefile.in"
+    - "sed -i 's/^check-am:.*/check-am:/' Makefile.in"
+
+  # Skip the check phase entirely - override %check with empty section
+  spec_replacements:
+    - pattern: "%check"
+      replacement: "%check\nexit 0\n# Original check section:"
 
   # Remove Python subpackage since we build --without-python
   spec_replacements:

@@ -22,3 +22,6 @@ rules:
       replacement: "./configure --uname=IRIX --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}"
     - pattern: "./configure --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix} --dfltcc"
       replacement: "./configure --uname=IRIX --libdir=%{_libdir} --includedir=%{_includedir} --prefix=%{_prefix}"
+    # zlib configure checks if compiler is "too harsh" - suppress warnings
+    - pattern: 'export CFLAGS="$RPM_OPT_FLAGS"'
+      replacement: 'export CFLAGS="$RPM_OPT_FLAGS -w"'

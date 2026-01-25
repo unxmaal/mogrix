@@ -30,8 +30,15 @@ rules:
     # === OpenSSL Configure options ===
     #
     # Force IRIX architecture for cross-compilation
+    # Use irix-mips3-gcc target, add -mabi=n32 to ensure N32 ABI
+    # no-dgram: Disable datagram BIO (DTLS) - requires msg_control in struct msghdr
+    # no-afalgeng: Disable AF_ALG engine (Linux kernel crypto) - requires linux/version.h
+    # no-tests: Don't build test programs - requires libatomic we don't have
     - pattern: "sslarch=%{_os}-%{_target_cpu}"
-      replacement: "sslarch=irix-mips3-gcc\nsslflags=\"no-asm no-async\""
+      replacement: "sslarch=irix-mips3-gcc\nsslflags=\"no-asm no-async no-dgram no-afalgeng no-tests -mabi=n32\""
+    # Comment out the mips arch override - it sets wrong ABI for IRIX cross-compilation
+    - pattern: 'sslarch="linux-mips32 -mips32r2"'
+      replacement: '# sslarch="linux-mips32 -mips32r2" # disabled for IRIX'
     # Disable FIPS - requires Linux-specific link.h and dladdr()
     - pattern: "enable-fips"
       replacement: "no-fips"

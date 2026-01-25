@@ -10,6 +10,12 @@ rules:
     - strdup
     - strndup
 
+  # Fix stpcpy conflict - popt's system.h defines static inline stpcpy which
+  # conflicts with our mogrix-compat/generic/string.h declaration
+  # Comment out the entire function (lines 31-38 in src/system.h)
+  prep_commands:
+    - "sed -i '/^static inline char \\* stpcpy/,/^}$/s/^/\\/\\/ /' src/system.h"
+
   # Configure options for cross-compilation
   configure_opts:
     - --disable-nls

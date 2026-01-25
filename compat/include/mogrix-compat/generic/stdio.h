@@ -37,6 +37,34 @@ FILE *fopencookie(void *cookie, const char *mode, cookie_io_functions_t io);
 
 #endif /* _MOGRIX_FOPENCOOKIE_DECL */
 
+/*
+ * getline - read a line (POSIX.1-2008)
+ * getdelim - read a delimited line (POSIX.1-2008)
+ *
+ * IRIX may not have these.
+ */
+#ifndef getline
+ssize_t getline(char **lineptr, size_t *n, FILE *stream);
+#endif
+
+#ifndef getdelim
+ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream);
+#endif
+
+/*
+ * asprintf/vasprintf - formatted print to allocated string (GNU extension)
+ *
+ * IRIX doesn't have asprintf. We provide our own implementation.
+ */
+#include <stdarg.h>
+#ifndef asprintf
+int asprintf(char **strp, const char *fmt, ...);
+#endif
+
+#ifndef vasprintf
+int vasprintf(char **strp, const char *fmt, va_list ap);
+#endif
+
 #ifdef __cplusplus
 }
 #endif
