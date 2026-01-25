@@ -53,11 +53,14 @@ class SRPMInfo:
 class FedoraRepo:
     """Access Fedora and other SRPM repositories."""
 
-    # Fedora archive base URL
+    # Fedora archive base URL - this is the canonical source for SRPMs
     ARCHIVE_BASE = "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases"
 
-    # Current Fedora base URL (for newer releases)
+    # Current Fedora base URL (for newer releases not yet archived)
     CURRENT_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
+
+    # Default release - stick to one Fedora version for consistent dependency chain
+    DEFAULT_RELEASE = "40"
 
     # Known repo presets
     PRESETS = {

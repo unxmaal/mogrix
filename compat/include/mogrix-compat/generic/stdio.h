@@ -52,11 +52,19 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream);
 #endif
 
 /*
+ * snprintf/vsnprintf - C99 formatted print with size limit
+ *
+ * IRIX libc has these declared in internal/stdio_core.h when
+ * internal headers are included. We only declare them if not
+ * already present.
+ */
+#include <stdarg.h>
+
+/*
  * asprintf/vasprintf - formatted print to allocated string (GNU extension)
  *
  * IRIX doesn't have asprintf. We provide our own implementation.
  */
-#include <stdarg.h>
 #ifndef asprintf
 int asprintf(char **strp, const char *fmt, ...);
 #endif

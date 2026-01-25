@@ -17,6 +17,17 @@ extern "C" {
 
 /* C99 functions missing from IRIX 6.5 */
 
+/*
+ * llabs - absolute value of long long (C99)
+ *
+ * IRIX 6.5 may not expose llabs depending on feature macros.
+ * IRIX libc doesn't have llabs, but Clang provides it as a builtin.
+ * Provide a declaration that Clang can resolve.
+ */
+#ifndef llabs
+long long llabs(long long);
+#endif
+
 /* strtof - convert string to float */
 #ifndef strtof
 float strtof(const char *nptr, char **endptr);

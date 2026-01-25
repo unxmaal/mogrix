@@ -983,14 +983,16 @@ def fetch(
 
     repo = FedoraRepo(release=release, base_url=base_url)
 
-    # Show what repo we're using
+    # Show what repo we're using with full URL
+    archive_url = f"{repo.ARCHIVE_BASE}/{release}/Everything/source/tree/Packages/"
     if base_url:
         if base_url.lower() in repo.PRESETS:
             console.print(f"[bold]Fetching SRPMs from {base_url} ({repo.PRESETS[base_url.lower()]})[/bold]\n")
         else:
             console.print(f"[bold]Fetching SRPMs from:[/bold] {base_url}\n")
     else:
-        console.print(f"[bold]Fetching SRPMs from Fedora {release} archives[/bold]\n")
+        console.print(f"[bold]Fetching SRPMs from Fedora {release} archives[/bold]")
+        console.print(f"[dim]{archive_url}[/dim]\n")
 
     success = []
     failed = []

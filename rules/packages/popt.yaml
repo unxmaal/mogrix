@@ -50,3 +50,16 @@ rules:
         export LD="/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
         # Tell libtool to use our CC for linking (handles linker selection internally)
         export lt_cv_prog_compiler_static_works=no
+
+    # Fix libtool to build shared libraries for IRIX
+    # After configure, patch libtool to enable shared libs
+    - pattern: "%configure"
+      replacement: |
+        %configure
+        # Fix libtool to build shared libraries for IRIX
+        sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool
+        sed -i 's/deplibs_check_method="unknown"/deplibs_check_method="pass_all"/g' libtool
+        sed -i 's/^version_type=none$/version_type=linux/g' libtool
+        # Note: shared_ext=".so" and versuffix=".x.y.z" both include leading dots
+        sed -i 's/^soname_spec=""$/soname_spec="\\$libname\\${shared_ext}\\$major"/g' libtool
+        sed -i 's/^library_names_spec=""$/library_names_spec="\\$libname\\${shared_ext}\\$versuffix \\$libname\\${shared_ext}\\$major \\$libname\\${shared_ext}"/g' libtool

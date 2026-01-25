@@ -40,6 +40,20 @@ if [[ -f "${MOGRIX_DIR}/compat/runtime/libatomic_stub.c" ]]; then
     "${CROSS}/llvm-ar" rcs "${STAGING}/lib32/libatomic.a" "${TMPDIR}/libatomic_stub.o"
 fi
 
+# libcompat.a - compat functions missing from IRIX (stpcpy, etc.)
+COMPAT_OBJS=""
+for src in "${MOGRIX_DIR}/compat/runtime/"*.c; do
+    base=$(basename "$src" .c)
+    # Skip files that go into other libraries
+    if [[ "$base" != "soft_float_stubs" && "$base" != "libatomic_stub" ]]; then
+        "${STAGING}/bin/irix-cc" -c "$src" -o "${TMPDIR}/${base}.o" 2>/dev/null
+        COMPAT_OBJS="${COMPAT_OBJS} ${TMPDIR}/${base}.o"
+    fi
+done
+if [[ -n "$COMPAT_OBJS" ]]; then
+    "${CROSS}/llvm-ar" rcs "${STAGING}/lib32/libcompat.a" $COMPAT_OBJS
+fi
+
 rm -rf "${TMPDIR}"
 echo "      Done."
 
