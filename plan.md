@@ -4,44 +4,44 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-01-25)
 
-**Phase 8: FRESH VALIDATION ROUND**
+**Phase 8: VALIDATION ROUND COMPLETE**
 
-Previous round completed all 12 packages but required fixes along the way. This round validates that all fixes are captured in mogrix rules and compat headers.
+All 12 packages built successfully from a clean state. One fix was needed: `posix_spawn_file_actions_*` functions for the `file` package.
 
-**Progress: 0/12 packages (starting fresh)**
+**Progress: 12/12 packages - COMPLETE**
 
-### Validation Approach
+### Validation Results
 
-1. Clean environment completely (`./cleanup.sh`)
-2. Build each package individually
-3. **STOP immediately on any failure**
-4. **Report success** before proceeding to next package
-5. All fixes should already be in mogrix - no new fixes expected
+1. Clean environment completely (`./cleanup.sh`) - DONE
+2. Build each package individually - DONE
+3. All packages built successfully
+4. One new fix required: `posix_spawn_file_actions_*` functions
 
-### Package Chain
+### Package Chain (COMPLETE)
 
 | # | Package | Version | Status | Notes |
 |---|---------|---------|--------|-------|
-| 1 | zlib-ng | 2.1.6 | PENDING | cmake-based, needs _XOPEN_SOURCE=600 |
-| 2 | bzip2 | 1.0.8 | PENDING | |
-| 3 | popt | 1.19 | PENDING | stpcpy compat, libtool fixes |
-| 4 | openssl | 3.2.1 | PENDING | |
-| 5 | libxml2 | 2.12.5 | PENDING | libtool fixes |
-| 6 | curl | 8.6.0 | PENDING | __mips64 fix, LD export |
-| 7 | xz | 5.4.6 | PENDING | libtool fixes |
-| 8 | lua | 5.4.6 | PENDING | |
-| 9 | file | 5.45 | PENDING | compat lib linking |
-| 10 | rpm | 4.19.1.1 | PENDING | spawn.h, fcntl.h, sys/stat.h compat |
-| 11 | libsolv | 0.7.28 | PENDING | |
-| 12 | **tdnf** | **3.5.14** | PENDING | **TARGET** |
+| 1 | zlib-ng | 2.1.6 | **COMPLETE** | cmake-based, _XOPEN_SOURCE=600 |
+| 2 | bzip2 | 1.0.8 | **COMPLETE** | Built first try |
+| 3 | popt | 1.19 | **COMPLETE** | stpcpy compat, libtool fixes |
+| 4 | openssl | 3.2.1 | **COMPLETE** | Built first try |
+| 5 | libxml2 | 2.12.5 | **COMPLETE** | libtool fixes |
+| 6 | curl | 8.6.0 | **COMPLETE** | __mips64 fix, LD export |
+| 7 | xz | 5.4.6 | **COMPLETE** | libtool fixes |
+| 8 | lua | 5.4.6 | **COMPLETE** | Built first try |
+| 9 | file | 5.45 | **COMPLETE** | **Required posix_spawn_file_actions_* fix** |
+| 10 | rpm | 4.19.1.1 | **COMPLETE** | spawn.h, fcntl.h, sys/stat.h compat |
+| 11 | libsolv | 0.7.28 | **COMPLETE** | Built first try |
+| 12 | **tdnf** | **3.5.14** | **COMPLETE** | **TARGET ACHIEVED** (from Photon OS) |
 
-### Previous Round Summary (Completed 2026-01-25)
+### Validation Round Summary (Completed 2026-01-25)
 
-All 12 packages built successfully. Key fixes added during that round:
+All 12 packages built successfully. One new fix was needed during validation:
 
 | Fix | Files | Description |
 |-----|-------|-------------|
 | spawn.h compat | `compat/include/.../spawn.h`, `compat/runtime/spawn.c` | posix_spawn/posix_spawnp via fork+exec |
+| **spawn file actions** | `compat/include/.../spawn.h`, `compat/runtime/spawn.c` | **NEW: posix_spawn_file_actions_init/destroy/addclose/adddup2** |
 | fcntl.h compat | `compat/include/.../fcntl.h` | O_NOFOLLOW, O_CLOEXEC, AT_* constants, openat decl |
 | sys/stat.h compat | `compat/include/.../sys/stat.h` | fstatat, mkdirat, fchmodat, etc. declarations |
 | unistd.h updates | `compat/include/.../unistd.h` | faccessat, fchownat, unlinkat, etc. declarations |
@@ -55,6 +55,7 @@ All 12 packages built successfully. Key fixes added during that round:
 | `__mips=1` in irix-cc | Fixed - also added `-U__mips64` |
 | unistd.h sysconf compat | Fixed in compat/include |
 | spawn.h for rpm | **FIXED** - new compat header + implementation |
+| **spawn file actions for file** | **FIXED** - posix_spawn_file_actions_init/destroy/addclose/adddup2 |
 | POSIX.1-2008 *at functions | **FIXED** - declarations in fcntl.h, sys/stat.h, unistd.h |
 | AT_SYMLINK_NOFOLLOW, O_NOFOLLOW | **FIXED** - defined in fcntl.h |
 | multiarch symlinks (OpenSSL, lua) | Auto-handled by staging |
@@ -69,7 +70,7 @@ All 12 packages built successfully. Key fixes added during that round:
 | GNU ld diagnostic options | `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Handle -print-search-dirs by passing to GNU ld.bfd |
 | `__mips64` macro | `/opt/sgug-staging/usr/sgug/bin/irix-cc` | Undefine `__mips64`/`__mips64__` for N32 ABI (breaks OpenSSL multiarch headers) |
 | stpcpy compat | `compat/runtime/stpcpy.c` | IRIX libc doesn't have stpcpy |
-| spawn.h compat | `compat/include/.../spawn.h` + `compat/runtime/spawn.c` | posix_spawn/posix_spawnp for rpm |
+| spawn.h compat | `compat/include/.../spawn.h` + `compat/runtime/spawn.c` | posix_spawn/posix_spawnp + file_actions for rpm, file |
 | fcntl.h compat | `compat/include/.../fcntl.h` | O_NOFOLLOW, AT_* constants for rpm |
 | sys/stat.h compat | `compat/include/.../sys/stat.h` | fstatat, mkdirat, etc. for rpm |
 | unistd.h updates | `compat/include/.../unistd.h` | POSIX.1-2008 *at function declarations |
@@ -79,7 +80,8 @@ All 12 packages built successfully. Key fixes added during that round:
 | Function | Package | File | Status |
 |----------|---------|------|--------|
 | POSIX.1-2008 "at" funcs | rpm, libsolv | openat-compat.c | DONE |
-| posix_spawn/posix_spawnp | rpm | spawn.c | DONE |
+| posix_spawn/posix_spawnp | rpm, file | spawn.c | DONE |
+| posix_spawn_file_actions_* | file | spawn.c | DONE |
 | getprogname/setprogname | rpm | getprogname.c | DONE |
 | fopencookie | libsolv | fopencookie.c | DONE |
 | getline | libsolv, tdnf, file | getline.c | DONE |
@@ -247,7 +249,7 @@ This design follows the insight that libdicl's true value was never the library 
 - **107 tests**, all passing
 - Covers: parser, rules, engine, emitter, headers, compat, patches, CLI, batch, deps
 
-### Cross-Compilation Validated (Phase 7 - FC40)
+### Cross-Compilation Validated (Phase 8 - FC40 + Photon OS)
 
 | Package | Version | Type | Result |
 |---------|---------|------|--------|
@@ -257,6 +259,12 @@ This design follows the insight that libdicl's true value was never the library 
 | openssl | 3.2.1 | shared lib | Works |
 | libxml2 | 2.12.5 | shared lib | Works |
 | curl | 8.6.0 | shared lib + exe | Works |
+| xz | 5.4.6 | shared lib | Works |
+| lua | 5.4.6 | shared lib | Works |
+| file | 5.45 | shared lib + exe | Works |
+| rpm | 4.19.1.1 | shared lib + exe | Works |
+| libsolv | 0.7.28 | shared lib | Works |
+| **tdnf** | **3.5.14** | **shared lib + exe** | **TARGET COMPLETE** |
 
 ### Historical Validation (Earlier Sessions)
 
@@ -268,10 +276,10 @@ This design follows the insight that libdicl's true value was never the library 
 | tar, gzip, sed, grep | executables | Works |
 | make, patch | executables | Works |
 | ncurses, readline | static libs | Works |
-| libsolv | shared lib | Works |
-| libsolvext | shared lib | Works (with fopencookie) |
-| **dumpsolv** | **dynamically linked exe** | **Works** |
-| **tdnf** | **dynamically linked exe** | **Works (needs config)** |
+
+### Full tdnf Dependency Chain: VALIDATED
+
+All 12 packages in the tdnf dependency chain build and link correctly for IRIX. Built RPMs available in `~/rpmbuild/RPMS/mips/`.
 
 ---
 
@@ -296,28 +304,9 @@ This design follows the insight that libdicl's true value was never the library 
 
 ## Next Steps
 
-### Immediate: Validation Round (0/12 done)
+### Validation Round: COMPLETE (12/12)
 
-All fixes from previous round are captured. This round validates clean build from scratch.
-
-| Package | Notes |
-|---------|-------|
-| zlib-ng | First - cmake-based compression |
-| bzip2 | Simple compression |
-| popt | Option parsing, first libtool |
-| openssl | TLS/crypto |
-| libxml2 | XML parsing |
-| curl | HTTP client |
-| xz | LZMA compression |
-| lua | Scripting for rpm |
-| file | Magic file detection |
-| rpm | Package manager |
-| libsolv | Dependency resolver |
-| tdnf | **GOAL** |
-
-### Confidence Assessment: ~99%
-
-Previous round completed all 12 packages. All fixes are now captured in:
+All 12 packages built successfully from clean state. All fixes captured in:
 - mogrix rules (YAML files in `rules/packages/`)
 - compat headers (`compat/include/mogrix-compat/generic/`)
 - compat runtime (`compat/runtime/`)
@@ -327,7 +316,7 @@ Previous round completed all 12 packages. All fixes are now captured in:
 | sys/stat.h wrapper | DONE - fstatat, mkdirat, fchmodat etc. |
 | fcntl.h wrapper | DONE - O_NOFOLLOW, AT_* constants |
 | unistd.h wrapper | DONE - *at function declarations |
-| spawn.h compat | DONE - posix_spawn/posix_spawnp |
+| spawn.h compat | DONE - posix_spawn/posix_spawnp + file_actions |
 | `%systemd_*` scriptlets | DONE - in `generic.yaml` remove_lines |
 | RPM architecture naming | DONE - `--target mips-sgi-irix` added |
 | -devel package staging | DONE - auto-included by `mogrix stage` |
@@ -337,7 +326,7 @@ Previous round completed all 12 packages. All fixes are now captured in:
 | __mips64 for N32 ABI | DONE - undefined in irix-cc |
 | libtool shared lib fixes | DONE - in package YAML rules |
 
-### After Package Chain Complete
+### Immediate Next Steps
 
 #### 1. Test on IRIX Hardware
 

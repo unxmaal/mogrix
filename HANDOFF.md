@@ -1,7 +1,31 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-25 17:15
-**Status**: VALIDATION ROUND COMPLETE - 12/12 packages built successfully!
+**Last Updated**: 2026-01-25 21:00
+**Status**: IRIX RUNTIME TESTING - bzip2 validated working on IRIX!
+
+---
+
+## Session 2026-01-25 Evening: IRIX Runtime Validation
+
+### What Was Done
+1. Created bootstrap scripts (`scripts/bootstrap-tarball.sh`, `scripts/irix-chroot-testing.sh`, `scripts/irix-bootstrap.sh`)
+2. Built all 12 packages and created bootstrap tarball
+3. Tested on IRIX - discovered binaries segfaulted
+4. Diagnosed issue: wrong linker selection (GNU ld vs LLD)
+5. Fixed `irix-ld` wrapper: GNU ld for shared libs, LLD for executables
+6. **Validated bzip2 runs on IRIX!**
+
+### What Remains
+- Rebuild all 12 packages with fixed linker
+- Regenerate bootstrap tarball
+- Test rpm and tdnf on IRIX
+- Complete bootstrap process
+
+### Key Files Modified
+- `/opt/sgug-staging/usr/sgug/bin/irix-ld` - Linker wrapper with correct GNU ld / LLD selection
+- `scripts/bootstrap-tarball.sh` - Creates tarball in `tmp/` directory
+- `scripts/irix-chroot-testing.sh` - Safe chroot testing (no auto-delete)
+- `scripts/irix-bootstrap.sh` - Real installation script
 
 ---
 
@@ -255,3 +279,200 @@ Key packages:
 3. **"source 100 defined multiple times" error** means SRPM was already converted - delete and re-fetch fresh
 4. **tdnf is NOT in Fedora** - it's from VMware Photon OS, use existing SRPM in `srpms/` directory
 5. **file package needed posix_spawn file actions** - added `posix_spawn_file_actions_init/destroy/addclose/adddup2` to spawn.h/spawn.c
+
+---
+
+## CRITICAL: IRIX rld Compatibility Issues (2026-01-25)
+
+Testing on IRIX revealed three critical linking issues. **ALL FIXED - bzip2 validated working!**
+
+### Issue 1: MIPS_BASE_ADDRESS = 0 (FIXED)
+
+**Symptom:** `DT_MIPS_BASE_ADDRESS missing or zero in <lib>.so. rld cannot continue`
+
+**Cause:** IRIX's runtime linker (`rld`) requires shared libraries to have a non-zero `MIPS_BASE_ADDRESS` dynamic tag. LLD was setting it to 0.
+
+**Fix:** Shared libraries now use GNU ld which sets proper base address via linker scripts.
+
+### Issue 2: rpm libraries missing SONAME (FIXED)
+
+**Symptom:** `Cannot Successfully map soname '../lib/librpm.so'`
+
+**Cause:** cmake builds didn't pass `-soname` to the linker for unknown platforms.
+
+**Fix:** Updated `irix-ld` wrapper to auto-generate `-soname` for `lib*.so*` outputs when not provided.
+
+### Issue 3: Wrong linker for executables vs libraries (FIXED)
+
+**Symptom:** Segmentation fault on any binary execution
+
+**Cause:** Using GNU ld for executables produces binaries that segfault. Using LLD for shared libraries produces libraries missing IRIX ELF structure.
+
+**Solution - CORRECT LINKER SELECTION:**
+
+| Build Type | Linker | Why |
+|------------|--------|-----|
+| Shared libraries (`-shared`) | **GNU ld** | Produces correct IRIX ELF structure |
+| Executables | **LLD** | With `--dynamic-linker=/lib32/rld` |
+
+### Current irix-ld wrapper configuration (WORKING):
+
+```bash
+# Shared libraries: GNU ld
+$GNULD --allow-shlib-undefined $auto_soname -L... $filtered_args
+
+# Executables: LLD
+$LLD --allow-shlib-undefined -dynamic-linker /lib32/rld $CRT1 $filtered_args -L... -lsoft_float_stubs -lc $CRTN
+```
+
+### Validation: bzip2 runs on IRIX!
+
+```
+$ /tmp/bzip2 --version
+bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
+```
+
+### Required Action: REBUILD ALL PACKAGES
+
+All 12 packages must be rebuilt with the fixed linker:
+
+```bash
+./cleanup.sh
+# Rebuild each: zlib-ng bzip2 popt openssl libxml2 curl xz lua file rpm libsolv tdnf
+./scripts/bootstrap-tarball.sh
+```
+
+---
+
+## IRIX Bootstrap Process
+
+The 12 packages are built but cannot be installed on IRIX without bootstrapping (rpm requires rpm to install). This is the bootstrap procedure:
+
+### Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    LINUX BUILD HOST                              │
+│                                                                  │
+│  .mips.rpm files ──► rpm2cpio ──► bootstrap tarball ──► scp ──► │
+└─────────────────────────────────────────────────────────────────┘
+                                                          │
+                                                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      IRIX TARGET                                 │
+│                                                                  │
+│  tar xf ──► test in chroot ──► real install ──► rpm --initdb   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Step 1: Create Bootstrap Tarball (Linux)
+
+```bash
+# On Linux build host:
+./scripts/bootstrap-tarball.sh
+
+# Creates (in project tmp/ directory):
+#   tmp/irix-bootstrap.tar     (uncompressed)
+#   tmp/irix-bootstrap.tar.gz  (compressed)
+```
+
+### Step 2: Copy Files to IRIX
+
+```bash
+# Copy the tarball
+scp tmp/irix-bootstrap.tar.gz edodd@192.168.0.81:/tmp/
+
+# Copy the IRIX bootstrap scripts
+scp scripts/irix-chroot-testing.sh scripts/irix-bootstrap.sh edodd@192.168.0.81:/tmp/
+
+# Copy RPM files (for proper database registration later)
+ssh edodd@192.168.0.81 'mkdir -p /tmp/rpms'
+scp ~/rpmbuild/RPMS/mips/*.mips.rpm edodd@192.168.0.81:/tmp/rpms/
+```
+
+### Step 3: Test in Chroot (Manual)
+
+The chroot testing script extracts the tarball into an existing chroot for manual testing.
+It does NOT auto-delete or auto-test - you control the testing process.
+
+```bash
+# On IRIX as root:
+cd /tmp
+chmod +x irix-chroot-testing.sh irix-bootstrap.sh
+
+# Ensure your chroot exists (script will NOT create or delete it)
+# If you need to restore your chroot from backup first, do that now.
+
+# Extract bootstrap into chroot
+./irix-chroot-testing.sh /tmp/irix-bootstrap.tar.gz /opt/chroot
+
+# Enter chroot and test manually
+chroot /opt/chroot /bin/sh
+. /usr/sgug/bin/chroot-shell.sh    # Set up environment
+rpm --version                        # Test rpm
+tdnf --version                       # Test tdnf
+```
+
+### Step 4: Real Installation (DANGEROUS)
+
+```bash
+# On IRIX as root:
+cd /tmp
+
+# This modifies the real filesystem!
+./irix-bootstrap.sh /tmp/irix-bootstrap.tar.gz /tmp/rpms
+
+# Confirm with "yes" when prompted
+```
+
+### What the Bootstrap Does
+
+1. **Extracts tarball** to `/usr/sgug/` - puts binaries and libraries in place
+2. **Verifies rpm works** - tests the binary can run with shared libraries
+3. **Initializes RPM database** - creates `/usr/sgug/lib32/sysimage/rpm/`
+4. **Creates symlink** - `/var/lib/rpm` → `/usr/sgug/lib32/sysimage/rpm`
+5. **Installs RPMs** - registers packages in database for proper tracking
+
+### Post-Bootstrap
+
+```bash
+# Add to shell startup (.profile or .cshrc):
+
+# For sh/bash:
+export LD_LIBRARY_PATH=/usr/sgug/lib32:$LD_LIBRARY_PATH
+export PATH=/usr/sgug/bin:$PATH
+
+# For csh/tcsh:
+setenv LD_LIBRARY_PATH /usr/sgug/lib32:$LD_LIBRARY_PATH
+setenv PATH /usr/sgug/bin:$PATH
+
+# Verify:
+rpm --version
+tdnf --version
+rpm -qa  # List installed packages
+```
+
+### Scripts Reference
+
+| Script | Runs On | Purpose |
+|--------|---------|---------|
+| `scripts/bootstrap-tarball.sh` | Linux | Creates bootstrap tarball from RPMs |
+| `irix-chroot-testing.sh` | IRIX | **SAFE** - Tests in /opt/chroot (copy to /tmp first) |
+| `irix-bootstrap.sh` | IRIX | **DANGER** - Real installation to / (copy to /tmp first) |
+
+### Troubleshooting
+
+**rpm: cannot open Packages database**
+- Run `rpm --initdb --dbpath /usr/sgug/lib32/sysimage/rpm`
+
+**rpm: /lib32/rld: cannot properly exec**
+- Library path not set: `export LD_LIBRARY_PATH=/usr/sgug/lib32:$LD_LIBRARY_PATH`
+
+**rpm: symbol not found**
+- Missing library - check `elfdump -Dl /usr/sgug/bin/rpm` for NEEDED entries
+
+**Cleanup chroot test:**
+```bash
+rm -rf /opt/chroot
+```
