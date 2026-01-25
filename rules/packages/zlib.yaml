@@ -25,3 +25,22 @@ rules:
     # zlib configure checks if compiler is "too harsh" - suppress warnings
     - pattern: 'export CFLAGS="$RPM_OPT_FLAGS"'
       replacement: 'export CFLAGS="$RPM_OPT_FLAGS -w"'
+    # Fix minizip libtool for cross-compilation - libtool doesn't know IRIX
+    # Force shared library building and set proper versioning after configure runs
+    # For fresh specs - inject libtool fixes between configure and make
+    - pattern: "enable-static=no\n%make_build\n%endif\n\n%check"
+      replacement: |
+        enable-static=no
+        # Fix libtool to build shared libs for IRIX cross-compilation
+        sed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool
+        sed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool
+        # Force simple version scheme - libtool version calculation is broken for cross-compile
+        sed -i 's|^soname_spec=.*|soname_spec="\\$libname\\$shared_ext.1"|g' libtool
+        sed -i 's|^library_names_spec=.*|library_names_spec="\\$libname\\$shared_ext.1.0.0 \\$libname\\$shared_ext.1 \\$libname\\$shared_ext"|g' libtool
+        %make_build
+        %endif
+
+        %check
+    # Delete minizip static library - created despite --enable-static=no
+    - pattern: "find $RPM_BUILD_ROOT -name '*.la' -delete"
+      replacement: "find $RPM_BUILD_ROOT -name '*.la' -delete\nrm -f $RPM_BUILD_ROOT%{_libdir}/libminizip.a"

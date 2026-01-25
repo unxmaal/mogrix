@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-25 12:30
-**Status**: STARTING FRESH - Clean validation with strict stop-on-error
+**Last Updated**: 2026-01-25 13:45
+**Status**: Validation in progress - zlib complete
 
 ---
 
@@ -28,7 +28,7 @@ Validate mogrix workflow by building tdnf dependency chain one package at a time
 
 | # | Package | Version | Status | Notes |
 |---|---------|---------|--------|-------|
-| 1 | zlib | 1.2.13 | PENDING | |
+| 1 | zlib | 1.2.13 | **DONE** | Libtool fix for minizip |
 | 2 | bzip2 | 1.0.8 | PENDING | |
 | 3 | popt | 1.19 | PENDING | |
 | 4 | openssl | 3.2.1 | PENDING | |
@@ -59,22 +59,20 @@ These were encountered in today's earlier run. Some may need to be added to mogr
 
 ## Cleanup Commands
 
+Use the `cleanup.sh` script for a complete reset:
+
 ```bash
-# Clean staging (keep toolchain wrappers in bin/)
-sudo rm -rf /opt/sgug-staging/usr/sgug/lib32/*
-sudo rm -rf /opt/sgug-staging/usr/sgug/include/*
-
-# Restore compat headers from mogrix
-cp -r /home/edodd/projects/github/unxmaal/mogrix/cross/include/* /opt/sgug-staging/usr/sgug/include/
-cp -r /home/edodd/projects/github/unxmaal/mogrix/compat/include/* /opt/sgug-staging/usr/sgug/include/
-
-# Clean rpmbuild
-rm -rf ~/rpmbuild/BUILD/* ~/rpmbuild/BUILDROOT/* ~/rpmbuild/RPMS/mips/*
-
-# Verify
-ls /opt/sgug-staging/usr/sgug/lib32/   # Should be empty
-ls ~/rpmbuild/RPMS/mips/               # Should be empty
+./cleanup.sh
 ```
+
+This script:
+1. Cleans staging lib32/ and include/
+2. Restores compat headers from mogrix
+3. **Builds and installs runtime libraries** (libsoft_float_stubs.a, libatomic.a)
+4. Cleans rpmbuild directories
+5. Verifies the cleanup
+
+**Note**: `mogrix convert` and `mogrix build` now automatically ensure staging is ready via the `staging.py` module. Manual cleanup is only needed for a complete reset.
 
 ---
 
@@ -84,23 +82,14 @@ ls ~/rpmbuild/RPMS/mips/               # Should be empty
 # 1. Fetch SRPM (if not already present)
 mogrix fetch <package>
 
-# 2. Convert (MUST succeed without errors)
-mogrix convert ~/rpmbuild/SRPMS/<package>-*.fc40.src.rpm
+# 2. Convert (ensures staging is ready automatically)
+mogrix convert ~/rpmbuild/SRPMS/<package>-*.src.rpm
 
-# 3. Build
-rpmbuild --rebuild ~/rpmbuild/SRPMS/<package>-*-converted/<package>-*.src.rpm \
-    --define "_topdir $HOME/rpmbuild" \
-    --target mips-sgi-irix \
-    --define "__cc /opt/sgug-staging/usr/sgug/bin/irix-cc" \
-    --define "__ld /opt/sgug-staging/usr/sgug/bin/irix-ld" \
-    --define "_prefix /usr/sgug" \
-    --define "_libdir /usr/sgug/lib32" \
-    --define "_arch mips" \
-    --nocheck \
-    --nodeps
+# 3. Build (verifies staging as backstop)
+mogrix build ~/rpmbuild/SRPMS/<package>-*-converted/<package>-*.src.rpm --cross
 
 # 4. Stage for next package
-rpm2cpio ~/rpmbuild/RPMS/mips/<package>*.rpm | cpio -idmv -D /opt/sgug-staging
+mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
 ```
 
 ---
@@ -114,6 +103,49 @@ rpm2cpio ~/rpmbuild/RPMS/mips/<package>*.rpm | cpio -idmv -D /opt/sgug-staging
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | Python venv | `.venv/bin/activate` |
+
+---
+
+## Key Fixes This Session
+
+### Staging Workflow Improvements
+
+**Problem**: mogrix assumed staging was pre-configured but didn't ensure it.
+
+**Solution**: Added `mogrix/staging.py` module that:
+- Checks if staging has required resources (headers, runtime libs)
+- Creates missing resources automatically
+- Integrated into `mogrix convert` (after conversion) and `mogrix build` (as backstop)
+
+**Required staging resources**:
+- `lib32/libsoft_float_stubs.a` - compiler-rt long double stubs
+- `lib32/libatomic.a` - atomic operations stubs
+- `include/dicl-clang-compat/` - IRIX header compatibility
+- `include/mogrix-compat/` - Function compatibility
+- `include/irix-compat.h`, `include/getopt.h`
+
+### Libtool Cross-Compilation Fix
+
+**Problem**: Libtool doesn't recognize IRIX and refuses to build shared libraries.
+
+**Solution**: After `%configure`, inject sed commands to force libtool settings:
+```bash
+sed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool
+sed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool
+sed -i 's|^soname_spec=.*|soname_spec="\\$libname\\$shared_ext.1"|g' libtool
+sed -i 's|^library_names_spec=.*|library_names_spec="\\$libname\\$shared_ext.1.0.0 \\$libname\\$shared_ext.1 \\$libname\\$shared_ext"|g' libtool
+```
+
+**Packages with this fix**: zlib (minizip), lua, file
+
+**Analysis for generic implementation**:
+- Can't easily make this a spec_replacement rule because injection point varies by package
+- Potential solutions:
+  1. Post-configure hook in mogrix engine that patches any `libtool` files found
+  2. Wrapper script that patches libtool before make runs
+  3. Rule class that packages can inherit
+- **Decision**: Keep as per-package rule for now. The pattern is documented and easy to copy.
+- **Future**: Consider implementing option 1 (post-configure hook) in mogrix engine
 
 ---
 

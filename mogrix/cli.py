@@ -12,6 +12,7 @@ from mogrix.headers.overlay import HeaderOverlayManager
 from mogrix.parser.spec import SpecParser
 from mogrix.rules.engine import RuleEngine
 from mogrix.rules.loader import RuleLoader
+from mogrix.staging import ensure_staging_ready
 
 console = Console()
 
@@ -333,6 +334,16 @@ def _convert_srpm_full(
         if result.compat_functions:
             console.print(f"[bold]Compat functions:[/bold] {', '.join(result.compat_functions)}")
 
+        # Ensure staging environment is ready for build
+        console.print()
+        staging_status = ensure_staging_ready(verbose=True)
+        if staging_status.created_resources:
+            console.print(f"[bold]Staging resources created:[/bold] {len(staging_status.created_resources)}")
+        if not staging_status.is_ready:
+            console.print("[yellow]Warning: Staging environment may not be fully configured[/yellow]")
+            for err in staging_status.errors:
+                console.print(f"  [yellow]![/yellow] {err}")
+
     finally:
         # Clean up extracted temp directory
         if extracted_dir.exists():
@@ -584,6 +595,16 @@ def build(
         macros_path = Path(macros)
     elif cross:
         macros_path = IRIX_MACROS
+
+    # Ensure staging environment is ready (backstop - convert should have done this)
+    if cross and not dry_run:
+        staging_status = ensure_staging_ready(verbose=True)
+        if not staging_status.is_ready:
+            console.print("[red]Staging environment is not ready for cross-compilation[/red]")
+            for err in staging_status.errors:
+                console.print(f"  [red]![/red] {err}")
+            console.print("\n[bold]Try running:[/bold] mogrix setup-cross")
+            raise SystemExit(1)
 
     # Validate cross-compilation environment
     if cross:
