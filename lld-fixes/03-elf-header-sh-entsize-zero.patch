@@ -1,0 +1,33 @@
+From: Mogrix Project
+Subject: [PATCH 3/3] LLVM ELF: Accept sh_entsize=0 in getSectionContentsAsArray
+
+GNU ld for MIPS produces .dynamic sections with sh_entsize=0 instead of
+the proper entry size (8 bytes for 32-bit, 16 for 64-bit). This is
+technically non-conformant but has been produced by GNU ld for decades.
+
+LLD 18 rejects these shared libraries when linking against them:
+  error: libfoo.so: section [index N] has invalid sh_entsize: expected 8, but got 0
+
+This patch modifies the getSectionContentsAsArray template to accept
+sh_entsize=0 in addition to the expected sizeof(T) value.
+
+Apply to: llvm/include/llvm/Object/ELF.h in LLVM 18.1.3
+
+---
+ llvm/include/llvm/Object/ELF.h | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+--- a/llvm/include/llvm/Object/ELF.h
++++ b/llvm/include/llvm/Object/ELF.h
+@@ -565,7 +565,10 @@ ELFFile<ELFT>::getEntry(const Elf_Shdr &Section, uint32_t Entry) const {
+ template <typename T>
+ Expected<ArrayRef<T>>
+ ELFFile<ELFT>::getSectionContentsAsArray(const Elf_Shdr &Sec) const {
+-  if (Sec.sh_entsize != sizeof(T) && sizeof(T) != 1)
++  // Allow sh_entsize=0 - some linkers (e.g., IRIX/MIPS GNU ld) produce
++  // .dynamic sections with sh_entsize=0 instead of the proper entry size.
++  // This is technically non-conformant but widely seen in practice.
++  if (Sec.sh_entsize != sizeof(T) && sizeof(T) != 1 && Sec.sh_entsize != 0)
+     return createError("section " + getSecIndexForError(*this, Sec) +
+                        " has invalid sh_entsize: expected " + Twine(sizeof(T)) +
+                        ", but got " + Twine(Sec.sh_entsize));

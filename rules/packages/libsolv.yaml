@@ -177,6 +177,13 @@ rules:
       replacement: "  # -DENABLE_PYTHON (handled above) \\"
     - pattern: "  -DPYTHON_EXECUTABLE=%{python3}                          \\"
       replacement: "  # -DPYTHON_EXECUTABLE (disabled) \\"
+    # Fix libxml2 const compatibility - newer libxml2 returns const xmlError*
+    - pattern: "%autosetup -p1"
+      replacement: |
+        %autosetup -p1
+
+        # Fix const mismatch with newer libxml2 (xmlCtxtGetLastError returns const xmlError*)
+        sed -i 's/xmlErrorPtr err = xmlCtxtGetLastError/const xmlError *err = xmlCtxtGetLastError/' ext/solv_xmlparser.c
     # Use make instead of ninja
     - pattern: "%cmake_build"
       replacement: "cd _build && make %{?_smp_mflags}"

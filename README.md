@@ -4,7 +4,7 @@ TransMOGrifies Linux SRPMs into IRIX-compatible packages.
 
 ## Overview
 
-Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
+Mogrix is a deterministic SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
 **Key Features:**
 - YAML-based rule engine for spec file transformations
@@ -36,17 +36,31 @@ The recommended workflow operates on SRPMs directly. Direct spec file editing sh
 # 1. One-time setup of cross-compilation environment
 mogrix setup-cross
 
-# 2. Fetch SRPM from Fedora
+# 2. Fetch SRPM from Fedora (downloads to current directory by default)
 mogrix fetch popt
 
-# 3. Convert SRPM (applies IRIX rules)
-mogrix convert popt-1.19-6.fc40.src.rpm -o converted/
+# 3. Convert SRPM (creates -converted/ directory next to input)
+mogrix convert popt-1.19-6.fc40.src.rpm
 
-# 4. Cross-compile for IRIX
-mogrix build converted/popt-1.19-6.rse.src.rpm --cross
+# 4. Cross-compile for IRIX (outputs to ~/rpmbuild/RPMS/mips/)
+mogrix build popt-1.19-6.fc40.src-converted/popt-*.src.rpm --cross
 
 # 5. Stage for dependent builds
-mogrix stage rpmbuild/RPMS/mipsn32/*.rpm
+mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+```
+
+#### Alternative: Organize in ~/rpmbuild/SRPMS/
+
+```bash
+# Fetch to ~/rpmbuild/SRPMS/
+mogrix fetch popt -o ~/rpmbuild/SRPMS/
+
+# Convert (creates ~/rpmbuild/SRPMS/popt-*-converted/)
+mogrix convert ~/rpmbuild/SRPMS/popt-1.19-6.fc40.src.rpm
+
+# Build and stage
+mogrix build ~/rpmbuild/SRPMS/popt-1.19-6.fc40.src-converted/popt-*.src.rpm --cross
+mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
 ```
 
 ### Analyze an SRPM
@@ -82,10 +96,10 @@ After cross-compiling packages, stage them to make their headers and libraries a
 
 ```bash
 # Stage RPMs to /opt/sgug-staging
-mogrix stage rpmbuild/RPMS/mipsn32/popt-*.rpm
+mogrix stage ~/rpmbuild/RPMS/mips/popt-*.rpm
 
 # Stage to custom location
-mogrix stage rpmbuild/RPMS/mipsn32/*.rpm --staging-dir /my/staging
+mogrix stage ~/rpmbuild/RPMS/mips/*.rpm --staging-dir /my/staging
 
 # List what's staged
 mogrix stage --list
@@ -98,24 +112,174 @@ The staging area extracts RPM contents so that subsequent builds can find header
 
 ### Cross-Compilation Setup
 
-The `--cross` flag enables IRIX cross-compilation. This requires:
+The `--cross` flag enables IRIX cross-compilation. This section describes setting up the build environment on Ubuntu.
 
-**IRIX Sysroot** at `/opt/irix-sysroot/`:
-- Pristine IRIX system headers and libraries
-- Obtained from an IRIX 6.5.30 installation
+#### Prerequisites
 
-**Cross-Toolchain** at `/opt/cross/bin/`:
-- `irix-cc-bootstrap` - Clang wrapper for IRIX cross-compilation
-- `irix-ld-lld` - vvuk's LLD with IRIX/MIPS N32 support
-- `mips-sgi-irix6.5-ar`, `mips-sgi-irix6.5-ranlib` - binutils
+Ubuntu 22.04+ with build dependencies:
 
-**RPM Macros** at `/opt/sgug-staging/rpmmacros.irix`:
-- Defines toolchain paths, CFLAGS, LDFLAGS for cross-compilation
+```bash
+sudo apt install -y \
+    build-essential gcc g++ make patch \
+    bzip2 xz-utils git wget curl file \
+    pkg-config flex bison texinfo \
+    python3 python3-setuptools python3-venv \
+    libgmp-dev libmpc-dev libmpfr-dev \
+    cmake ninja-build \
+    libz-dev libxml2-dev libedit-dev libncurses-dev \
+    rpm
+```
 
-**Staging Area** at `/opt/sgug-staging/`:
-- Where cross-compiled packages are extracted for dependency resolution
+#### Directory Structure
 
-See `plan.md` for detailed toolchain setup instructions.
+```bash
+sudo mkdir -p /opt/cross/bin /opt/irix-sysroot /opt/sgug-staging/usr/sgug/{bin,lib32,include}
+sudo chown -R $USER:$USER /opt/cross /opt/irix-sysroot /opt/sgug-staging
+```
+
+| Path | Purpose |
+|------|---------|
+| `/opt/cross/bin/` | Cross-compilation toolchain |
+| `/opt/irix-sysroot/` | IRIX system headers and libraries |
+| `/opt/sgug-staging/usr/sgug/` | Staging area for cross-compiled packages |
+
+#### 1. IRIX Sysroot
+
+Extract IRIX system files from an IRIX 6.5.30 installation:
+
+```bash
+# From a tarball of IRIX root filesystem
+tar xjf irix-root.6.5.30.tar.bz2 -C /opt/irix-sysroot
+
+# The sysroot should contain:
+# /opt/irix-sysroot/usr/include/  - System headers
+# /opt/irix-sysroot/usr/lib32/    - System libraries
+# /opt/irix-sysroot/lib32/        - Core libraries (libc, rld, etc.)
+```
+
+#### 2. LLVM/Clang from vvuk's Fork
+
+Vladimir Vukicevic's LLVM fork includes IRIX/MIPS support for both clang and LLD:
+
+```bash
+# Clone vvuk's LLVM with IRIX support
+git clone https://github.com/vvuk/llvm-project.git
+cd llvm-project
+git checkout irix/14.x
+
+# Build clang and LLD
+mkdir build && cd build
+cmake -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_PROJECTS="clang;lld" \
+    -DLLVM_TARGETS_TO_BUILD="Mips;X86" \
+    -DCMAKE_INSTALL_PREFIX=/opt/cross \
+    ../llvm
+
+ninja
+ninja install
+```
+
+This provides in `/opt/cross/bin/`:
+- `clang`, `clang++` - C/C++ compiler with MIPS/IRIX target
+- `llvm-ar`, `llvm-ranlib`, `llvm-strip`, `llvm-nm`, `llvm-objdump`
+- `lld`, `ld.lld` - LLVM linker with IRIX support
+
+Rename the IRIX-capable LLD:
+```bash
+cp /opt/cross/bin/ld.lld /opt/cross/bin/ld.lld-irix
+```
+
+#### 3. GNU Binutils for IRIX
+
+Build binutils 2.23.2 targeting `mips-sgi-irix6.5`:
+
+```bash
+# Download and patch binutils
+wget https://ftp.gnu.org/gnu/binutils/binutils-2.23.2.tar.bz2
+tar xjf binutils-2.23.2.tar.bz2
+cd binutils-2.23.2
+# Apply IRIX patches if needed
+
+# Configure and build
+mkdir build && cd build
+../configure \
+    --prefix=/opt/cross \
+    --target=mips-sgi-irix6.5 \
+    --disable-werror \
+    --with-sysroot=/opt/irix-sysroot
+
+make -j$(nproc)
+make install
+```
+
+This provides:
+- `mips-sgi-irix6.5-ld.bfd` - GNU ld (critical for shared library layout)
+- `mips-sgi-irix6.5-ar`, `mips-sgi-irix6.5-ranlib`, etc.
+
+#### 4. Fix IRIX CRT Files
+
+IRIX's `crt1.o` contains sections that LLD can't handle. Strip them:
+
+```bash
+mkdir -p /opt/irix-sysroot/usr/lib32/mips3/fixed
+
+/opt/cross/bin/mips-sgi-irix6.5-objcopy \
+    -R .MIPS.events.text \
+    -R .MIPS.events.init \
+    -R .MIPS.events \
+    /opt/irix-sysroot/usr/lib32/mips3/crt1.o \
+    /opt/irix-sysroot/usr/lib32/mips3/fixed/crt1.o
+
+cp /opt/irix-sysroot/usr/lib32/mips3/crtn.o \
+   /opt/irix-sysroot/usr/lib32/mips3/fixed/crtn.o
+```
+
+#### 5. Deploy Mogrix Cross-Compilation Environment
+
+```bash
+cd mogrix
+source .venv/bin/activate
+mogrix setup-cross
+```
+
+This deploys:
+- `irix-cc`, `irix-ld` wrapper scripts to `/opt/sgug-staging/usr/sgug/bin/`
+- Compat headers to `/opt/sgug-staging/usr/sgug/include/`
+- RPM macros to `/opt/sgug-staging/rpmmacros.irix`
+
+#### 6. Build Runtime Libraries
+
+```bash
+./cleanup.sh
+```
+
+This creates:
+- `libsoft_float_stubs.a` - Soft float ABI stubs
+- `libatomic.a` - Atomic operation stubs
+- `libcompat.a` - Missing POSIX functions (stpcpy, posix_spawn, etc.)
+
+#### Verify Setup
+
+```bash
+# Check toolchain
+/opt/cross/bin/clang --version
+/opt/cross/bin/mips-sgi-irix6.5-ld.bfd --version
+/opt/cross/bin/ld.lld-irix --version
+
+# Check sysroot
+ls /opt/irix-sysroot/usr/include/stdio.h
+ls /opt/irix-sysroot/usr/lib32/libc.so
+
+# Check staging
+ls /opt/sgug-staging/usr/sgug/bin/irix-cc
+ls /opt/sgug-staging/usr/sgug/lib32/libsoft_float_stubs.a
+
+# Test cross-compilation
+echo 'int main() { return 0; }' > /tmp/test.c
+/opt/sgug-staging/usr/sgug/bin/irix-cc /tmp/test.c -o /tmp/test
+file /tmp/test  # Should show: ELF 32-bit MSB executable, MIPS
+```
 
 ## CLI Commands
 
@@ -229,11 +393,27 @@ rules:
 |----------|-------------|
 | `strdup` | Duplicate a string |
 | `strndup` | Duplicate at most n bytes of a string |
+| `stpcpy` | Copy string returning pointer to end |
 | `getline` | Read a line from stream |
 | `asprintf` | Print to allocated string |
 | `vasprintf` | Print to allocated string (va_list) |
-| `reallocarray` | Safe array reallocation |
-| `strerror_r` | Thread-safe strerror |
+| `getprogname` | Get program name |
+| `posix_spawn` | Spawn process (POSIX.1-2008) |
+| `posix_spawnp` | Spawn process with PATH search |
+| `posix_spawn_file_actions_*` | File actions for spawn |
+| `openat` | Open file relative to directory fd |
+| `fstatat` | Stat file relative to directory fd |
+| `mkdirat` | Create directory relative to directory fd |
+| `unlinkat` | Unlink relative to directory fd |
+| `renameat` | Rename relative to directory fds |
+| `readlinkat` | Readlink relative to directory fd |
+| `symlinkat` | Symlink relative to directory fd |
+| `linkat` | Hard link relative to directory fds |
+| `fchmodat` | Chmod relative to directory fd |
+| `fchownat` | Chown relative to directory fd |
+| `faccessat` | Access check relative to directory fd |
+| `utimensat` | Set timestamps relative to directory fd |
+| `futimens` | Set timestamps via fd |
 
 ## Project Structure
 
@@ -252,11 +432,21 @@ mogrix/
 │   └── packages/       # Package-specific rules
 ├── headers/            # Header overlay files
 │   └── generic/        # Clang/IRIX compat headers
-├── compat/             # Compat source files
-│   ├── catalog.yaml    # Function catalog
-│   └── string/         # String function implementations
+├── compat/             # Compat library (libcompat.a)
+│   ├── include/        # Compat headers (mogrix-compat/)
+│   │   └── mogrix-compat/
+│   │       └── generic/  # stdlib.h, string.h, fcntl.h, spawn.h, etc.
+│   └── runtime/        # Compat implementations
+│       ├── strdup.c, strndup.c, stpcpy.c
+│       ├── openat.c, fstatat.c, mkdirat.c, etc.
+│       └── spawn.c     # posix_spawn implementation
+├── scripts/            # Helper scripts
+│   ├── bootstrap-tarball.sh   # Create IRIX bootstrap tarball
+│   ├── irix-chroot-testing.sh # Safe chroot testing on IRIX
+│   └── irix-bootstrap.sh      # Real IRIX installation
 ├── tests/              # Test suite
-└── plan.md             # Architecture documentation
+├── plan.md             # Architecture documentation
+└── HANDOFF.md          # Session handoff notes
 ```
 
 ## Development
@@ -280,13 +470,24 @@ make clean
 
 ## Package Rules Status
 
-32 package rules covering the tdnf dependency chain:
+12 packages validated for the tdnf dependency chain (FC40):
 
-- **Security/Crypto**: popt, libgpg-error, libgcrypt, libassuan, libksba, nettle, libtasn1, p11-kit, gnutls, gpgme, gnupg2, openssl
-- **Python3/GLib**: python3, glib2, gobject-introspection, pcre, pcre2, fribidi, cairo
-- **Package Management**: elfutils, file, libarchive, rpm, libsolv, zchunk, expat, libxml2, lua
-- **Network**: curl, libmetalink, ca-certificates
-- **Target**: tdnf
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 1 | zlib-ng | 2.1.6 | Compression library (replaces zlib in FC40) |
+| 2 | bzip2 | 1.0.8 | Block-sorting compression |
+| 3 | popt | 1.19 | Command-line option parsing |
+| 4 | openssl | 3.2.1 | TLS/SSL and crypto library |
+| 5 | libxml2 | 2.12.5 | XML parsing library |
+| 6 | curl | 8.6.0 | URL transfer library |
+| 7 | xz | 5.4.6 | LZMA compression |
+| 8 | lua | 5.4.6 | Scripting language (for rpm) |
+| 9 | file | 5.45 | File type detection |
+| 10 | rpm | 4.19.1.1 | Package manager |
+| 11 | libsolv | 0.7.28 | Dependency solver |
+| 12 | tdnf | 3.5.14 | Package manager CLI (target) |
+
+All packages build from Fedora 40 SRPMs (except tdnf which comes from Photon OS).
 
 ## Architecture
 

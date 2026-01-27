@@ -1,0 +1,5 @@
+[irix-local]
+name=IRIX Local Repository
+baseurl=http://192.168.8.88:8080/mips/
+enabled=1
+gpgcheck=0
