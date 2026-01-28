@@ -1,0 +1,48 @@
+--- a/solv/tdnfrepo.c
++++ b/solv/tdnfrepo.c
+@@ -9,6 +9,9 @@
+
+ #include "includes.h"
+
++/* Debug tracing for IRIX */
++#define DEBUG_TRACE(fmt, ...) do { fprintf(stderr, "DEBUG: " fmt "\n", ##__VA_ARGS__); fflush(stderr); } while(0)
++
+ uint32_t
+ SolvLoadRepomd(
+     Repo* pRepo,
+@@ -58,6 +61,15 @@ SolvLoadRepomdPrimary(
+         dwError = ERROR_TDNF_INVALID_PARAMETER;
+         BAIL_ON_TDNF_LIBSOLV_ERROR(dwError);
+     }
++    DEBUG_TRACE("SolvLoadRepomdPrimary: opening %s", pszPrimary);
++    /* Test basic file access first */
++    {
++        FILE *test_fp = fopen(pszPrimary, "r");
++        DEBUG_TRACE("SolvLoadRepomdPrimary: fopen test returned %p", (void*)test_fp);
++        if (test_fp) { fclose(test_fp); DEBUG_TRACE("SolvLoadRepomdPrimary: fclose done"); }
++    }
++    DEBUG_TRACE("SolvLoadRepomdPrimary: about to call solv_xfopen");
+
+     fp = solv_xfopen(pszPrimary, "r");
+     if (fp == NULL)
+@@ -65,6 +77,7 @@ SolvLoadRepomdPrimary(
+         dwError = ERROR_TDNF_SOLV_IO;
+         BAIL_ON_TDNF_LIBSOLV_ERROR(dwError);
+     }
++    DEBUG_TRACE("SolvLoadRepomdPrimary: solv_xfopen returned %p", (void*)fp);
+     if (repo_add_rpmmd(pRepo, fp, 0, 0))
+     {
+         dwError = ERROR_TDNF_SOLV_IO;
+@@ -205,8 +218,12 @@ SolvReadYumRepo(
+         BAIL_ON_TDNF_LIBSOLV_ERROR(dwError);
+     }
+
++    DEBUG_TRACE("SolvReadYumRepo: loading repomd %s", pszRepomd);
+     dwError = SolvLoadRepomd(pRepo, pszRepomd);
++    DEBUG_TRACE("SolvReadYumRepo: SolvLoadRepomd returned %u", dwError);
+     BAIL_ON_TDNF_LIBSOLV_ERROR(dwError);
+
++    DEBUG_TRACE("SolvReadYumRepo: loading primary %s", pszPrimary);
+     dwError = SolvLoadRepomdPrimary(pRepo, pszPrimary);
++    DEBUG_TRACE("SolvReadYumRepo: SolvLoadRepomdPrimary returned %u", dwError);
+     BAIL_ON_TDNF_LIBSOLV_ERROR(dwError);

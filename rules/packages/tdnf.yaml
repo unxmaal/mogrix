@@ -5,31 +5,16 @@
 package: tdnf
 
 
-# IRIX-specific patches from SGUG-RSE
+# IRIX-specific patches - needed for Photon OS SRPM (SGUG-RSE SRPM already has these)
 add_patch:
-  - client-defines.sgifixes.patch
-  - cmakelist-paths.sgifixes.patch
-  # TODO: Fix for 3.5.14 - GPG key URL variable expansion moved to gpgcheck.c
-  # - tdnf-client-rpmtrans.sgifixes.patch
-  - tdnf-client.sgifixes.patch
-  - tdnf-common-utils.sgifixes.patch
-  - tdnf-conf.sgifixes.patch
-  - tdnf-pool.sgifixes.patch
-  - tdnf-printfprecision.sgifixes.patch
-  - gpgcheck-rpm419.sgifixes.patch  # Port gpgcheck.c to rpm 4.19 API
+  - gpgcheck-rpm419.sgifixes.patch
 
 rules:
-  # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - getline
-    - asprintf
-    - vasprintf
-    - sqlite3_stub  # Stub sqlite3 - history features disabled at runtime
-    - qsort_r  # GNU extension for qsort with user data
-    - strsep  # BSD extension for token extraction
-    - getopt_long  # GNU getopt_long for tdnf-history-util
+  # SGUG-RSE spec already has its own compat system - don't use mogrix inject_compat_functions
+  # The spec includes: strdup, strndup, getline, asprintf/vasprintf, qsort_r, strsep, getopt_long
+  # BUT their vasprintf uses vsnprintf(NULL,0) which returns -1 on IRIX
+  # We fix this via sed in spec_replacements below
+  # inject_compat_functions: none needed
 
   # Drop problematic dependencies (libdicl handled in generic.yaml)
   drop_buildrequires:
@@ -60,6 +45,15 @@ rules:
 
   # Fix the %check section and cmake macros for cross-compilation
   spec_replacements:
+    # Use SGUG-RSE compat system, but replace sqlite3_stub with real sqlite3
+    # Only disable Source101 (sqlite3_stub) and its cp command
+    - pattern: "Source101: sqlite3_stub.c"
+      replacement: "# Source101: sqlite3_stub.c - using real sqlite3 instead"
+    - pattern: "cp %{SOURCE101} mogrix-compat/"
+      replacement: "# cp %{SOURCE101} mogrix-compat/ - using real sqlite3 instead"
+    # Remove stale SOURCE107 reference (doesn't exist after previous conversions)
+    - pattern: "cp %{SOURCE107} mogrix-compat/"
+      replacement: "# cp %{SOURCE107} - removed (Source107 no longer exists)"
     # Remove the entire conditional-wrapped %check block (can't just comment - macros still expand)
     - pattern: |
         %if 0%{?with_check}
@@ -95,6 +89,8 @@ rules:
         # gpgcheck.c ported to rpm 4.19 API via gpgcheck-rpm419.sgifixes.patch
         # Add sys/statfs.h for IRIX (statfs is not in sys/vfs.h on IRIX)
         sed -i '/#include <sys\/vfs.h>/a #include <sys/statfs.h>' client/includes.h
+        # DEBUG: To add debug tracing, manually apply /home/edodd/rpmbuild/SOURCES/tdnf-debug.patch
+        # after extraction, or run /home/edodd/rpmbuild/SOURCES/apply-debug.py in the source dir
         # Add sys/ttold.h for struct winsize (unconditional), sys/termios.h for TIOCGWINSZ, sys/ioccom.h for _IOR
         sed -i '1i #include <sys/ioctl.h>' tools/cli/lib/output.c
         sed -i '1i #include <sys/termios.h>' tools/cli/lib/output.c
@@ -107,6 +103,16 @@ rules:
         sed -i 's/statfs(pConf->pszCacheDir, \&stfs)/statfs(pConf->pszCacheDir, \&stfs, sizeof(stfs), 0)/' client/packageutils.c
         sed -i 's/stfs.f_bavail/stfs.f_bfree/' client/packageutils.c
         export COMPAT_DIR=$(pwd)/mogrix-compat
+        # Create mogrix-compat directory and build compat library
+        mkdir -p $COMPAT_DIR
+        # Copy fixed asprintf.c (IRIX vsnprintf(NULL,0) returns -1, not buffer size)
+        cp /opt/sgug-staging/asprintf.c $COMPAT_DIR/asprintf.c
+        # Copy getopt_long.c (IRIX doesn't have getopt_long)
+        cp /home/edodd/projects/github/unxmaal/mogrix/compat/functions/getopt_long.c $COMPAT_DIR/getopt_long.c
+        # Build libmogrix-compat.a
+        %{__cc} -c -o $COMPAT_DIR/asprintf.o $COMPAT_DIR/asprintf.c -I/opt/sgug-staging/usr/sgug/include
+        %{__cc} -c -o $COMPAT_DIR/getopt_long.o $COMPAT_DIR/getopt_long.c -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic
+        %{__ar} rcs $COMPAT_DIR/libmogrix-compat.a $COMPAT_DIR/asprintf.o $COMPAT_DIR/getopt_long.o
         cmake -B _build -S . \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_C_COMPILER=%{__cc} \
@@ -116,8 +122,8 @@ rules:
           -DCMAKE_INSTALL_PREFIX=%{_prefix} \
           -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
           -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include" \
-          -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
-          -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
+          -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
+          -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
           -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
           -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
           -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
@@ -135,13 +141,18 @@ rules:
       replacement: |
         cd _build && make install DESTDIR=%{buildroot}
         # Clean up files we don't want (systemd, plugins, automatic, motdgen)
+        rm -rf %{buildroot}/lib/systemd
         rm -rf %{buildroot}%{_prefix}/lib/systemd
+        rm -rf %{buildroot}/etc/motdgen.d
         rm -rf %{buildroot}%{_sysconfdir}/motdgen.d
+        rm -rf %{buildroot}/etc/%{name}/automatic.conf
         rm -rf %{buildroot}%{_sysconfdir}/%{name}/automatic.conf
+        rm -rf %{buildroot}/etc/%{name}/pluginconf.d
         rm -rf %{buildroot}%{_sysconfdir}/%{name}/pluginconf.d
+        rm -rf %{buildroot}/etc/%{name}/tdnf.conf
+        rm -rf %{buildroot}%{_sysconfdir}/%{name}/tdnf.conf
         rm -f %{buildroot}%{_bindir}/%{name}-automatic
         rm -f %{buildroot}%{_bindir}/tdnf-automatic
-        rm -f %{buildroot}%{_sysconfdir}/%{name}/tdnf.conf
     # Skip python bindings build (can't run cross-compiled python)
     - pattern: "%make_build -C %{__cmake_builddir} python"
       replacement: "# Skip python bindings for cross-compilation"

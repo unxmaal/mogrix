@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-01-28
-**Status**: VSNPRINTF FIX VERIFIED - rpm --help and debug output now work correctly on IRIX
+**Status**: RPM WORKING, TDNF ROOT CAUSE IDENTIFIED - funopen implementation needed
 
 ---
 
@@ -30,33 +30,212 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 ### What's Done (2026-01-28)
 - All 13 packages cross-compile successfully
 - **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
-- `rpm --version` works: shows "RPM version 4.19.1.1"
-- `rpm --help` works: shows option flags AND descriptions correctly
-- Debug output works: shows "D: Exit status: 1" etc. (not empty)
 - popt rebuilt with vasprintf injection
 - rpm rebuilt with rvasprintf and rpmlog fixes
+- **Full chroot testing PASSED** - all rpm and tdnf operations verified
 
-### Verified on IRIX
+### Verified in /opt/chroot on IRIX
+
+| Test | Result |
+|------|--------|
+| `rpm --version` | ✓ RPM version 4.19.1.1 |
+| `rpm --help` | ✓ Shows options AND descriptions correctly |
+| `rpm -qpl <pkg>` | ✓ Lists package contents |
+| `rpm --initdb` | ✓ Creates sqlite database |
+| `rpm -ivh --nodeps` | ✓ Installs with progress bars |
+| `rpm -qa` | ✓ Shows `popt-1.19-6.mips` |
+| `rpm -qi popt` | ✓ Full package info displayed |
+| `tdnf --version` | ✓ tdnf: 3.5.14 |
+| `tdnf --help` | ✓ Full command list displayed |
+
 ```bash
-# Test results from IRIX:
-$ rpm --version
-RPM version 4.19.1.1
+# Test session from IRIX chroot (2026-01-28):
+$ rpm -ivh --nodeps /tmp/popt-1.19-6.mips.rpm
+Verifying...                          ########################################
+Preparing...                          ########################################
+Updating / installing...
+popt-1.19-6                           ########################################
 
-$ rpm --help | head -10
-Usage: rpm [OPTION...]
+$ rpm -qa
+popt-1.19-6.mips
 
-Query/Verify package selection options:
-  -a, --all                          query/verify all packages
-  -f, --file                         query/verify package(s) owning installed
-                                     file
+$ tdnf --version
+tdnf: 3.5.14
 ```
 
-### What's Next
-1. Copy complete bootstrap tarball to IRIX chroot
-2. Test `rpm -qpl <package>` to verify package queries work
-3. Initialize rpm database: `rpm --initdb`
-4. Test package installation: `rpm -ivh --nodeps <package>`
-5. Test tdnf
+### tdnf Repository Setup (DONE)
+
+Repository configured and working:
+- **mogrix.repo** at `/opt/chroot/etc/yum.repos.d/mogrix.repo`
+- **tdnf.conf** at `/opt/chroot/etc/tdnf/tdnf.conf`
+- Repository metadata at `/opt/chroot/usr/sgug/share/mogrix-repo/`
+
+**tdnf.conf settings**:
+```ini
+[main]
+gpgcheck=0
+installonly_limit=3
+clean_requirements_on_remove=1
+repodir=/etc/yum.repos.d
+cachedir=/var/cache/tdnf
+distroverpkg=        # Disables distro package check
+releasever=1         # Required - prevents $releasever lookup
+basearch=mips        # Required - prevents $basearch lookup
+```
+
+**mogrix.repo settings** (note: full path required for file:// URLs):
+```ini
+[mogrix]
+name=Mogrix IRIX Packages
+baseurl=file:///opt/chroot/usr/sgug/share/mogrix-repo
+enabled=1
+gpgcheck=0
+```
+
+| Test | Result |
+|------|--------|
+| `tdnf repolist` | ✓ Shows "mogrix" repo enabled (exit 0) |
+| `tdnf makecache` | Downloads metadata to cache but exits 1 |
+| `tdnf list` | No output, exits 1 |
+| `tdnf count` | No output, exits 1 |
+| `tdnf clean all` | Crashes with SIGSEGV (exit 139) |
+
+### Path Fixes Applied (2026-01-28)
+
+TDNF requires many directories to exist. Created on IRIX:
+
+**In /opt/chroot:**
+- `/opt/chroot/etc/tdnf/vars/`
+- `/opt/chroot/etc/dnf/vars/`
+- `/opt/chroot/etc/yum/vars/`
+- `/opt/chroot/etc/tdnf/minversions.d/`
+- `/opt/chroot/etc/tdnf/locks.d/`
+- `/opt/chroot/etc/tdnf/protected.d/`
+- `/opt/chroot/var/lib/rpm` → `../../usr/sgug/lib32/sysimage/rpm` (relative symlink)
+- `/opt/chroot/usr/sgug/lib/sysimage/rpm` → `../../lib32/sysimage/rpm` (for `_dbpath` macro mismatch)
+
+**On base IRIX system** (required because IRIX chroot doesn't isolate properly):
+- `/etc/yum.repos.d/`
+- `/etc/tdnf/pluginconf.d/`
+- `/usr/sgug/lib32/rpm` → `/opt/chroot/usr/sgug/lib32/rpm` (symlink)
+
+### Test Method
+
+**IMPORTANT**: Default IRIX shell is csh. Always use `/bin/sh` to run test scripts:
+
+```bash
+# Create test script locally
+cat > /tmp/test.sh << 'SCRIPT'
+#!/bin/sh
+export LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32:/usr/sgug/lib32
+/opt/chroot/usr/sgug/bin/tdnf -c /opt/chroot/etc/tdnf/tdnf.conf --installroot=/opt/chroot repolist
+echo "exit: $?"
+SCRIPT
+
+# Copy and run with /bin/sh
+scp /tmp/test.sh root@192.168.0.81:/tmp/
+ssh root@192.168.0.81 "/bin/sh /tmp/test.sh"
+```
+
+**Note**: IRIX chroot doesn't properly isolate - commands still see base system paths. That's why we run binaries directly with `LD_LIBRARYN32_PATH` instead of using chroot.
+
+### Current Issue: Error(1304) - Solv I/O Error
+
+**ROOT CAUSE IDENTIFIED (2026-01-28):**
+
+All tdnf repo operations (list, count, info, search, makecache) fail with:
+```
+Error(1304) : Solv - I/O error
+```
+
+**Definitive proof:**
+```bash
+# Test with COMPRESSED input - FAILS (exit 1)
+/opt/chroot/usr/sgug/bin/rpmmd2solv < /opt/chroot/var/cache/tdnf/mogrix-fe7d8a84/repodata/primary.xml.gz
+
+# Test with DECOMPRESSED input - WORKS (exit 0)
+gzip -dc /opt/chroot/var/cache/tdnf/mogrix-fe7d8a84/repodata/primary.xml.gz | /opt/chroot/usr/sgug/bin/rpmmd2solv
+```
+
+**The problem is cookie I/O for transparent .gz decompression:**
+- libsolv's `solv_xfopen()` uses either `fopencookie` (GNU) or `funopen` (BSD)
+- mogrix provides `fopencookie` via `compat/stdio/fopencookie.c`
+- This implementation uses pipes + pthreads and **crashes on IRIX**
+- SGUG-RSE solves this by providing `funopen` via `libdiclfunopen`
+
+**Code path:**
+```
+solv_xfopen() → cookieopen() → fopencookie() → CRASH
+                            ↘ funopen() → would work (if available)
+```
+
+---
+
+## SOLUTION: Implement funopen in mogrix
+
+**Mogrix philosophy**: Self-contained - incorporate all IRIX compatibility functions rather than depending on external libraries like libdicl.
+
+### Required Changes
+
+**1. Add funopen to compat system** (`compat/stdio/funopen.c`)
+   - Port funopen implementation from libdicl or write new one
+   - funopen is simpler than fopencookie (single callback vs struct of callbacks)
+   - BSD signature: `FILE *funopen(void *cookie, int (*readfn)(), int (*writefn)(), fpos_t (*seekfn)(), int (*closefn)())`
+
+**2. Update libsolv build** (`rules/packages/libsolv.yaml`)
+   - Change from `HAVE_FOPENCOOKIE=1` to `HAVE_FUNOPEN=1`
+   - Link against mogrix-compat with funopen
+   - libsolv cmake checks: `ext/solv_xfopen.c` lines 29-52
+
+**3. Rebuild and test**
+   - Rebuild libsolv with funopen support
+   - Rebuild tdnf (links against libsolv)
+   - Test: `tdnf list`, `tdnf makecache`, `tdnf info popt`
+
+### Implementation Reference
+
+SGUG-RSE's approach (from `sgug-rse/packages/libsolv/libsolv.spec`):
+```
+export LDFLAGS="-ldicl-0.1 -ldiclfunopen-0.1"
+```
+
+libdicl funopen source: https://github.com/danielhams/dicl
+
+### libsolv Cookie I/O Code
+
+From `libsolv-0.7.28/ext/solv_xfopen.c`:
+```c
+#ifndef WITHOUT_COOKIEOPEN
+static FILE *cookieopen(void *cookie, const char *mode,
+    ssize_t (*cread)(void *, char *, size_t),
+    ssize_t (*cwrite)(void *, const char *, size_t),
+    int (*cclose)(void *))
+{
+#ifdef HAVE_FUNOPEN
+  if (!cwrite)
+    return funopen(cookie, (int (*)(void *, char *, int))cread, NULL, NULL, cclose);
+  return funopen(cookie, NULL, (int (*)(void *, const char *, int))cwrite, NULL, cclose);
+#elif defined(HAVE_FOPENCOOKIE)
+  // ... fopencookie implementation
+#endif
+}
+#endif
+```
+
+### Secondary Issue: Segfault in clean
+
+`tdnf clean all` crashes after partial output:
+```
+cleaning mogrix: metadata dbcache packages keys expire-cache
+Memory fault(coredump)
+```
+- Likely related to fopencookie crash when cleaning cached .solv files
+- Should be fixed by funopen implementation
+- If not, debug with `dbx /opt/chroot/usr/sgug/bin/tdnf /opt/chroot/core`
+
+### Other Tasks (Lower Priority)
+- Plan migration strategy for production /usr/sgug (conflicts with existing SGUG-RSE)
+- Build more packages via mogrix
 
 ---
 
@@ -175,10 +354,23 @@ rpm built with `-DENABLE_SQLITE=OFF` could not initialize its database properly.
 | File | Purpose |
 |------|---------|
 | `compat/stdio/asprintf.c` | Fixed vasprintf with iterative approach |
+| `compat/stdio/fopencookie.c` | fopencookie compat (BROKEN - crashes on IRIX) |
+| `compat/stdio/funopen.c` | **TODO**: funopen compat (needed for libsolv) |
 | `rules/packages/popt.yaml` | popt with vasprintf injection |
 | `rules/packages/rpm.yaml` | rpm with rvasprintf and rpmlog fixes |
+| `rules/packages/libsolv.yaml` | libsolv - needs HAVE_FUNOPEN=1 |
+| `rules/packages/tdnf.yaml` | tdnf cross-compilation config |
 | `tools/bin/ld.lld-irix-18` | LLD 18 binary with IRIX patches |
 | `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Linker wrapper (uses LLD 18) |
+
+### IRIX Chroot Configuration Files
+
+| File (in /opt/chroot) | Purpose |
+|------|---------|
+| `/etc/tdnf/tdnf.conf` | tdnf main config (distroverpkg= disabled) |
+| `/etc/yum.repos.d/mogrix.repo` | Repository definition |
+| `/usr/sgug/share/mogrix-repo/` | Repository metadata location |
+| `/var/cache/tdnf/` | tdnf metadata cache |
 
 ---
 
@@ -197,8 +389,8 @@ rpm built with `-DENABLE_SQLITE=OFF` could not initialize its database properly.
 | 9 | file | 5.45 | COMPLETE |
 | 10 | sqlite | 3.45.1 | COMPLETE |
 | 11 | rpm | 4.19.1.1 | **REBUILT with vsnprintf fixes** |
-| 12 | libsolv | 0.7.28 | COMPLETE |
-| 13 | tdnf | 3.5.14 | Ready to test |
+| 12 | libsolv | 0.7.28 | **NEEDS REBUILD with funopen** |
+| 13 | tdnf | 3.5.14 | Builds but repo ops fail (waiting on libsolv fix) |
 
 ---
 
@@ -264,6 +456,8 @@ scp ../irix-test.tar edodd@192.168.0.81:/tmp/
 
 ## Known Issues
 
+- **fopencookie crashes on IRIX** - mogrix's pipe+pthread implementation doesn't work
+  - SOLUTION: Implement funopen instead (see "SOLUTION" section above)
 - Existing IRIX system has SGUG-RSE with rpm 4.15.0 already installed
 - Our packages conflict with existing SGUG packages (e.g., zlib-ng-compat vs zlib)
 - sqlite3 CLI crashes when writing to files (but rpm database writes work)
