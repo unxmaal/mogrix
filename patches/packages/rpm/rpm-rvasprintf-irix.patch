@@ -1,0 +1,56 @@
+--- a/rpmio/rpmstring.c
++++ b/rpmio/rpmstring.c
+@@ -84,22 +84,32 @@ char *rstrcat(char **dest, const char *src)
+ int rvasprintf(char **strp, const char *fmt, va_list ap)
+ {
+-    int n;
+-    char * p = NULL;
+     va_list aq;
+-
+-    if (strp == NULL)
+-	return -1;
++    int n;
++    char *p = NULL;
++    size_t size = 256;
+
+-    va_copy(aq, ap);
+-    n = vsnprintf(NULL, 0, fmt, aq);
+-    va_end(aq);
++    if (strp == NULL)
++        return -1;
+
+-    if (n >= -1) {
+-	size_t nb = n + 1;
+-	p = xmalloc(nb);
+-	va_copy(aq, ap);
+-        n = vsnprintf(p, nb, fmt, aq);
+-	va_end(aq);
+-    }
+-    *strp = p;
+-    return n;
++    /* IRIX fix: vsnprintf(NULL,0,...) returns -1 instead of required size */
++    /* Use iterative approach: allocate buffer, try vsnprintf, grow if needed */
++    while (1) {
++        p = xmalloc(size);
++        va_copy(aq, ap);
++        n = vsnprintf(p, size, fmt, aq);
++        va_end(aq);
++
++        if (n >= 0 && (size_t)n < size) {
++            *strp = p;
++            return n;
++        }
++        free(p);
++        if (n >= (int)size) {
++            size = n + 1;
++        } else {
++            size *= 2;
++            if (size > 1024 * 1024) {
++                *strp = NULL;
++                return -1;
++            }
++        }
++    }
+ }
+
+ int rasprintf(char **strp, const char *fmt, ...)

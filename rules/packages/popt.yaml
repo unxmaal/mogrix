@@ -9,12 +9,17 @@ rules:
   inject_compat_functions:
     - strdup
     - strndup
+    - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
 
   # Fix stpcpy conflict - popt's system.h defines static inline stpcpy which
   # conflicts with our mogrix-compat/generic/string.h declaration
   # Comment out the entire function (lines 31-38 in src/system.h)
   prep_commands:
     - "sed -i '/^static inline char \\* stpcpy/,/^}$/s/^/\\/\\/ /' src/system.h"
+    # Force HAVE_MBSRTOWCS to 0 - IRIX doesn't have these functions
+    # The ac_cv override doesn't always work with cross-compilation
+    # Note: the #ifdef has leading whitespace, so we match with .*
+    - "sed -i 's/#ifdef HAVE_MBSRTOWCS/#if 0 \\/\\* IRIX \\*\\//' src/popthelp.c"
 
   # Configure options for cross-compilation
   configure_opts:
@@ -41,6 +46,8 @@ rules:
     # IRIX doesn't have these wide character functions
     ac_cv_func_mbsnrtowcs: "no"
     ac_cv_func_mbsrtowcs: "no"
+    # Tell configure we have vasprintf (via mogrix-compat)
+    ac_cv_func_vasprintf: "yes"
 
   # Libtool needs help finding the right linker - the wrapper handles this
   spec_replacements:

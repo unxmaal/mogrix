@@ -1,7 +1,21 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-27
-**Status**: LLD 18 built and working - rpm 4.19.1.1 successfully cross-compiled with correct relocations
+**Last Updated**: 2026-01-28
+**Status**: VSNPRINTF FIX VERIFIED - rpm --help and debug output now work correctly on IRIX
+
+---
+
+## CRITICAL WARNING
+
+**NEVER install packages directly to /usr/sgug on the live IRIX system.**
+
+On 2026-01-27, installing packages directly to /usr/sgug replaced libz.so with zlib-ng, which broke sshd and locked out SSH access. The system had to be recovered from console using backup libraries from /usr/sgug_old.
+
+**Always use /opt/chroot for testing first.** Only touch /usr/sgug after:
+1. Full testing in chroot passes
+2. Explicit user approval
+3. Console access is available as backup
+4. Recovery plan is documented
 
 ---
 
@@ -13,97 +27,146 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 
 ## Current Progress
 
-### What's Done
-- All 12 packages cross-compile successfully (zlib-ng, bzip2, popt, openssl, libxml2, curl, xz, lua, file, rpm, libsolv, tdnf)
-- LLD 18.1.3 built from source with IRIX patches - fixes MIPS relocation bug
-- rpm 4.19.1.1 binary now has correct relocations (symbols reference actual names, not `*ABS*`)
-- Bootstrap tarball infrastructure ready
+### What's Done (2026-01-28)
+- All 13 packages cross-compile successfully
+- **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
+- `rpm --version` works: shows "RPM version 4.19.1.1"
+- `rpm --help` works: shows option flags AND descriptions correctly
+- Debug output works: shows "D: Exit status: 1" etc. (not empty)
+- popt rebuilt with vasprintf injection
+- rpm rebuilt with rvasprintf and rpmlog fixes
+
+### Verified on IRIX
+```bash
+# Test results from IRIX:
+$ rpm --version
+RPM version 4.19.1.1
+
+$ rpm --help | head -10
+Usage: rpm [OPTION...]
+
+Query/Verify package selection options:
+  -a, --all                          query/verify all packages
+  -f, --file                         query/verify package(s) owning installed
+                                     file
+```
 
 ### What's Next
-1. Create new bootstrap tarball with LLD 18-built binaries
-2. Test on IRIX to verify rpm works (`/opt/chroot/usr/sgug/bin/rpm --version`)
-3. Build tdnf and test package installation
+1. Copy complete bootstrap tarball to IRIX chroot
+2. Test `rpm -qpl <package>` to verify package queries work
+3. Initialize rpm database: `rpm --initdb`
+4. Test package installation: `rpm -ivh --nodeps <package>`
+5. Test tdnf
+
+---
+
+## The Root Cause: IRIX vsnprintf Pre-C99 Behavior
+
+**Symptom**: rpm output was garbled or missing. `--help` showed descriptions without option flags. `--debug` showed `D: ` prefixes repeated without messages.
+
+**Root Cause**: IRIX vsnprintf does NOT support C99 behavior.
+- C99: `vsnprintf(NULL, 0, fmt, ap)` returns the required buffer size
+- IRIX: `vsnprintf(NULL, 0, fmt, ap)` returns **-1**
+
+This affected:
+1. **popt**: Uses vasprintf in POPT_fprintf for help output
+2. **rpm's rvasprintf**: Internal vasprintf implementation in rpmio/rpmstring.c
+3. **rpm's rpmlog**: Log function in rpmio/rpmlog.c also used vsnprintf(NULL,0)
+
+**Note**: The va_list ABI IS compatible between clang and IRIX (both 4-byte pointers on MIPS n32). The original "va_list ABI mismatch" hypothesis was wrong.
+
+---
+
+## Fixes Applied
+
+### 1. compat/stdio/asprintf.c - Iterative vasprintf
+Changed from "determine size then allocate" to iterative approach:
+```c
+int vasprintf(char **strp, const char *fmt, va_list ap) {
+    size_t size = 256;  // Start with reasonable buffer
+    while (1) {
+        char *str = malloc(size);
+        va_copy(ap_copy, ap);
+        int len = vsnprintf(str, size, fmt, ap_copy);
+        va_end(ap_copy);
+
+        if (len >= 0 && len < size) {
+            *strp = str;
+            return len;  // Success
+        }
+        free(str);
+
+        if (len >= size) size = len + 1;  // C99 precise size
+        else size *= 2;  // IRIX: double buffer
+
+        if (size > 1024*1024) return -1;  // Safety limit
+    }
+}
+```
+
+### 2. rules/packages/popt.yaml
+```yaml
+inject_compat_functions:
+  - vasprintf  # Added - IRIX vsnprintf(NULL,0) returns -1
+
+ac_cv_overrides:
+  ac_cv_func_vasprintf: "yes"  # Tell configure we have vasprintf
+
+prep_commands:
+  # Force disable HAVE_MBSRTOWCS - IRIX doesn't have this
+  - "sed -i 's/#ifdef HAVE_MBSRTOWCS/#if 0/' src/popthelp.c"
+```
+
+### 3. rules/packages/rpm.yaml
+Added two sed fixes in the `%autosetup` replacement:
+
+**rvasprintf fix** (rpmio/rpmstring.c):
+```bash
+sed -i '/^int rvasprintf/,/^int rasprintf/c\
+int rvasprintf(char **strp, const char *fmt, va_list ap)\n\
+... iterative implementation ...
+' rpmio/rpmstring.c
+```
+
+**rpmlog fix** (rpmio/rpmlog.c):
+```bash
+sed -i '/^void rpmlog.*code.*fmt/,/^exit:/c\
+void rpmlog (int code, const char *fmt, ...)\n\
+... iterative implementation ...
+' rpmio/rpmlog.c
+```
 
 ---
 
 ## What Worked
 
+### SQLite Build Fixes (rules/packages/sqlite.yaml)
+Required multiple fixes for IRIX cross-compilation:
+1. `--disable-math` - IRIX lacks acosh/asinh/atanh
+2. `-D_ABI_SOURCE` - Fix select() static/extern conflict
+3. `-DLLONG_MAX=...` - IRIX predates C99
+4. `-DLONGDOUBLE_TYPE=double` - Avoid 128-bit long double
+
 ### LLD 18 from Source
-Built LLD 18.1.3 from LLVM source with three essential patches. This fixed the MIPS relocation bug where external symbols in static data were incorrectly referenced as `*ABS*`.
-
-### Patches Applied to LLVM 18.1.3
-
-**1. IRIX ELF compatibility (Writer.cpp)**
-Skip features that crash IRIX's ELF parser:
-- PT_MIPS_ABIFLAGS program header
-- PT_GNU_STACK program header
-- PT_PHDR in shared libraries
-
-**2. MIPS local symbols in DSO (InputFiles.cpp)**
-IRIX shared libraries have section symbols (.text, .data, etc.) in the global part of the symbol table. LLD 18 rejects this by default.
-```cpp
-// Skip error for section symbols (starting with .) on MIPS
-if (emachine != EM_MIPS || !name.starts_with(".")) {
-  errorOrWarn(toString(this) + ": invalid local symbol...");
-}
-```
-
-**3. sh_entsize=0 for .dynamic section (ELF.h)**
-GNU ld (MIPS) produces .dynamic sections with sh_entsize=0. LLD 18 expects it to be 8.
-```cpp
-// Allow sh_entsize=0 - some linkers produce .dynamic with entsize=0
-if (Sec.sh_entsize != sizeof(T) && sizeof(T) != 1 && Sec.sh_entsize != 0)
-  return createError(...);
-```
+Built LLD 18.1.3 from LLVM source with three essential patches for IRIX compatibility.
 
 ### RPM Fixes
 - `-DRPM_CONFIGDIR=/usr/sgug/lib32/rpm` - Fix config directory path
+- `-DENABLE_SQLITE=ON` with sqlite paths - Enable sqlite database backend
 - `sed -i 's/static __thread/static/'` - Remove TLS (IRIX rld doesn't support `__tls_get_addr`)
-
-### libsolv Fix
-- `xmlErrorPtr` → `const xmlError *` for newer libxml2 compatibility
 
 ---
 
 ## What Failed
 
 ### Using vvuk's LLD 14 fork
-The existing LLD 14 (vvuk's fork at `/opt/cross/bin/ld.lld-irix`) generated incorrect relocations:
-- External symbols in static data referenced `*ABS*` instead of actual symbol names
-- IRIX rld couldn't resolve these, leaving pointers NULL
-- Result: rpm failed with "unknown option" for ALL options
+Generated incorrect relocations - external symbols in static data referenced `*ABS*` instead of actual symbol names.
 
-### Using GNU ld for executables
-Tried modifying `irix-ld` to use GNU ld (`mips-sgi-irix6.5-ld.bfd`) for executables:
-- **Failed**: cmake's linker flags don't include `-lcompat`
-- The compat library provides `getprogname`, `setprogname`, etc.
-- Would require modifying cmake toolchain files
+### sqlite3 CLI file write crash (OPEN)
+sqlite3 works with in-memory databases but crashes with SIGSEGV when writing to files. The rpm database was created successfully by `rpm --initdb`, so only the CLI has this issue.
 
-### Setting RPM_CONFIGDIR environment variable
-- Doesn't help because the bug was in binary's data section relocations, not config file loading
-
-### Checking input file osabi for IRIX
-First attempt to fix LLD 18 local symbol errors checked `this->osabi`:
-- **Failed**: IRIX system libraries have osabi=0 (System V), not ELFOSABI_IRIX (8)
-- Fixed by checking for MIPS + section symbol names starting with `.`
-
----
-
-## Relocation Fix - VERIFIED
-
-The original problem was that LLD 14 generated incorrect relocations for external symbols in static data:
-
-**Before (LLD 14 - broken)**:
-```
-R_MIPS_REL32      00000000   *ABS*
-```
-
-**After (LLD 18 - fixed)**:
-```
-R_MIPS_REL32      00000000   rpmcliAllPoptTable
-```
-
-The optionsTable[] array now has proper symbol references that IRIX's rld can resolve at runtime.
+### RPM without sqlite database
+rpm built with `-DENABLE_SQLITE=OFF` could not initialize its database properly.
 
 ---
 
@@ -111,50 +174,11 @@ The optionsTable[] array now has proper symbol references that IRIX's rld can re
 
 | File | Purpose |
 |------|---------|
-| `tools/bin/ld.lld-irix-18` | New LLD 18 binary with IRIX patches |
-| `scripts/build-lld-irix.sh` | Script to rebuild LLD from source |
-| `tmp/lld-irix-build/` | LLD build directory with patched source |
-| `rules/packages/rpm.yaml` | RPM build rules with TLS fix, config path fix |
-| `rules/packages/libsolv.yaml` | libsolv build rules with xmlErrorPtr fix |
-| `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Linker wrapper (updated to use new LLD) |
-
----
-
-## irix-ld Configuration
-
-The linker wrapper is configured to use the new LLD 18:
-```bash
-LLD="${IRIX_LLD:-/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18}"
-```
-
----
-
-## Verification Commands
-
-### Check relocations are correct
-```bash
-# Extract rpm binary from package
-cd /tmp && rm -rf rpm-check && mkdir rpm-check && cd rpm-check
-rpm2cpio ~/rpmbuild/RPMS/mips/rpm-4.19.1.1-1.mips.rpm | cpio -idmv
-
-# Should show symbol names, not *ABS*
-/opt/cross/bin/mips-sgi-irix6.5-readelf -r usr/sgug/bin/rpm
-
-# Should show non-zero values in optionsTable
-/opt/cross/bin/mips-sgi-irix6.5-objdump -s -j .data usr/sgug/bin/rpm | grep -A 5 34d5
-```
-
-### Test on IRIX
-```bash
-# Copy new bootstrap tarball to IRIX
-scp tmp/irix-bootstrap.tar.gz edodd@192.168.0.81:/tmp/
-
-# On IRIX:
-cd /opt/chroot
-tar xzf /tmp/irix-bootstrap.tar.gz
-export LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32
-/opt/chroot/usr/sgug/bin/rpm --version
-```
+| `compat/stdio/asprintf.c` | Fixed vasprintf with iterative approach |
+| `rules/packages/popt.yaml` | popt with vasprintf injection |
+| `rules/packages/rpm.yaml` | rpm with rvasprintf and rpmlog fixes |
+| `tools/bin/ld.lld-irix-18` | LLD 18 binary with IRIX patches |
+| `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Linker wrapper (uses LLD 18) |
 
 ---
 
@@ -164,16 +188,17 @@ export LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32
 |---|---------|---------|--------|
 | 1 | zlib-ng | 2.1.6 | COMPLETE |
 | 2 | bzip2 | 1.0.8 | COMPLETE |
-| 3 | popt | 1.19 | COMPLETE |
+| 3 | popt | 1.19 | **REBUILT with vasprintf** |
 | 4 | openssl | 3.2.1 | COMPLETE |
 | 5 | libxml2 | 2.12.5 | COMPLETE |
 | 6 | curl | 8.6.0 | COMPLETE |
 | 7 | xz | 5.4.6 | COMPLETE |
 | 8 | lua | 5.4.6 | COMPLETE |
 | 9 | file | 5.45 | COMPLETE |
-| 10 | rpm | 4.19.1.1 | **COMPLETE** - LLD 18 fix |
-| 11 | libsolv | 0.7.28 | COMPLETE |
-| 12 | tdnf | 3.5.14 | Ready to test |
+| 10 | sqlite | 3.45.1 | COMPLETE |
+| 11 | rpm | 4.19.1.1 | **REBUILT with vsnprintf fixes** |
+| 12 | libsolv | 0.7.28 | COMPLETE |
+| 13 | tdnf | 3.5.14 | Ready to test |
 
 ---
 
@@ -183,7 +208,6 @@ export LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32
 |---------|------|
 | Mogrix project | `/home/edodd/projects/github/unxmaal/mogrix/` |
 | Cross toolchain | `/opt/cross/bin/` |
-| LLD 18 binary | `tools/bin/ld.lld-irix-18` |
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | Python venv | `.venv/bin/activate` |
@@ -192,26 +216,60 @@ export LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32
 
 ---
 
-## Rebuilding LLD 18
+## Quick Test on IRIX
 
-If you need to rebuild LLD with additional patches:
-
+To verify rpm works:
 ```bash
-cd /home/edodd/projects/github/unxmaal/mogrix
-# Patches are in tmp/lld-irix-build/llvm-project-18.1.3.src/
-# - lld/ELF/Writer.cpp (IRIX ELF compat)
-# - lld/ELF/InputFiles.cpp (local symbol fix)
-# - llvm/include/llvm/Object/ELF.h (sh_entsize fix)
-
-cd tmp/lld-irix-build/llvm-project-18.1.3.src/build
-ninja lld
-cp bin/lld ../../tools/bin/ld.lld-irix-18
+ssh edodd@192.168.0.81 '/usr/sgug/bin/bash' <<'EOF'
+export LD_LIBRARY_PATH=/tmp/test-rpm/usr/sgug/lib32:/usr/sgug/lib32
+/tmp/test-rpm/usr/sgug/bin/rpm --version
+/tmp/test-rpm/usr/sgug/bin/rpm --help | head -20
+EOF
 ```
+
+---
+
+## Rebuilding Packages
+
+### Rebuild popt (if needed)
+```bash
+source .venv/bin/activate
+rm -rf popt-*-converted
+mogrix convert popt-1.19-6.fc40.src.rpm
+mogrix build popt-1.19-6.fc40.src-converted/*.src.rpm --cross
+mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+```
+
+### Rebuild rpm (after popt)
+```bash
+rm -rf rpm-*-converted
+mogrix convert rpm-4.19.1.1-1.fc40.src.rpm
+mogrix build rpm-4.19.1.1-1.fc40.src-converted/*.src.rpm --cross
+mogrix stage ~/rpmbuild/RPMS/mips/rpm-libs*.rpm ~/rpmbuild/RPMS/mips/rpm-4*.rpm
+```
+
+### Create test tarball
+```bash
+cd /tmp && rm -rf irix-test && mkdir irix-test && cd irix-test
+for rpm in ~/rpmbuild/RPMS/mips/{popt,rpm-libs,rpm-4}*.mips.rpm; do
+    rpm2cpio "$rpm" | cpio -idm
+done
+# Copy dependencies from staging
+cp -av /opt/sgug-staging/usr/sgug/lib32/lib{lua,ssl,crypto,bz2,lzma,magic,sqlite3,z}*.so* usr/sgug/lib32/
+tar cf ../irix-test.tar usr
+scp ../irix-test.tar edodd@192.168.0.81:/tmp/
+```
+
+---
+
+## Known Issues
+
+- Existing IRIX system has SGUG-RSE with rpm 4.15.0 already installed
+- Our packages conflict with existing SGUG packages (e.g., zlib-ng-compat vs zlib)
+- sqlite3 CLI crashes when writing to files (but rpm database writes work)
 
 ---
 
 ## Long-Term Goal
 
 After tdnf works: port **WebKitGTK 2.38.x** for a modern browser on IRIX.
-- Use `-DENABLE_JIT=OFF` for interpreter mode
-- Most GTK3 dependencies already in SGUG-RSE

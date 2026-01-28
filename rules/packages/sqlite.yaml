@@ -1,21 +1,38 @@
 package: sqlite
 
 rules:
-  # Disable tcl support - not available for IRIX cross-compilation
-  bcond_invert:
-    - tcl
-    - sqldiff
+  # Note: bcond_invert is not implemented, using spec_replacements instead
 
   configure_flags:
     add:
       - --disable-static
+      - --enable-shared
+      - --disable-math  # IRIX lacks C99 math functions (acosh/asinh/atanh)
     remove:
       # These are Linux-specific features not available on IRIX
       - --enable-threadsafe
       - --enable-threads-override-locks
 
+  # Force libtool to build shared libraries (it mis-detects cross-compilation)
+  ac_cv_overrides:
+    lt_cv_deplibs_check_method: "pass_all"
+
+  # IRIX compatibility environment variables
+  export_vars:
+    # SQLITE_ENABLE_MATH_FUNCTIONS=0 disables SQL math functions
+    # SQLITE_HAVE_C99_MATH_FUNCS=0 disables C99 math functions (acosh/asinh/atanh not on IRIX)
+    # Define LLONG_MAX/MIN since IRIX predates C99
+    # _ABI_SOURCE makes _ABIAPI true, using extern select() instead of static wrapper
+    # LONGDOUBLE_TYPE=double avoids 128-bit long double (clang MIPS doesn't support -mlong-double-64)
+    CPPFLAGS: "-D_ABI_SOURCE -DSQLITE_ENABLE_MATH_FUNCTIONS=0 -DSQLITE_HAVE_C99_MATH_FUNCS=0 -DLLONG_MAX=9223372036854775807LL -DLLONG_MIN=-9223372036854775808LL -DLONGDOUBLE_TYPE=double $CPPFLAGS"
+
   # Comment out the conditional %check wrapper - the %if needs to be disabled too
   spec_replacements:
+    # Disable tcl support - not available for IRIX cross-compilation
+    - pattern: "%bcond_without tcl"
+      replacement: "%bcond_with tcl"
+    - pattern: "%bcond_without sqldiff"
+      replacement: "%bcond_with sqldiff"
     - pattern: "%if %{with check}"
       replacement: "# %if %{with check} - disabled for cross-compilation"
     - pattern: "%endif #with check"
@@ -23,3 +40,17 @@ rules:
     - pattern: "%check"
       replacement: |
         # %check - skipped for cross-compilation
+    # Skip make test (can't run cross-compiled binaries)
+    - pattern: "make test"
+      replacement: "# make test - skipped for cross-compilation"
+    # Fix libtool to build shared libraries for IRIX cross-compilation
+    - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
+      replacement: |
+        sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+        # Force libtool to build shared libraries for IRIX cross-compilation
+        sed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool
+        sed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool
+        sed -i 's|^version_type=none$|version_type=linux|g' libtool
+        # Note: versuffix already includes the leading dot for linux version_type
+        sed -i 's|^soname_spec=.*|soname_spec="\\$libname\\$shared_ext\\$major"|g' libtool
+        sed -i 's|^library_names_spec=.*|library_names_spec="\\$libname\\$shared_ext\\$versuffix \\$libname\\$shared_ext\\$major \\$libname\\$shared_ext"|g' libtool
