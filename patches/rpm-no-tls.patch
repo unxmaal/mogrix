@@ -1,0 +1,53 @@
+--- a/lib/headerfmt.c
++++ b/lib/headerfmt.c
+@@ -221,7 +221,11 @@ static const char * hsaReserved[] = { "EPOCH", "NAME", "VERSION", "RELEASE",
+ static const char * fmtreserved[] = { "all", NULL };
+
+ /* Errors from headerFormat are stored here */
++#ifdef __sgi
++static char *errbuf = NULL;
++#else
+ static __thread char *errbuf = NULL;
++#endif
+
+ static void hsaError(headerSprintfArgs hsa, const char *fmt, ...)
+ {
+--- a/lib/rpmug.c
++++ b/lib/rpmug.c
+@@ -18,7 +18,11 @@ struct rpmug_s {
+     gid_t gid;
+ };
+
++#ifdef __sgi
++static struct rpmug_s *rpmug = NULL;
++#else
+ static __thread struct rpmug_s *rpmug = NULL;
++#endif
+
+ static void rpmugFree(void)
+ {
+--- a/rpmio/rpmlog.c
++++ b/rpmio/rpmlog.c
+@@ -283,13 +283,21 @@ void rpmSetVerbosity(int level)
+
+ int rpmlogGetLogError(void)
+ {
++#ifdef __sgi
++    static int lasterr = 0;
++#else
+     static __thread int lasterr = 0;
++#endif
+     lasterr = getAnyErr();
+     return lasterr;
+ }
+
+ static int rpmlogGetColor(void)
+ {
++#ifdef __sgi
++    static int color = -1;
++#else
+     static __thread int color = -1;
++#endif
+     if (color < 0)
+ 	color = isatty(STDERR_FILENO) ? (isRedhatEL() ? 1 : 2) : 0;
+     return color;

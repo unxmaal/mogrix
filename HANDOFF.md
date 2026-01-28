@@ -1,225 +1,204 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-25 21:00
-**Status**: IRIX RUNTIME TESTING - bzip2 validated working on IRIX!
+**Last Updated**: 2026-01-28
+**Status**: VSNPRINTF FIX VERIFIED - rpm --help and debug output now work correctly on IRIX
 
 ---
 
-## Session 2026-01-25 Evening: IRIX Runtime Validation
+## CRITICAL WARNING
 
-### What Was Done
-1. Created bootstrap scripts (`scripts/bootstrap-tarball.sh`, `scripts/irix-chroot-testing.sh`, `scripts/irix-bootstrap.sh`)
-2. Built all 12 packages and created bootstrap tarball
-3. Tested on IRIX - discovered binaries segfaulted
-4. Diagnosed issue: wrong linker selection (GNU ld vs LLD)
-5. Fixed `irix-ld` wrapper: GNU ld for shared libs, LLD for executables
-6. **Validated bzip2 runs on IRIX!**
+**NEVER install packages directly to /usr/sgug on the live IRIX system.**
 
-### What Remains
-- Rebuild all 12 packages with fixed linker
-- Regenerate bootstrap tarball
-- Test rpm and tdnf on IRIX
-- Complete bootstrap process
+On 2026-01-27, installing packages directly to /usr/sgug replaced libz.so with zlib-ng, which broke sshd and locked out SSH access. The system had to be recovered from console using backup libraries from /usr/sgug_old.
 
-### Key Files Modified
-- `/opt/sgug-staging/usr/sgug/bin/irix-ld` - Linker wrapper with correct GNU ld / LLD selection
-- `scripts/bootstrap-tarball.sh` - Creates tarball in `tmp/` directory
-- `scripts/irix-chroot-testing.sh` - Safe chroot testing (no auto-delete)
-- `scripts/irix-bootstrap.sh` - Real installation script
+**Always use /opt/chroot for testing first.** Only touch /usr/sgug after:
+1. Full testing in chroot passes
+2. Explicit user approval
+3. Console access is available as backup
+4. Recovery plan is documented
 
 ---
 
 ## Goal
 
-Validate mogrix workflow by building tdnf dependency chain one package at a time.
-
-**Critical rule**: Use FC40 exclusively. Never mix Fedora releases - the whole point is that Fedora solved dependencies for us.
+Get **rpm** and **tdnf** working on IRIX so packages can be installed via the package manager.
 
 ---
 
-## Build Order (FC40)
+## Current Progress
 
-| # | Package | Version | Status | Notes |
-|---|---------|---------|--------|-------|
-| 1 | **zlib-ng** | 2.1.6 | **COMPLETE** | FC40 replaced zlib with zlib-ng; cmake-based |
-| 2 | bzip2 | 1.0.8 | **COMPLETE** | Built first try |
-| 3 | popt | 1.19 | **COMPLETE** | Built first try (stpcpy already in mogrix) |
-| 4 | openssl | 3.2.1 | **COMPLETE** | Built first try |
-| 5 | libxml2 | 2.12.5 | **COMPLETE** | Built first try |
-| 6 | curl | 8.6.0 | **COMPLETE** | Built first try |
-| 7 | xz | 5.4.6 | **COMPLETE** | Built first try |
-| 8 | lua | 5.4.6 | **COMPLETE** | Built first try |
-| 9 | file | 5.45 | **COMPLETE** | Required posix_spawn_file_actions_* functions |
-| 10 | rpm | 4.19.1.1 | **COMPLETE** | Built first try (after file compat fix) |
-| 11 | libsolv | 0.7.28 | **COMPLETE** | Built first try |
-| 12 | **tdnf** | **3.5.14** | **COMPLETE** | **TARGET ACHIEVED** - from Photon OS SRPM |
+### What's Done (2026-01-28)
+- All 13 packages cross-compile successfully
+- **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
+- `rpm --version` works: shows "RPM version 4.19.1.1"
+- `rpm --help` works: shows option flags AND descriptions correctly
+- Debug output works: shows "D: Exit status: 1" etc. (not empty)
+- popt rebuilt with vasprintf injection
+- rpm rebuilt with rvasprintf and rpmlog fixes
 
----
-
-## Completed: zlib-ng
-
-### Root Cause
-zlib-ng's `zbuild.h` defines `_POSIX_SOURCE` and `_POSIX_C_SOURCE` which breaks IRIX's feature macro chain. This makes `_NO_POSIX` false, which makes `_SGIAPI` false, which prevents snprintf/vsnprintf from being declared.
-
-### Solution
-Add `-D_XOPEN_SOURCE=600` to CMAKE_C_FLAGS. This makes `_XOPEN5` true, which exposes snprintf/vsnprintf regardless of POSIX macros.
-
-Full flag set needed:
-```
--DCMAKE_C_FLAGS="-I/usr/sgug/include/mogrix-compat/generic -D_SGI_SOURCE -D__EXTENSIONS__ -D_XOPEN_SOURCE=600"
-```
-
-### Additional Fixes Required
-1. **llabs declaration**: IRIX libc doesn't have `llabs()`. Added extern declaration in compat/stdlib.h that Clang resolves via builtin.
-2. **Versioned library symlinks**: CMake doesn't create versioned .so files for IRIX. Added post-install commands to create `libz-ng.so.2.1.6`, `libz-ng.so.2` symlinks, and similar for compat `libz.so.1`, `libz.so.1.3.0.zlib-ng`.
-
-### Files Changed
-- `rules/packages/zlib-ng.yaml` - complete cmake cross-compilation setup
-- `compat/include/mogrix-compat/generic/stdlib.h` - llabs declaration
-- `compat/include/mogrix-compat/generic/stdint.h` - UINT64_C etc.
-
----
-
-## Fetch Command Update
-
-`mogrix fetch` now defaults to FC40 and shows the full archive URL:
-```
-Fetching SRPMs from Fedora 40 archives
-https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/40/Everything/source/tree/Packages/
-```
-
----
-
-## Cleanup
-
-Use `./cleanup.sh` for a complete reset. The script:
-1. Cleans staging lib32/ and include/
-2. Restores compat headers
-3. Builds runtime libraries (libsoft_float_stubs.a, libatomic.a)
-4. Cleans rpmbuild directories
-
----
-
-## Per-Package Workflow
-
+### Verified on IRIX
 ```bash
-source .venv/bin/activate
-mogrix fetch <package>
-mogrix convert ~/rpmbuild/SRPMS/<package>-*.src.rpm
-mogrix build ~/rpmbuild/SRPMS/<package>-*-converted/<package>-*.src.rpm --cross
-mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
+# Test results from IRIX:
+$ rpm --version
+RPM version 4.19.1.1
+
+$ rpm --help | head -10
+Usage: rpm [OPTION...]
+
+Query/Verify package selection options:
+  -a, --all                          query/verify all packages
+  -f, --file                         query/verify package(s) owning installed
+                                     file
 ```
+
+### What's Next
+1. Copy complete bootstrap tarball to IRIX chroot
+2. Test `rpm -qpl <package>` to verify package queries work
+3. Initialize rpm database: `rpm --initdb`
+4. Test package installation: `rpm -ivh --nodeps <package>`
+5. Test tdnf
 
 ---
 
-## Key Discoveries This Session
+## The Root Cause: IRIX vsnprintf Pre-C99 Behavior
 
-### IRIX Feature Macro Chain
-IRIX uses a complex macro chain in `<standards.h>`:
-- `_NO_POSIX` = true only if neither `_POSIX_SOURCE` nor `_POSIX_C_SOURCE` defined
-- `_SGIAPI` = `(_SGI_SOURCE && _NO_POSIX && _NO_XOPEN4 && _NO_XOPEN5) || ...`
-- `_XOPEN5` = `(_XOPEN_SOURCE >= 500) || ...`
-- `_NO_ANSIMODE` = `__EXTENSIONS__ || ...`
+**Symptom**: rpm output was garbled or missing. `--help` showed descriptions without option flags. `--debug` showed `D: ` prefixes repeated without messages.
 
-Functions like snprintf/vsnprintf require:
+**Root Cause**: IRIX vsnprintf does NOT support C99 behavior.
+- C99: `vsnprintf(NULL, 0, fmt, ap)` returns the required buffer size
+- IRIX: `vsnprintf(NULL, 0, fmt, ap)` returns **-1**
+
+This affected:
+1. **popt**: Uses vasprintf in POPT_fprintf for help output
+2. **rpm's rvasprintf**: Internal vasprintf implementation in rpmio/rpmstring.c
+3. **rpm's rpmlog**: Log function in rpmio/rpmlog.c also used vsnprintf(NULL,0)
+
+**Note**: The va_list ABI IS compatible between clang and IRIX (both 4-byte pointers on MIPS n32). The original "va_list ABI mismatch" hypothesis was wrong.
+
+---
+
+## Fixes Applied
+
+### 1. compat/stdio/asprintf.c - Iterative vasprintf
+Changed from "determine size then allocate" to iterative approach:
 ```c
-#if defined(__c99) || ((_XOPEN5 || _SGIAPI) && _NO_ANSIMODE)
+int vasprintf(char **strp, const char *fmt, va_list ap) {
+    size_t size = 256;  // Start with reasonable buffer
+    while (1) {
+        char *str = malloc(size);
+        va_copy(ap_copy, ap);
+        int len = vsnprintf(str, size, fmt, ap_copy);
+        va_end(ap_copy);
+
+        if (len >= 0 && len < size) {
+            *strp = str;
+            return len;  // Success
+        }
+        free(str);
+
+        if (len >= size) size = len + 1;  // C99 precise size
+        else size *= 2;  // IRIX: double buffer
+
+        if (size > 1024*1024) return -1;  // Safety limit
+    }
+}
 ```
 
-**Key insight**: Many packages define POSIX macros for compatibility, breaking `_SGIAPI`. Use `_XOPEN_SOURCE=600` to get `_XOPEN5` instead.
+### 2. rules/packages/popt.yaml
+```yaml
+inject_compat_functions:
+  - vasprintf  # Added - IRIX vsnprintf(NULL,0) returns -1
 
-### CMake Packages Need Macro Expansion
-Fedora uses `%cmake`, `%cmake_build`, `%cmake_install` macros that aren't available in our build environment. Must replace with explicit cmake commands in spec_replacements.
+ac_cv_overrides:
+  ac_cv_func_vasprintf: "yes"  # Tell configure we have vasprintf
 
-### CMake Doesn't Handle IRIX Library Versioning
-CMake creates unversioned .so files for unknown platforms. Need manual symlink creation for proper versioned libraries.
+prep_commands:
+  # Force disable HAVE_MBSRTOWCS - IRIX doesn't have this
+  - "sed -i 's/#ifdef HAVE_MBSRTOWCS/#if 0/' src/popthelp.c"
+```
 
-### Libtool Refuses Shared Libraries for IRIX
-Libtool detects IRIX as unknown and sets `build_libtool_libs=no`. Need post-configure sed commands:
+### 3. rules/packages/rpm.yaml
+Added two sed fixes in the `%autosetup` replacement:
+
+**rvasprintf fix** (rpmio/rpmstring.c):
 ```bash
-sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool
-sed -i 's/deplibs_check_method="unknown"/deplibs_check_method="pass_all"/g' libtool
-sed -i 's/^version_type=none$/version_type=linux/g' libtool
-sed -i 's/^soname_spec=""$/soname_spec="\\$libname\\${shared_ext}\\$major"/g' libtool
-sed -i 's/^library_names_spec=""$/library_names_spec="\\$libname\\${shared_ext}\\$versuffix \\$libname\\${shared_ext}\\$major \\$libname\\${shared_ext}"/g' libtool
+sed -i '/^int rvasprintf/,/^int rasprintf/c\
+int rvasprintf(char **strp, const char *fmt, va_list ap)\n\
+... iterative implementation ...
+' rpmio/rpmstring.c
 ```
 
-### New Compat Function: stpcpy
-Added `stpcpy()` to libcompat.a - copies string and returns pointer to end.
-- Implementation: `compat/runtime/stpcpy.c`
-- Declaration: `compat/include/mogrix-compat/generic/string.h`
-- Link with: `-lcompat` (added to rpmmacros.irix LDFLAGS)
-
-### Clang Builtins Fill Gaps
-IRIX libc is missing some C99 functions (llabs), but Clang provides them as builtins. Just need the declaration; Clang handles the implementation.
-
-### New Compat Functions Added
-| Function | Header | Purpose |
-|----------|--------|---------|
-| `llabs()` | stdlib.h | long long absolute value (C99) - extern decl for Clang builtin |
-| `UINT64_C()` etc | stdint.h | Integer constant macros (C99) |
-| `stpcpy()` | string.h | Copy string returning pointer to end |
-| `posix_spawn()` | spawn.h | Spawn process (POSIX.1-2008) - fork+exec implementation |
-| `posix_spawnp()` | spawn.h | Spawn process with PATH search |
-| `posix_spawn_file_actions_init()` | spawn.h | Initialize file actions for spawn |
-| `posix_spawn_file_actions_destroy()` | spawn.h | Destroy file actions |
-| `posix_spawn_file_actions_addclose()` | spawn.h | Add close action for spawn |
-| `posix_spawn_file_actions_adddup2()` | spawn.h | Add dup2 action for spawn |
-| `openat()` | fcntl.h | Open file relative to directory fd |
-| `fstatat()` | sys/stat.h | Stat file relative to directory fd |
-| `mkdirat()` | sys/stat.h | Create directory relative to directory fd |
-| `fchmodat()` | sys/stat.h | Chmod relative to directory fd |
-| `utimensat()` | sys/stat.h | Set timestamps relative to directory fd |
-| `futimens()` | sys/stat.h | Set timestamps via fd |
-| `faccessat()` | unistd.h | Access check relative to directory fd |
-| `fchownat()` | unistd.h | Chown relative to directory fd |
-| `unlinkat()` | unistd.h | Unlink relative to directory fd |
-| `renameat()` | unistd.h | Rename relative to directory fds |
-| `symlinkat()` | unistd.h | Symlink relative to directory fd |
-| `readlinkat()` | unistd.h | Readlink relative to directory fd |
-| `linkat()` | unistd.h | Hard link relative to directory fds |
-
-### New Compat Constants Added
-| Constant | Header | Purpose |
-|----------|--------|---------|
-| `O_NOFOLLOW` | fcntl.h | Don't follow symlinks (defined as 0 - no-op) |
-| `O_CLOEXEC` | fcntl.h | Close-on-exec (defined as 0 - use fcntl instead) |
-| `AT_FDCWD` | fcntl.h | Current working directory for *at() functions |
-| `AT_SYMLINK_NOFOLLOW` | fcntl.h | Don't follow symlinks in *at() |
-| `AT_REMOVEDIR` | fcntl.h | Remove directory instead of file |
-| `AT_SYMLINK_FOLLOW` | fcntl.h | Follow symlinks in linkat() |
-| `AT_EACCESS` | fcntl.h | Use effective IDs in faccessat() |
-| `_SC_NPROCESSORS_ONLN` | unistd.h | Maps to IRIX's _SC_NPROC_ONLN |
-| `_SC_PHYS_PAGES` | unistd.h | Physical memory pages (stub) |
-
-### irix-cc Wrapper Must Handle Clang Diagnostic Options
-Libtool and configure scripts call the compiler with diagnostic flags like `-print-search-dirs`, `-print-prog-name`, etc. The irix-cc wrapper was incorrectly passing these to the linker (because no .c files = link mode). Fixed by adding special case handling at the start of irix-cc:
+**rpmlog fix** (rpmio/rpmlog.c):
 ```bash
-case "$1" in
-    -print-search-dirs|-print-prog-name*|-print-file-name*|-print-libgcc-file-name)
-        exec $CLANG $CLANG_FLAGS "$@"
-        ;;
-    --version|-v|-dumpversion|-dumpmachine|-print-multiarch)
-        exec $CLANG $CLANG_FLAGS "$@"
-        ;;
-esac
+sed -i '/^void rpmlog.*code.*fmt/,/^exit:/c\
+void rpmlog (int code, const char *fmt, ...)\n\
+... iterative implementation ...
+' rpmio/rpmlog.c
 ```
 
-### irix-ld Wrapper Must Handle GNU ld Options
-Similarly, the irix-ld wrapper must pass options like `-print-search-dirs` to GNU ld.bfd instead of LLD:
-```bash
-case "$1" in
-    -print-search-dirs|-print-prog-name*|-v|--version)
-        exec $GNULD "$@"
-        ;;
-esac
-```
+---
 
-### Clang __mips64 Macro Breaks OpenSSL Multiarch Headers
-Clang defines `__mips64=1` even for N32 ABI. OpenSSL's multiarch `configuration.h` checks `__mips64` before `__mips`, so it tries to include `configuration-mips64.h` instead of `configuration-mips.h`. Fixed by adding to irix-cc:
-```bash
-CLANG_FLAGS="$CLANG_FLAGS -U__mips64 -U__mips64__ -D__mips=1"
-```
+## What Worked
+
+### SQLite Build Fixes (rules/packages/sqlite.yaml)
+Required multiple fixes for IRIX cross-compilation:
+1. `--disable-math` - IRIX lacks acosh/asinh/atanh
+2. `-D_ABI_SOURCE` - Fix select() static/extern conflict
+3. `-DLLONG_MAX=...` - IRIX predates C99
+4. `-DLONGDOUBLE_TYPE=double` - Avoid 128-bit long double
+
+### LLD 18 from Source
+Built LLD 18.1.3 from LLVM source with three essential patches for IRIX compatibility.
+
+### RPM Fixes
+- `-DRPM_CONFIGDIR=/usr/sgug/lib32/rpm` - Fix config directory path
+- `-DENABLE_SQLITE=ON` with sqlite paths - Enable sqlite database backend
+- `sed -i 's/static __thread/static/'` - Remove TLS (IRIX rld doesn't support `__tls_get_addr`)
+
+---
+
+## What Failed
+
+### Using vvuk's LLD 14 fork
+Generated incorrect relocations - external symbols in static data referenced `*ABS*` instead of actual symbol names.
+
+### sqlite3 CLI file write crash (OPEN)
+sqlite3 works with in-memory databases but crashes with SIGSEGV when writing to files. The rpm database was created successfully by `rpm --initdb`, so only the CLI has this issue.
+
+### RPM without sqlite database
+rpm built with `-DENABLE_SQLITE=OFF` could not initialize its database properly.
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `compat/stdio/asprintf.c` | Fixed vasprintf with iterative approach |
+| `rules/packages/popt.yaml` | popt with vasprintf injection |
+| `rules/packages/rpm.yaml` | rpm with rvasprintf and rpmlog fixes |
+| `tools/bin/ld.lld-irix-18` | LLD 18 binary with IRIX patches |
+| `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Linker wrapper (uses LLD 18) |
+
+---
+
+## Build Order (FC40) - Status
+
+| # | Package | Version | Status |
+|---|---------|---------|--------|
+| 1 | zlib-ng | 2.1.6 | COMPLETE |
+| 2 | bzip2 | 1.0.8 | COMPLETE |
+| 3 | popt | 1.19 | **REBUILT with vasprintf** |
+| 4 | openssl | 3.2.1 | COMPLETE |
+| 5 | libxml2 | 2.12.5 | COMPLETE |
+| 6 | curl | 8.6.0 | COMPLETE |
+| 7 | xz | 5.4.6 | COMPLETE |
+| 8 | lua | 5.4.6 | COMPLETE |
+| 9 | file | 5.45 | COMPLETE |
+| 10 | sqlite | 3.45.1 | COMPLETE |
+| 11 | rpm | 4.19.1.1 | **REBUILT with vsnprintf fixes** |
+| 12 | libsolv | 0.7.28 | COMPLETE |
+| 13 | tdnf | 3.5.14 | Ready to test |
 
 ---
 
@@ -232,247 +211,65 @@ CLANG_FLAGS="$CLANG_FLAGS -U__mips64 -U__mips64__ -D__mips=1"
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | Python venv | `.venv/bin/activate` |
+| IRIX host | `ssh edodd@192.168.0.81` |
+| IRIX chroot | `/opt/chroot` |
 
 ---
 
-## Previous Round Summary
+## Quick Test on IRIX
 
-The previous validation round successfully built all 12 packages, but required many fixes along the way. Those fixes have now been captured in:
-
-- Package YAML files (`rules/packages/*.yaml`)
-- Compat headers (`compat/include/mogrix-compat/generic/`)
-- Compat runtime (`compat/runtime/`)
-- Toolchain wrappers (`/opt/cross/bin/irix-cc`, `irix-ld`)
-
-This fresh validation round will verify that all fixes are properly captured and builds succeed from a clean state.
-
----
-
-## Validation Complete!
-
-All 12 packages in the tdnf dependency chain have been successfully built for IRIX cross-compilation.
-
-**Built RPMs available in:** `~/rpmbuild/RPMS/mips/`
-
-Key packages:
-- `tdnf-3.5.14-1.mips.rpm` - The target package manager
-- `rpm-4.19.1.1-1.mips.rpm` - RPM package manager
-- `libsolv-0.7.28-1.mips.rpm` - SAT solver for package dependencies
-
-**Note**: tdnf is not in Fedora - it's from VMware's Photon OS. The SRPM is in `srpms/tdnf-3.5.14-1.ph5.src-converted/`.
-
----
-
-## What Worked This Session
-
-1. **All 12 packages built successfully** - mogrix rules captured all necessary fixes
-2. **Direct wget downloads** work better than `mogrix fetch` for reliability
-3. **Existing Photon OS SRPM** for tdnf in `srpms/` directory worked perfectly
-4. **posix_spawn_file_actions_*** functions needed for `file` package - added to compat layer
-
----
-
-## What Failed / Gotchas
-
-1. **mogrix fetch sometimes puts SRPMs in wrong directory** (SOURCES instead of SRPMS)
-2. **Previously-converted SRPMs may linger** - always clean up converted directories before converting
-3. **"source 100 defined multiple times" error** means SRPM was already converted - delete and re-fetch fresh
-4. **tdnf is NOT in Fedora** - it's from VMware Photon OS, use existing SRPM in `srpms/` directory
-5. **file package needed posix_spawn file actions** - added `posix_spawn_file_actions_init/destroy/addclose/adddup2` to spawn.h/spawn.c
-
----
-
-## CRITICAL: IRIX rld Compatibility Issues (2026-01-25)
-
-Testing on IRIX revealed three critical linking issues. **ALL FIXED - bzip2 validated working!**
-
-### Issue 1: MIPS_BASE_ADDRESS = 0 (FIXED)
-
-**Symptom:** `DT_MIPS_BASE_ADDRESS missing or zero in <lib>.so. rld cannot continue`
-
-**Cause:** IRIX's runtime linker (`rld`) requires shared libraries to have a non-zero `MIPS_BASE_ADDRESS` dynamic tag. LLD was setting it to 0.
-
-**Fix:** Shared libraries now use GNU ld which sets proper base address via linker scripts.
-
-### Issue 2: rpm libraries missing SONAME (FIXED)
-
-**Symptom:** `Cannot Successfully map soname '../lib/librpm.so'`
-
-**Cause:** cmake builds didn't pass `-soname` to the linker for unknown platforms.
-
-**Fix:** Updated `irix-ld` wrapper to auto-generate `-soname` for `lib*.so*` outputs when not provided.
-
-### Issue 3: Wrong linker for executables vs libraries (FIXED)
-
-**Symptom:** Segmentation fault on any binary execution
-
-**Cause:** Using GNU ld for executables produces binaries that segfault. Using LLD for shared libraries produces libraries missing IRIX ELF structure.
-
-**Solution - CORRECT LINKER SELECTION:**
-
-| Build Type | Linker | Why |
-|------------|--------|-----|
-| Shared libraries (`-shared`) | **GNU ld** | Produces correct IRIX ELF structure |
-| Executables | **LLD** | With `--dynamic-linker=/lib32/rld` |
-
-### Current irix-ld wrapper configuration (WORKING):
-
+To verify rpm works:
 ```bash
-# Shared libraries: GNU ld
-$GNULD --allow-shlib-undefined $auto_soname -L... $filtered_args
-
-# Executables: LLD
-$LLD --allow-shlib-undefined -dynamic-linker /lib32/rld $CRT1 $filtered_args -L... -lsoft_float_stubs -lc $CRTN
-```
-
-### Validation: bzip2 runs on IRIX!
-
-```
-$ /tmp/bzip2 --version
-bzip2, a block-sorting file compressor.  Version 1.0.8, 13-Jul-2019.
-```
-
-### Required Action: REBUILD ALL PACKAGES
-
-All 12 packages must be rebuilt with the fixed linker:
-
-```bash
-./cleanup.sh
-# Rebuild each: zlib-ng bzip2 popt openssl libxml2 curl xz lua file rpm libsolv tdnf
-./scripts/bootstrap-tarball.sh
+ssh edodd@192.168.0.81 '/usr/sgug/bin/bash' <<'EOF'
+export LD_LIBRARY_PATH=/tmp/test-rpm/usr/sgug/lib32:/usr/sgug/lib32
+/tmp/test-rpm/usr/sgug/bin/rpm --version
+/tmp/test-rpm/usr/sgug/bin/rpm --help | head -20
+EOF
 ```
 
 ---
 
-## IRIX Bootstrap Process
+## Rebuilding Packages
 
-The 12 packages are built but cannot be installed on IRIX without bootstrapping (rpm requires rpm to install). This is the bootstrap procedure:
-
-### Overview
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    LINUX BUILD HOST                              │
-│                                                                  │
-│  .mips.rpm files ──► rpm2cpio ──► bootstrap tarball ──► scp ──► │
-└─────────────────────────────────────────────────────────────────┘
-                                                          │
-                                                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      IRIX TARGET                                 │
-│                                                                  │
-│  tar xf ──► test in chroot ──► real install ──► rpm --initdb   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Step 1: Create Bootstrap Tarball (Linux)
-
+### Rebuild popt (if needed)
 ```bash
-# On Linux build host:
-./scripts/bootstrap-tarball.sh
-
-# Creates (in project tmp/ directory):
-#   tmp/irix-bootstrap.tar     (uncompressed)
-#   tmp/irix-bootstrap.tar.gz  (compressed)
+source .venv/bin/activate
+rm -rf popt-*-converted
+mogrix convert popt-1.19-6.fc40.src.rpm
+mogrix build popt-1.19-6.fc40.src-converted/*.src.rpm --cross
+mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
 ```
 
-### Step 2: Copy Files to IRIX
-
+### Rebuild rpm (after popt)
 ```bash
-# Copy the tarball
-scp tmp/irix-bootstrap.tar.gz edodd@192.168.0.81:/tmp/
-
-# Copy the IRIX bootstrap scripts
-scp scripts/irix-chroot-testing.sh scripts/irix-bootstrap.sh edodd@192.168.0.81:/tmp/
-
-# Copy RPM files (for proper database registration later)
-ssh edodd@192.168.0.81 'mkdir -p /tmp/rpms'
-scp ~/rpmbuild/RPMS/mips/*.mips.rpm edodd@192.168.0.81:/tmp/rpms/
+rm -rf rpm-*-converted
+mogrix convert rpm-4.19.1.1-1.fc40.src.rpm
+mogrix build rpm-4.19.1.1-1.fc40.src-converted/*.src.rpm --cross
+mogrix stage ~/rpmbuild/RPMS/mips/rpm-libs*.rpm ~/rpmbuild/RPMS/mips/rpm-4*.rpm
 ```
 
-### Step 3: Test in Chroot (Manual)
-
-The chroot testing script extracts the tarball into an existing chroot for manual testing.
-It does NOT auto-delete or auto-test - you control the testing process.
-
+### Create test tarball
 ```bash
-# On IRIX as root:
-cd /tmp
-chmod +x irix-chroot-testing.sh irix-bootstrap.sh
-
-# Ensure your chroot exists (script will NOT create or delete it)
-# If you need to restore your chroot from backup first, do that now.
-
-# Extract bootstrap into chroot
-./irix-chroot-testing.sh /tmp/irix-bootstrap.tar.gz /opt/chroot
-
-# Enter chroot and test manually
-chroot /opt/chroot /bin/sh
-. /usr/sgug/bin/chroot-shell.sh    # Set up environment
-rpm --version                        # Test rpm
-tdnf --version                       # Test tdnf
+cd /tmp && rm -rf irix-test && mkdir irix-test && cd irix-test
+for rpm in ~/rpmbuild/RPMS/mips/{popt,rpm-libs,rpm-4}*.mips.rpm; do
+    rpm2cpio "$rpm" | cpio -idm
+done
+# Copy dependencies from staging
+cp -av /opt/sgug-staging/usr/sgug/lib32/lib{lua,ssl,crypto,bz2,lzma,magic,sqlite3,z}*.so* usr/sgug/lib32/
+tar cf ../irix-test.tar usr
+scp ../irix-test.tar edodd@192.168.0.81:/tmp/
 ```
 
-### Step 4: Real Installation (DANGEROUS)
+---
 
-```bash
-# On IRIX as root:
-cd /tmp
+## Known Issues
 
-# This modifies the real filesystem!
-./irix-bootstrap.sh /tmp/irix-bootstrap.tar.gz /tmp/rpms
+- Existing IRIX system has SGUG-RSE with rpm 4.15.0 already installed
+- Our packages conflict with existing SGUG packages (e.g., zlib-ng-compat vs zlib)
+- sqlite3 CLI crashes when writing to files (but rpm database writes work)
 
-# Confirm with "yes" when prompted
-```
+---
 
-### What the Bootstrap Does
+## Long-Term Goal
 
-1. **Extracts tarball** to `/usr/sgug/` - puts binaries and libraries in place
-2. **Verifies rpm works** - tests the binary can run with shared libraries
-3. **Initializes RPM database** - creates `/usr/sgug/lib32/sysimage/rpm/`
-4. **Creates symlink** - `/var/lib/rpm` → `/usr/sgug/lib32/sysimage/rpm`
-5. **Installs RPMs** - registers packages in database for proper tracking
-
-### Post-Bootstrap
-
-```bash
-# Add to shell startup (.profile or .cshrc):
-
-# For sh/bash:
-export LD_LIBRARY_PATH=/usr/sgug/lib32:$LD_LIBRARY_PATH
-export PATH=/usr/sgug/bin:$PATH
-
-# For csh/tcsh:
-setenv LD_LIBRARY_PATH /usr/sgug/lib32:$LD_LIBRARY_PATH
-setenv PATH /usr/sgug/bin:$PATH
-
-# Verify:
-rpm --version
-tdnf --version
-rpm -qa  # List installed packages
-```
-
-### Scripts Reference
-
-| Script | Runs On | Purpose |
-|--------|---------|---------|
-| `scripts/bootstrap-tarball.sh` | Linux | Creates bootstrap tarball from RPMs |
-| `irix-chroot-testing.sh` | IRIX | **SAFE** - Tests in /opt/chroot (copy to /tmp first) |
-| `irix-bootstrap.sh` | IRIX | **DANGER** - Real installation to / (copy to /tmp first) |
-
-### Troubleshooting
-
-**rpm: cannot open Packages database**
-- Run `rpm --initdb --dbpath /usr/sgug/lib32/sysimage/rpm`
-
-**rpm: /lib32/rld: cannot properly exec**
-- Library path not set: `export LD_LIBRARY_PATH=/usr/sgug/lib32:$LD_LIBRARY_PATH`
-
-**rpm: symbol not found**
-- Missing library - check `elfdump -Dl /usr/sgug/bin/rpm` for NEEDED entries
-
-**Cleanup chroot test:**
-```bash
-rm -rf /opt/chroot
-```
+After tdnf works: port **WebKitGTK 2.38.x** for a modern browser on IRIX.

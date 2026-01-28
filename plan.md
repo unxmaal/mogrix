@@ -2,13 +2,14 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-01-25)
+## Current Status (2026-01-26)
 
-**Phase 8: VALIDATION ROUND COMPLETE**
+**Phase 9: TDNF REPOSITORY SETUP**
 
-All 12 packages built successfully from a clean state. One fix was needed: `posix_spawn_file_actions_*` functions for the `file` package.
+All 12 packages built successfully. Bootstrap tarball created. Now setting up tdnf repository server to validate end-to-end package installation workflow.
 
-**Progress: 12/12 packages - COMPLETE**
+**Milestone: tdnf dependency chain COMPLETE (12/12 packages)**
+**Next: Set up repo server, configure IRIX chroot, test `tdnf install`**
 
 ### Validation Results
 
@@ -326,20 +327,146 @@ All 12 packages built successfully from clean state. All fixes captured in:
 | __mips64 for N32 ABI | DONE - undefined in irix-cc |
 | libtool shared lib fixes | DONE - in package YAML rules |
 
+---
+
+## Long-Term Goal: Modern Browser on IRIX
+
+**Target**: WebKitGTK-based browser
+
+### Why WebKitGTK?
+
+1. **Most widely ported browser engine** - iOS, GTK, PlayStation, embedded systems
+2. **SGUG-RSE has most dependencies already** - GTK3, Cairo, ICU, glib2, libsoup, etc.
+3. **Compatible with our toolchain** - C++ with some C
+4. **JavaScriptCore has MIPS support** - interpreter mode will work
+
+### WebKitGTK Dependency Status in SGUG-RSE
+
+| Dependency | Status | Version |
+|------------|--------|---------|
+| GTK3 | ✓ Present | 3.24.13 |
+| Cairo | ✓ Present | - |
+| ICU | ✓ Present | 63.2 |
+| glib2 | ✓ Present | - |
+| Pango | ✓ Present | - |
+| HarfBuzz | ✓ Present | - |
+| libsoup | ✓ Present | 2.68.4 |
+| GStreamer1 | ✓ Present | - |
+| freetype | ✓ Present | - |
+| fontconfig | ✓ Present | - |
+| pixman | ✓ Present | - |
+| atk | ✓ Present | - |
+| libxml2 | ✓ Present | - |
+| libxslt | ✓ Present | - |
+| sqlite | ✓ Present | - |
+| WebKitGTK | **MISSING** | Target: 2.38.x or 2.40.x |
+
+### WebKitGTK Phases
+
+**Phase 1: Assess & Baseline**
+- Pick WebKitGTK version (2.38.x or 2.40.x - last before heavy C++20 requirements)
+- Verify all SGUG-RSE dependencies build and run on IRIX via mogrix
+- Create mogrix package rule for webkitgtk
+
+**Phase 2: Build Foundation via Mogrix**
+- glib2, cairo, pango, harfbuzz, ICU, libsoup
+- Verify cross-compilation works
+
+**Phase 3: WebKit Core**
+- Attempt WebKitGTK build
+- Start with `-DENABLE_JIT=OFF` (interpreter-only JavaScript)
+- Apply GOT fixes similar to Qt5 (`-LD_LAYOUT:lgot_buffer=1000`)
+- Fix IRIX-specific issues as they arise
+
+**Phase 4: Browser**
+- Epiphany (GNOME Web) or Surf (suckless, ~2000 lines)
+
+---
+
 ### Immediate Next Steps
 
-#### 1. Test on IRIX Hardware
+#### 1. Set Up tdnf Repository Server (DONE)
 
-- Copy all MIPS RPMs to IRIX
-- Install and verify tdnf runs
-- Test basic package operations
+On Linux build VM:
+```bash
+# Update repo with RPMs and generate metadata
+./scripts/update-repo.sh
 
-#### 2. Create Bootstrap Repository
+# Start HTTP server
+./scripts/start-repo-server.sh
+# Serves at http://192.168.8.88:8080/mips/
+```
 
-- Host all built RPMs
-- Configure tdnf.conf for IRIX
+Files created:
+- `configs/tdnf/tdnf.conf` - tdnf main configuration
+- `configs/tdnf/irix-local.repo` - repository definition
+- `scripts/create-repo.py` - generates rpm-md metadata without createrepo_c
+- `scripts/update-repo.sh` - copies RPMs and regenerates metadata
+- `scripts/start-repo-server.sh` - starts HTTP server
+- `scripts/deploy-tdnf-configs.sh` - deploys configs to IRIX via SSH
 
-#### 3. Port gpgcheck.c to rpm 4.19 API (Lower Priority)
+#### 2. Configure tdnf on IRIX Chroot (NEXT)
+
+Deploy configs using the helper script:
+```bash
+./scripts/deploy-tdnf-configs.sh edodd@192.168.0.81 /opt/chroot
+```
+
+Or manually create:
+- `/opt/chroot/etc/tdnf/tdnf.conf` - from `configs/tdnf/tdnf.conf`
+- `/opt/chroot/etc/yum.repos.d/irix-local.repo` - from `configs/tdnf/irix-local.repo`
+
+On IRIX chroot:
+```bash
+# Enter chroot
+chroot /opt/chroot /bin/sh
+
+# Set environment
+export LD_LIBRARY_PATH=/usr/sgug/lib32
+export PATH=/usr/sgug/bin:$PATH
+
+# Test tdnf
+tdnf repolist
+tdnf makecache
+```
+
+#### 3. Test tdnf Install (New Package)
+
+Build a test package that isn't already in the chroot:
+```bash
+# On build VM - build bash or another simple package
+mogrix fetch bash
+mogrix convert bash-*.src.rpm
+mogrix build --cross bash-*.src.rpm
+
+# Update repo
+./scripts/update-repo.sh
+```
+
+On IRIX chroot:
+```bash
+# Refresh metadata
+tdnf makecache
+
+# List available packages
+tdnf list available
+
+# Install test package
+tdnf install bash
+```
+
+#### 4. Validate End-to-End Workflow
+
+| Step | Test |
+|------|------|
+| Build package | `mogrix build --cross pkg.src.rpm` |
+| Update repo | `./scripts/update-repo.sh` |
+| Refresh on IRIX | `tdnf makecache` |
+| Install on IRIX | `tdnf install pkg` |
+
+---
+
+#### 5. Port gpgcheck.c to rpm 4.19 API (Lower Priority)
 
 The gpgcheck.c is stubbed because it uses OLD rpm PGP API:
 
@@ -354,7 +481,7 @@ The gpgcheck.c is stubbed because it uses OLD rpm PGP API:
 
 **Fix:** Create patched gpgcheck.c using new API, add to mogrix patches.
 
-#### 4. Future Improvements (Lower Priority)
+#### 6. Future Improvements (Lower Priority)
 
 | Pattern | Currently In | Should Be In |
 |---------|--------------|--------------|

@@ -1,0 +1,45 @@
+From: Mogrix Project
+Subject: [PATCH 2/3] LLD: Allow MIPS DSOs with local symbols in global section
+
+IRIX shared libraries have section symbols (.text, .data, .rodata, etc.)
+in the global part of the symbol table. This is technically a violation
+of the ELF spec which requires all local symbols to precede global ones,
+but IRIX linkers have always produced libraries this way.
+
+LLD 18 rejects these libraries with:
+  error: libfoo.so: invalid local symbol '.text' in global part of symbol table
+
+This patch skips the error for section symbols (names starting with '.')
+on MIPS targets. We can't check for ELFOSABI_IRIX because IRIX libraries
+have OSABI=0 (System V), not ELFOSABI_IRIX (8).
+
+Apply to: lld/ELF/InputFiles.cpp in LLVM 18.1.3
+
+---
+ lld/ELF/InputFiles.cpp | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+--- a/lld/ELF/InputFiles.cpp
++++ b/lld/ELF/InputFiles.cpp
+@@ -1495,10 +1495,16 @@ template <class ELFT> void SharedFile::parse() {
+     // ELF spec requires that all local symbols precede weak or global
+     // symbols in each symbol table, and the index of first non-local symbol
+     // is stored to sh_info. If a local symbol appears after some non-local
+     // symbol, that's a violation of the spec.
++    // IRIX shared libraries violate this - they have section symbols like
++    // .text, .data in the global part of the symbol table.
+     StringRef name = CHECK(sym.getName(stringTable), this);
+     if (sym.getBinding() == STB_LOCAL) {
+-      errorOrWarn(toString(this) + ": invalid local symbol '" + name +
+-                  "' in global part of symbol table");
++      // Skip this check for IRIX - its shared libraries have non-standard
++      // symbol table layout with local symbols in global part.
++      // IRIX libs have OSABI 0 (System V), not ELFOSABI_IRIX.
++      // Skip the error for section symbols (starting with .) on MIPS
++      // as these are common in IRIX libraries.
++      if (emachine != EM_MIPS || !name.starts_with(".")) {
++        errorOrWarn(toString(this) + ": invalid local symbol '" + name +
++                    "' in global part of symbol table");
++      }
+       continue;
+     }
