@@ -2,6 +2,15 @@
 # Uses ./Configure (perl script), not autotools
 # Cross-compilation requires overriding the default arch detection
 #
+# ---metadata---
+# complexity: high
+# build_system: custom (./Configure perl script)
+# key_fixes: [no_asm, custom_target_irix, multiarch_headers]
+# similar_to: [curl]
+# depends: [zlib]
+# status: WORKING
+# ---
+#
 # Note: skip_check is handled globally in generic.yaml
 # Note: %{_pkgdocdir} is defined in generic.yaml rpm_macros
 

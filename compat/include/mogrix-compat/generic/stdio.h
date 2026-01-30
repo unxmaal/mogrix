@@ -38,6 +38,30 @@ FILE *fopencookie(void *cookie, const char *mode, cookie_io_functions_t io);
 #endif /* _MOGRIX_FOPENCOOKIE_DECL */
 
 /*
+ * funopen - open a custom stream (BSD extension)
+ *
+ * This extension allows creating FILE streams backed by
+ * user-defined I/O functions. Required by libsolv.
+ * Simpler interface than fopencookie - uses separate function pointers
+ * instead of a struct.
+ */
+#ifndef _MOGRIX_FUNOPEN_DECL
+#define _MOGRIX_FUNOPEN_DECL
+
+typedef int (*funopen_readfn)(void *cookie, char *buf, int nbytes);
+typedef int (*funopen_writefn)(void *cookie, const char *buf, int nbytes);
+typedef off_t (*funopen_seekfn)(void *cookie, off_t offset, int whence);
+typedef int (*funopen_closefn)(void *cookie);
+
+FILE *funopen(const void *cookie,
+              funopen_readfn readfn,
+              funopen_writefn writefn,
+              funopen_seekfn seekfn,
+              funopen_closefn closefn);
+
+#endif /* _MOGRIX_FUNOPEN_DECL */
+
+/*
  * getline - read a line (POSIX.1-2008)
  * getdelim - read a delimited line (POSIX.1-2008)
  *

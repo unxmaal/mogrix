@@ -1,6 +1,15 @@
 # bzip2 - file compression utility
 # Uses Makefile-based build (not autotools)
 #
+# ---metadata---
+# complexity: low
+# build_system: make
+# key_fixes: [test_target_removal, bash_brace_expansion]
+# similar_to: [lua]
+# depends: []
+# status: WORKING
+# ---
+#
 # Cross-compilation notes:
 # - gpgverify and gnupg2 removal handled by generic rules
 # - The Makefile has "all: ... test" which tries to run the binary

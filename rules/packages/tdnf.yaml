@@ -1,6 +1,15 @@
 # tdnf - Tiny DNF package manager
 # TARGET PACKAGE - The goal of the entire mogrix project
 # Has sgifixes patches, needs compat functions
+#
+# ---metadata---
+# complexity: high
+# build_system: cmake
+# key_fixes: [mips_arch_hardcode, plugin_disable, cmake_cross, systemd_removal]
+# similar_to: [libsolv, rpm]
+# depends: [libsolv, rpm, curl, openssl, libxml2]
+# status: WORKING (list/makecache work, install has futimens issue)
+# ---
 
 package: tdnf
 
@@ -10,11 +19,14 @@ add_patch:
   - gpgcheck-rpm419.sgifixes.patch
 
 rules:
-  # SGUG-RSE spec already has its own compat system - don't use mogrix inject_compat_functions
-  # The spec includes: strdup, strndup, getline, asprintf/vasprintf, qsort_r, strsep, getopt_long
-  # BUT their vasprintf uses vsnprintf(NULL,0) which returns -1 on IRIX
-  # We fix this via sed in spec_replacements below
-  # inject_compat_functions: none needed
+  # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
+  # These get statically linked so we don't need libdicl at runtime
+  inject_compat_functions:
+    - strdup
+    - strndup
+    - getline
+    - asprintf      # includes vasprintf with IRIX-safe iterative implementation
+    - getopt_long
 
   # Drop problematic dependencies (libdicl handled in generic.yaml)
   drop_buildrequires:
@@ -102,6 +114,8 @@ rules:
         # IRIX: statfs(path, buf, len, 0) and uses f_bfree instead of f_bavail
         sed -i 's/statfs(pConf->pszCacheDir, \&stfs)/statfs(pConf->pszCacheDir, \&stfs, sizeof(stfs), 0)/' client/packageutils.c
         sed -i 's/stfs.f_bavail/stfs.f_bfree/' client/packageutils.c
+        # IRIX uname reports machine as IP30, IP32, etc. - hardcode to mips for IRIX
+        sed -i 's/pool_setarch(pPool, systemInfo.machine)/pool_setarch(pPool, "mips")/' solv/tdnfpool.c
         export COMPAT_DIR=$(pwd)/mogrix-compat
         # Create mogrix-compat directory and build compat library
         mkdir -p $COMPAT_DIR

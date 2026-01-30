@@ -1,3 +1,14 @@
+# sqlite - SQL database engine
+#
+# ---metadata---
+# complexity: medium
+# build_system: autoconf
+# key_fixes: [disable_math_funcs, LLONG_MAX_define, _ABI_SOURCE, LONGDOUBLE_TYPE]
+# similar_to: []
+# depends: [zlib]
+# status: WORKING (library works, CLI has file write crash - not blocking)
+# ---
+
 package: sqlite
 
 rules:

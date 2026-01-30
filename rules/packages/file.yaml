@@ -1,5 +1,14 @@
 # file - File type identification utility
 # Needs compat functions
+#
+# ---metadata---
+# complexity: medium
+# build_system: autoconf
+# key_fixes: [posix_spawn_file_actions, mogrix_compat_linking, getopt_long]
+# similar_to: [elfutils]
+# depends: [zlib]
+# status: WORKING
+# ---
 
 package: file
 

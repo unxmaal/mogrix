@@ -1,6 +1,16 @@
 # zlib-ng - zlib replacement with optimizations
 # FC40 replacement for classic zlib
 # Use zlib-ng-compat subpackage for libz.so.1 compatibility
+#
+# ---metadata---
+# complexity: medium
+# build_system: cmake
+# key_fixes: [_XOPEN_SOURCE_600, cmake_cross, static_and_shared]
+# similar_to: [rpm, libsolv]
+# depends: []
+# status: WORKING
+# warning: Installing to /usr/sgug can break sshd (uses libz)
+# ---
 
 package: zlib-ng
 

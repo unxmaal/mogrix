@@ -1,5 +1,14 @@
 # xz - LZMA compression utilities and library
 # Provides liblzma needed by rpm and libsolv
+#
+# ---metadata---
+# complexity: high
+# build_system: autoconf
+# key_fixes: [libtool_shared, doc_generation_disable, doxygen_disable]
+# similar_to: [popt, libxml2]
+# depends: []
+# status: WORKING
+# ---
 
 package: xz
 

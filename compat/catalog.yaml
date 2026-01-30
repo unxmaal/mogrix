@@ -1,5 +1,22 @@
 # Mogrix Compat Source Catalog
 # Maps function names to their source files
+#
+# ---index---
+# Categories and key functions for quick reference:
+#
+# string/     : strdup, strndup, strcasestr, strsep
+# stdio/      : getline, asprintf, funopen (BSD cookie I/O - USE THIS, not fopencookie)
+# stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r
+# runtime/    : stpcpy, spawn (posix_spawn/posix_spawnp/file_actions)
+# dicl/       : openat-compat.c (17 POSIX "at" functions: openat, fstatat, futimens, etc.)
+# functions/  : getopt_long
+# unistd/     : getprogname, setprogname
+# time/       : timegm
+# error/      : strerror_r
+#
+# IMPORTANT: fopencookie (stdio/fopencookie.c) CRASHES on IRIX - use funopen instead
+# IMPORTANT: vasprintf in asprintf.c uses iterative approach (IRIX vsnprintf(NULL,0) returns -1)
+# ---
 
 functions:
   # String functions
@@ -55,7 +72,14 @@ functions:
     header: stdio/fopencookie.h
     description: Custom stream I/O (glibc extension for libsolv)
     requires_pthread: true
-    notes: Portable implementation based on musl community code
+    notes: Portable implementation based on musl community code - CRASHES ON IRIX, use funopen instead
+
+  funopen:
+    file: stdio/funopen.c
+    header: stdio.h
+    description: Custom stream I/O (BSD extension for libsolv)
+    requires_pthread: true
+    notes: BSD-style cookie I/O, more reliable on IRIX than fopencookie
 
   # stdlib functions
   strtof:
