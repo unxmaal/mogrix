@@ -1,0 +1,352 @@
+#!/usr/bin/perl
+# safepatch - Safe, paranoid file patching for mogrix builds
+#
+# Unlike sed, this tool:
+#   - Uses exact string matching (no regex surprises)
+#   - FAILS if the pattern is not found (no silent no-ops)
+#   - FAILS if the pattern matches more times than expected
+#   - Creates backups by default
+#   - Validates inputs thoroughly
+#   - Provides clear, actionable error messages
+#
+# Usage:
+#   safepatch <file> --old 'text to find' --new 'replacement'
+#   safepatch <file> --old 'text' --new 'replacement' --count 3
+#   safepatch <file> --old 'text' --new 'replacement' --count 0  # 0 = any count OK
+#   safepatch --dry-run <file> --old 'text' --new 'replacement'
+#
+# Exit codes:
+#   0 - Success
+#   1 - Pattern not found
+#   2 - Wrong number of matches
+#   3 - File error (not found, not readable, not writable)
+#   4 - Invalid arguments
+#   5 - Backup failed
+#   6 - Write failed
+
+use strict;
+use warnings;
+use Getopt::Long qw(:config no_ignore_case bundling);
+use File::Copy qw(copy);
+use File::Basename qw(basename);
+
+# Exit codes
+use constant {
+    EXIT_SUCCESS        => 0,
+    EXIT_NOT_FOUND      => 1,
+    EXIT_WRONG_COUNT    => 2,
+    EXIT_FILE_ERROR     => 3,
+    EXIT_BAD_ARGS       => 4,
+    EXIT_BACKUP_FAILED  => 5,
+    EXIT_WRITE_FAILED   => 6,
+};
+
+# ANSI colors for terminal output
+my $RED    = "\e[31m";
+my $GREEN  = "\e[32m";
+my $YELLOW = "\e[33m";
+my $BLUE   = "\e[34m";
+my $BOLD   = "\e[1m";
+my $RESET  = "\e[0m";
+
+# Disable colors if not a terminal
+if (!-t STDERR) {
+    $RED = $GREEN = $YELLOW = $BLUE = $BOLD = $RESET = '';
+}
+
+sub usage {
+    my $prog = basename($0);
+    print STDERR <<"EOF";
+${BOLD}Usage:${RESET} $prog [options] <file> --old 'pattern' --new 'replacement'
+
+${BOLD}Required:${RESET}
+  <file>              File to patch
+  --old, -o TEXT      Exact text to find (NOT a regex)
+  --new, -n TEXT      Replacement text
+
+${BOLD}Options:${RESET}
+  --count, -c NUM     Expected number of matches (default: 1)
+                      Use 0 to allow any number of matches
+  --dry-run, -d       Show what would be changed without modifying
+  --no-backup         Don't create .bak backup file
+  --quiet, -q         Suppress success messages
+  --verbose, -v       Show detailed match information
+  --help, -h          Show this help
+
+${BOLD}Exit Codes:${RESET}
+  0  Success
+  1  Pattern not found in file
+  2  Wrong number of matches (found N, expected M)
+  3  File error (missing, unreadable, or unwritable)
+  4  Invalid arguments
+  5  Backup creation failed
+  6  Write failed
+
+${BOLD}Examples:${RESET}
+  # Simple replacement (expects exactly 1 match)
+  $prog config.h --old '#define DEBUG 0' --new '#define DEBUG 1'
+
+  # Replace all occurrences (any count OK)
+  $prog Makefile --old 'gcc' --new 'mips-sgi-irix6.5-gcc' --count 0
+
+  # Expect exactly 3 matches
+  $prog source.c --old 'TODO' --new 'DONE' --count 3
+
+  # Preview changes without modifying
+  $prog --dry-run lib/fsm.c --old 'if (fd >= 0)' --new 'if (0)'
+
+${BOLD}Why not sed?${RESET}
+  sed silently does nothing if a pattern doesn't match. This tool fails
+  loudly, preventing hours of debugging when a source file changes or
+  a pattern is wrong. sed also uses regex, where metacharacters like
+  ., *, [, etc. cause unexpected matches. This tool uses exact strings.
+EOF
+    exit(EXIT_BAD_ARGS);
+}
+
+sub error {
+    my ($msg, $code) = @_;
+    print STDERR "${RED}${BOLD}ERROR:${RESET} $msg\n";
+    exit($code);
+}
+
+sub warning {
+    my ($msg) = @_;
+    print STDERR "${YELLOW}${BOLD}WARNING:${RESET} $msg\n";
+}
+
+sub info {
+    my ($msg) = @_;
+    print STDERR "${GREEN}${BOLD}OK:${RESET} $msg\n";
+}
+
+sub debug {
+    my ($msg) = @_;
+    print STDERR "${BLUE}DEBUG:${RESET} $msg\n";
+}
+
+# Find all occurrences and their positions
+sub find_matches {
+    my ($content, $pattern) = @_;
+    my @matches;
+    my $pos = 0;
+    my $quoted = quotemeta($pattern);
+
+    while ($content =~ /($quoted)/g) {
+        my $match_start = $-[0];
+        my $match_end = $+[0];
+
+        # Find line number and context
+        my $prefix = substr($content, 0, $match_start);
+        my $line_num = 1 + ($prefix =~ tr/\n//);
+
+        # Get the line containing the match
+        my $line_start = rindex($content, "\n", $match_start) + 1;
+        my $line_end = index($content, "\n", $match_end);
+        $line_end = length($content) if $line_end < 0;
+        my $line = substr($content, $line_start, $line_end - $line_start);
+
+        push @matches, {
+            position => $match_start,
+            line_num => $line_num,
+            line     => $line,
+            col      => $match_start - $line_start + 1,
+        };
+    }
+
+    return @matches;
+}
+
+# Show context around a match
+sub show_match_context {
+    my ($content, $match, $old_text, $index) = @_;
+    my $line_num = $match->{line_num};
+    my $line = $match->{line};
+
+    # Truncate long lines for display
+    my $max_len = 120;
+    my $display_line = $line;
+    if (length($display_line) > $max_len) {
+        $display_line = substr($display_line, 0, $max_len) . "...";
+    }
+
+    print STDERR "  Match #" . ($index + 1) . " at line $line_num, column $match->{col}:\n";
+    print STDERR "    ${BLUE}$line_num:${RESET} $display_line\n";
+}
+
+# Main
+sub main {
+    my ($file, $old_text, $new_text);
+    my $expected_count = 1;
+    my $dry_run = 0;
+    my $no_backup = 0;
+    my $quiet = 0;
+    my $verbose = 0;
+    my $help = 0;
+
+    GetOptions(
+        'old|o=s'    => \$old_text,
+        'new|n=s'    => \$new_text,
+        'count|c=i'  => \$expected_count,
+        'dry-run|d'  => \$dry_run,
+        'no-backup'  => \$no_backup,
+        'quiet|q'    => \$quiet,
+        'verbose|v'  => \$verbose,
+        'help|h'     => \$help,
+    ) or usage();
+
+    usage() if $help;
+
+    # Get file argument
+    $file = shift @ARGV;
+
+    # Validate arguments
+    if (!defined $file) {
+        error("No file specified", EXIT_BAD_ARGS);
+    }
+    if (!defined $old_text) {
+        error("--old is required", EXIT_BAD_ARGS);
+    }
+    if (!defined $new_text) {
+        error("--new is required", EXIT_BAD_ARGS);
+    }
+    if (length($old_text) == 0) {
+        error("--old cannot be empty", EXIT_BAD_ARGS);
+    }
+    if ($old_text eq $new_text) {
+        error("--old and --new are identical - nothing to do", EXIT_BAD_ARGS);
+    }
+    if ($expected_count < 0) {
+        error("--count cannot be negative", EXIT_BAD_ARGS);
+    }
+    if (@ARGV) {
+        error("Unexpected arguments: " . join(' ', @ARGV), EXIT_BAD_ARGS);
+    }
+
+    # Validate file
+    if (!-e $file) {
+        error("File not found: $file", EXIT_FILE_ERROR);
+    }
+    if (-d $file) {
+        error("Path is a directory, not a file: $file", EXIT_FILE_ERROR);
+    }
+    if (!-r $file) {
+        error("File is not readable: $file", EXIT_FILE_ERROR);
+    }
+    if (!$dry_run && !-w $file) {
+        error("File is not writable: $file", EXIT_FILE_ERROR);
+    }
+
+    # Check if file appears to be binary
+    if (-B $file) {
+        warning("File appears to be binary: $file");
+    }
+
+    # Read file
+    my $content;
+    {
+        open(my $fh, '<', $file) or error("Cannot read $file: $!", EXIT_FILE_ERROR);
+        local $/;
+        $content = <$fh>;
+        close($fh);
+    }
+
+    # Find all matches
+    my @matches = find_matches($content, $old_text);
+    my $found_count = scalar(@matches);
+
+    # Report what we found
+    if ($verbose || $dry_run) {
+        if ($found_count == 0) {
+            print STDERR "Pattern not found in $file\n";
+            print STDERR "Looking for:\n";
+            print STDERR "  ${YELLOW}" . (substr($old_text, 0, 200)) . "${RESET}";
+            print STDERR "..." if length($old_text) > 200;
+            print STDERR "\n";
+        } else {
+            print STDERR "Found $found_count match" . ($found_count == 1 ? "" : "es") . " in $file:\n";
+            for my $i (0 .. $#matches) {
+                show_match_context($content, $matches[$i], $old_text, $i);
+            }
+        }
+    }
+
+    # Validate match count
+    if ($found_count == 0) {
+        my $hint = "";
+        # Try to help diagnose the problem
+        if ($old_text =~ /^\s/ || $old_text =~ /\s$/) {
+            $hint = "\nHint: Pattern has leading/trailing whitespace - verify it matches the file exactly";
+        }
+        if ($old_text =~ /\t/) {
+            $hint .= "\nHint: Pattern contains tabs - the file might use spaces instead (or vice versa)";
+        }
+        error("Pattern not found in $file" . $hint, EXIT_NOT_FOUND);
+    }
+
+    if ($expected_count > 0 && $found_count != $expected_count) {
+        my $msg = "Found $found_count match" . ($found_count == 1 ? "" : "es");
+        $msg .= ", expected $expected_count in $file";
+
+        if ($found_count > $expected_count) {
+            $msg .= "\n\nThis likely means the pattern is too broad and matches unintended locations.";
+            $msg .= "\nUse --verbose to see all matches, or use a more specific pattern.";
+            $msg .= "\nIf you really want to replace all $found_count, use --count 0";
+        } else {
+            $msg .= "\n\nThis likely means the source file has changed.";
+            $msg .= "\nVerify the pattern is still correct for this version.";
+        }
+
+        # Show matches if not already shown
+        if (!$verbose && !$dry_run) {
+            print STDERR "\nMatches found:\n";
+            for my $i (0 .. $#matches) {
+                show_match_context($content, $matches[$i], $old_text, $i);
+            }
+        }
+
+        error($msg, EXIT_WRONG_COUNT);
+    }
+
+    # Dry run - just report what would happen
+    if ($dry_run) {
+        print STDERR "\n${YELLOW}DRY RUN:${RESET} Would replace $found_count occurrence";
+        print STDERR "s" if $found_count != 1;
+        print STDERR " in $file\n";
+        print STDERR "Old: ${RED}" . (substr($old_text, 0, 100)) . "${RESET}";
+        print STDERR "..." if length($old_text) > 100;
+        print STDERR "\nNew: ${GREEN}" . (substr($new_text, 0, 100)) . "${RESET}";
+        print STDERR "..." if length($new_text) > 100;
+        print STDERR "\n";
+        exit(EXIT_SUCCESS);
+    }
+
+    # Create backup
+    if (!$no_backup) {
+        my $backup = "$file.bak";
+        if (!copy($file, $backup)) {
+            error("Failed to create backup $backup: $!", EXIT_BACKUP_FAILED);
+        }
+        debug("Created backup: $backup") if $verbose;
+    }
+
+    # Perform replacement
+    my $quoted = quotemeta($old_text);
+    $content =~ s/$quoted/$new_text/g;
+
+    # Write result
+    {
+        open(my $fh, '>', $file) or error("Cannot write $file: $!", EXIT_WRITE_FAILED);
+        print $fh $content;
+        close($fh) or error("Failed to close $file: $!", EXIT_WRITE_FAILED);
+    }
+
+    # Success message
+    if (!$quiet) {
+        info("Patched $file ($found_count replacement" . ($found_count == 1 ? "" : "s") . ")");
+    }
+
+    exit(EXIT_SUCCESS);
+}
+
+main();
