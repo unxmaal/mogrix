@@ -1,5 +1,14 @@
 # libsolv - Package dependency solver
-# Uses cmake, needs fopencookie compat
+# Uses cmake, needs funopen compat (NOT fopencookie - crashes on IRIX)
+#
+# ---metadata---
+# complexity: high
+# build_system: cmake
+# key_fixes: [funopen_not_fopencookie, whole_archive_linking, cmake_cross, binding_disable]
+# similar_to: [rpm, tdnf]
+# depends: [rpm, zlib, bzip2, xz, libxml2]
+# status: WORKING
+# ---
 
 package: libsolv
 # Aliases for packages that use macros in Name field
@@ -12,7 +21,7 @@ rules:
     - strdup
     - strndup
     - getline
-    - fopencookie
+    - funopen    # BSD-style cookie I/O (replaces fopencookie - more reliable on IRIX)
     - strcasestr
     - timegm
     - mkdtemp
@@ -81,8 +90,8 @@ rules:
           -DCMAKE_INSTALL_PREFIX=%{_prefix} \
           -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
           -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic" \
-          -DCMAKE_EXE_LINKER_FLAGS="$COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
-          -DCMAKE_SHARED_LINKER_FLAGS="$COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
+          -DCMAKE_EXE_LINKER_FLAGS="-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen -lpthread" \
+          -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen -lpthread" \
           -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
           -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
           -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
@@ -121,7 +130,7 @@ rules:
           -DENABLE_PERL=OFF \
           -DENABLE_RUBY=OFF \
           -DENABLE_PYTHON=OFF \
-          -DHAVE_FOPENCOOKIE=1
+          -DHAVE_FUNOPEN=1
     # Comment out all original cmake continuation lines (our replacement above handles them)
     # These lines remain in the spec after %cmake -GNinja replacement and must be neutralized
     # The original lines have lots of trailing whitespace - include some to avoid matching our replacement
@@ -178,12 +187,24 @@ rules:
     - pattern: "  -DPYTHON_EXECUTABLE=%{python3}                          \\"
       replacement: "  # -DPYTHON_EXECUTABLE (disabled) \\"
     # Fix libxml2 const compatibility - newer libxml2 returns const xmlError*
+    # Also add funopen declaration for IRIX
     - pattern: "%autosetup -p1"
       replacement: |
         %autosetup -p1
 
         # Fix const mismatch with newer libxml2 (xmlCtxtGetLastError returns const xmlError*)
         sed -i 's/xmlErrorPtr err = xmlCtxtGetLastError/const xmlError *err = xmlCtxtGetLastError/' ext/solv_xmlparser.c
+
+        # Add funopen declaration for IRIX (BSD-style cookie I/O)
+        # This must be added before the #ifdef HAVE_FUNOPEN block
+        sed -i '/#ifdef HAVE_FUNOPEN/i\
+        /* funopen declaration for IRIX (provided by mogrix compat) */\
+        extern FILE *funopen(const void *cookie,\
+                             int (*readfn)(void *, char *, int),\
+                             int (*writefn)(void *, const char *, int),\
+                             off_t (*seekfn)(void *, off_t, int),\
+                             int (*closefn)(void *));
+        ' ext/solv_xfopen.c
     # Use make instead of ninja
     - pattern: "%cmake_build"
       replacement: "cd _build && make %{?_smp_mflags}"

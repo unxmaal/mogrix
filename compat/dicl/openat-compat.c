@@ -67,6 +67,9 @@ static int is_absolute_path(const char *path) {
     return path && path[0] == '/';
 }
 
+/* Debug flag - set to 1 to enable debug output */
+static int openat_debug = 0;
+
 /*
  * openat - open file relative to directory file descriptor
  */
@@ -75,6 +78,13 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
     int saved_cwd;
     int result;
     int saved_errno;
+
+    /* Check for debug env var on first call */
+    static int debug_checked = 0;
+    if (!debug_checked) {
+        debug_checked = 1;
+        if (getenv("OPENAT_DEBUG")) openat_debug = 1;
+    }
 
     /* Handle variable argument for mode when O_CREAT is specified */
     if (flags & O_CREAT) {
@@ -87,10 +97,15 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
     /* If dirfd is AT_FDCWD or path is absolute, use regular open */
     if (dirfd == AT_FDCWD || is_absolute_path(pathname)) {
         if (flags & O_CREAT) {
-            return open(pathname, flags, mode);
+            result = open(pathname, flags, mode);
         } else {
-            return open(pathname, flags);
+            result = open(pathname, flags);
         }
+        if (openat_debug) {
+            fprintf(stderr, "openat(dirfd=%d, '%s', 0x%x) -> absolute path, result=%d, errno=%d\n",
+                    dirfd, pathname, flags, result, result < 0 ? errno : 0);
+        }
+        return result;
     }
 
     /* Save current working directory */
@@ -113,14 +128,29 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
     } else {
         result = open(pathname, flags);
     }
-    saved_errno = errno;
+    /* Only save errno if open() failed - on success, errno is undefined */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;  /* Clear errno on success */
+    }
 
     /* Restore original working directory */
-    if (restore_cwd(saved_cwd) < 0 && result >= 0) {
+    int restore_result = restore_cwd(saved_cwd);
+    if (restore_result < 0 && result >= 0) {
         /* Failed to restore cwd but open succeeded - close and fail */
+        if (openat_debug) {
+            fprintf(stderr, "openat(dirfd=%d, '%s') -> restore_cwd failed, closing result=%d\n",
+                    dirfd, pathname, result);
+        }
         close(result);
         errno = saved_errno;
         return -1;
+    }
+
+    if (openat_debug) {
+        fprintf(stderr, "openat(dirfd=%d, '%s', 0x%x) -> result=%d, saved_errno=%d, restore=%d\n",
+                dirfd, pathname, flags, result, saved_errno, restore_result);
     }
 
     errno = saved_errno;
@@ -164,7 +194,12 @@ int fstatat(int dirfd, const char *pathname, struct stat *statbuf, int flags) {
     } else {
         result = stat(pathname, statbuf);
     }
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -203,7 +238,12 @@ int faccessat(int dirfd, const char *pathname, int mode, int flags) {
 
     /* Perform the access check */
     result = access(pathname, mode);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -241,7 +281,12 @@ int mkdirat(int dirfd, const char *pathname, mode_t mode) {
 
     /* Perform the mkdir */
     result = mkdir(pathname, mode);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -287,7 +332,12 @@ int unlinkat(int dirfd, const char *pathname, int flags) {
     } else {
         result = unlink(pathname);
     }
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -391,7 +441,12 @@ int renameat(int olddirfd, const char *oldpath,
     /* Perform the rename */
     result = rename(old_fullpath ? old_fullpath : oldpath,
                     new_fullpath ? new_fullpath : newpath);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Cleanup */
     free(old_fullpath);
@@ -431,7 +486,12 @@ ssize_t readlinkat(int dirfd, const char *pathname, char *buf, size_t bufsiz) {
 
     /* Perform the readlink */
     result = readlink(pathname, buf, bufsiz);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -469,7 +529,12 @@ int symlinkat(const char *target, int newdirfd, const char *linkpath) {
 
     /* Perform the symlink */
     result = symlink(target, linkpath);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -563,7 +628,12 @@ int linkat(int olddirfd, const char *oldpath,
     /* Perform the link */
     result = link(old_fullpath ? old_fullpath : oldpath,
                   new_fullpath ? new_fullpath : newpath);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Cleanup */
     free(old_fullpath);
@@ -605,7 +675,12 @@ int fchmodat(int dirfd, const char *pathname, mode_t mode, int flags) {
 
     /* Perform the chmod */
     result = chmod(pathname, mode);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -651,7 +726,12 @@ int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flag
     } else {
         result = chown(pathname, owner, group);
     }
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -689,7 +769,12 @@ int mkfifoat(int dirfd, const char *pathname, mode_t mode) {
 
     /* Perform the mkfifo */
     result = mkfifo(pathname, mode);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -727,7 +812,12 @@ int mknodat(int dirfd, const char *pathname, mode_t mode, dev_t dev) {
 
     /* Perform the mknod */
     result = mknod(pathname, mode, dev);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+    } else {
+        saved_errno = 0;
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);
@@ -747,6 +837,7 @@ int utimensat(int dirfd, const char *pathname, const struct timespec times[2], i
     int result;
     int saved_errno;
     struct timeval tv[2];
+    struct stat sb;
 
     /* Convert timespec to timeval, losing nanosecond precision */
     if (times) {
@@ -775,21 +866,68 @@ int utimensat(int dirfd, const char *pathname, const struct timespec times[2], i
         }
     }
 
+    /*
+     * Handle AT_SYMLINK_NOFOLLOW for symlinks.
+     * IRIX's utimes() follows symlinks, which can fail if the symlink target
+     * doesn't exist. When AT_SYMLINK_NOFOLLOW is set and the path is a symlink,
+     * we simply succeed since IRIX doesn't have lutimes() and symlink timestamps
+     * are rarely critical.
+     */
+    if (flags & AT_SYMLINK_NOFOLLOW) {
+        /* Do an lstat to check if it's a symlink */
+        if (dirfd == AT_FDCWD || is_absolute_path(pathname)) {
+            if (lstat(pathname, &sb) == 0 && S_ISLNK(sb.st_mode)) {
+                if (openat_debug) {
+                    fprintf(stderr, "utimensat: '%s' is symlink with AT_SYMLINK_NOFOLLOW, skipping (no lutimes)\n", pathname);
+                }
+                return 0; /* Success - can't change symlink times on IRIX */
+            }
+        } else {
+            /* For relative paths, need to fchdir first */
+            saved_cwd = save_cwd();
+            if (saved_cwd >= 0) {
+                if (fchdir(dirfd) == 0) {
+                    if (lstat(pathname, &sb) == 0 && S_ISLNK(sb.st_mode)) {
+                        restore_cwd(saved_cwd);
+                        if (openat_debug) {
+                            fprintf(stderr, "utimensat: '%s' is symlink with AT_SYMLINK_NOFOLLOW, skipping (no lutimes)\n", pathname);
+                        }
+                        return 0; /* Success - can't change symlink times on IRIX */
+                    }
+                }
+                restore_cwd(saved_cwd);
+            }
+        }
+    }
+
     /* If dirfd is AT_FDCWD or path is absolute, use regular utimes */
     if (dirfd == AT_FDCWD || is_absolute_path(pathname)) {
         /* Note: AT_SYMLINK_NOFOLLOW not fully supported */
-        return utimes(pathname, times ? tv : NULL);
+        result = utimes(pathname, times ? tv : NULL);
+        if (openat_debug && result < 0) {
+            fprintf(stderr, "utimensat(AT_FDCWD, '%s', ...) -> utimes failed: %d (%s)\n",
+                    pathname, errno, strerror(errno));
+        }
+        return result;
     }
 
     /* Save current working directory */
     saved_cwd = save_cwd();
     if (saved_cwd < 0) {
+        if (openat_debug) {
+            fprintf(stderr, "utimensat(%d, '%s', ...) -> save_cwd failed: %d (%s)\n",
+                    dirfd, pathname, errno, strerror(errno));
+        }
         return -1;
     }
 
     /* Change to the directory specified by dirfd */
     if (fchdir(dirfd) < 0) {
         saved_errno = errno;
+        if (openat_debug) {
+            fprintf(stderr, "utimensat(%d, '%s', ...) -> fchdir failed: %d (%s)\n",
+                    dirfd, pathname, saved_errno, strerror(saved_errno));
+        }
         close(saved_cwd);
         errno = saved_errno;
         return -1;
@@ -797,7 +935,19 @@ int utimensat(int dirfd, const char *pathname, const struct timespec times[2], i
 
     /* Perform the utimes */
     result = utimes(pathname, times ? tv : NULL);
-    saved_errno = errno;
+    /* Only save errno if operation failed */
+    if (result < 0) {
+        saved_errno = errno;
+        if (openat_debug) {
+            fprintf(stderr, "utimensat(%d, '%s', ...) -> utimes failed: %d (%s)\n",
+                    dirfd, pathname, saved_errno, strerror(saved_errno));
+        }
+    } else {
+        saved_errno = 0;
+        if (openat_debug) {
+            fprintf(stderr, "utimensat(%d, '%s', ...) -> success\n", dirfd, pathname);
+        }
+    }
 
     /* Restore original working directory */
     restore_cwd(saved_cwd);

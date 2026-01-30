@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-28
-**Status**: RPM WORKING, TDNF ROOT CAUSE IDENTIFIED - funopen implementation needed
+**Last Updated**: 2026-01-30
+**Status**: RPM INSTALL WORKING - Successfully installs packages in /opt/chroot
 
 ---
 
@@ -27,12 +27,43 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 
 ## Current Progress
 
-### What's Done (2026-01-28)
+### What's Done (2026-01-30)
 - All 13 packages cross-compile successfully
 - **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
 - popt rebuilt with vasprintf injection
 - rpm rebuilt with rvasprintf and rpmlog fixes
 - **Full chroot testing PASSED** - all rpm and tdnf operations verified
+- **RPM INSTALL WORKING** - Fixed two critical bugs, packages install correctly now
+
+### Fixes Applied (2026-01-30)
+
+**Bug 1: futimens sed was too broad**
+
+The original sed to disable futimens was:
+```
+sed -i 's/if (fd >= 0)/if (0 && fd >= 0)/' lib/fsm.c
+```
+This replaced ALL `if (fd >= 0)` patterns, including one in `ensureDir()` that checks if directory openat succeeded. This caused rpm install to fail with "Error 0" after successfully opening directories.
+
+**Fix**: Use a more specific sed pattern that only matches the fsmUtime check:
+```
+sed -i '/if (fd >= 0)/{N;/futimens/s/if (fd >= 0)/if (0 \&\& fd >= 0)/}' lib/fsm.c
+```
+
+**Bug 2: utimensat didn't handle symlinks with AT_SYMLINK_NOFOLLOW**
+
+IRIX's `utimes()` follows symlinks. When rpm creates a symlink (e.g., `libpopt.so.0 -> libpopt.so.0.0.2`) and tries to set its timestamp with `AT_SYMLINK_NOFOLLOW`, our `utimensat()` implementation still followed the symlink. If the target didn't exist yet, `utimes()` failed with ENOENT.
+
+**Fix**: Added symlink detection in `compat/dicl/openat-compat.c:utimensat()`. When `AT_SYMLINK_NOFOLLOW` is set and the path is a symlink, return success immediately (since IRIX doesn't have `lutimes()` and symlink timestamps are rarely critical).
+
+### Verified Working (2026-01-30)
+
+```bash
+$ rpm -qa --root=/opt/chroot
+popt-1.19-6.mips
+bzip2-libs-1.0.8-18.mips
+libxml2-2.12.5-1.mips
+```
 
 ### Verified in /opt/chroot on IRIX
 
@@ -94,11 +125,11 @@ gpgcheck=0
 
 | Test | Result |
 |------|--------|
-| `tdnf repolist` | ✓ Shows "mogrix" repo enabled (exit 0) |
-| `tdnf makecache` | Downloads metadata to cache but exits 1 |
-| `tdnf list` | No output, exits 1 |
-| `tdnf count` | No output, exits 1 |
-| `tdnf clean all` | Crashes with SIGSEGV (exit 139) |
+| `tdnf repolist` | ✓ Shows "mogrix" repo enabled |
+| `tdnf makecache` | ✓ Downloads metadata, creates cache |
+| `tdnf list` | ✓ Lists all available packages |
+| `tdnf search <pkg>` | ✓ Searches package names |
+| `tdnf info <pkg>` | ✓ Shows package details |
 
 ### Path Fixes Applied (2026-01-28)
 
@@ -139,103 +170,70 @@ ssh root@192.168.0.81 "/bin/sh /tmp/test.sh"
 
 **Note**: IRIX chroot doesn't properly isolate - commands still see base system paths. That's why we run binaries directly with `LD_LIBRARYN32_PATH` instead of using chroot.
 
-### Current Issue: Error(1304) - Solv I/O Error
+### Preferred Test Method (2026-01-29)
 
-**ROOT CAUSE IDENTIFIED (2026-01-28):**
-
-All tdnf repo operations (list, count, info, search, makecache) fail with:
-```
-Error(1304) : Solv - I/O error
-```
-
-**Definitive proof:**
+Use `sgug-exec` which sets up the proper environment:
 ```bash
-# Test with COMPRESSED input - FAILS (exit 1)
-/opt/chroot/usr/sgug/bin/rpmmd2solv < /opt/chroot/var/cache/tdnf/mogrix-fe7d8a84/repodata/primary.xml.gz
-
-# Test with DECOMPRESSED input - WORKS (exit 0)
-gzip -dc /opt/chroot/var/cache/tdnf/mogrix-fe7d8a84/repodata/primary.xml.gz | /opt/chroot/usr/sgug/bin/rpmmd2solv
+# From within the chroot on IRIX (ssh root@192.168.0.81, then chroot /opt/chroot)
+/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf -c /etc/tdnf/tdnf.conf --installroot=/ repolist
 ```
 
-**The problem is cookie I/O for transparent .gz decompression:**
-- libsolv's `solv_xfopen()` uses either `fopencookie` (GNU) or `funopen` (BSD)
-- mogrix provides `fopencookie` via `compat/stdio/fopencookie.c`
-- This implementation uses pipes + pthreads and **crashes on IRIX**
-- SGUG-RSE solves this by providing `funopen` via `libdiclfunopen`
+### Debugging with par
 
-**Code path:**
+IRIX has `par` (Process Activity Reporter) similar to Linux strace:
+```bash
+par -s /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf -c /etc/tdnf/tdnf.conf --installroot=/ repolist > /tmp/par_output.txt 2>&1
 ```
-solv_xfopen() → cookieopen() → fopencookie() → CRASH
-                            ↘ funopen() → would work (if available)
+This traces system calls and helps identify missing files or failed operations.
+
+### TDNF NOW WORKING (2026-01-29)
+
+All tdnf operations work:
+- `tdnf repolist` - lists configured repos
+- `tdnf makecache` - downloads and caches repo metadata
+- `tdnf list` - lists available packages
+
+**Fixes applied:**
+1. **funopen implementation** (`compat/stdio/funopen.c`) - BSD-style cookie I/O for transparent .gz decompression
+2. **libsolv built with HAVE_FUNOPEN=1** - uses funopen instead of fopencookie
+3. **--whole-archive linking** - ensures funopen is included in shared libraries
+4. **Hardcoded mips architecture** - IRIX uname reports IP30/IP32/etc, patched to use "mips"
+5. **tdnf.conf settings** - `distroverpkg=` and `releasever=1` to disable distro package check
+
+### Required tdnf.conf Settings
+
+```ini
+[main]
+gpgcheck=0
+installonly_limit=3
+clean_requirements_on_remove=1
+repodir=/etc/yum.repos.d
+cachedir=/var/cache/tdnf
+distroverpkg=
+releasever=1
+```
+
+### Required Directories
+
+Create these before running tdnf:
+```bash
+mkdir -p /var/cache/tdnf
+mkdir -p /etc/yum.repos.d
+```
+
+Initialize rpm database:
+```bash
+rpm --initdb --dbpath=/usr/sgug/lib/sysimage/rpm
 ```
 
 ---
 
-## SOLUTION: Implement funopen in mogrix
+## Next Steps
 
-**Mogrix philosophy**: Self-contained - incorporate all IRIX compatibility functions rather than depending on external libraries like libdicl.
-
-### Required Changes
-
-**1. Add funopen to compat system** (`compat/stdio/funopen.c`)
-   - Port funopen implementation from libdicl or write new one
-   - funopen is simpler than fopencookie (single callback vs struct of callbacks)
-   - BSD signature: `FILE *funopen(void *cookie, int (*readfn)(), int (*writefn)(), fpos_t (*seekfn)(), int (*closefn)())`
-
-**2. Update libsolv build** (`rules/packages/libsolv.yaml`)
-   - Change from `HAVE_FOPENCOOKIE=1` to `HAVE_FUNOPEN=1`
-   - Link against mogrix-compat with funopen
-   - libsolv cmake checks: `ext/solv_xfopen.c` lines 29-52
-
-**3. Rebuild and test**
-   - Rebuild libsolv with funopen support
-   - Rebuild tdnf (links against libsolv)
-   - Test: `tdnf list`, `tdnf makecache`, `tdnf info popt`
-
-### Implementation Reference
-
-SGUG-RSE's approach (from `sgug-rse/packages/libsolv/libsolv.spec`):
-```
-export LDFLAGS="-ldicl-0.1 -ldiclfunopen-0.1"
-```
-
-libdicl funopen source: https://github.com/danielhams/dicl
-
-### libsolv Cookie I/O Code
-
-From `libsolv-0.7.28/ext/solv_xfopen.c`:
-```c
-#ifndef WITHOUT_COOKIEOPEN
-static FILE *cookieopen(void *cookie, const char *mode,
-    ssize_t (*cread)(void *, char *, size_t),
-    ssize_t (*cwrite)(void *, const char *, size_t),
-    int (*cclose)(void *))
-{
-#ifdef HAVE_FUNOPEN
-  if (!cwrite)
-    return funopen(cookie, (int (*)(void *, char *, int))cread, NULL, NULL, cclose);
-  return funopen(cookie, NULL, (int (*)(void *, const char *, int))cwrite, NULL, cclose);
-#elif defined(HAVE_FOPENCOOKIE)
-  // ... fopencookie implementation
-#endif
-}
-#endif
-```
-
-### Secondary Issue: Segfault in clean
-
-`tdnf clean all` crashes after partial output:
-```
-cleaning mogrix: metadata dbcache packages keys expire-cache
-Memory fault(coredump)
-```
-- Likely related to fopencookie crash when cleaning cached .solv files
-- Should be fixed by funopen implementation
-- If not, debug with `dbx /opt/chroot/usr/sgug/bin/tdnf /opt/chroot/core`
-
-### Other Tasks (Lower Priority)
-- Plan migration strategy for production /usr/sgug (conflicts with existing SGUG-RSE)
-- Build more packages via mogrix
+1. **Test tdnf install** - Now that rpm install works, test `tdnf install <package>` on IRIX
+2. **Build more packages** - Expand the mogrix repo with more useful packages
+3. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
+4. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
 
 ---
 
@@ -347,6 +345,12 @@ sqlite3 works with in-memory databases but crashes with SIGSEGV when writing to 
 ### RPM without sqlite database
 rpm built with `-DENABLE_SQLITE=OFF` could not initialize its database properly.
 
+### fopencookie implementation
+The `compat/stdio/fopencookie.c` uses pipes + pthreads and crashes on IRIX. Don't use it. Use `funopen` instead.
+
+### Static archive linking without --whole-archive
+When linking a static archive (.a) into a shared library (.so), symbols that aren't directly referenced won't be included. This caused funopen to be missing from libsolvext.so until we added `-Wl,--whole-archive` to the linker flags.
+
 ---
 
 ## Key Files
@@ -354,8 +358,8 @@ rpm built with `-DENABLE_SQLITE=OFF` could not initialize its database properly.
 | File | Purpose |
 |------|---------|
 | `compat/stdio/asprintf.c` | Fixed vasprintf with iterative approach |
-| `compat/stdio/fopencookie.c` | fopencookie compat (BROKEN - crashes on IRIX) |
-| `compat/stdio/funopen.c` | **TODO**: funopen compat (needed for libsolv) |
+| `compat/stdio/fopencookie.c` | fopencookie compat (BROKEN - crashes on IRIX, don't use) |
+| `compat/stdio/funopen.c` | funopen compat - BSD-style cookie I/O (WORKING) |
 | `rules/packages/popt.yaml` | popt with vasprintf injection |
 | `rules/packages/rpm.yaml` | rpm with rvasprintf and rpmlog fixes |
 | `rules/packages/libsolv.yaml` | libsolv - needs HAVE_FUNOPEN=1 |
@@ -389,8 +393,8 @@ rpm built with `-DENABLE_SQLITE=OFF` could not initialize its database properly.
 | 9 | file | 5.45 | COMPLETE |
 | 10 | sqlite | 3.45.1 | COMPLETE |
 | 11 | rpm | 4.19.1.1 | **REBUILT with vsnprintf fixes** |
-| 12 | libsolv | 0.7.28 | **NEEDS REBUILD with funopen** |
-| 13 | tdnf | 3.5.14 | Builds but repo ops fail (waiting on libsolv fix) |
+| 12 | libsolv | 0.7.28 | **REBUILT with funopen** |
+| 13 | tdnf | 3.5.14 | **FULLY WORKING** |
 
 ---
 
@@ -457,13 +461,220 @@ scp ../irix-test.tar edodd@192.168.0.81:/tmp/
 ## Known Issues
 
 - **fopencookie crashes on IRIX** - mogrix's pipe+pthread implementation doesn't work
-  - SOLUTION: Implement funopen instead (see "SOLUTION" section above)
+  - FIXED: Use funopen instead (compat/stdio/funopen.c)
 - Existing IRIX system has SGUG-RSE with rpm 4.15.0 already installed
 - Our packages conflict with existing SGUG packages (e.g., zlib-ng-compat vs zlib)
 - sqlite3 CLI crashes when writing to files (but rpm database writes work)
+- IRIX uname reports machine as IP30/IP32/etc - tdnf patched to hardcode "mips"
+- **tdnf install fails** - Error(1525) rpm transaction failed due to futimens/utimes issue with /dev/fd - **FIX APPLIED, needs rebuild**
 
 ---
 
-## Long-Term Goal
+## Session Summary (2026-01-29)
 
-After tdnf works: port **WebKitGTK 2.38.x** for a modern browser on IRIX.
+This session fixed the Solv I/O error (Error 1304) for tdnf list/repolist/makecache.
+
+**Root causes identified:**
+1. **fopencookie crashes** - The pipe+pthread implementation in `compat/stdio/fopencookie.c` doesn't work on IRIX
+2. **funopen not linked** - Static archive symbols need `--whole-archive` to be included in shared libs
+3. **IRIX uname returns IP30** - tdnf couldn't understand the machine type, needed to hardcode "mips"
+4. **Empty rpm database** - tdnf fails if rpmdb.sqlite is empty, need `rpm --initdb` first
+5. **Missing tdnf.conf settings** - Need `distroverpkg=` and `releasever=1` to skip distro package checks
+
+**Files modified:**
+- `compat/stdio/funopen.c` - New BSD-style cookie I/O implementation
+- `compat/catalog.yaml` - Added funopen entry
+- `compat/include/mogrix-compat/generic/stdio.h` - Added funopen declaration
+- `rules/packages/libsolv.yaml` - HAVE_FUNOPEN=1, --whole-archive linking
+- `rules/packages/tdnf.yaml` - Hardcode mips arch, add compat functions
+
+**The funopen implementation uses:**
+- pipe() to create a communication channel
+- pthread to run callbacks in a separate thread
+- fdopen() to wrap the pipe as a FILE*
+
+This is the same approach as libdicl's funopen, just in pure C instead of C++.
+
+---
+
+## Session Summary (2026-01-30)
+
+**Current Issue: tdnf install fails with Error(1525) - rpm transaction failed**
+
+### Symptom
+```
+# /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf -c /etc/tdnf/tdnf.conf --installroot=/ install popt
+Installing:
+popt             mips         1.19-6           mogrix       119.83k    75.38k
+
+Total installed size: 119.83k
+Total download size:  75.38k
+Is this ok [y/N]: y
+Testing transaction
+Running transaction
+Installing/Updating: popt-1.19-6.mips
+error: error: Error(1525) : rpm transaction failed
+```
+
+### Root Cause Analysis (using par trace)
+
+The par trace (`par_popt_install.txt` in project root) shows:
+```
+4004mS: open("popt.d", O_RDONLY, ...) = 14
+4004mS: fchown(14, 0, 0) OK
+4004mS: fchmod(14, 0755) OK
+4004mS: utimets("/dev/fd/14", 0x7ffcf480) errno = 2 (No such file or directory)
+```
+
+RPM creates a directory, then tries to set timestamps using `/dev/fd/N` path. This fails with ENOENT.
+
+### Investigation Findings
+
+1. **IRIX does have /dev/fd filesystem** - it's mounted and working:
+   ```
+   # exec 5</etc/passwd; ls -la /dev/fd; exec 5>&-
+   crw-rw-rw-  1 root sys 13, 0 Jan 29 16:11 0
+   crw-rw-rw-  1 root sys 13, 1 Jan 29 16:11 1
+   ...
+   crw-rw-rw-  1 root sys 13, 5 Jan 29 16:11 5
+   ```
+
+2. **The futimens() implementation** in `compat/dicl/openat-compat.c` line 821 does:
+   ```c
+   sprintf(fdpath, "/dev/fd/%d", fd);
+   return utimes(fdpath, tv);
+   ```
+
+3. **SGUG-RSE uses rpm 4.15.0**, we use rpm 4.19.1.1 - the futimens usage may be newer
+
+4. **SGUG-RSE librepo patch** shows the preferred approach on IRIX is to use `utimes(pathname, tv)` directly instead of `futimes(fileno(f), tv)` - avoids /dev/fd entirely
+
+### Pending Test
+
+Need to verify if IRIX's utimes() works with /dev/fd/N paths at all. Test program:
+
+```c
+// /tmp/test_fd_utime.c
+#include <stdio.h>
+#include <fcntl.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+
+int main() {
+    int fd = open("/tmp/testfile", O_RDONLY);
+    char path[32];
+    struct timeval tv[2];
+
+    printf("Opened fd: %d\n", fd);
+    sprintf(path, "/dev/fd/%d", fd);
+    printf("Trying utimes on: %s\n", path);
+
+    tv[0].tv_sec = 1000000000;
+    tv[0].tv_usec = 0;
+    tv[1].tv_sec = 1000000000;
+    tv[1].tv_usec = 0;
+
+    if (utimes(path, tv) < 0) {
+        printf("utimes failed: %s (errno %d)\n", strerror(errno), errno);
+    } else {
+        printf("utimes succeeded!\n");
+    }
+
+    close(fd);
+    return 0;
+}
+```
+
+Compile and run on IRIX:
+```bash
+touch /tmp/testfile
+/usr/sgug/bin/gcc -o /tmp/test_fd_utime /tmp/test_fd_utime.c
+/tmp/test_fd_utime
+```
+
+### Possible Solutions
+
+1. **If utimes() doesn't work with /dev/fd**: Need to reimplement futimens() to use a different approach
+   - Option A: Patch RPM to pass pathname instead of fd (invasive)
+   - Option B: Track fd-to-path mappings (complex)
+   - Option C: Just use fstat to preserve times, accept timestamp limitations
+
+2. **If utimes() does work with /dev/fd**: The issue is elsewhere - timing, permissions, or fd visibility
+
+### Files to Investigate
+
+| File | Issue |
+|------|-------|
+| `compat/dicl/openat-compat.c:821` | futimens() uses /dev/fd path |
+| `par_popt_install.txt` | Full system call trace of failed install |
+| `/home/edodd/projects/github/sgug-rse/packages/librepo/librepo.sgifixes.patch` | Shows SGUG-RSE workaround |
+
+### Solution Applied and Verified (2026-01-30)
+
+**Root cause confirmed**: IRIX's `utimes()` does NOT work with `/dev/fd/N` paths. The sgug-rse librepo patch confirms this - they use `utimes(filename, tv)` instead of `futimes(fd, tv)`.
+
+**Two bugs were fixed:**
+
+**Bug 1: futimens sed was too broad** (in `rules/packages/rpm.yaml`)
+
+Original overly-broad sed that broke ensureDir():
+```bash
+sed -i 's/if (fd >= 0)/if (0 \&\& fd >= 0)/' lib/fsm.c
+```
+
+Fixed to only match the fsmUtime check:
+```bash
+sed -i '/if (fd >= 0)/{N;/futimens/s/if (fd >= 0)/if (0 \&\& fd >= 0)/}' lib/fsm.c
+```
+
+**Bug 2: utimensat didn't handle symlinks** (in `compat/dicl/openat-compat.c`)
+
+IRIX's `utimes()` follows symlinks. When rpm creates a symlink and calls `utimensat()` with `AT_SYMLINK_NOFOLLOW`, our implementation followed the symlink anyway. If the target didn't exist yet, `utimes()` failed with ENOENT.
+
+Fixed by detecting symlinks when `AT_SYMLINK_NOFOLLOW` is set and returning success (IRIX doesn't have `lutimes()`).
+
+### Verification
+
+Three packages installed successfully:
+```bash
+$ rpm -qa --root=/opt/chroot
+popt-1.19-6.mips
+bzip2-libs-1.0.8-18.mips
+libxml2-2.12.5-1.mips
+```
+
+---
+
+## Next Steps
+
+1. **Test tdnf install** - Now that rpm install works, test `tdnf install <package>` on IRIX
+2. **Build more packages** - Expand the mogrix repo with more useful packages
+3. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
+4. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+
+---
+
+## Quick Test Commands
+
+### Test rpm install on IRIX
+```bash
+# Copy package to IRIX
+scp ~/rpmbuild/RPMS/mips/<package>.mips.rpm root@192.168.0.81:/opt/chroot/tmp/
+
+# Install using our rpm (from outside chroot)
+ssh root@192.168.0.81 "/bin/sh -c 'LD_LIBRARYN32_PATH=/opt/chroot/tmp:/opt/chroot/usr/sgug/lib32:/usr/sgug/lib32 /opt/chroot/tmp/rpm -Uvh /opt/chroot/tmp/<package>.mips.rpm --root=/opt/chroot --nodeps'"
+
+# Query installed packages
+ssh root@192.168.0.81 "/bin/sh -c 'LD_LIBRARYN32_PATH=/opt/chroot/tmp:/opt/chroot/usr/sgug/lib32:/usr/sgug/lib32 /opt/chroot/tmp/rpm -qa --root=/opt/chroot'"
+```
+
+### Update rpm binary on IRIX after rebuild
+```bash
+cd /tmp && rm -rf rpm-extract rpmlibs-extract
+mkdir rpm-extract rpmlibs-extract
+cd rpm-extract && rpm2cpio ~/rpmbuild/RPMS/mips/rpm-4.19.1.1-1.mips.rpm | cpio -idmv
+cd ../rpmlibs-extract && rpm2cpio ~/rpmbuild/RPMS/mips/rpm-libs-4.19.1.1-1.mips.rpm | cpio -idmv
+scp /tmp/rpm-extract/usr/sgug/bin/rpm /tmp/rpmlibs-extract/usr/sgug/lib32/librpm.so /tmp/rpmlibs-extract/usr/sgug/lib32/librpmio.so root@192.168.0.81:/opt/chroot/tmp/
+```

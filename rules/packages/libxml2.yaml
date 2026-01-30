@@ -1,6 +1,15 @@
 # libxml2 - XML parsing library
 # Successfully cross-compiled for IRIX N32
 # Note: pthread causes crashes on IRIX, so threads are disabled
+#
+# ---metadata---
+# complexity: medium
+# build_system: autoconf
+# key_fixes: [libtool_shared, python_disable, lzma_disable, threads_disable]
+# similar_to: [popt, xz]
+# depends: [zlib]
+# status: WORKING
+# ---
 
 package: libxml2
 

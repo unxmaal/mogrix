@@ -1,6 +1,15 @@
 # popt - command line option parsing library
 # Requires compat functions previously provided by libdicl
 # Successfully cross-compiled for IRIX N32
+#
+# ---metadata---
+# complexity: medium
+# build_system: autoconf
+# key_fixes: [vasprintf_irix_vsnprintf_bug, stpcpy_conflict, libtool_shared]
+# similar_to: [libxml2, xz]
+# depends: []
+# status: WORKING
+# ---
 
 package: popt
 

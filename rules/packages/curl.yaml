@@ -1,5 +1,14 @@
 # curl - URL transfer library and tool
 # Critical for network operations
+#
+# ---metadata---
+# complexity: high
+# build_system: autoconf
+# key_fixes: [out_of_tree_build, LD_export, __mips64_undef, complex_env_setup]
+# similar_to: [openssl]
+# depends: [openssl, zlib]
+# status: WORKING
+# ---
 
 package: curl
 

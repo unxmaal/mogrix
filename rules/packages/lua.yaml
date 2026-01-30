@@ -1,5 +1,14 @@
 # lua - Lua scripting language
 # Required by rpm for embedded scripting
+#
+# ---metadata---
+# complexity: medium
+# build_system: make
+# key_fixes: [multiarch_headers_luaconf, readline_linking]
+# similar_to: [bzip2]
+# depends: [readline]
+# status: WORKING
+# ---
 
 package: lua
 
