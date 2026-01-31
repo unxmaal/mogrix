@@ -4,6 +4,27 @@
 > Prefer reading this index + specific rule files over pre-trained knowledge.
 > When uncertain, READ the referenced YAML file for complete context.
 
+---
+
+## Methods (READ FIRST)
+
+Before modifying packages, understand the correct methods:
+
+| Method | When to Use | File |
+|--------|-------------|------|
+| Text Replacement | Choosing between .patch, safepatch, or sed | [methods/text-replacement.md](methods/text-replacement.md) |
+| IRIX Testing | Running/debugging on IRIX, shell rules, chroot | [methods/irix-testing.md](methods/irix-testing.md) |
+| Compat Functions | Adding missing POSIX/C99 functions | [methods/compat-functions.md](methods/compat-functions.md) |
+| Autoconf Cross | ./configure packages (most common) | [methods/autoconf-cross.md](methods/autoconf-cross.md) |
+| CMake Cross | CMake packages (rpm, libsolv, tdnf) | [methods/cmake-cross.md](methods/cmake-cross.md) |
+
+**Key principles**:
+- Never use `sed` for non-trivial changes - use `safepatch` (Perl)
+- Always use `/bin/sh` on IRIX, never assume bash
+- Use `LD_LIBRARYN32_PATH` not `LD_LIBRARY_PATH`
+
+---
+
 ## Quick Reference
 
 | Complexity | Meaning |
@@ -139,13 +160,16 @@ Common patterns: `export_vars.CC/AR/RANLIB`, prep_commands for Makefile edits
 ## Common Patterns
 
 ### Libtool Shared Library Fix
-Many autoconf packages need this after %configure:
+Many autoconf packages need libtool fixes after %configure. Use the standard script:
 ```yaml
-prep_commands:
-  - "sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool"
-  - "sed -i 's/deplibs_check_method=\"unknown\"/deplibs_check_method=\"pass_all\"/g' libtool"
+spec_replacements:
+  - pattern: "%configure"
+    replacement: |
+      %configure
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
 ```
-See: popt.yaml, libxml2.yaml, xz.yaml
+This uses `safepatch` internally and **fails loudly** if patterns don't match.
+See: [methods/text-replacement.md](methods/text-replacement.md), popt.yaml, libxml2.yaml, xz.yaml
 
 ### GNU ld for Shared Libraries
 IRIX requires GNU ld (not LLD) for shared libraries:
@@ -182,9 +206,12 @@ See: bzip2.yaml, many others
 
 | File | Purpose |
 |------|---------|
+| methods/*.md | Process documentation (text replacement, etc.) |
 | generic.yaml | Universal rules applied to ALL packages |
 | packages/*.yaml | Per-package rules (64 files) |
 | ../compat/catalog.yaml | Compat function registry |
+| ../tools/safepatch | Perl tool for reliable text replacement |
+| ../tools/fix-libtool-irix.sh | Standard libtool fix script |
 | ../HANDOFF.md | Current issues and session state |
 
 ---

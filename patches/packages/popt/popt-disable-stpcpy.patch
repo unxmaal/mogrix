@@ -1,6 +1,6 @@
 --- a/src/system.h
 +++ b/src/system.h
-@@ -28,14 +28,14 @@ char * xstrdup (const char *str);
+@@ -28,15 +28,15 @@
 
  #if !defined(HAVE_STPCPY)
  /* Copy SRC to DEST, returning the address of the terminating '\0' in DEST.  */
@@ -24,3 +24,4 @@
 +// }
  #endif
 
+ /* Memory allocation via macro defs to get meaningful locations from mtrace() */

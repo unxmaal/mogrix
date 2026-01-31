@@ -9,7 +9,7 @@
  #include <wchar.h>			/* for mbsrtowcs */
  #endif
  #include "poptint.h"
-@@ -118,7 +118,7 @@ static inline size_t displayLength(const char * s)
+@@ -118,7 +118,7 @@
  static inline size_t stringDisplayWidth(const char *s)
  {
      size_t n = strlen(s);

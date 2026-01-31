@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-30
-**Status**: RPM INSTALL WORKING - Successfully installs packages in /opt/chroot
+**Last Updated**: 2026-01-31
+**Status**: RPM INSTALL WORKING - sed→patch migration tested and validated
 
 ---
 
@@ -27,13 +27,15 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 
 ## Current Progress
 
-### What's Done (2026-01-30)
+### What's Done (2026-01-31)
 - All 13 packages cross-compile successfully
 - **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
 - popt rebuilt with vasprintf injection
 - rpm rebuilt with rvasprintf and rpmlog fixes
 - **Full chroot testing PASSED** - all rpm and tdnf operations verified
 - **RPM INSTALL WORKING** - Fixed two critical bugs, packages install correctly now
+- **sed→patch migration VALIDATED** - 8 of 11 packages migrated, bzip2 + popt build-tested successfully
+- **Documentation restructured** - Added `rules/methods/` with process documentation, updated INDEX.md
 
 ### Fixes Applied (2026-01-30)
 
@@ -230,9 +232,9 @@ rpm --initdb --dbpath=/usr/sgug/lib/sysimage/rpm
 
 ## Next Steps
 
-1. **Test tdnf install** - Now that rpm install works, test `tdnf install <package>` on IRIX
-2. **Build more packages** - Expand the mogrix repo with more useful packages
-3. **Finish sed → safepatch migration** - Convert remaining packages (see below)
+1. **Test tdnf install on IRIX** - Verify `tdnf install <package>` works end-to-end
+2. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
+3. **Build more packages** - Expand the mogrix repo with more useful packages
 4. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
 5. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
 
@@ -294,15 +296,46 @@ For each sed command in YAML `spec_replacements`:
 
 | Package | sed→patch | Notes |
 |---------|-----------|-------|
+| bzip2.yaml | **DONE** | Uses `add_patch: disable-test.patch` |
+| popt.yaml | **DONE** | Uses 2 patches + `fix-libtool-irix.sh` |
+| libxml2.yaml | **DONE** | Uses `add_patch: libxml2-disable-check.patch` + `fix-libtool-irix.sh` |
+| sqlite.yaml | **DONE** | Uses `fix-libtool-irix.sh` |
+| xz.yaml | **DONE** | Uses `fix-libtool-irix.sh` |
+| lua.yaml | **DONE** | Uses `fix-libtool-irix.sh` + custom soname sed |
+| zlib.yaml | **DONE** | Uses `fix-libtool-irix.sh` + custom soname sed |
+| file.yaml | **DONE** | Uses `fix-libtool-irix.sh` + custom soname sed |
+| libsolv.yaml | PARTIAL | Has libsolv.sgifixes.patch, still uses inline seds |
+| tdnf.yaml | PARTIAL | Has 11 patches already, still uses inline seds |
 | rpm.yaml | TODO | Has existing rpm.sgifixes.patch (for 4.15), needs 4.19 patches |
-| popt.yaml | TODO | Needs mbsrtowcs disable patch |
-| libsolv.yaml | PARTIAL | Has libsolv.sgifixes.patch |
-| tdnf.yaml | PARTIAL | Has 11 patches already |
-| libxml2.yaml | TODO | Makefile patches |
-| bzip2.yaml | PARTIAL | Has disable-test.patch |
-| lua.yaml | TODO | Custom soname handling |
-| zlib.yaml | TODO | Custom soname handling |
-| file.yaml | TODO | Custom soname handling |
+
+**8 of 11 packages migrated** (2026-01-31). The remaining 3 complex packages (libsolv, tdnf, rpm) need review.
+
+### Testing the Migration (2026-01-31)
+
+**Full build test completed** - bzip2 and popt both build successfully with migrated patches.
+
+**Patch fixes required during testing:**
+1. `bzip2/disable-test.patch` - Line numbers were wrong (28 vs 34). Regenerated from actual source.
+2. `popt/popt-disable-stpcpy.patch` - Context didn't match. Regenerated from popt-1.19 source.
+3. `popt/popt-disable-mbsrtowcs.patch` - Context didn't match. Regenerated from popt-1.19 source.
+
+**Test commands:**
+```bash
+# Convert and build bzip2
+MOGRIX_ROOT=/home/edodd/projects/github/unxmaal/mogrix .venv/bin/mogrix convert oldcrap/bzip2-1.0.8-18.fc40.src.rpm -o /tmp/bzip2-test
+MOGRIX_ROOT=/home/edodd/projects/github/unxmaal/mogrix rpmbuild --rebuild /tmp/bzip2-test/bzip2-1.0.8-18.src.rpm --define "__cc /opt/sgug-staging/usr/sgug/bin/irix-cc" --nodeps
+
+# Convert and build popt
+MOGRIX_ROOT=/home/edodd/projects/github/unxmaal/mogrix .venv/bin/mogrix convert oldcrap/popt-1.19-6.fc40.src.rpm -o /tmp/popt-test
+MOGRIX_ROOT=/home/edodd/projects/github/unxmaal/mogrix rpmbuild --rebuild /tmp/popt-test/popt-1.19-6.src.rpm --define "__cc /opt/sgug-staging/usr/sgug/bin/irix-cc" --nodeps
+```
+
+**Results:** Both packages build successfully. Output binaries verified as MIPS N32:
+```
+ELF 32-bit MSB shared object, MIPS, N32 MIPS-III version 1 (SYSV)
+```
+
+**Note on MOGRIX_ROOT:** The mogrix spec files use `$MOGRIX_ROOT/tools/fix-libtool-irix.sh` for libtool fixes. This environment variable must be set both for conversion AND for rpmbuild.
 
 ---
 
@@ -747,3 +780,41 @@ cd rpm-extract && rpm2cpio ~/rpmbuild/RPMS/mips/rpm-4.19.1.1-1.mips.rpm | cpio -
 cd ../rpmlibs-extract && rpm2cpio ~/rpmbuild/RPMS/mips/rpm-libs-4.19.1.1-1.mips.rpm | cpio -idmv
 scp /tmp/rpm-extract/usr/sgug/bin/rpm /tmp/rpmlibs-extract/usr/sgug/lib32/librpm.so /tmp/rpmlibs-extract/usr/sgug/lib32/librpmio.so root@192.168.0.81:/opt/chroot/tmp/
 ```
+
+---
+
+## Session Summary (2026-01-31)
+
+### sed→patch Migration Validation
+
+Tested full build cycle for migrated packages:
+- **bzip2**: Build successful after fixing patch line numbers (34 vs 28)
+- **popt**: Build successful after regenerating patches from actual source
+
+**Lesson learned**: Patches must be generated from actual source tarballs using `diff -u`, not created manually with guessed line numbers.
+
+### Documentation Restructuring
+
+Created `rules/methods/` directory with process documentation:
+
+| File | Purpose |
+|------|---------|
+| `text-replacement.md` | When to use .patch vs safepatch vs sed |
+| `irix-testing.md` | Shell rules, chroot behavior, debugging with par |
+| `compat-functions.md` | How to add missing functions to catalog |
+| `autoconf-cross.md` | ./configure package patterns |
+| `cmake-cross.md` | CMake package patterns (rpm, libsolv, tdnf) |
+
+Updated `rules/INDEX.md` to reference all methods at the top.
+
+**Goal**: Improve AI agent context efficiency - agents read INDEX.md first, then retrieve specific methods as needed, rather than keeping everything in context.
+
+### Files Modified
+
+- `patches/packages/bzip2/disable-test.patch` - Fixed line numbers
+- `patches/packages/popt/popt-disable-stpcpy.patch` - Regenerated from source
+- `patches/packages/popt/popt-disable-mbsrtowcs.patch` - Regenerated from source
+- `Claude.md` - Added safepatch instructions
+- `rules/INDEX.md` - Added Methods section with links
+- `rules/methods/*.md` - 5 new method files
+- Plan file - Trimmed to active work only
