@@ -1,6 +1,7 @@
 --- a/Makefile.in
 +++ b/Makefile.in
-@@ -1921,12 +1921,12 @@ distcleancheck: distclean
+@@ -1921,9 +1921,8 @@
+ 	  || { echo "ERROR: files left in build directory after distclean:" ; \
  	       $(distcleancheck_listfiles) ; \
  	       exit 1; } >&2
 -check-am: all-am
@@ -11,17 +12,23 @@
  check: check-recursive
  all-am: Makefile $(PROGRAMS) $(LTLIBRARIES) $(SCRIPTS) $(DATA) \
  		config.h
-@@ -2205,10 +2205,8 @@ testThreads_LDADD = $(THREAD_LIBS) $(BASE_THREAD_LIBS) $(LDADDS)
- #testOOM_SOURCES=testOOM.c testOOMlib.h testOOMlib.c
+@@ -2206,18 +2205,7 @@
  #testOOM_LDADD= $(LDADDS)
 
--check-local:
+ check-local:
 -	[ -d test   ] || $(LN_S) $(srcdir)/test   .
 -	[ -d result ] || $(LN_S) $(srcdir)/result .
 -	$(CHECKER) ./runtest$(EXEEXT)
 -	$(CHECKER) ./testrecurse$(EXEEXT)
-+check-local:
-+# Cross-compilation: disable check-local (can't run MIPS binaries on x86)
-+
- $(top_builddir)/python/libxml2.py: $(libxml2_la_OBJECTS)
- 	cd $(top_builddir)/python ; \
+-	$(CHECKER) ./testapi$(EXEEXT)
+-	$(CHECKER) ./testchar$(EXEEXT)
+-	$(CHECKER) ./testdict$(EXEEXT)
+-	$(CHECKER) ./testparser$(EXEEXT)
+-	$(CHECKER) ./testModule$(EXEEXT)
+-	$(CHECKER) ./testThreads$(EXEEXT)
+-	$(CHECKER) ./runxmlconf$(EXEEXT)
+-	$(CHECKER) ./runsuite$(EXEEXT)
++# Cross-compilation: disabled (can't run MIPS binaries on x86)
+
+ # Compatibility name of the check target
+ runtests: check

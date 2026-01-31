@@ -37,23 +37,18 @@ rules:
     # LONGDOUBLE_TYPE=double avoids 128-bit long double (clang MIPS doesn't support -mlong-double-64)
     CPPFLAGS: "-D_ABI_SOURCE -DSQLITE_ENABLE_MATH_FUNCTIONS=0 -DSQLITE_HAVE_C99_MATH_FUNCS=0 -DLLONG_MAX=9223372036854775807LL -DLLONG_MIN=-9223372036854775808LL -DLONGDOUBLE_TYPE=double $CPPFLAGS"
 
-  # Comment out the conditional %check wrapper - the %if needs to be disabled too
+  # Note: skip_check is handled globally in generic.yaml
+
+  # Remove .la files left after install
+  install_cleanup:
+    - rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+
   spec_replacements:
     # Disable tcl support - not available for IRIX cross-compilation
     - pattern: "%bcond_without tcl"
       replacement: "%bcond_with tcl"
     - pattern: "%bcond_without sqldiff"
       replacement: "%bcond_with sqldiff"
-    - pattern: "%if %{with check}"
-      replacement: "# %if %{with check} - disabled for cross-compilation"
-    - pattern: "%endif #with check"
-      replacement: "# %endif #with check"
-    - pattern: "%check"
-      replacement: |
-        # %check - skipped for cross-compilation
-    # Skip make test (can't run cross-compiled binaries)
-    - pattern: "make test"
-      replacement: "# make test - skipped for cross-compilation"
     # Fix libtool to build shared libraries for IRIX using generic script
     - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
       replacement: |

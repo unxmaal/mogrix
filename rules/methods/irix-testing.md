@@ -176,6 +176,21 @@ scp root@192.168.0.81:/opt/chroot/tmp/par_out.txt /tmp/
 3. **NEVER forget LD_LIBRARYN32_PATH** - binaries won't find libraries
 4. **NEVER run rpmbuild on IRIX** - build on Linux, copy RPMs to IRIX
 5. **NEVER replace libraries that running services use** - sshd uses libz, libssl
+6. **NEVER put files in /tmp on Linux** - put files in /home/edodd/projects/github/unxmaal/mogrix/tmp
+7. **NEVER reference paths outside /usr/sgug** - mogrix-converted packages must be fully self-contained under /usr/sgug. Config files must not reference /etc, /var, /lib, or any path outside /usr/sgug. IRIX is old and fragile; reinstalling is painful. We never touch the base IRIX OS filesystem.
+
+### Path Rooting Rule
+
+All paths in mogrix-converted packages must be rooted at `/usr/sgug`:
+
+| Linux Path | SGUG Path |
+|------------|-----------|
+| `/etc/pki/CA` | `/usr/sgug/etc/pki/CA` |
+| `/etc/ssl` | `/usr/sgug/etc/pki/tls` |
+| `/var/lib/rpm` | `/usr/sgug/var/lib/rpm` |
+| `/etc/tdnf` | `/usr/sgug/etc/tdnf` |
+
+When converting packages, check config files for hardcoded paths and fix them. 
 
 ---
 

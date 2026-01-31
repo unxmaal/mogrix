@@ -298,10 +298,18 @@ class SpecWriter:
                 section_content = match.group(2)
                 next_section = match.group(3)
                 # Comment out the content, but keep the %check marker
-                commented_content = "\n".join(
-                    "# " + line if line.strip() else line
-                    for line in section_content.split("\n")
-                )
+                # Preserve %if* and %endif* lines (RPM conditionals must remain)
+                commented_lines = []
+                for line in section_content.split("\n"):
+                    stripped = line.strip()
+                    if stripped.startswith("%if") or stripped.startswith("%endif"):
+                        # Keep RPM conditionals uncommented
+                        commented_lines.append(line)
+                    elif stripped:
+                        commented_lines.append("# " + line)
+                    else:
+                        commented_lines.append(line)
+                commented_content = "\n".join(commented_lines)
                 return f"{check_line}\n# Tests skipped for cross-compilation (binaries can't run on host)\n{commented_content}{next_section}"
 
             content = re.sub(
