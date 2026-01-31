@@ -117,7 +117,7 @@ ln -sf /opt/chroot/usr/sgug/lib32/rpm /usr/sgug/lib32/rpm
 ### Pattern 1: Quick Single Command
 
 ```bash
-ssh root@192.168.0.81 "/bin/sh -c 'LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32 /opt/chroot/usr/sgug/bin/rpm --version'"
+ssh root@192.168.0.81 "/bin/sh -c '/opt/chroot/usr/sgug/bin/sgug-exec /opt/chroot/usr/sgug/bin/rpm --version'"
 ```
 
 ### Pattern 2: Script-Based Test
@@ -126,8 +126,7 @@ ssh root@192.168.0.81 "/bin/sh -c 'LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32
 # Create test script locally
 cat > /tmp/test.sh << 'EOF'
 #!/bin/sh
-export LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32:/usr/sgug/lib32
-/opt/chroot/usr/sgug/bin/tdnf -c /opt/chroot/etc/tdnf/tdnf.conf --installroot=/opt/chroot repolist
+/opt/chroot/usr/sgug/bin/sgug-exec /opt/chroot/usr/sgug/bin/tdnf -c /opt/chroot/etc/tdnf/tdnf.conf --installroot=/opt/chroot repolist
 echo "Exit code: $?"
 EOF
 
@@ -154,7 +153,7 @@ rpm --version
 
 ```bash
 # Trace system calls
-par -s /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist > /tmp/par_out.txt 2>&1
+/usr/sgug/bin/sgug-exec par /usr/sgug/bin/tdnf repolist > /tmp/par_out.txt
 
 # Copy trace to Linux for analysis
 scp root@192.168.0.81:/opt/chroot/tmp/par_out.txt /tmp/
@@ -190,7 +189,7 @@ ssh root@192.168.0.81
 /usr/sgug/bin/sgugshell
 
 # Run chroot binary from base
-LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32 /opt/chroot/usr/sgug/bin/CMD
+/opt/chroot/usr/sgug/bin/sgug-exec /opt/chroot/usr/sgug/bin/CMD
 
 # Copy file to chroot
 scp file root@192.168.0.81:/opt/chroot/tmp/
