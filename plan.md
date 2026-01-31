@@ -2,9 +2,78 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-01-26)
+## Current Status (2026-01-30)
 
-**Phase 9: TDNF REPOSITORY SETUP**
+**Phase 10: SED → PATCH FILE MIGRATION**
+
+Converting inline sed commands in YAML rules to proper .patch files. This follows the existing infrastructure:
+- `patches/packages/<pkg>/` - Already has .patch files for many packages
+- `add_patch:` in YAML - Existing mechanism to reference patches
+- `mogrix/patches/catalog.py` - Handles adding patches to spec files
+
+### The Problem
+
+sed commands embedded in YAML have caused bugs:
+- **rpm futimens bug**: sed `s/if (fd >= 0)/...` matched 6 locations instead of 1
+- Silent failures when patterns don't match
+- Escaping nightmare in YAML (quotes, backslashes, newlines)
+- Hard to review or audit what patches actually do
+
+### The Solution
+
+1. **Convert sed commands to .patch files** in `patches/packages/<pkg>/`
+2. **Reference with `add_patch:`** in YAML - uses existing mogrix infrastructure
+3. **Delete sed commands** from spec_replacements
+4. **Libtool fixes**: Handle as post-configure hook in mogrix (identical across ~10 packages)
+
+### Example Migration
+
+Before (embedded sed in YAML):
+```yaml
+spec_replacements:
+  - pattern: "%autosetup -n rpm-%{srcver} -p1"
+    replacement: |
+      %autosetup -n rpm-%{srcver} -p1
+      sed -i '/if (fd >= 0)/{N;/futimens/s/if (fd >= 0)/if (0 \&\& fd >= 0)/}' lib/fsm.c
+```
+
+After (proper patch file):
+```yaml
+add_patch:
+  - rpm-disable-futimens.patch
+```
+
+With `patches/packages/rpm/rpm-disable-futimens.patch`:
+```diff
+--- a/lib/fsm.c
++++ b/lib/fsm.c
+@@ -617,7 +617,7 @@ static int fsmUtime(int dirfd, const char *path, ...)
+     };
+
+-    if (fd >= 0)
++    if (0 && fd >= 0)  /* IRIX: futimens on /dev/fd fails */
+         rc = futimens(fd, stamps);
+```
+
+### Tools
+
+- `tools/safepatch` - Use to **generate** patches by validating old/new strings, not as runtime infrastructure
+- `tools/fix-libtool-irix.sh` - Keep for now, migrate to mogrix hook later
+
+### Migration Status
+
+| Package | Patch Files Exist | sed in YAML | Status |
+|---------|------------------|-------------|--------|
+| rpm | Yes (rpm.sgifixes.patch) | Yes | MIGRATE |
+| tdnf | Yes (11 .sgifixes.patch files) | Yes | MIGRATE |
+| popt | No | Yes | MIGRATE |
+| libsolv | Yes (partial) | Yes | MIGRATE |
+| libxml2 | No | Yes (libtool) | MIGRATE |
+| bzip2 | Yes (disable-test.patch) | Yes | Already has patch! |
+
+---
+
+**Previous: Phase 9: TDNF REPOSITORY SETUP**
 
 All 12 packages built successfully. Bootstrap tarball created. Now setting up tdnf repository server to validate end-to-end package installation workflow.
 

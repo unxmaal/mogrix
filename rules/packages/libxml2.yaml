@@ -16,6 +16,10 @@ package: libxml2
 # Note: The old SGUG patch (libxml2.sgifixes.patch) was for xml2-config.in libdir handling
 # which is no longer needed in libxml2 2.12.x - it now uses @libdir@ from configure
 
+# Use patch file instead of sed
+add_patch:
+  - libxml2-disable-check.patch
+
 rules:
   # Skip tests - can't run cross-compiled binaries
   skip_check: true
@@ -45,26 +49,17 @@ rules:
   configure_disable:
     - static
 
-  # Disable the check targets in Makefile.in (cross-compiled binaries can't run on host)
-  prep_commands:
-    - "sed -i 's/^check-local:.*/check-local:/' Makefile.in"
-    - "sed -i 's/^check-am:.*/check-am:/' Makefile.in"
-
   # All spec replacements in single section
   spec_replacements:
     # Skip the check phase entirely
     - pattern: "%check"
       replacement: "%check\nexit 0\n# Original check section:"
 
-    # Fix libtool to build shared libraries for IRIX
+    # Fix libtool to build shared libraries for IRIX using generic script
     - pattern: "%make_build"
       replacement: |
         # Fix libtool to build shared libraries for IRIX
-        sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool
-        sed -i 's/deplibs_check_method="unknown"/deplibs_check_method="pass_all"/g' libtool
-        sed -i 's/^version_type=none$/version_type=linux/g' libtool
-        sed -i 's/^soname_spec=""$/soname_spec="\\$libname\\${shared_ext}\\$major"/g' libtool
-        sed -i 's/^library_names_spec=""$/library_names_spec="\\$libname\\${shared_ext}\\$versuffix \\$libname\\${shared_ext}\\$major \\$libname\\${shared_ext}"/g' libtool
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
         %make_build
 
     # Remove Python subpackage since we build --without-python

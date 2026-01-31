@@ -1,0 +1,26 @@
+--- a/src/system.h
++++ b/src/system.h
+@@ -28,14 +28,14 @@ char * xstrdup (const char *str);
+
+ #if !defined(HAVE_STPCPY)
+ /* Copy SRC to DEST, returning the address of the terminating '\0' in DEST.  */
+-static inline char * stpcpy (char *dest, const char * src) {
+-    register char *d = dest;
+-    register const char *s = src;
+-
+-    do
+-	*d++ = *s;
+-    while (*s++ != '\0');
+-    return d - 1;
+-}
++// static inline char * stpcpy (char *dest, const char * src) {
++//     register char *d = dest;
++//     register const char *s = src;
++//
++//     do
++// 	*d++ = *s;
++//     while (*s++ != '\0');
++//     return d - 1;
++// }
+ #endif
+

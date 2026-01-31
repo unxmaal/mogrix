@@ -1,0 +1,27 @@
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -1921,12 +1921,12 @@ distcleancheck: distclean
+ 	       $(distcleancheck_listfiles) ; \
+ 	       exit 1; } >&2
+-check-am: all-am
+-	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
+-	$(MAKE) $(AM_MAKEFLAGS) check-local
++check-am:
++# Cross-compilation: disable check targets (can't run MIPS binaries on x86)
+ check: check-recursive
+ all-am: Makefile $(PROGRAMS) $(LTLIBRARIES) $(SCRIPTS) $(DATA) \
+ 		config.h
+@@ -2205,10 +2205,8 @@ testThreads_LDADD = $(THREAD_LIBS) $(BASE_THREAD_LIBS) $(LDADDS)
+ #testOOM_SOURCES=testOOM.c testOOMlib.h testOOMlib.c
+ #testOOM_LDADD= $(LDADDS)
+
+-check-local:
+-	[ -d test   ] || $(LN_S) $(srcdir)/test   .
+-	[ -d result ] || $(LN_S) $(srcdir)/result .
+-	$(CHECKER) ./runtest$(EXEEXT)
+-	$(CHECKER) ./testrecurse$(EXEEXT)
++check-local:
++# Cross-compilation: disable check-local (can't run MIPS binaries on x86)
++
+ $(top_builddir)/python/libxml2.py: $(libxml2_la_OBJECTS)
+ 	cd $(top_builddir)/python ; \

@@ -232,8 +232,77 @@ rpm --initdb --dbpath=/usr/sgug/lib/sysimage/rpm
 
 1. **Test tdnf install** - Now that rpm install works, test `tdnf install <package>` on IRIX
 2. **Build more packages** - Expand the mogrix repo with more useful packages
-3. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
-4. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+3. **Finish sed → safepatch migration** - Convert remaining packages (see below)
+4. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
+5. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+
+---
+
+## sed → Proper Patch Files Migration (2026-01-30)
+
+**Problem**: sed silently succeeds when patterns don't match, leading to hours of debugging (e.g., the rpm futimens bug where an overly-broad sed matched 6 locations instead of 1).
+
+**Solution Evolution**:
+1. **Initial attempt**: Individual per-package patch scripts (e.g., `tools/patch-rpm-source.sh`) with MOGRIX_ROOT
+2. **Rejected**: Not scalable for thousands of packages
+3. **Final approach**: Use the EXISTING `patches/packages/` infrastructure with proper `.patch` files
+
+### Existing Infrastructure (USE THIS)
+
+The project already has a complete patch management system:
+- **patches/packages/<pkg>/**: Directory for each package's patches
+- **add_patch:** YAML directive references patches
+- **mogrix/patches/catalog.py**: Integrates patches into spec files
+
+### Tools Kept
+
+| Tool | Purpose |
+|------|---------|
+| `tools/safepatch` | Generate diffs for patches (useful for creating .patch files) |
+| `tools/fix-libtool-irix.sh` | Generic libtool fixes (temporary - will become mogrix hook) |
+
+### Tools Deleted (Wrong Approach)
+
+These per-package scripts were deleted - not scalable:
+- `tools/patch-rpm-source.sh`
+- `tools/patch-popt-source.sh`
+- `tools/patch-libsolv-source.sh`
+- `tools/patch-tdnf-source.sh`
+- `tools/patch-libxml2-source.sh`
+- `tools/patch-bzip2-source.sh`
+
+### Migration Strategy
+
+For each sed command in YAML `spec_replacements`:
+1. Determine if it's a **source patch** (C/Makefile changes) or **spec modification** (rpm macro changes)
+2. **Source patches** → Create `.patch` file in `patches/packages/<pkg>/`, add `add_patch:` to YAML
+3. **Spec modifications** → Keep in `spec_replacements:` (these modify the spec file, not source)
+4. **Libtool fixes** → Future: mogrix post-configure hook (currently using fix-libtool-irix.sh)
+
+### Patch Categories
+
+| Category | Examples | Approach |
+|----------|----------|----------|
+| Source fixes | vsnprintf workarounds, __thread removal | `.patch` file |
+| Platform defines | `#if defined(__sgi)` additions | `.patch` file |
+| Makefile changes | Remove test target, fix rules | `.patch` file |
+| Spec macro changes | `%bcond_without` → `%bcond_with` | Keep in `spec_replacements` |
+| cmake options | Add cross-compilation flags | Keep in `spec_replacements` |
+| %files modifications | Remove systemd entries | Keep in `spec_replacements` |
+
+### Migration Status
+
+| Package | sed→patch | Notes |
+|---------|-----------|-------|
+| rpm.yaml | TODO | Has existing rpm.sgifixes.patch (for 4.15), needs 4.19 patches |
+| popt.yaml | TODO | Needs mbsrtowcs disable patch |
+| libsolv.yaml | PARTIAL | Has libsolv.sgifixes.patch |
+| tdnf.yaml | PARTIAL | Has 11 patches already |
+| libxml2.yaml | TODO | Makefile patches |
+| bzip2.yaml | PARTIAL | Has disable-test.patch |
+| lua.yaml | TODO | Custom soname handling |
+| zlib.yaml | TODO | Custom soname handling |
+| file.yaml | TODO | Custom soname handling |
 
 ---
 

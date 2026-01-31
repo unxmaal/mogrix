@@ -18,17 +18,16 @@
 #
 package: bzip2
 
+# Use existing patch file instead of sed
+add_patch:
+  - disable-test.patch
+
 rules:
   # Export CC for cross-compilation (bzip2 uses Makefile, not autotools)
   export_vars:
     CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
     AR: "/opt/cross/bin/llvm-ar"
     RANLIB: "/opt/cross/bin/llvm-ranlib"
-
-  # Remove test from "all" target to avoid running MIPS binary on build host
-  # The Makefile has: all: libbz2.a bzip2 bzip2recover test
-  prep_commands:
-    - "sed -i 's/^all: libbz2.a bzip2 bzip2recover test$/all: libbz2.a bzip2 bzip2recover/' Makefile"
 
   # Replace undefined %{__global_ldflags} with empty string
   # Fedora spec uses this macro but we don't define it in cross-compilation
