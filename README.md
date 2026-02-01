@@ -4,14 +4,23 @@ TransMOGrifies Linux SRPMs into IRIX-compatible packages.
 
 ## Overview
 
-Mogrix is a deterministic conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
+Mogrix is a complete IRIX cross-compilation system that transforms Fedora SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
 
-**Key Features:**
-- YAML-based rule engine for spec file transformations
-- Compat source injection (replaces libdicl dependency)
-- Header overlay system for clang/IRIX compatibility
-- Batch conversion for multiple packages
-- SRPM extraction and packaging
+**Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
+
+**Background:** SGI's IRIX was discontinued in 2006, leaving users with aging software. [SGUG-RSE](https://github.com/sgidevnet/sgug-rse) (SGI Users Group Rebuilt Software Environment) provides modern open-source packages for IRIX, but its build process requires native IRIX compilation. Mogrix enables cross-compilation from Linux, making it faster and more accessible to build IRIX packages.
+
+**Core Capabilities:**
+
+- **IRIX Cross-Compilation** - Full toolchain integration with clang/LLD targeting MIPS N32 ABI. The `mogrix build --cross` command invokes rpmbuild with IRIX-specific compiler wrappers, header paths, and linker settings.
+
+- **SRPM Conversion Engine** - YAML-based rules transform spec files for IRIX compatibility: drops unavailable dependencies, injects compat functions, applies platform-specific patches, and configures autoconf/cmake for cross-compilation.
+
+- **Compat Library** - Drop-in implementations of missing POSIX/C99 functions (openat family, posix_spawn, vasprintf, funopen, etc.) automatically injected into packages that need them.
+
+- **Staging System** - Cross-compiled packages are staged to provide headers and libraries for dependent builds, enabling complex dependency chains like the 13-package tdnf stack.
+
+- **Bootstrap Tarball** - Self-contained tarball generator for deploying the complete tdnf package manager to IRIX without requiring any tools on the target system.
 
 ## Installation
 
@@ -254,10 +263,16 @@ This deploys:
 ./cleanup.sh
 ```
 
-This creates:
-- `libsoft_float_stubs.a` - Soft float ABI stubs
-- `libatomic.a` - Atomic operation stubs
-- `libcompat.a` - Missing POSIX functions (stpcpy, posix_spawn, etc.)
+This script resets the staging environment and rebuilds all runtime libraries:
+- Cleans `staging/lib32/` and `staging/include/`
+- Restores compat headers from `cross/include/` and `compat/include/`
+- Compiles runtime libraries:
+  - `libsoft_float_stubs.a` - Soft float ABI stubs
+  - `libatomic.a` - Atomic operation stubs
+  - `libcompat.a` - Missing POSIX functions (stpcpy, posix_spawn, etc.)
+- Cleans `~/rpmbuild/BUILD/`, `BUILDROOT/`, and `RPMS/mips/`
+
+Run this before starting a fresh build chain or when you need to reset the staging environment.
 
 #### Verify Setup
 
@@ -414,6 +429,10 @@ rules:
 | `faccessat` | Access check relative to directory fd |
 | `utimensat` | Set timestamps relative to directory fd |
 | `futimens` | Set timestamps via fd |
+| `funopen` | BSD-style cookie I/O (for transparent decompression) |
+| `qsort_r` | Reentrant quicksort |
+| `timegm` | Inverse of gmtime |
+| `mkdtemp` | Create temporary directory |
 
 ## IRIX Bootstrap
 
@@ -521,6 +540,25 @@ make clean
 Additional supporting package:
 - **sgugrse-release** - Distribution release package (noarch, provides distroverpkg)
 
+## Known Limitations
+
+**IRIX Platform:**
+- **fopencookie** - The glibc-style cookie I/O crashes on IRIX. Use `funopen` (BSD-style) instead.
+- **O_NOFOLLOW** - IRIX doesn't support this flag; stripped in openat-compat.c.
+- **vsnprintf(NULL, 0)** - Returns -1 on IRIX (not buffer size as in C99). Packages using this pattern need iterative vasprintf.
+- **Thread-local storage** - IRIX rld doesn't support `__tls_get_addr`. Packages using `__thread` need patching.
+- **Long tar filenames** - IRIX tar corrupts GNU long filenames. Use `createrepo_c --simple-md-filenames`.
+
+**Build Environment:**
+- Cross-compiled binaries cannot be tested on the Linux host (use IRIX chroot for testing).
+- Some packages require libtool fixes for IRIX shared library versioning.
+- Packages with assembly code need `--disable-asm` or MIPS-specific implementations.
+
+**Compatibility:**
+- Built packages use `/usr/sgug` prefix (SGUG-RSE convention).
+- May conflict with existing SGUG-RSE installations (different library versions).
+- rpm 4.19 uses sqlite backend by default; incompatible with SGUG-RSE's BerkeleyDB databases.
+
 ## Architecture
 
 See `plan.md` for detailed architecture documentation, including:
@@ -528,6 +566,36 @@ See `plan.md` for detailed architecture documentation, including:
 - Header overlay system
 - Compat source injection
 - Build order for tdnf dependencies
+
+## Troubleshooting
+
+**Build fails with "cannot find -lcompat"**
+```bash
+./cleanup.sh  # Rebuilds libcompat.a in staging
+```
+
+**"Invalid argument" errors on IRIX**
+
+Usually caused by unsupported flags like O_NOFOLLOW. Check if the compat layer strips them.
+
+**Garbled output from rpm/tdnf**
+
+IRIX vsnprintf doesn't support C99 size calculation. The package needs vasprintf injection or iterative buffer sizing.
+
+**"Solv - I/O error" from tdnf**
+
+libsolv can't read repository metadata. Ensure:
+1. `funopen` is linked (not fopencookie)
+2. Repository created with `createrepo_c --simple-md-filenames`
+3. rpm database initialized: `rpm --initdb`
+
+**Shared library versioning errors**
+
+Run `$MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool` after configure. This patches libtool for IRIX .so versioning.
+
+**Cross-compiled binary crashes immediately**
+
+Check for TLS usage (`__thread` keyword). IRIX rld doesn't support it - patch to use static variables or pthreads.
 
 ## License
 
