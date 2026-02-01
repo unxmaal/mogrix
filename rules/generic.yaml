@@ -66,6 +66,12 @@ generic:
 
   # RPM macros injected directly (replaces sgug-rpm-config)
   rpm_macros:
+    # Target architecture for cross-compilation
+    _target_cpu: mips
+    _arch: mips
+    # Disable automatic dependency detection - IRIX system libs aren't in RPM db
+    __find_requires: "%{nil}"
+    __find_provides: "%{nil}"
     _prefix: /usr/sgug
     _exec_prefix: /usr/sgug
     _bindir: /usr/sgug/bin

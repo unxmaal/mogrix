@@ -1,0 +1,20 @@
+# pkgconf - Package compiler and linker metadata toolkit
+# Provides pkg-config compatibility
+package: pkgconf
+
+rules:
+  # IRIX has strndup declared but not implemented in libc
+  inject_compat_functions:
+    - strndup
+
+  # Apply libtool fixes after configure for shared library building
+  spec_replacements:
+    - pattern: "%make_build"
+      replacement: |
+        /opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
+        %make_build
+
+  # Remove unpackaged files (static lib and duplicate docs)
+  install_cleanup:
+    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libpkgconf.a"
+    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/pkgconf"

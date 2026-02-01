@@ -39,6 +39,12 @@ class SpecWriter:
             macro_lines = ["# IRIX/SGUG path macros (injected by mogrix)"]
             for name, value in rpm_macros.items():
                 macro_lines.append(f"%define {name} {value}")
+            # Disable automatic dependency detection for cross-compiled packages
+            # IRIX system libraries aren't in the RPM database
+            macro_lines.append("")
+            macro_lines.append("# Disable auto-deps for cross-compilation")
+            macro_lines.append("AutoReq: no")
+            macro_lines.append("AutoProv: no")
             macro_lines.append("")
             content = "\n".join(macro_lines) + content
 
