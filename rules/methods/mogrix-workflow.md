@@ -49,6 +49,33 @@ The `--cross` flag automatically:
 
 ---
 
+## Check Package Dependencies BEFORE Building
+
+Before building a new package, check what it will require at install time:
+
+```bash
+# After converting, check the spec for Requires:
+grep -E "^Requires:" /tmp/converted/package.spec
+
+# Or check the built RPM:
+rpm -qp --requires ~/rpmbuild/RPMS/mips/package-*.rpm
+```
+
+**Important considerations:**
+
+1. **Subpackages have dependencies** - e.g., `pkgconf-pkg-config` requires `pkgconf-m4`
+2. **noarch packages** - Some subpackages (like `-m4`, `-doc`) are `noarch`, not `mips`
+3. **Build order matters** - If package B requires package A, build and stage A first
+
+When copying to a repo, include BOTH architectures:
+```bash
+cp ~/rpmbuild/RPMS/mips/*.rpm /tmp/mogrix-repo/
+cp ~/rpmbuild/RPMS/noarch/*.rpm /tmp/mogrix-repo/
+createrepo_c --simple-md-filenames /tmp/mogrix-repo/
+```
+
+---
+
 ## DO NOT manually run rpmbuild
 
 **Wrong approach** (what I kept doing):
