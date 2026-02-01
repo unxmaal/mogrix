@@ -41,6 +41,25 @@
 #endif
 
 /*
+ * O_NOFOLLOW - IRIX doesn't support this flag and returns EINVAL if passed.
+ * We define it here so we can strip it from flags before calling open().
+ * Use Linux's value (0x20000 on most architectures, 0x400000 on others).
+ */
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW 0x20000
+#endif
+
+/*
+ * Helper: Strip flags not supported by IRIX
+ * IRIX returns EINVAL if unknown flags are passed to open()
+ */
+static int strip_unsupported_flags(int flags) {
+    /* O_NOFOLLOW is not supported on IRIX - strip it */
+    flags &= ~O_NOFOLLOW;
+    return flags;
+}
+
+/*
  * Helper: Save the current working directory
  * Returns fd to saved cwd, or -1 on error
  */
@@ -93,6 +112,9 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
         mode = va_arg(ap, int);  /* mode_t is promoted to int */
         va_end(ap);
     }
+
+    /* Strip flags not supported by IRIX (e.g., O_NOFOLLOW) */
+    flags = strip_unsupported_flags(flags);
 
     /* If dirfd is AT_FDCWD or path is absolute, use regular open */
     if (dirfd == AT_FDCWD || is_absolute_path(pathname)) {

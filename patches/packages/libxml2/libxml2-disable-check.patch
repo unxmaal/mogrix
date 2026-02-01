@@ -1,0 +1,34 @@
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -1921,9 +1921,8 @@
+ 	  || { echo "ERROR: files left in build directory after distclean:" ; \
+ 	       $(distcleancheck_listfiles) ; \
+ 	       exit 1; } >&2
+-check-am: all-am
+-	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
+-	$(MAKE) $(AM_MAKEFLAGS) check-local
++check-am:
++# Cross-compilation: disable check targets (can't run MIPS binaries on x86)
+ check: check-recursive
+ all-am: Makefile $(PROGRAMS) $(LTLIBRARIES) $(SCRIPTS) $(DATA) \
+ 		config.h
+@@ -2206,18 +2205,7 @@
+ #testOOM_LDADD= $(LDADDS)
+
+ check-local:
+-	[ -d test   ] || $(LN_S) $(srcdir)/test   .
+-	[ -d result ] || $(LN_S) $(srcdir)/result .
+-	$(CHECKER) ./runtest$(EXEEXT)
+-	$(CHECKER) ./testrecurse$(EXEEXT)
+-	$(CHECKER) ./testapi$(EXEEXT)
+-	$(CHECKER) ./testchar$(EXEEXT)
+-	$(CHECKER) ./testdict$(EXEEXT)
+-	$(CHECKER) ./testparser$(EXEEXT)
+-	$(CHECKER) ./testModule$(EXEEXT)
+-	$(CHECKER) ./testThreads$(EXEEXT)
+-	$(CHECKER) ./runxmlconf$(EXEEXT)
+-	$(CHECKER) ./runsuite$(EXEEXT)
++# Cross-compilation: disabled (can't run MIPS binaries on x86)
+
+ # Compatibility name of the check target
+ runtests: check

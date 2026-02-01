@@ -4,14 +4,23 @@ TransMOGrifies Linux SRPMs into IRIX-compatible packages.
 
 ## Overview
 
-Mogrix is a deterministic SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
+Mogrix is a complete IRIX cross-compilation system that transforms Fedora SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
 
-**Key Features:**
-- YAML-based rule engine for spec file transformations
-- Compat source injection (replaces libdicl dependency)
-- Header overlay system for clang/IRIX compatibility
-- Batch conversion for multiple packages
-- SRPM extraction and packaging
+**Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
+
+**Background:** SGI's IRIX was discontinued in 2006, leaving users with aging software. [SGUG-RSE](https://github.com/sgidevnet/sgug-rse) (SGI Users Group Rebuilt Software Environment) provides modern open-source packages for IRIX, but its build process requires native IRIX compilation. Mogrix enables cross-compilation from Linux, making it faster and more accessible to build IRIX packages.
+
+**Core Capabilities:**
+
+- **IRIX Cross-Compilation** - Full toolchain integration with clang/LLD targeting MIPS N32 ABI. The `mogrix build --cross` command invokes rpmbuild with IRIX-specific compiler wrappers, header paths, and linker settings.
+
+- **SRPM Conversion Engine** - YAML-based rules transform spec files for IRIX compatibility: drops unavailable dependencies, injects compat functions, applies platform-specific patches, and configures autoconf/cmake for cross-compilation.
+
+- **Compat Library** - Drop-in implementations of missing POSIX/C99 functions (openat family, posix_spawn, vasprintf, funopen, etc.) automatically injected into packages that need them.
+
+- **Staging System** - Cross-compiled packages are staged to provide headers and libraries for dependent builds, enabling complex dependency chains like the 13-package tdnf stack.
+
+- **Bootstrap Tarball** - Self-contained tarball generator for deploying the complete tdnf package manager to IRIX without requiring any tools on the target system.
 
 ## Installation
 
@@ -254,10 +263,16 @@ This deploys:
 ./cleanup.sh
 ```
 
-This creates:
-- `libsoft_float_stubs.a` - Soft float ABI stubs
-- `libatomic.a` - Atomic operation stubs
-- `libcompat.a` - Missing POSIX functions (stpcpy, posix_spawn, etc.)
+This script resets the staging environment and rebuilds all runtime libraries:
+- Cleans `staging/lib32/` and `staging/include/`
+- Restores compat headers from `cross/include/` and `compat/include/`
+- Compiles runtime libraries:
+  - `libsoft_float_stubs.a` - Soft float ABI stubs
+  - `libatomic.a` - Atomic operation stubs
+  - `libcompat.a` - Missing POSIX functions (stpcpy, posix_spawn, etc.)
+- Cleans `~/rpmbuild/BUILD/`, `BUILDROOT/`, and `RPMS/mips/`
+
+Run this before starting a fresh build chain or when you need to reset the staging environment.
 
 #### Verify Setup
 
@@ -414,6 +429,40 @@ rules:
 | `faccessat` | Access check relative to directory fd |
 | `utimensat` | Set timestamps relative to directory fd |
 | `futimens` | Set timestamps via fd |
+| `funopen` | BSD-style cookie I/O (for transparent decompression) |
+| `qsort_r` | Reentrant quicksort |
+| `timegm` | Inverse of gmtime |
+| `mkdtemp` | Create temporary directory |
+
+## IRIX Bootstrap
+
+After building all required packages, create a self-contained bootstrap tarball for IRIX:
+
+```bash
+# Create bootstrap tarball (validates 17 required packages)
+./scripts/bootstrap-tarball.sh
+
+# Copy to IRIX
+scp tmp/irix-bootstrap.tar.gz root@irix-host:/tmp/
+
+# On IRIX, extract and initialize
+cd /opt/chroot
+gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --initdb
+/usr/sgug/bin/rpm -Uvh --nodeps /tmp/bootstrap-rpms/sgugrse-release*.noarch.rpm
+
+# Test tdnf
+/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist
+```
+
+The bootstrap tarball includes:
+- All tdnf dependency chain packages (extracted)
+- RPM files for database registration (`/tmp/bootstrap-rpms/`)
+- Default repository config pointing to `/tmp/mogrix-repo`
+
+See `HANDOFF.md` for detailed IRIX setup instructions.
 
 ## Project Structure
 
@@ -470,24 +519,45 @@ make clean
 
 ## Package Rules Status
 
-12 packages validated for the tdnf dependency chain (FC40):
+13 packages validated for the tdnf dependency chain:
 
-| # | Package | Version | Description |
-|---|---------|---------|-------------|
-| 1 | zlib-ng | 2.1.6 | Compression library (replaces zlib in FC40) |
-| 2 | bzip2 | 1.0.8 | Block-sorting compression |
-| 3 | popt | 1.19 | Command-line option parsing |
-| 4 | openssl | 3.2.1 | TLS/SSL and crypto library |
-| 5 | libxml2 | 2.12.5 | XML parsing library |
-| 6 | curl | 8.6.0 | URL transfer library |
-| 7 | xz | 5.4.6 | LZMA compression |
-| 8 | lua | 5.4.6 | Scripting language (for rpm) |
-| 9 | file | 5.45 | File type detection |
-| 10 | rpm | 4.19.1.1 | Package manager |
-| 11 | libsolv | 0.7.28 | Dependency solver |
-| 12 | tdnf | 3.5.14 | Package manager CLI (target) |
+| # | Package | Version | Source | Description |
+|---|---------|---------|--------|-------------|
+| 1 | zlib-ng | 2.1.6 | FC40 | Compression library (replaces zlib in FC40) |
+| 2 | bzip2 | 1.0.8 | FC40 | Block-sorting compression |
+| 3 | popt | 1.19 | FC40 | Command-line option parsing |
+| 4 | openssl | 3.2.1 | FC40 | TLS/SSL and crypto library |
+| 5 | libxml2 | 2.12.5 | FC40 | XML parsing library |
+| 6 | curl | 8.6.0 | FC40 | URL transfer library |
+| 7 | xz | 5.4.6 | FC40 | LZMA compression |
+| 8 | lua | 5.4.6 | FC40 | Scripting language (for rpm) |
+| 9 | file | 5.45 | FC40 | File type detection |
+| 10 | sqlite | 3.45.1 | FC40 | Embedded SQL database |
+| 11 | rpm | 4.19.1.1 | FC40 | Package manager |
+| 12 | libsolv | 0.7.28 | FC40 | Dependency solver |
+| 13 | tdnf | 3.5.14 | Photon5 | Package manager CLI (target) |
 
-All packages build from Fedora 40 SRPMs (except tdnf which comes from Photon OS).
+Additional supporting package:
+- **sgugrse-release** - Distribution release package (noarch, provides distroverpkg)
+
+## Known Limitations
+
+**IRIX Platform:**
+- **fopencookie** - The glibc-style cookie I/O crashes on IRIX. Use `funopen` (BSD-style) instead.
+- **O_NOFOLLOW** - IRIX doesn't support this flag; stripped in openat-compat.c.
+- **vsnprintf(NULL, 0)** - Returns -1 on IRIX (not buffer size as in C99). Packages using this pattern need iterative vasprintf.
+- **Thread-local storage** - IRIX rld doesn't support `__tls_get_addr`. Packages using `__thread` need patching.
+- **Long tar filenames** - IRIX tar corrupts GNU long filenames. Use `createrepo_c --simple-md-filenames`.
+
+**Build Environment:**
+- Cross-compiled binaries cannot be tested on the Linux host (use IRIX chroot for testing).
+- Some packages require libtool fixes for IRIX shared library versioning.
+- Packages with assembly code need `--disable-asm` or MIPS-specific implementations.
+
+**Compatibility:**
+- Built packages use `/usr/sgug` prefix (SGUG-RSE convention).
+- May conflict with existing SGUG-RSE installations (different library versions).
+- rpm 4.19 uses sqlite backend by default; incompatible with SGUG-RSE's BerkeleyDB databases.
 
 ## Architecture
 
@@ -496,6 +566,99 @@ See `plan.md` for detailed architecture documentation, including:
 - Header overlay system
 - Compat source injection
 - Build order for tdnf dependencies
+
+## Troubleshooting
+
+**Build fails with "cannot find -lcompat"**
+```bash
+./cleanup.sh  # Rebuilds libcompat.a in staging
+```
+
+**"Invalid argument" errors on IRIX**
+
+Usually caused by unsupported flags like O_NOFOLLOW. Check if the compat layer strips them.
+
+**Garbled output from rpm/tdnf**
+
+IRIX vsnprintf doesn't support C99 size calculation. The package needs vasprintf injection or iterative buffer sizing.
+
+**"Solv - I/O error" from tdnf**
+
+libsolv can't read repository metadata. Ensure:
+1. `funopen` is linked (not fopencookie)
+2. Repository created with `createrepo_c --simple-md-filenames`
+3. rpm database initialized: `rpm --initdb`
+
+**Shared library versioning errors**
+
+Run `$MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool` after configure. This patches libtool for IRIX .so versioning.
+
+**Cross-compiled binary crashes immediately**
+
+Check for TLS usage (`__thread` keyword). IRIX rld doesn't support it - patch to use static variables or pthreads.
+
+## Integration with Agentic AI
+
+Mogrix is designed for effective collaboration with AI coding assistants like Claude Code. The project includes structured documentation (`rules/INDEX.md`, `HANDOFF.md`, `rules/methods/*.md`) that AI agents can reference to understand patterns and make informed decisions.
+
+**Important:** The `rules/` directory serves a dual purpose:
+- **mogrix** loads these YAML files programmatically via `RuleLoader` to transform spec files during conversion
+- **AI agents** read the same files as reference documentation to understand patterns and create new rules
+
+This means the rules are both executable configuration *and* human/AI-readable documentation. When an agent reads `rules/packages/popt.yaml`, it sees exactly what mogrix will apply - making it straightforward to understand patterns and create similar rules for new packages.
+
+### How to Use AI Effectively
+
+**Start with context:** Point the agent to `rules/INDEX.md` first. This index links to method documentation and package rules, allowing the agent to retrieve specific information as needed rather than hallucinating patterns.
+
+**Be specific about the task:** "Port package X" is too vague. Better: "Create a rule file for package X. It uses autoconf. Check similar packages like popt.yaml for patterns."
+
+**Iterate incrementally:** Don't ask the agent to port 10 packages at once. Port one, test it on IRIX, fix issues, then proceed. Each package teaches lessons that apply to the next.
+
+**Use the existing workflow:**
+```bash
+mogrix fetch <package>
+mogrix convert <package>.src.rpm
+mogrix build <converted>.src.rpm --cross
+# Test on IRIX before proceeding
+```
+
+### LLMs Are Not Magic
+
+AI assistants are powerful tools, but they have fundamental limitations:
+
+**They guess plausibly, not correctly.** An LLM will confidently generate a sed pattern that looks right but matches zero lines, or six lines instead of one. The rpm futimens bug (documented in HANDOFF.md) cost hours of debugging because a sed pattern was too broad - it "worked" but broke unrelated code.
+
+**Output must be tested.** Every change must be verified:
+- Does the package build? (`mogrix build --cross`)
+- Does it run on IRIX? (test in chroot)
+- Does it break other packages? (rebuild dependents)
+
+**Small mistakes are multiplicative.** A wrong `ac_cv_override` silently produces a broken binary. A missing compat function causes a runtime crash. A bad sed creates a package that builds but segfaults. These compound: package A builds wrong → package B links against it → package C inherits the bug → hours of debugging to find the root cause.
+
+### Best Practices
+
+1. **Read before writing.** Always have the agent read existing files before modifying them. "Check popt.yaml, then create a similar rule for package X."
+
+2. **Prefer patches over sed.** Sed silently succeeds when patterns don't match. Use `.patch` files or `safepatch` (fails loudly on mismatch).
+
+3. **Document the why.** When the agent fixes something, have it document why in HANDOFF.md or the rule file. Future sessions need this context.
+
+4. **Verify on real hardware.** Cross-compilation hides runtime issues. Always test on actual IRIX before declaring success.
+
+5. **Use the handoff pattern.** When ending a session, update HANDOFF.md with current state, pending issues, and next steps. The next session (human or AI) starts informed.
+
+### Project Files for AI Context
+
+| File | Purpose |
+|------|---------|
+| `rules/INDEX.md` | Package lookup, method links - **read first** |
+| `HANDOFF.md` | Current state, recent fixes, known issues |
+| `rules/methods/*.md` | Process documentation (text replacement, IRIX testing, etc.) |
+| `rules/packages/*.yaml` | Existing package rules - patterns to follow |
+| `compat/catalog.yaml` | Available compat functions |
+
+The goal is augmented intelligence: human judgment directing AI capability, with verification at every step.
 
 ## License
 

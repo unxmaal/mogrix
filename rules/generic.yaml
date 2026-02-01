@@ -77,6 +77,8 @@ generic:
     _infodir: /usr/sgug/share/info
     _sysconfdir: /usr/sgug/etc
     _localstatedir: /usr/sgug/var
+    _var: /usr/sgug/var
+    _sharedstatedir: /usr/sgug/var/lib
     _docdir: /usr/sgug/share/doc
     _pkgdocdir: "%{_docdir}/%{name}"
     _pkglicensedir: "%{_datadir}/licenses/%{name}"

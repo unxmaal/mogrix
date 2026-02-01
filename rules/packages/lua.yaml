@@ -31,14 +31,13 @@ rules:
 
   # Fix libtool and luaconf.h for cross-compilation
   spec_replacements:
-    # After libtool configuration, force shared library support and fix IRIX soname
+    # After libtool configuration, fix for IRIX using generic script + lua-specific soname
     - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
       replacement: |
         sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
-        # Force libtool to build shared libraries for IRIX cross-compilation
-        sed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool
-        sed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool
-        # Fix IRIX soname handling (libtool defaults don't work for IRIX cross-compile)
+        # Fix libtool for IRIX (note: lua 5.4 uses custom soname with release version)
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+        # Lua-specific: Override soname to include release version (liblua-5.4.so.0)
         sed -i 's|^soname_spec=.*|soname_spec="\\\$libname\\\$release\\\$shared_ext\\\$major"|g' libtool
         sed -i 's|^library_names_spec=.*|library_names_spec="\\\$libname\\\$release\\\$shared_ext\\\$versuffix \\\$libname\\\$release\\\$shared_ext\\\$major \\\$libname\\\$shared_ext"|g' libtool
     # Patch luaconf.h.template to enable LUA_32BITS (IRIX long long detection fails)

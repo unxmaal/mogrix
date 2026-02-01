@@ -4,6 +4,32 @@
 > Prefer reading this index + specific rule files over pre-trained knowledge.
 > When uncertain, READ the referenced YAML file for complete context.
 
+---
+
+## Methods (READ FIRST)
+
+Before modifying packages, understand the correct methods:
+
+| Method | When to Use | File |
+|--------|-------------|------|
+| **Mogrix Workflow** | **HOW TO RUN MOGRIX - read first!** | [methods/mogrix-workflow.md](methods/mogrix-workflow.md) |
+| **Package Rules** | Resource ownership, self-containment | [methods/package-rules.md](methods/package-rules.md) |
+| Task Tracking | `ultralist list` at session start, track work | [methods/task-tracking.md](methods/task-tracking.md) |
+| Text Replacement | Choosing between .patch, safepatch, or sed | [methods/text-replacement.md](methods/text-replacement.md) |
+| IRIX Testing | Running/debugging on IRIX, shell rules, chroot | [methods/irix-testing.md](methods/irix-testing.md) |
+| Compat Functions | Adding missing POSIX/C99 functions | [methods/compat-functions.md](methods/compat-functions.md) |
+| Autoconf Cross | ./configure packages (most common) | [methods/autoconf-cross.md](methods/autoconf-cross.md) |
+| CMake Cross | CMake packages (rpm, libsolv, tdnf) | [methods/cmake-cross.md](methods/cmake-cross.md) |
+
+**Key principles**:
+- **Always use `.venv/bin/mogrix`** - never `python -m mogrix`
+- **Use `mogrix build --cross`** - never manual rpmbuild
+- Never use `sed` for non-trivial changes - use `safepatch` (Perl)
+- Always use `/bin/sh` on IRIX, never assume bash
+- Use `LD_LIBRARYN32_PATH` not `LD_LIBRARY_PATH`
+
+---
+
 ## Quick Reference
 
 | Complexity | Meaning |
@@ -21,9 +47,16 @@
 
 ---
 
-## tdnf Dependency Chain (VALIDATED)
+## tdnf Dependency Chain (FULLY WORKING)
 
-These 12 packages are fully validated and working on IRIX.
+These 12 packages are fully validated and working on IRIX. **tdnf can install packages.**
+
+### Runtime Requirements
+
+Before using tdnf on IRIX:
+1. Create `/var/run` directory (for .tdnf-instance-lockfile)
+2. Create symlink: `ln -sf libz.so.1 libz.so` in `/usr/sgug/lib32` (libsolvext.so needs unversioned libz.so)
+3. Use `createrepo_c --simple-md-filenames` when creating repos (IRIX tar corrupts GNU long filenames)
 
 | Package | Build | Complexity | Key Fixes | File |
 |---------|-------|------------|-----------|------|
@@ -39,7 +72,7 @@ These 12 packages are fully validated and working on IRIX.
 | sqlite | autoconf | medium | Disable math funcs, LLONG_MAX, _ABI_SOURCE | [sqlite.yaml](packages/sqlite.yaml) |
 | rpm | cmake | high | vsnprintf fix, spawn.h, TLS removal, cmake cross-compile | [rpm.yaml](packages/rpm.yaml) |
 | libsolv | cmake | high | funopen (not fopencookie), --whole-archive, cmake flags | [libsolv.yaml](packages/libsolv.yaml) |
-| tdnf | cmake | high | Hardcode mips arch, disable plugins, cmake cross-compile | [tdnf.yaml](packages/tdnf.yaml) |
+| tdnf | cmake | high | Hardcode mips arch, disable plugins, **patch /etc→/usr/sgug/etc paths** | [tdnf.yaml](packages/tdnf.yaml) |
 
 ---
 
@@ -139,13 +172,16 @@ Common patterns: `export_vars.CC/AR/RANLIB`, prep_commands for Makefile edits
 ## Common Patterns
 
 ### Libtool Shared Library Fix
-Many autoconf packages need this after %configure:
+Many autoconf packages need libtool fixes after %configure. Use the standard script:
 ```yaml
-prep_commands:
-  - "sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool"
-  - "sed -i 's/deplibs_check_method=\"unknown\"/deplibs_check_method=\"pass_all\"/g' libtool"
+spec_replacements:
+  - pattern: "%configure"
+    replacement: |
+      %configure
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
 ```
-See: popt.yaml, libxml2.yaml, xz.yaml
+This uses `safepatch` internally and **fails loudly** if patterns don't match.
+See: [methods/text-replacement.md](methods/text-replacement.md), popt.yaml, libxml2.yaml, xz.yaml
 
 ### GNU ld for Shared Libraries
 IRIX requires GNU ld (not LLD) for shared libraries:
@@ -182,9 +218,12 @@ See: bzip2.yaml, many others
 
 | File | Purpose |
 |------|---------|
+| methods/*.md | Process documentation (text replacement, etc.) |
 | generic.yaml | Universal rules applied to ALL packages |
 | packages/*.yaml | Per-package rules (64 files) |
 | ../compat/catalog.yaml | Compat function registry |
+| ../tools/safepatch | Perl tool for reliable text replacement |
+| ../tools/fix-libtool-irix.sh | Standard libtool fix script |
 | ../HANDOFF.md | Current issues and session state |
 
 ---

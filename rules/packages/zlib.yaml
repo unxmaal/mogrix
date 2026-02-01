@@ -31,10 +31,9 @@ rules:
     - pattern: "enable-static=no\n%make_build\n%endif\n\n%check"
       replacement: |
         enable-static=no
-        # Fix libtool to build shared libs for IRIX cross-compilation
-        sed -i 's|^build_libtool_libs=no|build_libtool_libs=yes|g' libtool
-        sed -i 's|^deplibs_check_method=.*|deplibs_check_method=pass_all|g' libtool
-        # Force simple version scheme - libtool version calculation is broken for cross-compile
+        # Fix libtool for IRIX using generic script (note: zlib-ng uses custom soname)
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+        # zlib-ng specific: Custom SONAME of libz.so.1 (compatibility with zlib 1.x)
         sed -i 's|^soname_spec=.*|soname_spec="\\$libname\\$shared_ext.1"|g' libtool
         sed -i 's|^library_names_spec=.*|library_names_spec="\\$libname\\$shared_ext.1.0.0 \\$libname\\$shared_ext.1 \\$libname\\$shared_ext"|g' libtool
         %make_build

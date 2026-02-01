@@ -71,6 +71,41 @@ If you find yourself writing a rule that modifies a patch file - **STOP**. Inste
 3. The mogrix patch becomes the authoritative version
 4. No rules should reference or modify patch content
 
+### Text Replacement: safepatch over sed
+
+**NEVER use sed for non-trivial text replacements.** sed silently does nothing if a pattern doesn't match, causing hours of debugging.
+
+**Use `tools/safepatch` (Perl) instead:**
+
+```bash
+# safepatch FAILS if pattern not found (unlike sed's silent no-op)
+# safepatch FAILS if wrong number of matches
+# safepatch uses exact strings (no regex surprises)
+
+tools/safepatch libtool \
+    --old 'build_libtool_libs=no' \
+    --new 'build_libtool_libs=yes'
+
+# Expect exactly 3 matches:
+tools/safepatch source.c --old 'TODO' --new 'DONE' --count 3
+
+# Allow any number of matches:
+tools/safepatch Makefile --old 'gcc' --new 'irix-cc' --count 0
+
+# Dry run - preview without changing:
+tools/safepatch --dry-run config.h --old '#define X 0' --new '#define X 1'
+```
+
+**When to use what:**
+
+| Task | Tool |
+|------|------|
+| Source code changes | `.patch` files in `patches/packages/<pkg>/` |
+| Build-time reliable replacements | `tools/safepatch` (Perl) |
+| Truly trivial one-offs | sed (only if failure doesn't matter) |
+
+**Example: `fix-libtool-irix.sh` uses safepatch** to reliably fix libtool settings - if the pattern isn't found, the build fails immediately instead of silently producing broken libraries.
+
 ### Before Ending a Session
 
 Ask yourself:
@@ -86,33 +121,52 @@ If the answer to #3 is "no", you have more work to do.
 
 | File | When to Read |
 |------|--------------|
-| `rules/INDEX.md` | Package rules, build patterns, compat function mapping |
+| `rules/INDEX.md` | **READ FIRST** - Package rules, methods index, build patterns |
+| `rules/methods/mogrix-workflow.md` | Correct mogrix invocation and workflow |
 | `compat/catalog.yaml` | Available compat functions, which packages use them |
 | `HANDOFF.md` | Current session state, active issues, test commands |
-| `plan.md` | Architecture, IRIX interaction rules, bootstrap strategy |
 
 ---
 
 ## Mogrix Workflow
 
-```bash
-# Activate Python environment
-source .venv/bin/activate
+> **READ**: `rules/methods/mogrix-workflow.md` for complete details and common mistakes to avoid
 
+### CRITICAL: Correct Invocation
+
+**ALWAYS use:**
+```bash
+.venv/bin/mogrix <command>
+```
+
+**NEVER use:**
+- `python -m mogrix` - WRONG
+- `python3 -m mogrix.cli` - WRONG
+- Manual `rpmbuild` invocation - WRONG (use `mogrix build --cross`)
+
+### Standard Workflow
+
+```bash
 # 1. Fetch the Fedora SRPM
-mogrix fetch <package>
+.venv/bin/mogrix fetch <package>
 
 # 2. Convert to IRIX-compatible SRPM
-mogrix convert workdir/<package>-*.src.rpm
+.venv/bin/mogrix convert workdir/<package>-*.src.rpm -o /tmp/converted/
 
-# 3. Build with cross-compilation
-mogrix build --cross workdir/converted/<package>-*.src.rpm
+# 3. Build with cross-compilation (handles --target=mips-sgi-irix automatically)
+.venv/bin/mogrix build /tmp/converted/<package>-*.src.rpm --cross
 
 # 4. Stage for dependent builds
-mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
+.venv/bin/mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
 
 # 5. Test on IRIX (see IRIX Interaction Rules below)
 ```
+
+### Verify Output
+
+After build, verify:
+- RPMs are in `~/rpmbuild/RPMS/mips/` (not x86_64!)
+- `file` shows "ELF 32-bit MSB ... MIPS, N32"
 
 ### If a Build Fails
 

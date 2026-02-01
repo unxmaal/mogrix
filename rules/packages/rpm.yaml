@@ -140,7 +140,7 @@ rules:
       replacement: "# %dir %{_libdir}/rpm-plugins - plugins disabled"
     # Use rm -f to avoid failure if README.md doesn't exist
     - pattern: "rm $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md"
-      replacement: "rm -f $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md\n\n# Merge rpm lib files from lib to lib32 for N32 ABI\nif [ -d $RPM_BUILD_ROOT/usr/sgug/lib/rpm ]; then\n  mkdir -p $RPM_BUILD_ROOT/usr/sgug/lib32/rpm\n  cp -a $RPM_BUILD_ROOT/usr/sgug/lib/rpm/* $RPM_BUILD_ROOT/usr/sgug/lib32/rpm/\n  rm -rf $RPM_BUILD_ROOT/usr/sgug/lib/rpm\nfi"
+      replacement: "rm -f $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md\n\n# Merge rpm lib files from lib to lib32 for N32 ABI\nif [ -d $RPM_BUILD_ROOT/usr/sgug/lib/rpm ]; then\n  mkdir -p $RPM_BUILD_ROOT/usr/sgug/lib32/rpm\n  cp -a $RPM_BUILD_ROOT/usr/sgug/lib/rpm/* $RPM_BUILD_ROOT/usr/sgug/lib32/rpm/\n  rm -rf $RPM_BUILD_ROOT/usr/sgug/lib/rpm\nfi\n\n# Create /var/run for lockfiles (rpm owns this as lowest-level package needing it)\nmkdir -p $RPM_BUILD_ROOT/var/run\n\n# Create /var/lib/rpm symlink to actual database location\nmkdir -p $RPM_BUILD_ROOT/var/lib\nln -sf ../../usr/sgug/lib32/sysimage/rpm $RPM_BUILD_ROOT/var/lib/rpm\n\n# Create macros.sqlite to set sqlite as default database backend for IRIX\nmkdir -p $RPM_BUILD_ROOT/usr/sgug/etc/rpm\necho '%%_db_backend sqlite' > $RPM_BUILD_ROOT/usr/sgug/etc/rpm/macros.sqlite"
     # Remove Python bindings files (Python disabled) - use empty replacement to drop lines
     - pattern: "%dir %{python3_sitearch}/rpm\n"
       replacement: ""
@@ -207,3 +207,7 @@ rules:
     # Fix documentation file handling to include all installed docs
     - pattern: "%doc CREDITS docs/manual/[a-z]*\n%doc %{_defaultdocdir}/rpm/CONTRIBUTING.md\n%doc %{_defaultdocdir}/rpm/COPYING\n%doc %{_defaultdocdir}/rpm/INSTALL\n%doc %{_defaultdocdir}/rpm/README"
       replacement: "%doc CREDITS docs/manual/[a-z]*\n%{_defaultdocdir}/rpm/"
+    # Add IRIX-specific files to %files (rpm owns /var/run as lowest-level package needing it)
+    # Match the line after sysimage entries
+    - pattern: "%{_bindir}/rpm\n# %{_bindir}/rpm2archive"
+      replacement: "%dir /var/run\n/var/lib/rpm\n%dir /usr/sgug/etc/rpm\n%config(noreplace) /usr/sgug/etc/rpm/macros.sqlite\n\n%{_bindir}/rpm\n# %{_bindir}/rpm2archive"

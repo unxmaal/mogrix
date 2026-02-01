@@ -13,22 +13,17 @@
 
 package: popt
 
+# Use patch files instead of sed
+add_patch:
+  - popt-disable-stpcpy.patch
+  - popt-disable-mbsrtowcs.patch
+
 rules:
   # Compat functions needed (replaces libdicl-devel dependency)
   inject_compat_functions:
     - strdup
     - strndup
     - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
-
-  # Fix stpcpy conflict - popt's system.h defines static inline stpcpy which
-  # conflicts with our mogrix-compat/generic/string.h declaration
-  # Comment out the entire function (lines 31-38 in src/system.h)
-  prep_commands:
-    - "sed -i '/^static inline char \\* stpcpy/,/^}$/s/^/\\/\\/ /' src/system.h"
-    # Force HAVE_MBSRTOWCS to 0 - IRIX doesn't have these functions
-    # The ac_cv override doesn't always work with cross-compilation
-    # Note: the #ifdef has leading whitespace, so we match with .*
-    - "sed -i 's/#ifdef HAVE_MBSRTOWCS/#if 0 \\/\\* IRIX \\*\\//' src/popthelp.c"
 
   # Configure options for cross-compilation
   configure_opts:
@@ -67,15 +62,9 @@ rules:
         # Tell libtool to use our CC for linking (handles linker selection internally)
         export lt_cv_prog_compiler_static_works=no
 
-    # Fix libtool to build shared libraries for IRIX
-    # After configure, patch libtool to enable shared libs
+    # Fix libtool to build shared libraries for IRIX using generic script
     - pattern: "%configure"
       replacement: |
         %configure
         # Fix libtool to build shared libraries for IRIX
-        sed -i 's/build_libtool_libs=no/build_libtool_libs=yes/g' libtool
-        sed -i 's/deplibs_check_method="unknown"/deplibs_check_method="pass_all"/g' libtool
-        sed -i 's/^version_type=none$/version_type=linux/g' libtool
-        # Note: shared_ext=".so" and versuffix=".x.y.z" both include leading dots
-        sed -i 's/^soname_spec=""$/soname_spec="\\$libname\\${shared_ext}\\$major"/g' libtool
-        sed -i 's/^library_names_spec=""$/library_names_spec="\\$libname\\${shared_ext}\\$versuffix \\$libname\\${shared_ext}\\$major \\$libname\\${shared_ext}"/g' libtool
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
