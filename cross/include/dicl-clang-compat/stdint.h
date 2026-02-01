@@ -72,4 +72,9 @@ typedef uint64_t uintmax_t;
 #define PTRDIFF_MIN INT32_MIN
 #define PTRDIFF_MAX INT32_MAX
 
+/* Maximum-width limits */
+#define INTMAX_MIN  INT64_MIN
+#define INTMAX_MAX  INT64_MAX
+#define UINTMAX_MAX UINT64_MAX
+
 #endif /* _DICL_STDINT_H */

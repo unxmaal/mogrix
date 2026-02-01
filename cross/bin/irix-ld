@@ -45,7 +45,11 @@ done
 if [ "$is_shared" = "1" ]; then
     # Shared library: use GNU ld (produces correct IRIX segment layout)
     # GNU ld creates 2 LOAD segments; LLD creates 3 which crashes IRIX rld
-    exec $GNULD $filtered_args
+    exec $GNULD \
+      -L$SYSROOT/lib32 \
+      -L$SYSROOT/usr/lib32 \
+      -L$STAGING/lib32 \
+      $filtered_args
 else
     # Executable: use LLD with CRT files and soft float stubs
     # Use fixed CRT files (with .MIPS.events sections stripped)

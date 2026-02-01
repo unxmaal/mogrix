@@ -81,6 +81,20 @@ functions:
     requires_pthread: true
     notes: BSD-style cookie I/O, more reliable on IRIX than fopencookie
 
+  # setenv/unsetenv (IRIX only has putenv)
+  setenv:
+    file: stdlib/setenv.c
+    header: stdlib.h
+    description: Set environment variable (POSIX)
+    provides:
+      - setenv
+      - unsetenv
+
+  unsetenv:
+    file: stdlib/setenv.c
+    header: stdlib.h
+    description: Remove environment variable (POSIX)
+
   # stdlib functions
   strtof:
     file: strtof.c

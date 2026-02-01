@@ -18,6 +18,7 @@ Before modifying packages, understand the correct methods:
 | Text Replacement | Choosing between .patch, safepatch, or sed | [methods/text-replacement.md](methods/text-replacement.md) |
 | IRIX Testing | Running/debugging on IRIX, shell rules, chroot | [methods/irix-testing.md](methods/irix-testing.md) |
 | Compat Functions | Adding missing POSIX/C99 functions | [methods/compat-functions.md](methods/compat-functions.md) |
+| IRIX Quirks | Platform-specific issues (struct collisions, missing features) | [methods/irix-quirks.md](methods/irix-quirks.md) |
 | Autoconf Cross | ./configure packages (most common) | [methods/autoconf-cross.md](methods/autoconf-cross.md) |
 | CMake Cross | CMake packages (rpm, libsolv, tdnf) | [methods/cmake-cross.md](methods/cmake-cross.md) |
 
@@ -130,6 +131,7 @@ Common patterns: `export_vars.CC/AR/RANLIB`, prep_commands for Makefile edits
 |---------|------------|-----------|
 | bzip2 | low | test target remove |
 | lua | medium | multiarch headers |
+| tree-pkg | low | struct comment rename (IRIX pwd.h collision), __sgi define |
 
 ### custom
 
