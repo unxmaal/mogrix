@@ -13,6 +13,7 @@ Before modifying packages, understand the correct methods:
 | Method | When to Use | File |
 |--------|-------------|------|
 | **Mogrix Workflow** | **HOW TO RUN MOGRIX - read first!** | [methods/mogrix-workflow.md](methods/mogrix-workflow.md) |
+| **Package Rules** | Resource ownership, self-containment | [methods/package-rules.md](methods/package-rules.md) |
 | Task Tracking | `ultralist list` at session start, track work | [methods/task-tracking.md](methods/task-tracking.md) |
 | Text Replacement | Choosing between .patch, safepatch, or sed | [methods/text-replacement.md](methods/text-replacement.md) |
 | IRIX Testing | Running/debugging on IRIX, shell rules, chroot | [methods/irix-testing.md](methods/irix-testing.md) |
