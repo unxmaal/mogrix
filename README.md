@@ -597,6 +597,69 @@ Run `$MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool` after configure. This patch
 
 Check for TLS usage (`__thread` keyword). IRIX rld doesn't support it - patch to use static variables or pthreads.
 
+## Integration with Agentic AI
+
+Mogrix is designed for effective collaboration with AI coding assistants like Claude Code. The project includes structured documentation (`rules/INDEX.md`, `HANDOFF.md`, `rules/methods/*.md`) that AI agents can reference to understand patterns and make informed decisions.
+
+**Important:** The `rules/` directory serves a dual purpose:
+- **mogrix** loads these YAML files programmatically via `RuleLoader` to transform spec files during conversion
+- **AI agents** read the same files as reference documentation to understand patterns and create new rules
+
+This means the rules are both executable configuration *and* human/AI-readable documentation. When an agent reads `rules/packages/popt.yaml`, it sees exactly what mogrix will apply - making it straightforward to understand patterns and create similar rules for new packages.
+
+### How to Use AI Effectively
+
+**Start with context:** Point the agent to `rules/INDEX.md` first. This index links to method documentation and package rules, allowing the agent to retrieve specific information as needed rather than hallucinating patterns.
+
+**Be specific about the task:** "Port package X" is too vague. Better: "Create a rule file for package X. It uses autoconf. Check similar packages like popt.yaml for patterns."
+
+**Iterate incrementally:** Don't ask the agent to port 10 packages at once. Port one, test it on IRIX, fix issues, then proceed. Each package teaches lessons that apply to the next.
+
+**Use the existing workflow:**
+```bash
+mogrix fetch <package>
+mogrix convert <package>.src.rpm
+mogrix build <converted>.src.rpm --cross
+# Test on IRIX before proceeding
+```
+
+### LLMs Are Not Magic
+
+AI assistants are powerful tools, but they have fundamental limitations:
+
+**They guess plausibly, not correctly.** An LLM will confidently generate a sed pattern that looks right but matches zero lines, or six lines instead of one. The rpm futimens bug (documented in HANDOFF.md) cost hours of debugging because a sed pattern was too broad - it "worked" but broke unrelated code.
+
+**Output must be tested.** Every change must be verified:
+- Does the package build? (`mogrix build --cross`)
+- Does it run on IRIX? (test in chroot)
+- Does it break other packages? (rebuild dependents)
+
+**Small mistakes are multiplicative.** A wrong `ac_cv_override` silently produces a broken binary. A missing compat function causes a runtime crash. A bad sed creates a package that builds but segfaults. These compound: package A builds wrong → package B links against it → package C inherits the bug → hours of debugging to find the root cause.
+
+### Best Practices
+
+1. **Read before writing.** Always have the agent read existing files before modifying them. "Check popt.yaml, then create a similar rule for package X."
+
+2. **Prefer patches over sed.** Sed silently succeeds when patterns don't match. Use `.patch` files or `safepatch` (fails loudly on mismatch).
+
+3. **Document the why.** When the agent fixes something, have it document why in HANDOFF.md or the rule file. Future sessions need this context.
+
+4. **Verify on real hardware.** Cross-compilation hides runtime issues. Always test on actual IRIX before declaring success.
+
+5. **Use the handoff pattern.** When ending a session, update HANDOFF.md with current state, pending issues, and next steps. The next session (human or AI) starts informed.
+
+### Project Files for AI Context
+
+| File | Purpose |
+|------|---------|
+| `rules/INDEX.md` | Package lookup, method links - **read first** |
+| `HANDOFF.md` | Current state, recent fixes, known issues |
+| `rules/methods/*.md` | Process documentation (text replacement, IRIX testing, etc.) |
+| `rules/packages/*.yaml` | Existing package rules - patterns to follow |
+| `compat/catalog.yaml` | Available compat functions |
+
+The goal is augmented intelligence: human judgment directing AI capability, with verification at every step.
+
 ## License
 
 See LICENSE file.
