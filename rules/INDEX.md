@@ -12,6 +12,7 @@ Before modifying packages, understand the correct methods:
 
 | Method | When to Use | File |
 |--------|-------------|------|
+| **Mogrix Workflow** | **HOW TO RUN MOGRIX - read first!** | [methods/mogrix-workflow.md](methods/mogrix-workflow.md) |
 | Task Tracking | `ultralist list` at session start, track work | [methods/task-tracking.md](methods/task-tracking.md) |
 | Text Replacement | Choosing between .patch, safepatch, or sed | [methods/text-replacement.md](methods/text-replacement.md) |
 | IRIX Testing | Running/debugging on IRIX, shell rules, chroot | [methods/irix-testing.md](methods/irix-testing.md) |
@@ -20,6 +21,8 @@ Before modifying packages, understand the correct methods:
 | CMake Cross | CMake packages (rpm, libsolv, tdnf) | [methods/cmake-cross.md](methods/cmake-cross.md) |
 
 **Key principles**:
+- **Always use `.venv/bin/mogrix`** - never `python -m mogrix`
+- **Use `mogrix build --cross`** - never manual rpmbuild
 - Never use `sed` for non-trivial changes - use `safepatch` (Perl)
 - Always use `/bin/sh` on IRIX, never assume bash
 - Use `LD_LIBRARYN32_PATH` not `LD_LIBRARY_PATH`
@@ -43,9 +46,16 @@ Before modifying packages, understand the correct methods:
 
 ---
 
-## tdnf Dependency Chain (VALIDATED)
+## tdnf Dependency Chain (FULLY WORKING)
 
-These 12 packages are fully validated and working on IRIX.
+These 12 packages are fully validated and working on IRIX. **tdnf can install packages.**
+
+### Runtime Requirements
+
+Before using tdnf on IRIX:
+1. Create `/var/run` directory (for .tdnf-instance-lockfile)
+2. Create symlink: `ln -sf libz.so.1 libz.so` in `/usr/sgug/lib32` (libsolvext.so needs unversioned libz.so)
+3. Use `createrepo_c --simple-md-filenames` when creating repos (IRIX tar corrupts GNU long filenames)
 
 | Package | Build | Complexity | Key Fixes | File |
 |---------|-------|------------|-----------|------|
@@ -61,7 +71,7 @@ These 12 packages are fully validated and working on IRIX.
 | sqlite | autoconf | medium | Disable math funcs, LLONG_MAX, _ABI_SOURCE | [sqlite.yaml](packages/sqlite.yaml) |
 | rpm | cmake | high | vsnprintf fix, spawn.h, TLS removal, cmake cross-compile | [rpm.yaml](packages/rpm.yaml) |
 | libsolv | cmake | high | funopen (not fopencookie), --whole-archive, cmake flags | [libsolv.yaml](packages/libsolv.yaml) |
-| tdnf | cmake | high | Hardcode mips arch, disable plugins, cmake cross-compile | [tdnf.yaml](packages/tdnf.yaml) |
+| tdnf | cmake | high | Hardcode mips arch, disable plugins, **patch /etc→/usr/sgug/etc paths** | [tdnf.yaml](packages/tdnf.yaml) |
 
 ---
 

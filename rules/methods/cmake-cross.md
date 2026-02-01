@@ -5,6 +5,22 @@
 
 ---
 
+## Building CMake Packages
+
+**IMPORTANT**: Always use `--target=mips-sgi-irix` with rpmbuild:
+
+```bash
+rpmbuild --macros="/usr/lib/rpm/macros:/opt/sgug-staging/rpmmacros.irix" \
+  --define '_disable_source_fetch 1' \
+  --nodeps \
+  --target=mips-sgi-irix \
+  -ba /path/to/spec
+```
+
+Without `--target`, RPMs will incorrectly be named `*.x86_64.rpm` instead of `*.mips.rpm`.
+
+---
+
 ## Identifying CMake Packages
 
 Look for:
@@ -87,7 +103,27 @@ spec_replacements:
 ```yaml
 -DWITH_PLUGIN_REPOGPGCHECK=OFF
 -DCMAKE_SKIP_RPATH=ON
+-DCMAKE_INSTALL_SYSCONFDIR=%{_sysconfdir}
+-DSYSCONFDIR=%{_sysconfdir}
 ```
+
+**CRITICAL**: tdnf has hardcoded `/etc` paths in `client/defines.h` and `common/config.h`.
+These are NOT CMake-configurable and must be patched in source:
+
+```bash
+# Patch client/defines.h
+sed -i 's|"/etc/tdnf/tdnf.conf"|"/usr/sgug/etc/tdnf/tdnf.conf"|g' client/defines.h
+sed -i 's|"/etc/yum.repos.d"|"/usr/sgug/etc/yum.repos.d"|g' client/defines.h
+sed -i 's|"/etc/tdnf/pluginconf.d"|"/usr/sgug/etc/tdnf/pluginconf.d"|g' client/defines.h
+
+# Patch common/config.h (has additional VARS_DIRS)
+sed -i 's|"/etc/tdnf/tdnf.conf"|"/usr/sgug/etc/tdnf/tdnf.conf"|g' common/config.h
+sed -i 's|"/etc/yum.repos.d"|"/usr/sgug/etc/yum.repos.d"|g' common/config.h
+sed -i 's|"/etc/tdnf/vars /etc/dnf/vars /etc/yum/vars"|"/usr/sgug/etc/tdnf/vars /usr/sgug/etc/dnf/vars /usr/sgug/etc/yum/vars"|g' common/config.h
+sed -i 's|"/etc/tdnf/pluginconf.d"|"/usr/sgug/etc/tdnf/pluginconf.d"|g' common/config.h
+```
+
+After building, verify with: `strings libtdnf.so | grep "/etc"` - should show `/usr/sgug/etc` paths
 
 ---
 

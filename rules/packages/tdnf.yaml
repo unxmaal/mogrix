@@ -5,17 +5,34 @@
 # ---metadata---
 # complexity: high
 # build_system: cmake
-# key_fixes: [mips_arch_hardcode, plugin_disable, cmake_cross, systemd_removal]
+# key_fixes: [mips_arch_hardcode, plugin_disable, cmake_cross, systemd_removal, etc_path_fix]
 # similar_to: [libsolv, rpm]
 # depends: [libsolv, rpm, curl, openssl, libxml2]
-# status: WORKING (list/makecache work, install has futimens issue)
+# status: WORKING (repolist, makecache, install all verified)
+# ---
+#
+# IMPORTANT: Hardcoded /etc paths in source code
+# ================================================
+# tdnf has hardcoded "/etc/tdnf/tdnf.conf" and "/etc/yum.repos.d" in:
+#   - client/defines.h (TDNF_CONF_FILE, TDNF_DEFAULT_REPO_LOCATION, TDNF_DEFAULT_PLUGIN_CONF_PATH)
+#   - common/config.h (same + TDNF_DEFAULT_VARS_DIRS)
+#
+# These are NOT cmake-configurable. Must be patched in %build section.
+# Our patches change them to /usr/sgug/etc/* to match SGUG-RSE conventions.
+#
+# Build command (MUST use --target for correct arch):
+#   rpmbuild --macros="/usr/lib/rpm/macros:/opt/sgug-staging/rpmmacros.irix" \
+#     --define '_disable_source_fetch 1' --nodeps --target=mips-sgi-irix -ba tdnf.spec
 # ---
 
 package: tdnf
 
 
-# IRIX-specific patches - needed for Photon OS SRPM (SGUG-RSE SRPM already has these)
+# IRIX-specific patches
+# client-defines.sgifixes.patch - fixes hardcoded /etc paths to /usr/sgug/etc
+# gpgcheck-rpm419.sgifixes.patch - fixes gpgcheck for rpm 4.19 API
 add_patch:
+  - client-defines.sgifixes.patch
   - gpgcheck-rpm419.sgifixes.patch
 
 rules:
@@ -90,6 +107,7 @@ rules:
         sed -i 's|add_subdirectory.*repogpgcheck.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
         # Disable metalink plugin - also requires gpgme
         sed -i 's|add_subdirectory.*metalink.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
+        # Path fixes are handled by client-defines.sgifixes.patch (added via add_patch rule)
         # Add strings.h include for strcasecmp on IRIX (needed in multiple files)
         find . -name "*.c" -exec grep -l "strcasecmp\|strncasecmp" {} \; | while read f; do
           sed -i '1i #include <strings.h>' "$f"
@@ -147,6 +165,8 @@ rules:
           -DCMAKE_BUILD_TYPE=Debug \
           -DBUILD_SHARED_LIBS=ON \
           -DHISTORY_DB_DIR=%{hist_db_dir} \
+          -DCMAKE_INSTALL_SYSCONFDIR=%{_sysconfdir} \
+          -DSYSCONFDIR=%{_sysconfdir} \
           -DWITHOUT_SYSTEMD=ON
     # Use make instead of cmake_build/cmake_install
     - pattern: "%{cmake_build}"
@@ -243,3 +263,10 @@ rules:
       replacement: "# disabled: %systemd_preun %{automatic_services}"
     - pattern: "%systemd_postun_with_restart %{automatic_services}"
       replacement: "# disabled: %systemd_postun_with_restart %{automatic_services}"
+
+  # Fix tdnf.conf paths for IRIX - must be rooted at /usr/sgug, not /etc or /var
+  install_cleanup:
+    - sed -i 's|repodir=/etc/|repodir=/usr/sgug/etc/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+    - sed -i 's|cachedir=/var/|cachedir=/usr/sgug/var/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+    - mkdir -p $RPM_BUILD_ROOT/usr/sgug/etc/yum.repos.d
+    - mkdir -p $RPM_BUILD_ROOT/usr/sgug/var/cache/tdnf

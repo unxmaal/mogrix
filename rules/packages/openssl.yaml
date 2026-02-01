@@ -121,3 +121,10 @@ rules:
     # Replace bash-specific pushd/popd with POSIX-compatible subshell
     - pattern: "pushd $RPM_BUILD_ROOT%{_mandir}\nmv man5/config.5ossl man5/openssl.cnf.5\npopd"
       replacement: "(cd $RPM_BUILD_ROOT%{_mandir} && mv man5/config.5ossl man5/openssl.cnf.5)"
+
+  # Fix openssl.cnf paths for IRIX - must be rooted at /usr/sgug, not /etc
+  # Also disable Fedora crypto-policies and ssl_module (not available on IRIX)
+  install_cleanup:
+    - sed -i 's|^ssl_conf = ssl_module|# ssl_conf = ssl_module  # Disabled for IRIX|' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
+    - sed -i 's|^\.include = /etc/crypto-policies|# .include = /etc/crypto-policies  # Disabled for IRIX|' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
+    - sed -i 's|= /etc/pki/|= /usr/sgug/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf

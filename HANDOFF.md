@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-01-31
-**Status**: RPM INSTALL WORKING - sed→patch migration tested and validated
+**Last Updated**: 2026-02-01
+**Status**: TDNF FULLY WORKING - Package manager operational on IRIX
 
 ---
 
@@ -27,15 +27,27 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 
 ## Current Progress
 
-### What's Done (2026-01-31)
+### What's Done (2026-02-01)
 - All 13 packages cross-compile successfully
 - **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
 - popt rebuilt with vasprintf injection
 - rpm rebuilt with rvasprintf and rpmlog fixes
-- **Full chroot testing PASSED** - all rpm and tdnf operations verified
-- **RPM INSTALL WORKING** - Fixed two critical bugs, packages install correctly now
+- **RPM INSTALL FULLY WORKING** - Fixed three critical bugs:
+  1. futimens sed too broad (Bug 1)
+  2. utimensat symlink handling (Bug 2)
+  3. **O_NOFOLLOW not supported on IRIX (Bug 3)** - causes EINVAL on open()
+- **TDNF FULLY WORKING** - Complete package manager chain operational:
+  - `tdnf makecache` - downloads repo metadata
+  - `tdnf list` - shows available packages
+  - `tdnf install <pkg>` - downloads and installs packages
 - **sed→patch migration VALIDATED** - 8 of 11 packages migrated, bzip2 + popt build-tested successfully
-- **Documentation restructured** - Added `rules/methods/` with process documentation, updated INDEX.md
+- **Documentation restructured** - Added `rules/methods/` with process documentation
+
+### Additional Fixes for tdnf (2026-02-01)
+
+1. **Create /var/run directory** - tdnf needs it for lockfile
+2. **libz.so symlink** - `ln -sf libz.so.1 libz.so` (libsolvext.so needs unversioned name)
+3. **Use createrepo --simple-md-filenames** - IRIX tar corrupts long filenames
 
 ### Fixes Applied (2026-01-30)
 
@@ -58,13 +70,38 @@ IRIX's `utimes()` follows symlinks. When rpm creates a symlink (e.g., `libpopt.s
 
 **Fix**: Added symlink detection in `compat/dicl/openat-compat.c:utimensat()`. When `AT_SYMLINK_NOFOLLOW` is set and the path is a symlink, return success immediately (since IRIX doesn't have `lutimes()` and symlink timestamps are rarely critical).
 
-### Verified Working (2026-01-30)
+**Bug 3: O_NOFOLLOW not supported on IRIX (2026-01-31)**
+
+rpm's `fsmOpenat()` adds `O_NOFOLLOW` to open flags for security. IRIX doesn't support this flag and returns `EINVAL` when it's passed to `open()`.
+
+**Symptom**: `rpm -Uvh` fails with:
+```
+error: failed to open dir usr of /usr/sgug/lib/: Invalid argument
+error: unpacking of archive failed on file /usr/sgug/lib/os-release: cpio: open failed - Invalid argument
+```
+
+**Fix**: Added `strip_unsupported_flags()` in `compat/dicl/openat-compat.c` to remove O_NOFOLLOW before calling IRIX's `open()`:
+```c
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW 0x20000
+#endif
+
+static int strip_unsupported_flags(int flags) {
+    flags &= ~O_NOFOLLOW;
+    return flags;
+}
+```
+Called in `openat()` before passing flags to the real `open()`.
+
+### Verified Working (2026-01-31)
 
 ```bash
-$ rpm -qa --root=/opt/chroot
-popt-1.19-6.mips
-bzip2-libs-1.0.8-18.mips
-libxml2-2.12.5-1.mips
+# sgugrse-release package installs successfully:
+$ /usr/sgug/bin/sgug-exec /usr/sgug/bin/rpm -Uvh --nodeps /tmp/sgugrse-release-0.0.7beta-1.noarch.rpm
+Verifying...                          ################################# [100%]
+Preparing...                          ################################# [100%]
+Updating / installing...
+   1:sgugrse-release-0.0.7beta-1      ################################# [100%]
 ```
 
 ### Verified in /opt/chroot on IRIX
@@ -99,24 +136,27 @@ tdnf: 3.5.14
 ### tdnf Repository Setup (DONE)
 
 Repository configured and working:
-- **mogrix.repo** at `/opt/chroot/etc/yum.repos.d/mogrix.repo`
-- **tdnf.conf** at `/opt/chroot/etc/tdnf/tdnf.conf`
+- **mogrix.repo** at `/opt/chroot/usr/sgug/etc/yum.repos.d/mogrix.repo`
+- **tdnf.conf** at `/opt/chroot/usr/sgug/etc/tdnf/tdnf.conf`
 - Repository metadata at `/opt/chroot/usr/sgug/share/mogrix-repo/`
 
-**tdnf.conf settings**:
+**IMPORTANT**: tdnf 3.5.14 is patched to use `/usr/sgug/etc` paths (not `/etc`).
+This matches SGUG-RSE conventions and keeps all config under `/usr/sgug`.
+
+**tdnf.conf settings** (at `/usr/sgug/etc/tdnf/tdnf.conf`):
 ```ini
 [main]
 gpgcheck=0
 installonly_limit=3
 clean_requirements_on_remove=1
-repodir=/etc/yum.repos.d
-cachedir=/var/cache/tdnf
+repodir=/usr/sgug/etc/yum.repos.d
+cachedir=/usr/sgug/var/cache/tdnf
 distroverpkg=        # Disables distro package check
 releasever=1         # Required - prevents $releasever lookup
 basearch=mips        # Required - prevents $basearch lookup
 ```
 
-**mogrix.repo settings** (note: full path required for file:// URLs):
+**mogrix.repo settings** (at `/usr/sgug/etc/yum.repos.d/mogrix.repo`):
 ```ini
 [mogrix]
 name=Mogrix IRIX Packages
@@ -133,24 +173,23 @@ gpgcheck=0
 | `tdnf search <pkg>` | ✓ Searches package names |
 | `tdnf info <pkg>` | ✓ Shows package details |
 
-### Path Fixes Applied (2026-01-28)
+### Path Fixes Applied (2026-01-31)
 
-TDNF requires many directories to exist. Created on IRIX:
+TDNF 3.5.14 is patched to use `/usr/sgug/etc` paths. Directories needed:
 
 **In /opt/chroot:**
-- `/opt/chroot/etc/tdnf/vars/`
-- `/opt/chroot/etc/dnf/vars/`
-- `/opt/chroot/etc/yum/vars/`
-- `/opt/chroot/etc/tdnf/minversions.d/`
-- `/opt/chroot/etc/tdnf/locks.d/`
-- `/opt/chroot/etc/tdnf/protected.d/`
+- `/opt/chroot/usr/sgug/etc/tdnf/vars/`
+- `/opt/chroot/usr/sgug/etc/dnf/vars/`
+- `/opt/chroot/usr/sgug/etc/yum/vars/`
+- `/opt/chroot/usr/sgug/etc/tdnf/minversions.d/`
+- `/opt/chroot/usr/sgug/etc/tdnf/locks.d/`
+- `/opt/chroot/usr/sgug/etc/tdnf/protected.d/`
+- `/opt/chroot/usr/sgug/etc/yum.repos.d/`
+- `/opt/chroot/usr/sgug/var/cache/tdnf/`
 - `/opt/chroot/var/lib/rpm` → `../../usr/sgug/lib32/sysimage/rpm` (relative symlink)
 - `/opt/chroot/usr/sgug/lib/sysimage/rpm` → `../../lib32/sysimage/rpm` (for `_dbpath` macro mismatch)
 
-**On base IRIX system** (required because IRIX chroot doesn't isolate properly):
-- `/etc/yum.repos.d/`
-- `/etc/tdnf/pluginconf.d/`
-- `/usr/sgug/lib32/rpm` → `/opt/chroot/usr/sgug/lib32/rpm` (symlink)
+**Note**: Previous versions used `/etc` paths. Our patched tdnf uses `/usr/sgug/etc` to match SGUG-RSE conventions.
 
 ### Test Method
 
@@ -161,7 +200,8 @@ TDNF requires many directories to exist. Created on IRIX:
 cat > /tmp/test.sh << 'SCRIPT'
 #!/bin/sh
 export LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32:/usr/sgug/lib32
-/opt/chroot/usr/sgug/bin/tdnf -c /opt/chroot/etc/tdnf/tdnf.conf --installroot=/opt/chroot repolist
+# tdnf 3.5.14 uses /usr/sgug/etc paths by default
+/opt/chroot/usr/sgug/bin/tdnf --installroot=/opt/chroot repolist
 echo "exit: $?"
 SCRIPT
 
@@ -172,19 +212,20 @@ ssh root@192.168.0.81 "/bin/sh /tmp/test.sh"
 
 **Note**: IRIX chroot doesn't properly isolate - commands still see base system paths. That's why we run binaries directly with `LD_LIBRARYN32_PATH` instead of using chroot.
 
-### Preferred Test Method (2026-01-29)
+### Preferred Test Method (2026-01-31)
 
 Use `sgug-exec` which sets up the proper environment:
 ```bash
 # From within the chroot on IRIX (ssh root@192.168.0.81, then chroot /opt/chroot)
-/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf -c /etc/tdnf/tdnf.conf --installroot=/ repolist
+# Note: tdnf 3.5.14 uses /usr/sgug/etc paths by default, no -c needed
+/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist
 ```
 
 ### Debugging with par
 
 IRIX has `par` (Process Activity Reporter) similar to Linux strace:
 ```bash
-par -s /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf -c /etc/tdnf/tdnf.conf --installroot=/ repolist > /tmp/par_output.txt 2>&1
+par -s /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist > /tmp/par_output.txt 2>&1
 ```
 This traces system calls and helps identify missing files or failed operations.
 
@@ -204,13 +245,15 @@ All tdnf operations work:
 
 ### Required tdnf.conf Settings
 
+Located at `/usr/sgug/etc/tdnf/tdnf.conf`:
+
 ```ini
 [main]
 gpgcheck=0
 installonly_limit=3
 clean_requirements_on_remove=1
-repodir=/etc/yum.repos.d
-cachedir=/var/cache/tdnf
+repodir=/usr/sgug/etc/yum.repos.d
+cachedir=/usr/sgug/var/cache/tdnf
 distroverpkg=
 releasever=1
 ```
@@ -219,8 +262,9 @@ releasever=1
 
 Create these before running tdnf:
 ```bash
-mkdir -p /var/cache/tdnf
-mkdir -p /etc/yum.repos.d
+mkdir -p /usr/sgug/var/cache/tdnf
+mkdir -p /usr/sgug/etc/yum.repos.d
+mkdir -p /usr/sgug/etc/tdnf/vars
 ```
 
 Initialize rpm database:
@@ -232,7 +276,7 @@ rpm --initdb --dbpath=/usr/sgug/lib/sysimage/rpm
 
 ## Next Steps
 
-1. **Test tdnf install on IRIX** - Verify `tdnf install <package>` works end-to-end
+1. ~~**Test tdnf install on IRIX**~~ - ✅ DONE (2026-02-01) - `tdnf install popt` works
 2. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
 3. **Build more packages** - Expand the mogrix repo with more useful packages
 4. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
@@ -473,10 +517,10 @@ When linking a static archive (.a) into a shared library (.so), symbols that are
 
 | File (in /opt/chroot) | Purpose |
 |------|---------|
-| `/etc/tdnf/tdnf.conf` | tdnf main config (distroverpkg= disabled) |
-| `/etc/yum.repos.d/mogrix.repo` | Repository definition |
+| `/usr/sgug/etc/tdnf/tdnf.conf` | tdnf main config (distroverpkg= disabled) |
+| `/usr/sgug/etc/yum.repos.d/mogrix.repo` | Repository definition |
 | `/usr/sgug/share/mogrix-repo/` | Repository metadata location |
-| `/var/cache/tdnf/` | tdnf metadata cache |
+| `/usr/sgug/var/cache/tdnf/` | tdnf metadata cache |
 
 ---
 
@@ -603,9 +647,9 @@ This is the same approach as libdicl's funopen, just in pure C instead of C++.
 
 **Current Issue: tdnf install fails with Error(1525) - rpm transaction failed**
 
-### Symptom
+### Symptom (from older tdnf build with /etc paths)
 ```
-# /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf -c /etc/tdnf/tdnf.conf --installroot=/ install popt
+# /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf install popt
 Installing:
 popt             mips         1.19-6           mogrix       119.83k    75.38k
 
@@ -818,3 +862,75 @@ Updated `rules/INDEX.md` to reference all methods at the top.
 - `rules/INDEX.md` - Added Methods section with links
 - `rules/methods/*.md` - 5 new method files
 - Plan file - Trimmed to active work only
+
+---
+
+## Session Summary (2026-01-31, Evening)
+
+### tdnf Path Patches Complete
+
+**Problem**: tdnf was still accessing `/etc/tdnf/tdnf.conf` despite path changes.
+
+**Root cause**: The `client-defines.sgifixes.patch` only patched `client/defines.h`, but `common/config.h` ALSO has the same defines. Both files needed patching.
+
+**Fix**: Updated `patches/packages/tdnf/client-defines.sgifixes.patch` to patch BOTH files:
+- `client/defines.h` - 4 hunks
+- `common/config.h` - 4 hunks
+
+Patched paths now include:
+- `TDNF_CONF_FILE` → `/usr/sgug/etc/tdnf/tdnf.conf`
+- `TDNF_DEFAULT_REPO_LOCATION` → `/usr/sgug/etc/yum.repos.d`
+- `TDNF_DEFAULT_CACHE_LOCATION` → `/usr/sgug/var/cache/tdnf`
+- `TDNF_DEFAULT_DATA_LOCATION` → `/usr/sgug/var/lib/tdnf`
+- `TDNF_DEFAULT_VARS_DIRS` → `/usr/sgug/etc/tdnf/vars ...`
+- `TDNF_DEFAULT_DISTROVERPKG` → `sgugrse-release`
+- `TDNF_DEFAULT_DISTROARCHPKG` → `mips`
+- `TDNF_DEFAULT_PLUGIN_CONF_PATH` → `/usr/sgug/etc/tdnf/pluginconf.d`
+
+**Verified**: `strings libtdnf.so` now shows correct `/usr/sgug/` paths.
+
+### RPM Database Backend Issue
+
+**Problem**: Our cross-compiled rpm 4.19 uses sqlite backend by default, but SGUG-RSE's rpm uses BerkeleyDB.
+
+**Symptom**: `Error(1304) : Solv - I/O error` when tdnf tries to read the empty sqlite rpmdb.
+
+**Solution**:
+1. Create macro file to set sqlite backend:
+   ```bash
+   echo "%_db_backend sqlite" > /usr/sgug/etc/rpm/macros.sqlite
+   ```
+2. Initialize sqlite database:
+   ```bash
+   rpmdb --initdb --dbpath=/usr/sgug/var/lib/rpm -D "_db_backend sqlite"
+   ```
+
+### Current Status
+
+After path fix and sqlite macro setup:
+- ✅ tdnf reads config from `/usr/sgug/etc/tdnf/tdnf.conf`
+- ✅ rpm uses sqlite backend (not BDB)
+- ❌ tdnf fails with "distroverpkg config entry is set to a package that is not installed"
+
+The distroverpkg (`sgugrse-release`) check fails because:
+1. Our sqlite rpmdb is empty (no packages installed)
+2. SGUG-RSE's BDB database has packages but we can't read it with our rpm
+
+### Next Steps
+
+1. **Install sgugrse-release into sqlite rpmdb** - Download or create the package
+2. **Or disable distroverpkg check** - Add `distroverpkg=` to tdnf.conf (but empty value causes segfault)
+3. **Or set to a package we have** - e.g., `distroverpkg=popt` if popt is installed
+
+### Files Modified
+
+- `patches/packages/tdnf/client-defines.sgifixes.patch` - Extended to patch both `client/defines.h` AND `common/config.h`
+- `rules/packages/tdnf.yaml` - Added `client-defines.sgifixes.patch` to `add_patch:`, removed redundant sed commands
+
+### Key Learning
+
+When debugging path issues:
+1. Check SGUG-RSE patches first (`/home/edodd/projects/github/sgug-rse/packages/<pkg>/*.sgifixes.patch`)
+2. Use `par` on IRIX to trace system calls and see actual paths accessed
+3. Use `strings` on binaries to verify compiled-in paths
+4. Check ALL header files for duplicate defines (not just the obvious one)

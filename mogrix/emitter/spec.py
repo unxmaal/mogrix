@@ -323,14 +323,34 @@ class SpecWriter:
         if install_cleanup:
             cleanup_cmds = "\n".join(install_cleanup)
             cleanup_comment = "# Install cleanup (injected by mogrix)"
-            # Insert after %make_install or %install
-            content = re.sub(
-                r"^(%make_install)(\s*)$",
-                f"\\1\\2\n\n{cleanup_comment}\n{cleanup_cmds}",
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
+            # Try patterns in order of preference
+            patterns = [
+                r"^(%make_install)(\s*)$",  # Standard autotools
+                r"^(%cmake_install)(\s*)$",  # cmake macro
+                r"^(make install DESTDIR=%\{buildroot\})(\s*)$",  # Direct make install
+            ]
+            inserted = False
+            for pattern in patterns:
+                new_content = re.sub(
+                    pattern,
+                    f"\\1\\2\n\n{cleanup_comment}\n{cleanup_cmds}",
+                    content,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+                if new_content != content:
+                    content = new_content
+                    inserted = True
+                    break
+            # Fallback: insert at end of %install section (before next section)
+            if not inserted:
+                content = re.sub(
+                    r"(^%install\s*\n.*?)(\n^%(?:files|pre|post|preun|postun|changelog|package|check)\b)",
+                    f"\\1\n\n{cleanup_comment}\n{cleanup_cmds}\\2",
+                    content,
+                    count=1,
+                    flags=re.MULTILINE | re.DOTALL,
+                )
 
         # Clean up empty lines from removals
         content = re.sub(r"\n{3,}", "\n\n", content)

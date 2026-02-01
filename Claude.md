@@ -121,33 +121,52 @@ If the answer to #3 is "no", you have more work to do.
 
 | File | When to Read |
 |------|--------------|
-| `rules/INDEX.md` | Package rules, build patterns, compat function mapping |
+| `rules/INDEX.md` | **READ FIRST** - Package rules, methods index, build patterns |
+| `rules/methods/mogrix-workflow.md` | Correct mogrix invocation and workflow |
 | `compat/catalog.yaml` | Available compat functions, which packages use them |
 | `HANDOFF.md` | Current session state, active issues, test commands |
-| `plan.md` | Architecture, IRIX interaction rules, bootstrap strategy |
 
 ---
 
 ## Mogrix Workflow
 
-```bash
-# Activate Python environment
-source .venv/bin/activate
+> **READ**: `rules/methods/mogrix-workflow.md` for complete details and common mistakes to avoid
 
+### CRITICAL: Correct Invocation
+
+**ALWAYS use:**
+```bash
+.venv/bin/mogrix <command>
+```
+
+**NEVER use:**
+- `python -m mogrix` - WRONG
+- `python3 -m mogrix.cli` - WRONG
+- Manual `rpmbuild` invocation - WRONG (use `mogrix build --cross`)
+
+### Standard Workflow
+
+```bash
 # 1. Fetch the Fedora SRPM
-mogrix fetch <package>
+.venv/bin/mogrix fetch <package>
 
 # 2. Convert to IRIX-compatible SRPM
-mogrix convert workdir/<package>-*.src.rpm
+.venv/bin/mogrix convert workdir/<package>-*.src.rpm -o /tmp/converted/
 
-# 3. Build with cross-compilation
-mogrix build --cross workdir/converted/<package>-*.src.rpm
+# 3. Build with cross-compilation (handles --target=mips-sgi-irix automatically)
+.venv/bin/mogrix build /tmp/converted/<package>-*.src.rpm --cross
 
 # 4. Stage for dependent builds
-mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
+.venv/bin/mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
 
 # 5. Test on IRIX (see IRIX Interaction Rules below)
 ```
+
+### Verify Output
+
+After build, verify:
+- RPMs are in `~/rpmbuild/RPMS/mips/` (not x86_64!)
+- `file` shows "ELF 32-bit MSB ... MIPS, N32"
 
 ### If a Build Fails
 
