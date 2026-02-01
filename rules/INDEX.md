@@ -29,6 +29,13 @@ Before modifying packages, understand the correct methods:
 - Always use `/bin/sh` on IRIX, never assume bash
 - Use `LD_LIBRARYN32_PATH` not `LD_LIBRARY_PATH`
 
+**Directory conventions** (see [mogrix-workflow.md](methods/mogrix-workflow.md)):
+- `~/rpmbuild/SRPMS/fc40/` - Original SRPMs (persistent)
+- `/tmp/mogrix-converted/<pkg>/` - Conversion output (ephemeral)
+- `~/rpmbuild/RPMS/mips/` - Built packages
+- `/tmp/mogrix-repo/` - Distribution repo
+- **Never store build artifacts in the mogrix repo**
+
 ---
 
 ## Quick Reference

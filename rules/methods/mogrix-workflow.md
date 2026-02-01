@@ -20,21 +20,45 @@
 
 ---
 
+## Directory Conventions
+
+| Directory | Purpose |
+|-----------|---------|
+| `~/rpmbuild/SRPMS/fc40/` | Original Fedora 40 SRPMs (persistent inputs) |
+| `/tmp/mogrix-converted/<pkg>/` | Conversion output (ephemeral, regenerate anytime) |
+| `~/rpmbuild/RPMS/mips/` | Built MIPS packages (rpmbuild output) |
+| `~/rpmbuild/RPMS/noarch/` | Built noarch packages |
+| `/tmp/mogrix-repo/` | Distribution repository (copy of what ships) |
+
+**Key principles:**
+- **Never store build artifacts in the mogrix repo** - keep it code-only
+- **Original SRPMs are inputs** - persistent, reusable
+- **Converted output is ephemeral** - regenerate from originals + rules
+- **Repo is for distribution** - copy built RPMs here, run createrepo_c
+
+---
+
 ## Standard Workflow
 
-### 1. Convert a spec or SRPM
+### 1. Fetch SRPM (if not already present)
+```bash
+# Fetch to standard location
+.venv/bin/mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
+```
+
+### 2. Convert SRPM
 ```bash
 # From an SRPM (preferred - extracts, converts, repackages)
-.venv/bin/mogrix convert popt-1.19-6.fc40.src.rpm -o /tmp/popt-converted/
+.venv/bin/mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
 
 # From a spec file (just transforms the spec)
 .venv/bin/mogrix convert path/to/package.spec -o /tmp/output-dir/
 ```
 
-### 2. Build for IRIX (cross-compile)
+### 3. Build for IRIX (cross-compile)
 ```bash
 # Use --cross flag - handles rpmbuild invocation correctly
-.venv/bin/mogrix build /tmp/popt-converted/popt-1.19-6.src.rpm --cross
+.venv/bin/mogrix build /tmp/mogrix-converted/popt/popt-1.19-6.src.rpm --cross
 ```
 
 The `--cross` flag automatically:
@@ -42,9 +66,16 @@ The `--cross` flag automatically:
 - Sets `--target=mips-sgi-irix`
 - Passes `--nodeps`
 
-### 3. Stage for dependent builds
+### 4. Stage for dependent builds
 ```bash
 .venv/bin/mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+```
+
+### 5. Copy to repo and update metadata
+```bash
+cp ~/rpmbuild/RPMS/mips/popt*.rpm /tmp/mogrix-repo/
+cp ~/rpmbuild/RPMS/noarch/popt*.rpm /tmp/mogrix-repo/ 2>/dev/null || true
+createrepo_c --update /tmp/mogrix-repo/
 ```
 
 ---

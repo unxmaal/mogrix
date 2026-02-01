@@ -144,22 +144,38 @@ If the answer to #3 is "no", you have more work to do.
 - `python3 -m mogrix.cli` - WRONG
 - Manual `rpmbuild` invocation - WRONG (use `mogrix build --cross`)
 
+### Directory Conventions
+
+| Directory | Purpose |
+|-----------|---------|
+| `~/rpmbuild/SRPMS/fc40/` | Original Fedora 40 SRPMs (persistent inputs) |
+| `/tmp/mogrix-converted/<pkg>/` | Conversion output (ephemeral) |
+| `~/rpmbuild/RPMS/mips/` | Built MIPS packages |
+| `/tmp/mogrix-repo/` | Distribution repository |
+
+**Never store build artifacts in the mogrix repo** - keep it code-only.
+
 ### Standard Workflow
 
 ```bash
-# 1. Fetch the Fedora SRPM
-.venv/bin/mogrix fetch <package>
+# 1. Fetch the Fedora SRPM (to standard location)
+.venv/bin/mogrix fetch <package> -o ~/rpmbuild/SRPMS/fc40/
 
 # 2. Convert to IRIX-compatible SRPM
-.venv/bin/mogrix convert workdir/<package>-*.src.rpm -o /tmp/converted/
+.venv/bin/mogrix convert ~/rpmbuild/SRPMS/fc40/<package>-*.src.rpm -o /tmp/mogrix-converted/<package>/
 
 # 3. Build with cross-compilation (handles --target=mips-sgi-irix automatically)
-.venv/bin/mogrix build /tmp/converted/<package>-*.src.rpm --cross
+.venv/bin/mogrix build /tmp/mogrix-converted/<package>/<package>-*.src.rpm --cross
 
 # 4. Stage for dependent builds
 .venv/bin/mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
 
-# 5. Test on IRIX (see IRIX Interaction Rules below)
+# 5. Copy to repo and update metadata
+cp ~/rpmbuild/RPMS/mips/<package>*.rpm /tmp/mogrix-repo/
+cp ~/rpmbuild/RPMS/noarch/<package>*.rpm /tmp/mogrix-repo/ 2>/dev/null || true
+createrepo_c --update /tmp/mogrix-repo/
+
+# 6. Test on IRIX (see IRIX Interaction Rules below)
 ```
 
 ### Verify Output

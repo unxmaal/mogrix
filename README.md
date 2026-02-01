@@ -41,35 +41,34 @@ make install
 
 The recommended workflow operates on SRPMs directly. Direct spec file editing should be avoided.
 
+#### Directory Conventions
+
+| Directory | Purpose |
+|-----------|---------|
+| `~/rpmbuild/SRPMS/fc40/` | Original Fedora 40 SRPMs (persistent inputs) |
+| `/tmp/mogrix-converted/<pkg>/` | Conversion output (ephemeral) |
+| `~/rpmbuild/RPMS/mips/` | Built MIPS packages |
+| `/tmp/mogrix-repo/` | Distribution repository |
+
 ```bash
 # 1. One-time setup of cross-compilation environment
 mogrix setup-cross
 
-# 2. Fetch SRPM from Fedora (downloads to current directory by default)
-mogrix fetch popt
+# 2. Fetch SRPM from Fedora
+mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
 
-# 3. Convert SRPM (creates -converted/ directory next to input)
-mogrix convert popt-1.19-6.fc40.src.rpm
+# 3. Convert SRPM
+mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
 
 # 4. Cross-compile for IRIX (outputs to ~/rpmbuild/RPMS/mips/)
-mogrix build popt-1.19-6.fc40.src-converted/popt-*.src.rpm --cross
+mogrix build /tmp/mogrix-converted/popt/popt-*.src.rpm --cross
 
 # 5. Stage for dependent builds
 mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
-```
 
-#### Alternative: Organize in ~/rpmbuild/SRPMS/
-
-```bash
-# Fetch to ~/rpmbuild/SRPMS/
-mogrix fetch popt -o ~/rpmbuild/SRPMS/
-
-# Convert (creates ~/rpmbuild/SRPMS/popt-*-converted/)
-mogrix convert ~/rpmbuild/SRPMS/popt-1.19-6.fc40.src.rpm
-
-# Build and stage
-mogrix build ~/rpmbuild/SRPMS/popt-1.19-6.fc40.src-converted/popt-*.src.rpm --cross
-mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+# 6. Copy to distribution repo
+cp ~/rpmbuild/RPMS/mips/popt*.rpm /tmp/mogrix-repo/
+createrepo_c --update /tmp/mogrix-repo/
 ```
 
 ### Analyze an SRPM

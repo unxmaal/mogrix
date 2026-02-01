@@ -58,17 +58,59 @@ class SpecWriter:
 
         # Remove dropped BuildRequires
         for dep in drops:
-            # Match BuildRequires line containing the dep (with optional version)
-            # Handles: BuildRequires: pkg, BuildRequires: pkg >= 1.0, etc.
-            pattern = rf"^BuildRequires:\s*{re.escape(dep)}(\s*[<>=].*)?$"
+            escaped_dep = re.escape(dep)
+            # Pattern 1: Single-package BuildRequires line
+            # Matches: BuildRequires: pkg, BuildRequires: pkg >= 1.0, BuildRequires: pkg%{_isa}
+            pattern = rf"^BuildRequires:\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
             content = re.sub(pattern, "", content, flags=re.MULTILINE)
+
+            # Pattern 2: Package in a multi-package BuildRequires line
+            def remove_from_multi_buildrequires(match):
+                full_line = match.group(0)
+                prefix = match.group(1)  # "BuildRequires:"
+                packages = match.group(2)
+                # Remove the specific package (with optional version constraint)
+                pkg_pattern = rf"\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?\s*"
+                new_packages = re.sub(pkg_pattern, " ", packages).strip()
+                new_packages = re.sub(r"\s+", " ", new_packages)
+                if not new_packages:
+                    return ""
+                return f"{prefix} {new_packages}"
+
+            pattern_multi = rf"^(BuildRequires:)\s+(.+{escaped_dep}.*)$"
+            content = re.sub(pattern_multi, remove_from_multi_buildrequires, content, flags=re.MULTILINE)
 
         # Remove dropped Requires
         if drop_requires:
             for dep in drop_requires:
-                # Match Requires line (but not BuildRequires)
-                pattern = rf"^Requires:\s*{re.escape(dep)}(\s*[<>=].*)?$"
+                escaped_dep = re.escape(dep)
+                # Match all Requires variants: Requires:, Requires(pre):, Requires(post):, etc.
+                # Also handle %{_isa} suffix and version constraints
+                # Pattern 1: Single-package Requires line (with optional scriptlet qualifier)
+                # Matches: Requires: pkg, Requires(pre): pkg, Requires: pkg%{_isa} >= 1.0
+                pattern = rf"^Requires(\([^)]+\))?:\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
                 content = re.sub(pattern, "", content, flags=re.MULTILINE)
+
+                # Pattern 2: Package in a multi-package Requires line
+                # Remove just that package from the line, preserving others
+                # Matches: "Requires: foo bar pkg baz" -> "Requires: foo bar baz"
+                def remove_from_multi_requires(match):
+                    full_line = match.group(0)
+                    prefix = match.group(1)  # "Requires:" or "Requires(pre):" etc
+                    packages = match.group(2)
+                    # Remove the specific package (with optional version constraint)
+                    # Handle: pkg, pkg >= 1.0, pkg%{_isa}, pkg%{_isa} >= 1.0
+                    pkg_pattern = rf"\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?\s*"
+                    new_packages = re.sub(pkg_pattern, " ", packages).strip()
+                    # Clean up multiple spaces
+                    new_packages = re.sub(r"\s+", " ", new_packages)
+                    if not new_packages:
+                        return ""  # Remove entire line if no packages left
+                    return f"{prefix} {new_packages}"
+
+                # Match Requires lines that contain multiple packages
+                pattern_multi = rf"^(Requires(?:\([^)]+\))?:)\s+(.+{escaped_dep}.*)$"
+                content = re.sub(pattern_multi, remove_from_multi_requires, content, flags=re.MULTILINE)
 
         # Remove specific lines (substring match - removes lines containing pattern)
         if remove_lines:

@@ -31,9 +31,11 @@ package: tdnf
 # IRIX-specific patches
 # client-defines.sgifixes.patch - fixes hardcoded /etc paths to /usr/sgug/etc
 # gpgcheck-rpm419.sgifixes.patch - fixes gpgcheck for rpm 4.19 API
+# tdnf-common-utils.sgifixes.patch - bypasses realpath() which returns EINVAL on IRIX for non-existent paths
 add_patch:
   - client-defines.sgifixes.patch
   - gpgcheck-rpm419.sgifixes.patch
+  - tdnf-common-utils.sgifixes.patch
 
 rules:
   # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
@@ -52,6 +54,13 @@ rules:
 
   drop_requires:
     - systemd
+    # Linux package names don't match IRIX package names
+    # These deps are satisfied by equivalent IRIX packages
+    - rpm-libs
+    - curl-libs
+    - libsolv
+    - zlib
+    - openssl-libs
 
   # tdnf uses cmake
   # CMake options for IRIX:

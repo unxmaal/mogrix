@@ -24,6 +24,7 @@ rules:
     - openat  # Provides all POSIX.1-2008 "at" functions
     - getprogname  # BSD extension for program name
     - posix_spawn  # POSIX spawn functions for rpmlua.c
+    - setenv  # IRIX has putenv but not setenv
 
   # Drop problematic dependencies
   drop_buildrequires:
@@ -44,6 +45,19 @@ rules:
   drop_requires:
     - libselinux
     - audit-libs
+    # Linux package names don't match IRIX - deps satisfied by equivalent packages
+    - coreutils
+    - curl
+    - findutils
+    - sed
+    - grep
+    - gawk
+    - diffutils
+    - file
+    - patch
+    - popt
+    # rpm-sequoia not needed - we use internal OpenPGP
+    - rpm-sequoia
 
   # Use cross-compiled deps from staging
   export_vars:
@@ -54,6 +68,7 @@ rules:
     LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS"
 
   # cmake spec replacements for cross-compilation
+  # NOTE: Most Requires lines are now handled by drop_requires (including Requires(pre): variants)
   spec_replacements:
     # Replace cmake call with cross-compilation settings (single line continuation)
     - pattern: "cmake \\\n      -DCMAKE_INSTALL_PREFIX"

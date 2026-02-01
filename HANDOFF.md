@@ -592,6 +592,23 @@ When linking a static archive (.a) into a shared library (.so), symbols that are
 | IRIX host | `ssh edodd@192.168.0.81` |
 | IRIX chroot | `/opt/chroot` |
 
+### Directory Conventions
+
+| Directory | Purpose |
+|-----------|---------|
+| `~/rpmbuild/SRPMS/fc40/` | Original Fedora 40 SRPMs (persistent inputs) |
+| `/tmp/mogrix-converted/<pkg>/` | Conversion output (ephemeral, regenerate anytime) |
+| `~/rpmbuild/RPMS/mips/` | Built MIPS packages (rpmbuild output) |
+| `~/rpmbuild/RPMS/noarch/` | Built noarch packages |
+| `/tmp/mogrix-repo/` | Distribution repository (copy of what ships) |
+
+**Key principles:**
+- **Original SRPMs are inputs** - keep them in `~/rpmbuild/SRPMS/fc40/`
+- **Converted output is ephemeral** - regenerate from originals + rules anytime
+- **Built RPMs are outputs** - rpmbuild puts them in `~/rpmbuild/RPMS/`
+- **Repo is for distribution** - copy built RPMs here, run createrepo_c
+- **Never store build artifacts in the mogrix repo** - keep it code-only
+
 ---
 
 ## Quick Test on IRIX
