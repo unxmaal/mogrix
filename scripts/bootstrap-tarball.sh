@@ -76,6 +76,9 @@ REQUIRED_PACKAGES=(
 
     # Release/config packages
     "sgugrse-release-[0-9]*:noarch"
+
+    # Development symlinks needed at runtime (libsolvext.so links against libz.so not libz.so.1)
+    "zlib-ng-compat-devel-[0-9]*:mips"
 )
 
 # =============================================================================
@@ -180,6 +183,14 @@ extract_rpms() {
     done
 
     log_info "Extracted $extracted RPMs"
+
+    # Also include the RPM files themselves for rpm database registration
+    log_info "Including RPM files for database registration..."
+    mkdir -p "$BOOTSTRAP_DIR/tmp/bootstrap-rpms"
+    for rpm in "${FOUND_RPMS[@]}"; do
+        cp "$rpm" "$BOOTSTRAP_DIR/tmp/bootstrap-rpms/"
+    done
+    log_info "Copied ${#FOUND_RPMS[@]} RPM files to /tmp/bootstrap-rpms/"
 }
 
 # Verify critical files exist
@@ -198,8 +209,8 @@ verify_contents() {
         fi
     done
 
-    # Critical libraries
-    for lib in librpm.so libtdnf.so libsolv.so libz.so libssl.so; do
+    # Critical libraries (use versioned names for ssl since that's the SONAME)
+    for lib in librpm.so libtdnf.so libsolv.so libz.so libssl.so.3; do
         if [ -f "$BOOTSTRAP_DIR/usr/sgug/lib32/$lib" ]; then
             echo "  [OK] /usr/sgug/lib32/$lib"
         else
@@ -314,22 +325,35 @@ print_next_steps() {
     echo "  ${TARBALL}"
     echo "  ${TARBALL}.gz"
     echo ""
+    echo "The tarball is self-contained and includes:"
+    echo "  - Extracted files under /usr/sgug/"
+    echo "  - RPM files in /tmp/bootstrap-rpms/ for database registration"
+    echo ""
     echo "Next steps:"
     echo ""
-    echo "1. Copy to IRIX:"
+    echo "1. Copy tarball to IRIX:"
     echo "   scp ${TARBALL}.gz root@192.168.0.81:/tmp/"
     echo ""
     echo "2. On IRIX as root, extract to chroot:"
     echo "   cd /opt/chroot"
     echo "   gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -"
     echo ""
-    echo "3. Initialize rpm database:"
+    echo "3. Initialize rpm database and register packages:"
     echo "   chroot /opt/chroot /bin/sh"
     echo "   export LD_LIBRARYN32_PATH=/usr/sgug/lib32"
     echo "   /usr/sgug/bin/rpm --initdb"
+    echo "   /usr/sgug/bin/rpm -Uvh --nodeps /tmp/bootstrap-rpms/sgugrse-release*.noarch.rpm"
     echo ""
-    echo "4. Test tdnf:"
+    echo "4. Create local repo from bootstrap RPMs:"
+    echo "   mkdir -p /tmp/mogrix-repo"
+    echo "   cp /tmp/bootstrap-rpms/*.rpm /tmp/mogrix-repo/"
+    echo "   # Run createrepo on Linux, copy repodata to IRIX:"
+    echo "   # createrepo_c --simple-md-filenames /tmp/mogrix-repo"
+    echo ""
+    echo "5. Test tdnf:"
     echo "   /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist"
+    echo "   /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf makecache"
+    echo "   /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf list"
     echo ""
 }
 

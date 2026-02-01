@@ -4,7 +4,7 @@ TransMOGrifies Linux SRPMs into IRIX-compatible packages.
 
 ## Overview
 
-Mogrix is a deterministic SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
+Mogrix is a deterministic conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
 **Key Features:**
 - YAML-based rule engine for spec file transformations
@@ -415,6 +415,36 @@ rules:
 | `utimensat` | Set timestamps relative to directory fd |
 | `futimens` | Set timestamps via fd |
 
+## IRIX Bootstrap
+
+After building all required packages, create a self-contained bootstrap tarball for IRIX:
+
+```bash
+# Create bootstrap tarball (validates 17 required packages)
+./scripts/bootstrap-tarball.sh
+
+# Copy to IRIX
+scp tmp/irix-bootstrap.tar.gz root@irix-host:/tmp/
+
+# On IRIX, extract and initialize
+cd /opt/chroot
+gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --initdb
+/usr/sgug/bin/rpm -Uvh --nodeps /tmp/bootstrap-rpms/sgugrse-release*.noarch.rpm
+
+# Test tdnf
+/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist
+```
+
+The bootstrap tarball includes:
+- All tdnf dependency chain packages (extracted)
+- RPM files for database registration (`/tmp/bootstrap-rpms/`)
+- Default repository config pointing to `/tmp/mogrix-repo`
+
+See `HANDOFF.md` for detailed IRIX setup instructions.
+
 ## Project Structure
 
 ```
@@ -470,24 +500,26 @@ make clean
 
 ## Package Rules Status
 
-12 packages validated for the tdnf dependency chain (FC40):
+13 packages validated for the tdnf dependency chain:
 
-| # | Package | Version | Description |
-|---|---------|---------|-------------|
-| 1 | zlib-ng | 2.1.6 | Compression library (replaces zlib in FC40) |
-| 2 | bzip2 | 1.0.8 | Block-sorting compression |
-| 3 | popt | 1.19 | Command-line option parsing |
-| 4 | openssl | 3.2.1 | TLS/SSL and crypto library |
-| 5 | libxml2 | 2.12.5 | XML parsing library |
-| 6 | curl | 8.6.0 | URL transfer library |
-| 7 | xz | 5.4.6 | LZMA compression |
-| 8 | lua | 5.4.6 | Scripting language (for rpm) |
-| 9 | file | 5.45 | File type detection |
-| 10 | rpm | 4.19.1.1 | Package manager |
-| 11 | libsolv | 0.7.28 | Dependency solver |
-| 12 | tdnf | 3.5.14 | Package manager CLI (target) |
+| # | Package | Version | Source | Description |
+|---|---------|---------|--------|-------------|
+| 1 | zlib-ng | 2.1.6 | FC40 | Compression library (replaces zlib in FC40) |
+| 2 | bzip2 | 1.0.8 | FC40 | Block-sorting compression |
+| 3 | popt | 1.19 | FC40 | Command-line option parsing |
+| 4 | openssl | 3.2.1 | FC40 | TLS/SSL and crypto library |
+| 5 | libxml2 | 2.12.5 | FC40 | XML parsing library |
+| 6 | curl | 8.6.0 | FC40 | URL transfer library |
+| 7 | xz | 5.4.6 | FC40 | LZMA compression |
+| 8 | lua | 5.4.6 | FC40 | Scripting language (for rpm) |
+| 9 | file | 5.45 | FC40 | File type detection |
+| 10 | sqlite | 3.45.1 | FC40 | Embedded SQL database |
+| 11 | rpm | 4.19.1.1 | FC40 | Package manager |
+| 12 | libsolv | 0.7.28 | FC40 | Dependency solver |
+| 13 | tdnf | 3.5.14 | Photon5 | Package manager CLI (target) |
 
-All packages build from Fedora 40 SRPMs (except tdnf which comes from Photon OS).
+Additional supporting package:
+- **sgugrse-release** - Distribution release package (noarch, provides distroverpkg)
 
 ## Architecture
 

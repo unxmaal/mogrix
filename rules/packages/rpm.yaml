@@ -208,5 +208,6 @@ rules:
     - pattern: "%doc CREDITS docs/manual/[a-z]*\n%doc %{_defaultdocdir}/rpm/CONTRIBUTING.md\n%doc %{_defaultdocdir}/rpm/COPYING\n%doc %{_defaultdocdir}/rpm/INSTALL\n%doc %{_defaultdocdir}/rpm/README"
       replacement: "%doc CREDITS docs/manual/[a-z]*\n%{_defaultdocdir}/rpm/"
     # Add IRIX-specific files to %files (rpm owns /var/run as lowest-level package needing it)
-    - pattern: "%dir %{_localstatedir}/lib/rpm"
-      replacement: "%dir %{_localstatedir}/lib/rpm\n%dir /var/run\n/var/lib/rpm\n%dir /usr/sgug/etc/rpm\n%config(noreplace) /usr/sgug/etc/rpm/macros.sqlite"
+    # Match the line after sysimage entries
+    - pattern: "%{_bindir}/rpm\n# %{_bindir}/rpm2archive"
+      replacement: "%dir /var/run\n/var/lib/rpm\n%dir /usr/sgug/etc/rpm\n%config(noreplace) /usr/sgug/etc/rpm/macros.sqlite\n\n%{_bindir}/rpm\n# %{_bindir}/rpm2archive"

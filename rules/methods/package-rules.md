@@ -63,7 +63,10 @@ These should be set in the package's config files, not external scripts.
 | Directory | Owner Package | Reason |
 |-----------|---------------|--------|
 | `/var/run` | rpm | Lowest package needing lockfiles |
-| `/var/lib/rpm` | rpm | rpm's database location |
+| `/var/lib/rpm` | rpm | rpm's database location (symlink to /usr/sgug/lib32/sysimage/rpm) |
+| `/usr/sgug/etc/rpm` | rpm | rpm config directory |
+| `/usr/sgug/etc/rpm/macros.sqlite` | rpm | Sets sqlite as default db backend |
 | `/usr/sgug/etc/yum.repos.d` | tdnf | tdnf needs it to function |
+| `/usr/sgug/etc/yum.repos.d/mogrix.repo` | tdnf | Default bootstrap repo (points to /tmp/mogrix-repo) |
 | `/usr/sgug/var/cache/tdnf` | tdnf | tdnf's cache |
 | `/usr/sgug/etc/pki/rpm-gpg` | sgugrse-repos | GPG key storage |

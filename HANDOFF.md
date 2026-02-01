@@ -151,9 +151,9 @@ installonly_limit=3
 clean_requirements_on_remove=1
 repodir=/usr/sgug/etc/yum.repos.d
 cachedir=/usr/sgug/var/cache/tdnf
-distroverpkg=        # Disables distro package check
-releasever=1         # Required - prevents $releasever lookup
-basearch=mips        # Required - prevents $basearch lookup
+distroverpkg=sgugrse-release  # Must be actual package name (empty value causes segfault)
+releasever=1                  # Required - prevents $releasever lookup
+basearch=mips                 # Required - prevents $basearch lookup
 ```
 
 **mogrix.repo settings** (at `/usr/sgug/etc/yum.repos.d/mogrix.repo`):
@@ -254,8 +254,9 @@ installonly_limit=3
 clean_requirements_on_remove=1
 repodir=/usr/sgug/etc/yum.repos.d
 cachedir=/usr/sgug/var/cache/tdnf
-distroverpkg=
+distroverpkg=sgugrse-release  # Must be actual package name (empty value causes segfault)
 releasever=1
+basearch=mips
 ```
 
 ### Required Directories
@@ -274,13 +275,48 @@ rpm --initdb --dbpath=/usr/sgug/lib/sysimage/rpm
 
 ---
 
+## Bootstrap Tarball Workflow (2026-02-01)
+
+A self-contained bootstrap tarball is available at `scripts/bootstrap-tarball.sh`. It:
+- Validates all 17 required packages exist
+- Extracts them to a single directory
+- Includes RPM files at `/tmp/bootstrap-rpms/` for rpmdb registration
+- Ships `mogrix.repo` pointing to `file:///tmp/mogrix-repo`
+
+**Usage:**
+```bash
+# On Linux build host
+./scripts/bootstrap-tarball.sh
+scp tmp/irix-bootstrap.tar.gz root@192.168.0.81:/tmp/
+
+# On IRIX
+cd /opt/chroot
+gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --initdb
+/usr/sgug/bin/rpm -Uvh --nodeps /tmp/bootstrap-rpms/sgugrse-release*.noarch.rpm
+
+# Create repo (on Linux, copy repodata to IRIX)
+createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
+# Copy repodata/* to IRIX /tmp/mogrix-repo/
+
+# Test
+/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist
+/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf makecache
+/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf install popt
+```
+
+---
+
 ## Next Steps
 
 1. ~~**Test tdnf install on IRIX**~~ - ✅ DONE (2026-02-01) - `tdnf install popt` works
-2. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
-3. **Build more packages** - Expand the mogrix repo with more useful packages
-4. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
-5. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+2. ~~**Bootstrap tarball workflow**~~ - ✅ DONE (2026-02-01) - Self-contained, repeatable
+3. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
+4. **Build more packages** - Expand the mogrix repo with more useful packages
+5. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
+6. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
 
 ---
 

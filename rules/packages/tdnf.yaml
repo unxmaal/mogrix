@@ -200,9 +200,9 @@ rules:
         popd
       replacement: |
         # Skip Python bindings installation (not built for cross-compilation)
-    # Add yum.repos.d directory to %files (tdnf owns this directory per package-rules.md)
+    # Add yum.repos.d directory and default repo file to %files (tdnf owns this directory per package-rules.md)
     - pattern: "%dir %{_var}/cache/%{name}"
-      replacement: "%dir %{_var}/cache/%{name}\n%dir /usr/sgug/etc/yum.repos.d"
+      replacement: "%dir %{_var}/cache/%{name}\n%dir /usr/sgug/etc/yum.repos.d\n%config(noreplace) /usr/sgug/etc/yum.repos.d/mogrix.repo"
     # Fix shared library patterns for non-versioned libs
     - pattern: "%{_libdir}/libtdnf.so.*"
       replacement: "%{_libdir}/libtdnf.so"
@@ -268,10 +268,25 @@ rules:
       replacement: "# disabled: %systemd_postun_with_restart %{automatic_services}"
 
   # Fix tdnf.conf paths for IRIX - must be rooted at /usr/sgug, not /etc or /var
-  # Also set gpgcheck=0 since IRIX has no GPG infrastructure
+  # Also set IRIX-specific settings:
+  # - gpgcheck=0 (no GPG infrastructure on IRIX)
+  # - distroverpkg= (empty - disable distro package check since rpmdb is empty at bootstrap)
+  # - releasever=1 (prevent $releasever lookup)
+  # - basearch=mips (IRIX uname returns IP30/IP32, not a usable arch)
   install_cleanup:
     - sed -i 's|repodir=/etc/|repodir=/usr/sgug/etc/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
     - sed -i 's|cachedir=/var/|cachedir=/usr/sgug/var/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
     - sed -i 's|gpgcheck=1|gpgcheck=0|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+    - echo 'distroverpkg=sgugrse-release' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+    - echo 'releasever=1' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+    - echo 'basearch=mips' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
     - mkdir -p $RPM_BUILD_ROOT/usr/sgug/etc/yum.repos.d
     - mkdir -p $RPM_BUILD_ROOT/usr/sgug/var/cache/tdnf
+    - |
+      cat > $RPM_BUILD_ROOT/usr/sgug/etc/yum.repos.d/mogrix.repo << 'REPOEOF'
+      [mogrix]
+      name=Mogrix Local Repository
+      baseurl=file:///tmp/mogrix-repo
+      enabled=1
+      gpgcheck=0
+      REPOEOF
