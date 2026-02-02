@@ -208,25 +208,71 @@ class SpecWriter:
                     lines.insert(last_source_idx, src_line)
                 content = "\n".join(lines)
 
-        # Inject Patch entries (after last Source/Patch line)
+        # Inject Patch entries
+        # If %patchlist exists, add patch filenames to end of patchlist
+        # (so they're applied AFTER other patchlist patches)
+        # Otherwise, add as PatchN: tags after last Source/Patch line
         if patch_sources:
             lines = content.splitlines()
-            last_source_idx = -1
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-                if (
-                    stripped.startswith("Source") or stripped.startswith("Patch")
-                ) and ":" in stripped:
-                    last_source_idx = i
+            has_patchlist = any("%patchlist" in line for line in lines)
 
-            if last_source_idx >= 0:
-                # Insert after last Source/Patch line with a comment
-                lines.insert(last_source_idx + 1, "# Mogrix patches (IRIX compatibility)")
-                last_source_idx += 1
-                for patch_line in patch_sources.splitlines():
+            if has_patchlist:
+                # Find %patchlist and the next section after it
+                patchlist_idx = -1
+                patchlist_end_idx = -1
+                for i, line in enumerate(lines):
+                    if "%patchlist" in line:
+                        patchlist_idx = i
+                    elif patchlist_idx >= 0 and line.strip().startswith("%"):
+                        # Found next section (e.g., %prep, %description)
+                        patchlist_end_idx = i
+                        break
+
+                if patchlist_idx >= 0:
+                    # Find last non-empty line before next section
+                    if patchlist_end_idx < 0:
+                        patchlist_end_idx = len(lines)
+                    insert_idx = patchlist_end_idx
+                    # Work backwards to find last non-blank line in patchlist
+                    for i in range(patchlist_end_idx - 1, patchlist_idx, -1):
+                        if lines[i].strip() and not lines[i].strip().startswith("#"):
+                            insert_idx = i + 1
+                            break
+
+                    # Extract just patch filenames from PatchN: lines
+                    patch_filenames = []
+                    for patch_line in patch_sources.splitlines():
+                        if patch_line.strip():
+                            # Extract filename from "Patch200: filename.patch"
+                            if ":" in patch_line:
+                                patch_filenames.append(patch_line.split(":", 1)[1].strip())
+                            else:
+                                patch_filenames.append(patch_line.strip())
+
+                    # Insert patch filenames into patchlist
+                    lines.insert(insert_idx, "# Mogrix IRIX compatibility patches")
+                    for pf in patch_filenames:
+                        insert_idx += 1
+                        lines.insert(insert_idx, pf)
+                    content = "\n".join(lines)
+            else:
+                # No patchlist - use Patch tags
+                last_source_idx = -1
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    if (
+                        stripped.startswith("Source") or stripped.startswith("Patch")
+                    ) and ":" in stripped:
+                        last_source_idx = i
+
+                if last_source_idx >= 0:
+                    # Insert after last Source/Patch line with a comment
+                    lines.insert(last_source_idx + 1, "# Mogrix patches (IRIX compatibility)")
                     last_source_idx += 1
-                    lines.insert(last_source_idx, patch_line)
-                content = "\n".join(lines)
+                    for patch_line in patch_sources.splitlines():
+                        last_source_idx += 1
+                        lines.insert(last_source_idx, patch_line)
+                    content = "\n".join(lines)
 
         # Create .origfedora copy for patch development
         # This goes FIRST, before any patches or modifications are applied
