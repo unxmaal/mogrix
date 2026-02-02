@@ -146,15 +146,16 @@ diff -Naur rpm-4.19.1.1.origfedora/misc/fts.c rpm-4.19.1.1/misc/fts.c
  #   define FTS_FSTAT64(_fd, _sbp)   fstat((_fd), (_sbp))
  #else
  #   define FTS_FSTAT64(_fd, _sbp)   fstat64((_fd), (_sbp))
-@@ -56,6 +56,12 @@
+@@ -56,6 +56,13 @@
  #else
- 
+
  /* Conditionals for working around non-GNU environments */
 +#if defined(__sgi)
 +#   include <sys/types.h>
 +#   define __errno_location()	(&errno)
 +#   define dirfd(dirp)		((dirp)->dd_fd)
-+#   define stat64		stat
++/* Note: DO NOT define stat64 as stat - IRIX has both types and this
++ * causes struct redefinition errors. FTS_FSTAT64 above uses fstat(). */
 +#endif
  #if defined(hpux)
  #   define        _INCLUDE_POSIX_SOURCE
@@ -162,17 +163,21 @@ diff -Naur rpm-4.19.1.1.origfedora/misc/fts.c rpm-4.19.1.1/misc/fts.c
 diff -Naur rpm-4.19.1.1.origfedora/misc/system.h rpm-4.19.1.1/misc/system.h
 --- rpm-4.19.1.1.origfedora/misc/system.h	2024-02-07 13:36:51.000000000 +0000
 +++ rpm-4.19.1.1/misc/system.h	2026-02-02 15:26:48.480643964 +0000
-@@ -73,6 +73,10 @@
- # include <stdlib.h> /* Make sure this header is included */
- # define xsetprogname(pn) setprogname(pn)
- # define xgetprogname(pn) getprogname(pn)
-+#elif defined(__sgi)
-+/* IRIX: use getprogname from compat library, setprogname is a no-op */
-+# define xsetprogname(pn)
-+# define xgetprogname(pn) getprogname()
- #elif defined(HAVE___PROGNAME) /* glibc and others */
- # define xsetprogname(pn)
-   extern const char *__progname;
+@@ -80,6 +80,14 @@
+ # error "Did not find any sutable implementation of xsetprogname/xgetprogname"
+ #endif
+
++/* IRIX: stpcpy/stpncpy declarations (implementations in mogrix-compat)
++ * These are in a separate block because HAVE_SETPROGNAME=1 is set for IRIX
++ * (since mogrix-compat provides setprogname), which skips the #elif __sgi branch above */
++#if defined(__sgi)
++  extern char *stpcpy(char *dest, const char *src);
++  extern char *stpncpy(char *dest, const char *src, size_t n);
++#endif
++
+ /* Take care of NLS matters.  */
+ #if defined(ENABLE_NLS)
+ # include <locale.h>
 diff -Naur rpm-4.19.1.1.origfedora/rpmio/macro.c rpm-4.19.1.1/rpmio/macro.c
 --- rpm-4.19.1.1.origfedora/rpmio/macro.c	2024-02-07 13:36:51.000000000 +0000
 +++ rpm-4.19.1.1/rpmio/macro.c	2026-02-02 15:26:59.656807060 +0000

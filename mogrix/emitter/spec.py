@@ -1,8 +1,13 @@
 """Spec file writer for mogrix."""
 
 import re
+from pathlib import Path
 
 from mogrix.rules.engine import TransformResult
+
+# Calculate MOGRIX_ROOT from this file's location
+# This allows $MOGRIX_ROOT/tools/... to work in specs
+MOGRIX_ROOT = str(Path(__file__).parent.parent.parent.resolve())
 
 
 class SpecWriter:
@@ -354,9 +359,13 @@ cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
                 )
 
         # Inject export_vars (e.g., LD for libtool)
+        # Always include MOGRIX_ROOT so helper scripts can be found
+        all_export_vars = {"MOGRIX_ROOT": MOGRIX_ROOT}
         if export_vars:
+            all_export_vars.update(export_vars)
+        if all_export_vars:
             export_lines = "\n".join(
-                f'export {var}="{val}"' for var, val in export_vars.items()
+                f'export {var}="{val}"' for var, val in all_export_vars.items()
             )
             if "%build" in content:
                 content = re.sub(

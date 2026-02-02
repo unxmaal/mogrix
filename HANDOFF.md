@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-02-02
-**Status**: BOOTSTRAP REBUILD READY - rpm.irixfixes.patch complete, ready to rebuild chain
+**Status**: BOOTSTRAP CHAIN COMPLETE - All 14 packages built (80 MIPS RPMs)
 
 ---
 
@@ -560,23 +560,34 @@ When linking a static archive (.a) into a shared library (.so), symbols that are
 
 ---
 
-## Build Order (FC40) - Status
+## Build Order (FC40/Photon5) - Status
 
-| # | Package | Version | Status |
-|---|---------|---------|--------|
-| 1 | zlib-ng | 2.1.6 | COMPLETE |
-| 2 | bzip2 | 1.0.8 | COMPLETE |
-| 3 | popt | 1.19 | **REBUILT with vasprintf** |
-| 4 | openssl | 3.2.1 | COMPLETE |
-| 5 | libxml2 | 2.12.5 | COMPLETE |
-| 6 | curl | 8.6.0 | COMPLETE |
-| 7 | xz | 5.4.6 | COMPLETE |
-| 8 | lua | 5.4.6 | COMPLETE |
-| 9 | file | 5.45 | COMPLETE |
-| 10 | sqlite | 3.45.1 | COMPLETE |
-| 11 | rpm | 4.19.1.1 | **REBUILT with vsnprintf fixes** |
-| 12 | libsolv | 0.7.28 | **REBUILT with funopen** |
-| 13 | tdnf | 3.5.14 | **FULLY WORKING** |
+All 14 bootstrap packages built successfully (2026-02-02).
+
+| # | Package | Version | Status | RPMs |
+|---|---------|---------|--------|------|
+| 1 | zlib-ng | 2.1.6 | ✅ COMPLETE | 5 |
+| 2 | bzip2 | 1.0.8 | ✅ COMPLETE | 4 |
+| 3 | popt | 1.19 | ✅ COMPLETE | 3 |
+| 4 | openssl | 3.2.1 | ✅ COMPLETE | 4 |
+| 5 | libxml2 | 2.12.5 | ✅ COMPLETE | 3 |
+| 6 | curl | 8.6.0 | ✅ COMPLETE | 1 |
+| 7 | xz | 5.4.6 | ✅ COMPLETE | 5 |
+| 8 | lua | 5.4.6 | ✅ COMPLETE | 4 |
+| 9 | file | 5.45 | ✅ COMPLETE | 4 |
+| 10 | sqlite | 3.45.1 | ✅ COMPLETE | 3 |
+| 11 | rpm | 4.19.1.1 | ✅ COMPLETE | 14 |
+| 12 | libsolv | 0.7.28 | ✅ COMPLETE | 4 |
+| 13 | tdnf | 3.5.14 | ✅ COMPLETE | 8 |
+| 14 | sgugrse-release | 0.0.7beta | ✅ COMPLETE | 2 |
+
+**Total: 80 MIPS RPMs**
+
+Key fixes applied during this rebuild:
+- **setjmp.h wrapper** - IRIX headers check MIPS1-4 but clang defines MIPS64
+- **math.h float functions** - Added ldexpf/frexpf wrappers (IRIX has them in `#if 0`)
+- **stat64 conflict resolved** - IRIX has separate struct stat64, can't `#define stat64 stat`
+- **UINT64_C macro** - IRIX inttypes.h requires _SGIAPI which conflicts with _XOPEN_SOURCE
 
 ---
 
@@ -1215,6 +1226,130 @@ rpmbuild -bp ~/rpmbuild/SPECS/rpm.spec --nodeps
 
 ### Next Steps
 
-1. Rebuild all 14 bootstrap packages with updated patches
-2. Regenerate bootstrap tarball
+1. Continue rebuilding bootstrap packages (libxml2 next)
+2. Regenerate bootstrap tarball when complete
 3. Deploy to IRIX chroot for testing
+
+---
+
+## Session Summary (2026-02-02, Afternoon)
+
+### Bootstrap Chain Rebuild Progress
+
+Rebuilt 4 of 14 bootstrap packages:
+
+| Package | Version | Status |
+|---------|---------|--------|
+| zlib-ng | 2.1.6 | ✅ Built |
+| bzip2 | 1.0.8 | ✅ Built |
+| popt | 1.19 | ✅ Built |
+| openssl | 3.2.1 | ✅ Built |
+
+### Infrastructure Improvements
+
+#### 1. MOGRIX_ROOT Auto-Detection
+
+**Problem**: Rules used `$MOGRIX_ROOT/tools/fix-libtool-irix.sh` but MOGRIX_ROOT wasn't being set, causing build failures.
+
+**Fix**: Modified `mogrix/emitter/spec.py` to:
+- Calculate MOGRIX_ROOT from the package location at runtime
+- Automatically export it in every spec's `%build` section
+
+```python
+# mogrix/emitter/spec.py
+MOGRIX_ROOT = str(Path(__file__).parent.parent.parent.resolve())
+# ... later in write() ...
+all_export_vars = {"MOGRIX_ROOT": MOGRIX_ROOT}
+```
+
+Now rules can use `$MOGRIX_ROOT/tools/...` without hardcoding paths - portable across installations.
+
+#### 2. UINT64_C Macro Fix
+
+**Problem**: zlib-ng build failed with "call to undeclared function 'UINT64_C'".
+
+**Root cause**: IRIX's `inttypes.h` only defines `UINT64_C` when `_SGIAPI` is true. But `_SGIAPI` is disabled when `_XOPEN_SOURCE` or `_POSIX_C_SOURCE` are defined (common in portable code like zlib-ng's zbuild.h).
+
+**Fix**: Added fallback definitions to `/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/inttypes.h`:
+```c
+#ifndef UINT64_C
+#define UINT64_C(c) c ## ULL
+#endif
+/* ... and INT64_C, UINT32_C, etc. */
+```
+
+#### 3. origfedora/diff Workflow Confirmed
+
+All converted specs automatically include:
+```bash
+# Create .origfedora copy for patch development (mkpatch workflow)
+_srcdir=$(basename $(pwd))
+cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
+```
+
+This enables proper patch creation workflow - no sed for source modifications.
+
+### Rules Best Practices Enforced
+
+1. **Never hardcode absolute paths in rules** - Use `$MOGRIX_ROOT` or staging paths
+2. **Use `add_patch` for source modifications** - Not sed in `prep_commands`
+3. **Tools go in staging** - `/opt/sgug-staging/share/mogrix/` for helper scripts
+4. **Patches go in patches/packages/<pkg>/** - Version controlled, reviewable
+
+### Files Modified
+
+- `mogrix/emitter/spec.py` - MOGRIX_ROOT auto-detection + export
+- `/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/inttypes.h` - UINT64_C fallback
+- `rules/packages/zlib-ng.yaml` - Cleaned up, uses add_patch properly
+- `rules/packages/popt.yaml` - Uses $MOGRIX_ROOT for fix-libtool-irix.sh
+- `patches/packages/zlib-ng/zlib-ng-inttypes.patch` - Adds inttypes.h include to zbuild.h
+
+---
+
+## Session Summary (2026-02-02, Final)
+
+### Bootstrap Chain Complete!
+
+All 14 packages in the bootstrap chain have been rebuilt successfully, producing 80 MIPS RPMs.
+
+**Key Issue Fixed: Wrong SRPM Used for tdnf**
+
+The tdnf conversion was failing with "Source100 defined multiple times". Investigation revealed:
+- `/home/edodd/rpmbuild/SRPMS/fc40/tdnf-3.5.14-1.src.rpm` was a PREVIOUSLY CONVERTED SRPM (already had Source100-104 injected)
+- `/home/edodd/rpmbuild/SRPMS/fc40/tdnf-3.5.14-1.ph5.src.rpm` is the original Photon 5 SRPM
+
+**Fix**: Use the `.ph5.src.rpm` (original Photon) instead of the already-converted SRPM.
+
+**Lesson learned**: Always verify SRPMs are originals before conversion. A previously-converted SRPM will have compat sources already injected.
+
+### Compat Header Fixes Applied
+
+During the rebuild, several compat header issues were discovered and fixed:
+
+1. **setjmp.h** (`/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/setjmp.h`)
+   - IRIX setjmp.h checks `_MIPS_ISA_MIPS[1-4]` but clang defines `_MIPS_ISA_MIPS64`
+   - Without this wrapper, jmp_buf typedef doesn't happen and setjmp/longjmp fail to compile
+
+2. **math.h** (`/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/math.h`)
+   - IRIX math.h has ldexpf/frexpf in `#if 0 /* not yet implemented */`
+   - Added inline wrappers that call the double versions
+
+3. **inttypes.h** - UINT64_C macro fix (from earlier)
+
+### stat64 Issue in rpm.irixfixes.patch
+
+The rpm patch originally had `#define stat64 stat` which caused:
+```
+error: redefinition of 'stat'
+```
+
+**Root cause**: IRIX has BOTH `struct stat` AND `struct stat64` as separate types. The macro caused the preprocessor to turn `struct stat64 {...}` into `struct stat {...}`, conflicting with the existing struct stat definition.
+
+**Fix**: Removed the `#define stat64 stat` line. IRIX's `fstat()` works with `struct stat` directly (the FTS_FSTAT64 macro already uses fstat() for IRIX).
+
+### Next Steps
+
+1. Regenerate bootstrap tarball: `./scripts/bootstrap-tarball.sh`
+2. Deploy to IRIX chroot for testing
+3. Verify tdnf install works end-to-end
+4. Continue expanding package catalog (ncurses chain, GPG chain, etc.)

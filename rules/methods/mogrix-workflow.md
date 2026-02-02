@@ -7,16 +7,22 @@
 
 ## CRITICAL: Correct Invocation
 
-**ALWAYS use the venv binary:**
+**ALWAYS activate the venv first, then run mogrix:**
+```bash
+source .venv/bin/activate
+mogrix <command>
+```
+
+**Alternative (without activation):**
 ```bash
 .venv/bin/mogrix <command>
 ```
 
 **NEVER use:**
-- `python -m mogrix` - wrong
+- `python -m mogrix` - wrong (not a runnable module)
 - `python3 -m mogrix` - wrong
+- `python3 -m mogrix.convert` - wrong (submodules are not entry points)
 - `python3 -m mogrix.cli` - wrong
-- `mogrix` (without venv path) - may not find correct Python
 
 ---
 
@@ -40,25 +46,30 @@
 
 ## Standard Workflow
 
+### 0. Activate the venv (REQUIRED)
+```bash
+source .venv/bin/activate
+```
+
 ### 1. Fetch SRPM (if not already present)
 ```bash
 # Fetch to standard location
-.venv/bin/mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
+mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
 ```
 
 ### 2. Convert SRPM
 ```bash
 # From an SRPM (preferred - extracts, converts, repackages)
-.venv/bin/mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
+mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
 
 # From a spec file (just transforms the spec)
-.venv/bin/mogrix convert path/to/package.spec -o /tmp/output-dir/
+mogrix convert path/to/package.spec -o /tmp/output-dir/
 ```
 
 ### 3. Build for IRIX (cross-compile)
 ```bash
 # Use --cross flag - handles rpmbuild invocation correctly
-.venv/bin/mogrix build /tmp/mogrix-converted/popt/popt-1.19-6.src.rpm --cross
+mogrix build /tmp/mogrix-converted/popt/popt-1.19-6.src.rpm --cross
 ```
 
 The `--cross` flag automatically:
@@ -68,7 +79,7 @@ The `--cross` flag automatically:
 
 ### 4. Stage for dependent builds
 ```bash
-.venv/bin/mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
 ```
 
 ### 5. Copy to repo and update metadata
@@ -118,7 +129,7 @@ rpmbuild --macros="..." --nodeps --target=mips-sgi-irix -ba spec.spec
 **Correct approach:**
 ```bash
 # DO THIS - mogrix handles all the flags
-.venv/bin/mogrix build converted.src.rpm --cross
+mogrix build converted.src.rpm --cross
 ```
 
 ---
@@ -127,9 +138,10 @@ rpmbuild --macros="..." --nodeps --target=mips-sgi-irix -ba spec.spec
 
 | Mistake | Correct |
 |---------|---------|
-| `python -m mogrix` | `.venv/bin/mogrix` |
-| `python3 -m mogrix.cli` | `.venv/bin/mogrix` |
-| Manual rpmbuild invocation | `.venv/bin/mogrix build --cross` |
+| `python -m mogrix` | `source .venv/bin/activate && mogrix` |
+| `python3 -m mogrix.convert` | `mogrix convert` (after activating venv) |
+| `python3 -m mogrix.cli` | `mogrix` (after activating venv) |
+| Manual rpmbuild invocation | `mogrix build --cross` |
 | Forgetting `--cross` flag | Always use `--cross` for IRIX |
 | Wrong output paths | Use `-o` to specify output directory |
 
@@ -138,10 +150,11 @@ rpmbuild --macros="..." --nodeps --target=mips-sgi-irix -ba spec.spec
 ## Checking Available Commands
 
 ```bash
-.venv/bin/mogrix --help           # List all commands
-.venv/bin/mogrix convert --help   # Convert options
-.venv/bin/mogrix build --help     # Build options
-.venv/bin/mogrix analyze <spec>   # See what rules apply
+# After activating venv:
+mogrix --help           # List all commands
+mogrix convert --help   # Convert options
+mogrix build --help     # Build options
+mogrix analyze <spec>   # See what rules apply
 ```
 
 ---

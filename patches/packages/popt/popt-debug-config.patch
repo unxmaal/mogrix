@@ -1,0 +1,24 @@
+--- a/src/poptconfig.c.orig	2026-02-02 19:57:58.733171438 +0000
++++ b/src/poptconfig.c	2026-02-02 19:58:14.163395695 +0000
+@@ -9,6 +9,7 @@
+ #include "system.h"
+ #include "poptint.h"
+ #include <sys/stat.h>
++#include <stdio.h>
+ #include <unistd.h>
+ #include <fcntl.h>
+ #include <errno.h>
+@@ -232,8 +233,12 @@
+     int i, j;
+     int rc = POPT_ERROR_BADCONFIG;
+ 
+-    if (con->appName == NULL)
++    fprintf(stderr, "POPT_DEBUG: line='%.50s...'\n", line);
++    if (con->appName == NULL) {
++	fprintf(stderr, "POPT_DEBUG: con->appName is NULL!\n");
+ 	goto exit;
++    }
++    fprintf(stderr, "POPT_DEBUG: con->appName='%s'\n", con->appName);
+     
+     memset(item, 0, sizeof(*item));
+ 

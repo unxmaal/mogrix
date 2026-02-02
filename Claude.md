@@ -133,13 +133,20 @@ If the answer to #3 is "no", you have more work to do.
 
 ### CRITICAL: Correct Invocation
 
-**ALWAYS use:**
+**ALWAYS activate the venv first, then run mogrix:**
+```bash
+source .venv/bin/activate
+mogrix <command>
+```
+
+**Alternative (without activation):**
 ```bash
 .venv/bin/mogrix <command>
 ```
 
 **NEVER use:**
-- `python -m mogrix` - WRONG
+- `python -m mogrix` - WRONG (not a runnable module)
+- `python3 -m mogrix.convert` - WRONG (submodules are not entry points)
 - `python3 -m mogrix.cli` - WRONG
 - Manual `rpmbuild` invocation - WRONG (use `mogrix build --cross`)
 
@@ -157,17 +164,20 @@ If the answer to #3 is "no", you have more work to do.
 ### Standard Workflow
 
 ```bash
+# 0. Activate the venv (REQUIRED before any mogrix commands)
+source .venv/bin/activate
+
 # 1. Fetch the Fedora SRPM (to standard location)
-.venv/bin/mogrix fetch <package> -o ~/rpmbuild/SRPMS/fc40/
+mogrix fetch <package> -o ~/rpmbuild/SRPMS/fc40/
 
 # 2. Convert to IRIX-compatible SRPM
-.venv/bin/mogrix convert ~/rpmbuild/SRPMS/fc40/<package>-*.src.rpm -o /tmp/mogrix-converted/<package>/
+mogrix convert ~/rpmbuild/SRPMS/fc40/<package>-*.src.rpm -o /tmp/mogrix-converted/<package>/
 
 # 3. Build with cross-compilation (handles --target=mips-sgi-irix automatically)
-.venv/bin/mogrix build /tmp/mogrix-converted/<package>/<package>-*.src.rpm --cross
+mogrix build /tmp/mogrix-converted/<package>/<package>-*.src.rpm --cross
 
 # 4. Stage for dependent builds
-.venv/bin/mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
+mogrix stage ~/rpmbuild/RPMS/mips/<package>*.rpm
 
 # 5. Copy to repo and update metadata
 cp ~/rpmbuild/RPMS/mips/<package>*.rpm /tmp/mogrix-repo/

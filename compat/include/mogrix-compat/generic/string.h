@@ -34,15 +34,11 @@ char *strndup(const char *s, size_t n);
 /*
  * stpcpy/stpncpy - copy string returning pointer to end (POSIX.1-2008)
  *
- * IRIX may not have declarations in strict C99 mode.
+ * IRIX has stpcpy in libgen.so but the header is non-standard.
+ * We provide declaration and implementation via mogrix-compat.
  */
-#ifndef stpcpy
 char *stpcpy(char *dest, const char *src);
-#endif
-
-#ifndef stpncpy
 char *stpncpy(char *dest, const char *src, size_t n);
-#endif
 
 /*
  * strcasestr - case-insensitive substring search (GNU extension)

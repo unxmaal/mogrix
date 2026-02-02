@@ -40,6 +40,11 @@ functions:
     header: string.h
     description: Extract token from string (BSD extension)
 
+  stpcpy:
+    file: runtime/stpcpy.c
+    header: string.h
+    description: Copy string and return pointer to end (POSIX.1-2008)
+
   # stdio functions
   getline:
     file: stdio/getline.c

@@ -39,9 +39,10 @@ rules:
 
   # Note: skip_check is handled globally in generic.yaml
 
-  # Remove .la files left after install
+  # Remove .la and .a files left after install (we only want shared libs)
   install_cleanup:
     - rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+    - rm -f $RPM_BUILD_ROOT%{_libdir}/*.a
 
   spec_replacements:
     # Disable tcl support - not available for IRIX cross-compilation
