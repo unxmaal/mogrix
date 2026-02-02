@@ -15,31 +15,28 @@
 package: zlib-ng
 
 rules:
-  # Export CC for CMake cross-compilation
-  export_vars:
-    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
-    CXX: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
-    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-    AR: "/opt/cross/bin/llvm-ar"
-    RANLIB: "/opt/cross/bin/llvm-ranlib"
+  # Add IRIX-specific patch for UINT64_C macro
+  add_patch:
+    - "zlib-ng-inttypes.patch"
 
   spec_replacements:
     # Disable sanitizers build option
     - pattern: "%{?with_sanitizers:-DWITH_SANITIZER=ON}"
       replacement: "-DWITH_SANITIZER=OFF"
 
-    # Replace %cmake macro with explicit cmake command for cross-compilation
-    # First occurrence: main zlib-ng build
-    - pattern: "%cmake %{cmake_param}\n%cmake_build"
+    # Replace main build cmake+cmake_build
+    - pattern: |
+        %cmake %{cmake_param}
+        %cmake_build
       replacement: |
         mkdir -p %{_vpath_builddir}
         cd %{_vpath_builddir}
+        export CFLAGS="-D_SGI_SOURCE -D__EXTENSIONS__ -D_XOPEN_SOURCE=600"
         cmake \
           -DCMAKE_INSTALL_PREFIX=%{_prefix} \
           -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
           -DCMAKE_INSTALL_INCLUDEDIR=%{_includedir} \
           -DCMAKE_C_COMPILER=$CC \
-          -DCMAKE_C_FLAGS="-I/usr/sgug/include/mogrix-compat/generic -D_SGI_SOURCE -D__EXTENSIONS__ -D_XOPEN_SOURCE=600" \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_CROSSCOMPILING=TRUE \
           -DWITH_SANITIZER=OFF \
@@ -51,17 +48,19 @@ rules:
         cmake --build . -j$(nproc)
         cd ..
 
-    # Second occurrence: compat build
-    - pattern: "%cmake %{cmake_param} -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF\n%cmake_build"
+    # Replace compat build cmake+cmake_build
+    - pattern: |
+        %cmake %{cmake_param} -DZLIB_COMPAT=ON -DWITH_NEW_STRATEGIES=OFF
+        %cmake_build
       replacement: |
         mkdir -p %{_vpath_builddir}-compat
         cd %{_vpath_builddir}-compat
+        export CFLAGS="-D_SGI_SOURCE -D__EXTENSIONS__ -D_XOPEN_SOURCE=600"
         cmake \
           -DCMAKE_INSTALL_PREFIX=%{_prefix} \
           -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
           -DCMAKE_INSTALL_INCLUDEDIR=%{_includedir} \
           -DCMAKE_C_COMPILER=$CC \
-          -DCMAKE_C_FLAGS="-I/usr/sgug/include/mogrix-compat/generic -D_SGI_SOURCE -D__EXTENSIONS__ -D_XOPEN_SOURCE=600" \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_CROSSCOMPILING=TRUE \
           -DWITH_SANITIZER=OFF \
@@ -74,8 +73,10 @@ rules:
         cmake --build . -j$(nproc)
         cd ..
 
-    # Replace %cmake_install for main build
-    - pattern: "%global __cmake_builddir %{_vpath_builddir}\n%cmake_install"
+    # Replace main install
+    - pattern: |
+        %global __cmake_builddir %{_vpath_builddir}
+        %cmake_install
       replacement: |
         cd %{_vpath_builddir}
         DESTDIR=%{buildroot} cmake --install .
@@ -87,8 +88,10 @@ rules:
         cd -
         cd ..
 
-    # Replace %cmake_install for compat build
-    - pattern: "%global __cmake_builddir %{_vpath_builddir}-compat\n%cmake_install"
+    # Replace compat install
+    - pattern: |
+        %global __cmake_builddir %{_vpath_builddir}-compat
+        %cmake_install
       replacement: |
         cd %{_vpath_builddir}-compat
         DESTDIR=%{buildroot} cmake --install .
@@ -99,3 +102,10 @@ rules:
         ln -s %{compat_soname} libz.so
         cd -
         cd ..
+
+  export_vars:
+    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
+    CXX: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+    AR: "/opt/cross/bin/llvm-ar"
+    RANLIB: "/opt/cross/bin/llvm-ranlib"

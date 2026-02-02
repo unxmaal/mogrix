@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-02-02
-**Status**: BOOTSTRAP REBUILD NEEDED - rpm broken after reinstall, requires fresh chroot
+**Status**: BOOTSTRAP REBUILD READY - rpm.irixfixes.patch complete, ready to rebuild chain
 
 ---
 
@@ -1149,3 +1149,72 @@ All other packages validated and ready.
    /usr/sgug/bin/rpm -Uvh /tmp/bootstrap-rpms/*.rpm
    ```
 5. Test: `/usr/sgug/bin/sgug-exec /usr/sgug/bin/rpm --version`
+
+---
+
+## Session Summary (2026-02-02, Evening)
+
+### rpm.irixfixes.patch Complete
+
+**Problem**: rpm 4.19.1.1 had many IRIX compatibility issues scattered across inline sed commands in the rules file. These were unreliable (sed silently fails when patterns don't match) and hard to maintain.
+
+**Solution**: Created comprehensive `patches/packages/rpm/rpm.irixfixes.patch` (298 lines, 11 files) adapting sgug-rse's rpm 4.15 patch for rpm 4.19.
+
+### Patch Contents
+
+| File | Fix |
+|------|-----|
+| `CMakeLists.txt` | Conditional NLS for po directory |
+| `lib/fsm.c` | futimens workaround for IRIX /dev/fd paths |
+| `lib/headerfmt.c` | Remove `__thread` TLS (IRIX rld doesn't support) |
+| `lib/rpmrc.c` | IRIX architecture detection + skip generic MIPS |
+| `lib/rpmug.c` | Remove `__thread` TLS |
+| `macros.in` | `_buildshell` path + `LD_LIBRARYN32_PATH` export |
+| `misc/fts.c` | `dirfd`, `stat64`, `__errno_location` for IRIX |
+| `misc/system.h` | `xsetprogname`/`xgetprogname` for IRIX |
+| `rpmio/macro.c` | `_SC_NPROC_ONLN` for CPU detection |
+| `rpmio/rpmlog.c` | Remove `__thread` + iterative vsnprintf |
+| `rpmio/rpmstring.c` | Iterative vsnprintf for IRIX |
+
+### Key IRIX Compatibility Issues Addressed
+
+1. **IRIX vsnprintf pre-C99**: `vsnprintf(NULL, 0, fmt, ap)` returns -1 instead of buffer size
+   - Fix: Iterative doubling approach in `rvasprintf()` and `rpmlog()`
+
+2. **IRIX rld doesn't support `__thread` TLS**: Thread-local storage causes link failures
+   - Fix: Remove `__thread` keyword (accept single-threaded limitation)
+
+3. **IRIX futimens/utimes with /dev/fd**: `utimes("/dev/fd/N", ...)` fails with ENOENT
+   - Fix: Force `utimensat()` path which uses actual pathname
+
+4. **IRIX uname returns IP30/IP32**: Not recognized as valid architecture
+   - Fix: Hardcode "mips" based on `__MIPS_SIM` ABI detection
+
+5. **IRIX uses `_SC_NPROC_ONLN`**: Not `_SC_NPROCESSORS_ONLN` for CPU count
+   - Fix: Conditional `#if defined(__sgi)` for sysconf call
+
+### mogrix/emitter/spec.py Fix
+
+**Problem**: Patches added as `Patch200:` tags were applied BEFORE `%patchlist` patches. This caused line number mismatches since Fedora patches modify macros.in.
+
+**Fix**: Modified spec emitter to detect `%patchlist` and add patch filenames to the END of patchlist instead of using Patch tags. This ensures IRIX patches apply after all Fedora patches.
+
+### Files Modified
+
+- `patches/packages/rpm/rpm.irixfixes.patch` - New comprehensive IRIX patch (298 lines)
+- `mogrix/emitter/spec.py` - Add patches to %patchlist when present
+- `rules/packages/rpm.yaml` - Already had `add_patch: rpm.irixfixes.patch`
+
+### Verification
+
+Patch applies cleanly after all Fedora patchlist patches:
+```bash
+rpmbuild -bp ~/rpmbuild/SPECS/rpm.spec --nodeps
+# No errors, all 11 files patched successfully
+```
+
+### Next Steps
+
+1. Rebuild all 14 bootstrap packages with updated patches
+2. Regenerate bootstrap tarball
+3. Deploy to IRIX chroot for testing
