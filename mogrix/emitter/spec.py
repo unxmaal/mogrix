@@ -70,14 +70,15 @@ class SpecWriter:
                 prefix = match.group(1)  # "BuildRequires:"
                 packages = match.group(2)
                 # Remove the specific package (with optional version constraint)
-                pkg_pattern = rf"\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?\s*"
+                # Use word boundary (?![a-zA-Z0-9_-]) to avoid matching pkg in pkg-devel
+                pkg_pattern = rf"(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
                 new_packages = re.sub(pkg_pattern, " ", packages).strip()
                 new_packages = re.sub(r"\s+", " ", new_packages)
                 if not new_packages:
                     return ""
                 return f"{prefix} {new_packages}"
 
-            pattern_multi = rf"^(BuildRequires:)\s+(.+{escaped_dep}.*)$"
+            pattern_multi = rf"^(BuildRequires:)\s+(.+(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-]).*)$"
             content = re.sub(pattern_multi, remove_from_multi_buildrequires, content, flags=re.MULTILINE)
 
         # Remove dropped Requires
@@ -100,7 +101,8 @@ class SpecWriter:
                     packages = match.group(2)
                     # Remove the specific package (with optional version constraint)
                     # Handle: pkg, pkg >= 1.0, pkg%{_isa}, pkg%{_isa} >= 1.0
-                    pkg_pattern = rf"\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?\s*"
+                    # Use negative lookahead (?![a-zA-Z0-9_-]) to avoid matching pkg in pkg-devel
+                    pkg_pattern = rf"(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
                     new_packages = re.sub(pkg_pattern, " ", packages).strip()
                     # Clean up multiple spaces
                     new_packages = re.sub(r"\s+", " ", new_packages)
@@ -109,7 +111,8 @@ class SpecWriter:
                     return f"{prefix} {new_packages}"
 
                 # Match Requires lines that contain multiple packages
-                pattern_multi = rf"^(Requires(?:\([^)]+\))?:)\s+(.+{escaped_dep}.*)$"
+                # Use word boundary to avoid matching pkg in pkg-devel
+                pattern_multi = rf"^(Requires(?:\([^)]+\))?:)\s+(.+(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-]).*)$"
                 content = re.sub(pattern_multi, remove_from_multi_requires, content, flags=re.MULTILINE)
 
         # Remove specific lines (substring match - removes lines containing pattern)
@@ -224,6 +227,22 @@ class SpecWriter:
                     last_source_idx += 1
                     lines.insert(last_source_idx, patch_line)
                 content = "\n".join(lines)
+
+        # Create .origfedora copy for patch development
+        # This goes FIRST, before any patches or modifications are applied
+        origfedora_cmd = """
+# Create .origfedora copy for patch development (mkpatch workflow)
+# Run 'rpmbuild --short-circuit -bp' then diff against .origfedora to create patches
+_srcdir=$(basename $(pwd))
+cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
+"""
+        content = re.sub(
+            r"^(%(auto)?setup\s+.*)$",
+            f"\\1\n{origfedora_cmd}",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
 
         # Inject compat prep commands (after %setup or %autosetup)
         if compat_prep:

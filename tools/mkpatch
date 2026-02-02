@@ -1,0 +1,189 @@
+#!/bin/bash
+#
+# mkpatch - Create patches for mogrix packages
+#
+# Workflow (recommended):
+#   1. mogrix convert <srpm>              # Creates converted spec with .origfedora support
+#   2. rpmbuild --short-circuit -bp <converted.spec>  # Runs %prep phase only
+#   3. cd ~/rpmbuild/BUILD/<pkg>-<ver>    # Enter source directory
+#   4. # Make your changes...
+#   5. mkpatch diff .                     # Creates patch from changes vs .origfedora
+#
+# Alternative (standalone):
+#   1. mkpatch extract <srpm>             # Extract source, create .orig copy
+#   2. cd /tmp/mkpatch/<pkg>-<ver>
+#   3. # Make changes...
+#   4. mkpatch diff .
+#
+# The patch is created in patches/packages/<name>/ by default.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+WORK_DIR="${MKPATCH_WORKDIR:-/tmp/mkpatch}"
+
+die() { echo "error: $*" >&2; exit 1; }
+info() { echo "==> $*"; }
+
+cmd_extract() {
+    local srpm="$1"
+    [[ -f "$srpm" ]] || die "SRPM not found: $srpm"
+
+    local basename=$(basename "$srpm" .src.rpm)
+    local name=$(echo "$basename" | sed 's/-[0-9].*$//')
+
+    mkdir -p "$WORK_DIR"
+    cd "$WORK_DIR"
+
+    info "Extracting $srpm to $WORK_DIR/"
+    rpm2cpio "$srpm" | cpio -idm 2>/dev/null
+
+    local tarball=$(ls *.tar.* 2>/dev/null | head -1)
+    [[ -n "$tarball" ]] || die "No tarball found in SRPM"
+
+    info "Extracting $tarball"
+    tar xf "$tarball"
+
+    local srcdir=$(find . -maxdepth 1 -type d -name "${name}*" ! -name "*.orig*" | head -1)
+    [[ -d "$srcdir" ]] || die "Could not find extracted source directory"
+    srcdir=$(basename "$srcdir")
+
+    info "Creating ${srcdir}.origfedora"
+    cp -a "$srcdir" "${srcdir}.origfedora"
+
+    echo ""
+    echo "Source extracted to: $WORK_DIR/$srcdir"
+    echo "Original copy at:    $WORK_DIR/${srcdir}.origfedora"
+    echo ""
+    echo "Next steps:"
+    echo "  cd $WORK_DIR/$srcdir"
+    echo "  # make changes"
+    echo "  mkpatch diff ."
+}
+
+cmd_diff() {
+    local srcdir="${1:-.}"
+
+    # Handle "." for current directory
+    if [[ "$srcdir" == "." ]]; then
+        srcdir=$(pwd)
+    else
+        [[ -d "$srcdir" ]] || die "Source directory not found: $srcdir"
+        srcdir=$(cd "$srcdir" && pwd)
+    fi
+
+    local dirname=$(basename "$srcdir")
+    local parent=$(dirname "$srcdir")
+
+    # Try to find the .orig directory (could be .orig or .origfedora)
+    local origdir=""
+    if [[ -d "${srcdir}.origfedora" ]]; then
+        origdir="${srcdir}.origfedora"
+    elif [[ -d "${srcdir}.orig" ]]; then
+        origdir="${srcdir}.orig"
+    elif [[ -d "${parent}/${dirname}.origfedora" ]]; then
+        origdir="${parent}/${dirname}.origfedora"
+    elif [[ -d "${parent}/${dirname}.orig" ]]; then
+        origdir="${parent}/${dirname}.orig"
+    else
+        die "No .origfedora or .orig directory found. Did you run 'rpmbuild -bp' or 'mkpatch extract'?"
+    fi
+
+    # Extract package name from directory (e.g., tdnf-3.5.14 -> tdnf)
+    local name=$(echo "$dirname" | sed 's/-[0-9].*$//')
+    local patchname="${name}.irixfixes.patch"
+    local patchdir="$PROJECT_ROOT/patches/packages/$name"
+
+    mkdir -p "$patchdir"
+    cd "$parent"
+
+    local origname=$(basename "$origdir")
+
+    info "Generating diff: $origname vs $dirname"
+
+    # Generate the patch
+    diff -Naur "$origname" "$dirname" > "$patchdir/$patchname" || true
+
+    if [[ ! -s "$patchdir/$patchname" ]]; then
+        rm -f "$patchdir/$patchname"
+        echo "No differences found."
+        return 0
+    fi
+
+    local lines=$(wc -l < "$patchdir/$patchname")
+    info "Patch created: $patchdir/$patchname ($lines lines)"
+
+    echo ""
+    echo "Add to rules/packages/${name}.yaml:"
+    echo "  add_patch:"
+    echo "    - ${patchname}"
+}
+
+cmd_help() {
+    cat << 'EOF'
+mkpatch - Create patches for mogrix packages
+
+RECOMMENDED WORKFLOW (uses mogrix conversion):
+
+  # 1. Convert the package (creates spec with .origfedora support)
+  mogrix convert ~/rpmbuild/SRPMS/fc40/foo-1.0.src.rpm -o /tmp/foo-converted/
+
+  # 2. Run prep phase only (extracts source and creates .origfedora copy)
+  rpmbuild -bp /tmp/foo-converted/foo.spec --nodeps
+
+  # 3. Enter source directory and make changes
+  cd ~/rpmbuild/BUILD/foo-1.0
+  vim src/file.c
+
+  # 4. Create patch from your changes
+  mkpatch diff .
+
+  Patch created at: patches/packages/foo/foo.irixfixes.patch
+
+STANDALONE WORKFLOW (no mogrix conversion):
+
+  mkpatch extract ~/rpmbuild/SRPMS/fc40/foo-1.0.src.rpm
+  cd /tmp/mkpatch/foo-1.0
+  vim src/file.c
+  mkpatch diff .
+
+COMMANDS:
+
+  mkpatch diff [dir]     Generate patch from changes vs .origfedora
+                         (default: current directory)
+  mkpatch extract <srpm> Extract SRPM, create .origfedora copy
+  mkpatch help           Show this help
+
+ENVIRONMENT:
+
+  MKPATCH_WORKDIR  Working directory for 'extract' (default: /tmp/mkpatch)
+
+MULTIPLE PATCHES:
+
+  To create focused patches, reset between each:
+
+  # First patch
+  rpmbuild -bp spec.spec --nodeps
+  cd ~/rpmbuild/BUILD/foo-1.0
+  # make header changes
+  mkpatch diff .
+  mv patches/packages/foo/foo.irixfixes.patch patches/packages/foo/foo-headers.patch
+
+  # Second patch (reset source)
+  rm -rf ~/rpmbuild/BUILD/foo-1.0
+  rpmbuild -bp spec.spec --nodeps
+  cd ~/rpmbuild/BUILD/foo-1.0
+  # make different changes
+  mkpatch diff .
+  mv patches/packages/foo/foo.irixfixes.patch patches/packages/foo/foo-statfs.patch
+EOF
+}
+
+# Main
+case "${1:-help}" in
+    extract) shift; cmd_extract "$@" ;;
+    diff)    shift; cmd_diff "${1:-.}" ;;
+    help|-h|--help) cmd_help ;;
+    *) die "Unknown command: $1. Try 'mkpatch help'" ;;
+esac

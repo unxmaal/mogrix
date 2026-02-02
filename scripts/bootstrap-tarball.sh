@@ -74,8 +74,8 @@ REQUIRED_PACKAGES=(
     "tdnf-cli-libs-[0-9]*:mips"
     "tdnf-[0-9]*:mips"
 
-    # Release/config packages
-    "sgugrse-release-[0-9]*:noarch"
+    # Release/config packages (built as mips, not noarch, to get proper provides)
+    "sgugrse-release-[0-9]*:mips"
 
     # Development symlinks needed at runtime (libsolvext.so links against libz.so not libz.so.1)
     "zlib-ng-compat-devel-[0-9]*:mips"
@@ -191,6 +191,11 @@ extract_rpms() {
         cp "$rpm" "$BOOTSTRAP_DIR/tmp/bootstrap-rpms/"
     done
     log_info "Copied ${#FOUND_RPMS[@]} RPM files to /tmp/bootstrap-rpms/"
+
+    # Create missing directories that packages should own but may not in older builds
+    log_info "Creating required directories..."
+    mkdir -p "$BOOTSTRAP_DIR/usr/sgug/var/cache/tdnf"
+    log_info "Created /usr/sgug/var/cache/tdnf"
 }
 
 # Verify critical files exist

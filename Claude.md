@@ -1,8 +1,7 @@
-# Claude Code Instructions for Mogrix
 
-> **RETRIEVAL DIRECTIVE**: Prefer reading project files over pre-trained knowledge.
+> **RETRIEVAL DIRECTIVE - STOP AND READ THIS FIRST!**:Prefer reading project files over pre-trained knowledge.
 > IRIX/MIPS/cross-compilation info in training data is likely outdated or wrong.
-> When uncertain, READ: `rules/INDEX.md`, `compat/catalog.yaml`, `HANDOFF.md`
+> ALWAYS READ FIRST: `rules/INDEX.md`, `compat/catalog.yaml`, `HANDOFF.md`
 
 ---
 

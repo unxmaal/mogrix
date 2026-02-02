@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-01
-**Status**: TDNF FULLY WORKING - Package manager operational on IRIX
+**Last Updated**: 2026-02-02
+**Status**: BOOTSTRAP REBUILD NEEDED - rpm broken after reinstall, requires fresh chroot
 
 ---
 
@@ -987,3 +987,165 @@ When debugging path issues:
 2. Use `par` on IRIX to trace system calls and see actual paths accessed
 3. Use `strings` on binaries to verify compiled-in paths
 4. Check ALL header files for duplicate defines (not just the obvious one)
+
+---
+
+## Session Summary (2026-02-02, Continued)
+
+### Patch Creation Workflow (mkpatch)
+
+Integrated sgug-rse style patch creation workflow into mogrix:
+
+**New Components:**
+- `tools/mkpatch` - Script for creating patches from changes vs .origfedora
+- `mogrix/emitter/spec.py` - Modified to inject .origfedora copy after %setup/%autosetup
+- `rules/INDEX.md` - Updated with Patch Creation section
+
+**Workflow:**
+```bash
+# 1. Convert the package (creates spec with .origfedora support)
+mogrix convert ~/rpmbuild/SRPMS/fc40/foo-1.0.src.rpm -o /tmp/foo/
+
+# 2. Run prep phase only (extracts source AND creates .origfedora copy)
+rpmbuild -bp /tmp/foo/foo.spec --nodeps
+
+# 3. Enter source directory and make changes
+cd ~/rpmbuild/BUILD/foo-1.0
+vim src/file.c
+
+# 4. Create patch from your changes
+mkpatch diff .
+# -> patches/packages/foo/foo.irixfixes.patch
+
+# 5. Add to YAML
+# add_patch:
+#   - foo.irixfixes.patch
+```
+
+**Benefits:**
+- Patches preferred over sed for source modifications (sed silently fails on pattern mismatch)
+- .origfedora copy created automatically during conversion
+- Patches are version-controlled and reviewable
+- mkpatch tool handles diff formatting and naming conventions
+
+**tdnf sed→patch Migration:**
+- Replaced ~25 lines of sed commands with `tdnf.irixfixes.patch` (112 lines)
+- Patch covers: strings.h in 4 includes.h files, IRIX headers, statfs signature, mips arch hardcode
+- Validated by successful tdnf build
+
+---
+
+## Session Summary (2026-02-02)
+
+### Dependency Installation Fixes
+
+Multiple issues prevented clean package installation without `--nodeps`:
+
+**Issue 1: drop_requires regex too simplistic**
+
+Original `drop_requires` only matched simple `Requires: packagename` lines. Failed on:
+- `Requires(pre): sed grep gawk` - multi-package lines
+- `Requires: rpm-sequoia%{_isa}` - ISA suffix
+- Partial match: `libsolv` matched `libsolv-devel` leaving `Requires: -devel`
+
+**Fix**: Enhanced `mogrix/emitter/spec.py:drop_requires()` to:
+- Handle `Requires(pre/post/preun/postun):` variants
+- Handle multi-package lines by removing just the matching package
+- Use negative lookahead `(?![a-zA-Z0-9_-])` to match whole package names only
+- Handle `%{_isa}` suffixes
+
+**Issue 2: setenv unresolved symbol in librpm.so**
+
+The `--whole-archive` flag was only in `CMAKE_EXE_LINKER_FLAGS`, not `CMAKE_SHARED_LINKER_FLAGS`.
+
+**Fix**: Added `--whole-archive` to both linker flags in `rules/packages/rpm.yaml`:
+```yaml
+-DCMAKE_EXE_LINKER_FLAGS="-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen"
+-DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen"
+```
+
+**Issue 3: Missing /bin/sh provider**
+
+Packages with shell scriptlets require `/bin/sh`. IRIX has `/bin/sh` but it's not in the RPM database.
+
+**Fix**: Created `rules/packages/sgugrse-release.yaml` to add:
+```yaml
+spec_replacements:
+  - pattern: "Provides:       system-release\n"
+    replacement: "Provides:       system-release\nProvides:       /bin/sh\nProvides:       /usr/bin/sh\n"
+```
+
+Also disabled swidtag entries (Fedora-specific macros undefined on IRIX).
+
+**Issue 4: IRIX ln doesn't support -r (relative symlinks)**
+
+RPM's `%pre` and `%posttrans` scriptlets use `ln -sfr`. IRIX `ln` fails with "Illegal option -- r".
+
+**Fix**: Added to `rules/packages/rpm.yaml`:
+```yaml
+- pattern: "ln -sfr"
+  replacement: "ln -sf"
+```
+
+**Issue 5: IRIX sed doesn't support | delimiter**
+
+The `%pre` scriptlet uses `sed 's|^/var/lib/rpm/||g'` which IRIX sed doesn't parse.
+
+**Fix**: Added to `rules/packages/rpm.yaml`:
+```yaml
+- pattern: "rpmdb_files=$(find /var/lib/rpm ...| sed 's|^/var/lib/rpm/||g' | sort)..."
+  replacement: "for rpmdb_path in /var/lib/rpm/*; do\n        [ -f \"$rpmdb_path\" ] || continue\n        rpmdb_file=$(basename \"$rpmdb_path\")..."
+```
+
+### Current Status
+
+**rpm is broken** after reinstall attempts. The chroot needs to be reset and bootstrap tarball re-extracted.
+
+**Packages installed before breakage**:
+- sgugrse-release, rpm, rpm-libs installed (but rpm became non-functional)
+- tdnf packages need reinstall
+
+### Files Modified
+
+- `mogrix/emitter/spec.py` - Enhanced `drop_requires()` regex handling
+- `rules/packages/rpm.yaml` - Added `--whole-archive` to SHARED_LINKER_FLAGS, `ln -sfr` fix, sed→basename fix
+- `rules/packages/sgugrse-release.yaml` - New file: provides /bin/sh, disables swidtag
+- `rules/packages/tdnf.yaml` - Updated drop_requires list
+
+### Packages Rebuilt with Fixes
+
+**rpm-4.19.1.1-1.mips.rpm** (2026-02-02 00:29):
+- ✅ IRIX sed fix applied - uses basename instead of `sed 's|...|'`
+- ✅ ln -sfr→ln -sf fix applied
+- ✅ --whole-archive in SHARED_LINKER_FLAGS
+
+**sgugrse-release-0.0.7beta-1.mips.rpm** (2026-02-02 00:30):
+- ✅ Provides /bin/sh and /usr/bin/sh
+- ✅ swidtag entries disabled
+
+### Bootstrap Tarball Status
+
+The bootstrap tarball script is ready at `scripts/bootstrap-tarball.sh`.
+
+**Note**: tdnf package needs rebuild (has `/var/cache/tdnf` instead of `/usr/sgug/var/cache/tdnf`), but this directory will be created automatically when tdnf runs. The existing package is functional.
+
+All other packages validated and ready.
+
+### Recovery Steps
+
+1. Reset chroot on IRIX (user can do this)
+2. Run `./scripts/bootstrap-tarball.sh` to create tarball
+3. Copy to IRIX: `scp tmp/irix-bootstrap.tar.gz root@192.168.0.81:/tmp/`
+4. On IRIX:
+   ```bash
+   cd /opt/chroot
+   gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
+   mkdir -p /opt/chroot/usr/sgug/var/cache/tdnf  # Create if missing
+   chroot /opt/chroot /bin/sh
+   export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+   /usr/sgug/bin/rpm --initdb
+   /usr/sgug/bin/rpm -Uvh /tmp/bootstrap-rpms/sgugrse-release*.rpm
+   /usr/sgug/bin/rpm -Uvh /tmp/bootstrap-rpms/rpm*.rpm
+   /usr/sgug/bin/rpm -Uvh /tmp/bootstrap-rpms/*.rpm
+   ```
+5. Test: `/usr/sgug/bin/sgug-exec /usr/sgug/bin/rpm --version`

@@ -61,7 +61,14 @@ usr/
 *.tmp
 *.temp
 *.log
+par_*.txt
+.todos.json
 
 # Build artifacts
 srpms/
+oldcrap/
+*-converted/
 compat/runtime/
+
+# Temporary conversion/build directories that might be created in repo
+tmp/

@@ -1,0 +1,34 @@
+# sgugrse-release - SGUG RSE distribution release package
+# Provides base system virtual packages for dependency resolution
+#
+# ---metadata---
+# complexity: low
+# build_system: noarch
+# key_fixes: [provides_bin_sh]
+# similar_to: []
+# depends: []
+# status: WORKING
+# ---
+
+package: sgugrse-release
+
+rules:
+  # Provide /bin/sh so packages with shell scriptlets can install
+  # IRIX has /bin/sh but it's not in the RPM database
+  spec_replacements:
+    # Match the exact format with multiple spaces
+    - pattern: "Provides:       system-release\n"
+      replacement: "Provides:       system-release\nProvides:       /bin/sh\nProvides:       /usr/bin/sh\n"
+    # Remove swidtag entries (Fedora-specific, macro not defined on our system)
+    - pattern: "mkdir -p %{buildroot}%{_swidtagdir}\n"
+      replacement: "# mkdir -p %{buildroot}%{_swidtagdir} - disabled for IRIX\n"
+    - pattern: "install -d %{buildroot}%{_swidtagdir}\n"
+      replacement: "# install -d %{buildroot}%{_swidtagdir} - disabled for IRIX\n"
+    - pattern: "sed -e \"s#\\$version#%%{bug_version}#g\" -e 's/<!--.*-->//;/^$/d' %{SOURCE19} > %{buildroot}%{_swidtagdir}/org.sgugrseproject.Sgugrse-%{bug_version}.swidtag\n"
+      replacement: "# swidtag install disabled for IRIX\n"
+    - pattern: "ln -s %{_swidtagdir} %{buildroot}%{_sysconfdir}/swid/swidtags.d/sgugrseproject.org\n"
+      replacement: "# swidtag symlink disabled for IRIX\n"
+    - pattern: "%dir %{_swidtagdir}\n"
+      replacement: "# %dir %{_swidtagdir} - disabled for IRIX\n"
+    - pattern: "%{_swidtagdir}/org.sgugrseproject.Sgugrse-%{bug_version}.swidtag\n"
+      replacement: "# swidtag file disabled for IRIX\n"
