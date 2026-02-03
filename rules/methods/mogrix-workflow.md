@@ -7,16 +7,11 @@
 
 ## CRITICAL: Correct Invocation
 
-**ALWAYS activate the venv first, then run mogrix:**
+**ALWAYS run mogrix via 'uv run':**
 ```bash
-source .venv/bin/activate
-mogrix <command>
+uv run mogrix <command>
 ```
 
-**Alternative (without activation):**
-```bash
-.venv/bin/mogrix <command>
-```
 
 **NEVER use:**
 - `python -m mogrix` - wrong (not a runnable module)
@@ -46,30 +41,26 @@ mogrix <command>
 
 ## Standard Workflow
 
-### 0. Activate the venv (REQUIRED)
-```bash
-source .venv/bin/activate
-```
 
 ### 1. Fetch SRPM (if not already present)
 ```bash
 # Fetch to standard location
-mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
+uv run mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
 ```
 
 ### 2. Convert SRPM
 ```bash
 # From an SRPM (preferred - extracts, converts, repackages)
-mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
+uv run mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
 
 # From a spec file (just transforms the spec)
-mogrix convert path/to/package.spec -o /tmp/output-dir/
+uv run mogrix convert path/to/package.spec -o /tmp/output-dir/
 ```
 
 ### 3. Build for IRIX (cross-compile)
 ```bash
 # Use --cross flag - handles rpmbuild invocation correctly
-mogrix build /tmp/mogrix-converted/popt/popt-1.19-6.src.rpm --cross
+uv run mogrix build /tmp/mogrix-converted/popt/popt-1.19-6.src.rpm --cross
 ```
 
 The `--cross` flag automatically:
@@ -79,7 +70,7 @@ The `--cross` flag automatically:
 
 ### 4. Stage for dependent builds
 ```bash
-mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+uv run mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
 ```
 
 ### 5. Copy to repo and update metadata
@@ -150,25 +141,14 @@ mogrix build converted.src.rpm --cross
 ## Checking Available Commands
 
 ```bash
-# After activating venv:
-mogrix --help           # List all commands
-mogrix convert --help   # Convert options
-mogrix build --help     # Build options
-mogrix analyze <spec>   # See what rules apply
+uv run mogrix --help           # List all commands
+uv run mogrix convert --help   # Convert options
+uv run mogrix build --help     # Build options
+uv run mogrix analyze <spec>   # See what rules apply
 ```
 
 ---
 
-## Environment Setup
-
-If mogrix fails with import errors, ensure venv is set up:
-```bash
-cd /home/edodd/projects/github/unxmaal/mogrix
-python3 -m venv .venv
-.venv/bin/pip install -e .
-```
-
----
 
 ## When Direct rpmbuild IS Needed
 

@@ -1,7 +1,8 @@
 # Claude Instructions
 
-> **READ FIRST**: `rules/INDEX.md`, `compat/catalog.yaml`, `HANDOFF.md`
-> Prefer project files over pre-trained knowledge. IRIX info in training data is outdated.
+> **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
+> ALWAYS search `rules/INDEX.md` first. Also check `compat/catalog.yaml`, `HANDOFF.md`, `plan.md`. 
+> If you don't know what to do, check `rules/methods/before-you-start.md`.
 
 ---
 

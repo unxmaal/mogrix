@@ -1,0 +1,86 @@
+# ncurses - Terminal handling library
+# Build system: autoconf (custom, no libtool)
+# SGUG-RSE reference: packages/ncurses/
+package: ncurses
+
+add_patch:
+  - ncurses.sgiinfocmperr.patch
+
+rules:
+  # gpm (general purpose mouse) not available on IRIX
+  drop_buildrequires:
+    - gpm-devel
+
+  # Disable gpm conditional - IRIX has no mouse support in console
+  # Disable compat_libs - we don't build compat libraries for IRIX
+  comment_conditionals:
+    - with_gpm
+    - with compat_libs
+
+  # Remove gpgverify - we don't have gnupg2 during cross-compile
+  remove_lines:
+    - "%{gpgverify}"
+
+  # Drop c++-libs - C++ bindings don't build on IRIX cross-compile
+  drop_subpackages:
+    - c++-libs
+
+  # Fix bashisms - /bin/sh doesn't have pushd/popd or brace expansion
+  spec_replacements:
+    - pattern: "iconv -f iso8859-1 -t utf8 -o ${f}{_,} &&\n        touch -r ${f}{,_} && mv -f ${f}{_,}"
+      replacement: "iconv -f iso8859-1 -t utf8 -o ${f}_ ${f} && touch -r ${f} ${f}_ && mv -f ${f}_ ${f}"
+
+    # Replace pushd/popd with subshell cd
+    - pattern: "pushd $char$abi"
+      replacement: "_saved_pwd=$(pwd); cd $char$abi"
+    - pattern: "popd"
+      replacement: "cd $_saved_pwd"
+
+    # Fix brace expansion in rm commands
+    - pattern: "rm ${RPM_BUILD_ROOT}%{_libdir}/lib{tic,tinfo}.so.5*"
+      replacement: "rm -f ${RPM_BUILD_ROOT}%{_libdir}/libtic.so.5* ${RPM_BUILD_ROOT}%{_libdir}/libtinfo.so.5*"
+    - pattern: "rm ${RPM_BUILD_ROOT}%{_libdir}/lib{tic,tinfo}.so.6*"
+      replacement: "rm -f ${RPM_BUILD_ROOT}%{_libdir}/libtic.so.6* ${RPM_BUILD_ROOT}%{_libdir}/libtinfo.so.6*"
+
+    # Fix brace expansion in make install targets
+    - pattern: "make -C widec6 DESTDIR=$RPM_BUILD_ROOT install.{libs,progs,data,includes,man}"
+      replacement: "make -C widec6 DESTDIR=$RPM_BUILD_ROOT install.libs install.progs install.data install.includes install.man"
+
+    # Create lib directory for terminfo symlink (ncurses hardcodes this path)
+    - pattern: "make -C narrowc5 DESTDIR=$RPM_BUILD_ROOT install.libs"
+      replacement: "mkdir -p $RPM_BUILD_ROOT%{_prefix}/lib\nmake -C narrowc5 DESTDIR=$RPM_BUILD_ROOT install.libs"
+
+    # Comment out chmod 755 - glob may not match on IRIX (per SGUG-RSE)
+    - pattern: "chmod 755 ${RPM_BUILD_ROOT}%{_libdir}/lib*.so.*.*"
+      replacement: "# chmod 755 ${RPM_BUILD_ROOT}%{_libdir}/lib*.so.*.* # disabled - may not match on IRIX"
+
+    # Fix brace expansion in mkdir for include directories
+    - pattern: "mkdir $RPM_BUILD_ROOT%{_includedir}/ncurses{,w}"
+      replacement: "mkdir $RPM_BUILD_ROOT%{_includedir}/ncurses $RPM_BUILD_ROOT%{_includedir}/ncursesw"
+
+    # Fix brace expansion in for loop for libncurses
+    - pattern: "for l in $RPM_BUILD_ROOT%{_libdir}/libncurses{,w}.so; do"
+      replacement: "for l in $RPM_BUILD_ROOT%{_libdir}/libncurses.so $RPM_BUILD_ROOT%{_libdir}/libncursesw.so; do"
+
+    # Fix brace expansion in rm for libcurses
+    - pattern: "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurses{,w}.so"
+      replacement: "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurses.so $RPM_BUILD_ROOT%{_libdir}/libcursesw.so"
+
+    # Comment out tinfo linker script loop - no shared libs on IRIX (per SGUG-RSE)
+    - pattern: "for l in $RPM_BUILD_ROOT%{_libdir}/libncurses.so $RPM_BUILD_ROOT%{_libdir}/libncursesw.so; do\n    soname=$(basename $(readlink $l))\n    rm -f $l\n    echo \"INPUT($soname -ltinfo)\" > $l\ndone"
+      replacement: "# Commented out - no shared libs on IRIX\n#for l in $RPM_BUILD_ROOT%{_libdir}/libncurses.so $RPM_BUILD_ROOT%{_libdir}/libncursesw.so; do\n#    soname=$(basename $(readlink $l))\n#    rm -f $l\n#    echo \"INPUT($soname -ltinfo)\" > $l\n#done"
+
+    # Fix %files libs - IRIX doesn't version shared libs (per SGUG-RSE)
+    # Also remove the C++ exclude since c++-libs subpackage is dropped
+    - pattern: "%files libs\n%exclude %{_libdir}/libncurses++*.so.6*\n%{_libdir}/lib*.so.6*"
+      replacement: "%files libs\n%{_libdir}/lib*.so"
+
+    # Note: c++-libs subpackage is dropped via drop_subpackages
+
+    # Fix %files base - remove -f terms.base (bashisms in generator)
+    - pattern: "%files base -f terms.base"
+      replacement: "%files base"
+
+    # Fix %files term - remove -f terms.term (bashisms in generator)
+    - pattern: "%files term -f terms.term"
+      replacement: "%files term\n%{_datadir}/terminfo/*"

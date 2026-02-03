@@ -1,0 +1,31 @@
+# readline - Command line editing library
+# Build system: autoconf
+# SGUG-RSE reference: packages/readline/
+# Note: Fedora's readline-8.0-shlib.patch already includes SGUG-RSE's fix
+package: readline
+
+rules:
+  # Remove gpgverify - we don't have gnupg2 during cross-compile
+  remove_lines:
+    - "%{gpgverify}"
+
+  # Drop static subpackage - we put .a files in main package for static-only build
+  drop_subpackages:
+    - static
+
+  spec_replacements:
+    # Rewrite .pc to include "tinfo" library from ncurses (per SGUG-RSE)
+    - pattern: "%make_install"
+      replacement: "%make_install\n\n# Rewrite the .pc to include \"tinfo\" library from ncurses\nperl -pi -e \"s|: ncurses|: ncurses tinfo|g\" $RPM_BUILD_ROOT%{_libdir}/pkgconfig/readline.pc"
+
+    # Comment out ldconfig scriptlets
+    - pattern: "%ldconfig_scriptlets"
+      replacement: "#%ldconfig_scriptlets"
+
+    # Fix %files - no shared libs in cross-compile (static only)
+    - pattern: "%files\n%license COPYING USAGE\n%{_libdir}/libreadline.so.*\n%{_libdir}/libhistory.so.*"
+      replacement: "%files\n%license COPYING USAGE\n%{_libdir}/libreadline.a\n%{_libdir}/libhistory.a"
+
+    # Fix %files devel - remove shared lib symlinks
+    - pattern: "%{_libdir}/libreadline.so\n%{_libdir}/libhistory.so"
+      replacement: "# No shared lib symlinks in static-only build"
