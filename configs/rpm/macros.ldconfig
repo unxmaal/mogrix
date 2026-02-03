@@ -1,0 +1,6 @@
+# IRIX doesn't have ldconfig - it uses rld instead
+# Redefine ldconfig macros to be no-ops
+%ldconfig /bin/true
+%ldconfig_post(n:) /bin/true
+%ldconfig_postun(n:) /bin/true
+%ldconfig_scriptlets(n:) %{nil}

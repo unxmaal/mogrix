@@ -1,30 +1,21 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-02 (late night)
-**Status**: LIKELY FIXED - Rebuilt rpm with GNU ld, needs IRIX testing
+**Last Updated**: 2026-02-03
+**Status**: ✅ RPM WORKING - `rpm --help` confirmed working on IRIX with LLD 18 fix
 
 ---
 
-## CRITICAL CURRENT ISSUE - FIXED WITH LLD 18, NEEDS IRIX TESTING
+## ✅ RESOLVED: rpm --help working (2026-02-03)
 
 **Problem**: `rpm --help` (and ALL rpm options) were failing with "unknown option", but popt itself worked correctly.
 
-**ROOT CAUSE**: LLD 14 (vvuk's fork) generates incorrect R_MIPS_REL32 relocations for external data symbols in static arrays on MIPS N32. The `optionsTable` array in rpm includes pointers to `poptHelpOptions` and `poptAliasOptions` (from popt library). LLD 14 generated anonymous relocations without symbol names, leaving these pointers as NULL at runtime.
+**ROOT CAUSE**: LLD 14 (vvuk's fork) generates incorrect R_MIPS_REL32 relocations for external data symbols in static arrays on MIPS N32.
 
-**FIX APPLIED**: Updated `cross/bin/irix-ld` to use **LLD 18 with IRIX patches** (`ld.lld-irix-18`) instead of LLD 14 (`ld.lld-irix`). The patches in `lld-fixes/` fix the relocation bug.
+**FIX**: Updated `cross/bin/irix-ld` to use **LLD 18 with IRIX patches** (`ld.lld-irix-18`). The patches in `lld-fixes/` fix the relocation bug.
+
+**VERIFIED WORKING**: 2026-02-03 - `rpm --help` confirmed working on IRIX.
 
 **WARNING**: Do NOT try using GNU ld for executables - it crashes IRIX rld. See `rules/methods/linker-selection.md`.
-
-**Verification**: After rebuild with LLD 18, `readelf -r` shows proper symbol names:
-```
-00035ffc  00007b03 R_MIPS_REL32      00000000   rpmInstallPoptTable
-00036050  00007d03 R_MIPS_REL32      00000000   poptAliasOptions
-0003606c  00007e03 R_MIPS_REL32      00000000   poptHelpOptions
-```
-
-**Status**: Bootstrap tarball at `/tmp/bootstrap-lld18.tar.gz` on IRIX - needs testing.
-
-See "Session Summary (2026-02-02/03, LLD 18 Fix)" at bottom of this document for full details.
 
 ---
 
@@ -62,10 +53,9 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 - **sed→patch migration VALIDATED** - 8 of 11 packages migrated
 - **Removed stub sqlite3.h** - Was shadowing real sqlite3.h in compat headers
 
-### What's Broken (2026-02-02 evening)
-- **rpm --help** and ALL rpm command-line options fail with "unknown option"
-- This is a REGRESSION - rpm options were working before
-- popt library itself is fine (tdnf proves this)
+### ✅ Fixed (2026-02-03)
+- **rpm --help** now working - required LLD 18 with IRIX patches (see `lld-fixes/`)
+- Root cause was LLD 14 generating bad relocations for external data symbols
 
 ### Additional Fixes for tdnf (2026-02-01)
 
@@ -128,12 +118,12 @@ Updating / installing...
    1:sgugrse-release-0.0.7beta-1      ################################# [100%]
 ```
 
-### Verified in /opt/chroot on IRIX
+### Verified in /opt/chroot on IRIX (2026-02-03)
 
 | Test | Result |
 |------|--------|
 | `rpm --version` | ✓ RPM version 4.19.1.1 |
-| `rpm --help` | ✓ Shows options AND descriptions correctly |
+| `rpm --help` | ✓ Shows options AND descriptions correctly (LLD 18 fix) |
 | `rpm -qpl <pkg>` | ✓ Lists package contents |
 | `rpm --initdb` | ✓ Creates sqlite database |
 | `rpm -ivh --nodeps` | ✓ Installs with progress bars |
@@ -335,21 +325,9 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 
 ## Next Steps
 
-### IMMEDIATE PRIORITY: Test rpm fix on IRIX
+### ✅ COMPLETED: rpm --help working (2026-02-03)
 
-The LLD relocation bug has been fixed by switching to GNU ld for all linking. Bootstrap tarball is ready at `/tmp/bootstrap-gnuld-fix.tar.gz`.
-
-**Test on IRIX:**
-```bash
-cd /opt/chroot
-rm -rf usr/sgug
-gzcat /tmp/bootstrap-gnuld-fix.tar.gz | tar xvf -
-chroot /opt/chroot /bin/sh
-export LD_LIBRARYN32_PATH=/usr/sgug/lib32
-/usr/sgug/bin/rpm --help
-```
-
-### After rpm is verified working:
+### Next priorities:
 1. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
 2. **Build more packages** - Expand the mogrix repo with more useful packages
 3. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
