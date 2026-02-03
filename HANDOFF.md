@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-02-03
-**Status**: ✅ RPM WORKING - `rpm --help` confirmed working on IRIX with LLD 18 fix
+**Status**: ✅ TDNF WORKING - Full package manager bootstrap complete, installing from remote repos
 
 ---
 
@@ -325,13 +325,15 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 
 ## Next Steps
 
-### ✅ COMPLETED: rpm --help working (2026-02-03)
+### ✅ COMPLETED: tdnf installing from remote repos (2026-02-03)
 
 ### Next priorities:
-1. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
-2. **Build more packages** - Expand the mogrix repo with more useful packages
-3. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
-4. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+1. **Build more packages** - Expand the mogrix repo (ncurses, bash, coreutils, etc.)
+2. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
+3. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+
+### Deferred (low priority):
+- **Remaining inline seds** - libsolv (2), tdnf (6), rpm (5) still have inline seds but are working. These are mostly CMake/config changes that are hard to express as source patches. Not blocking.
 
 ---
 
@@ -1494,3 +1496,64 @@ chroot /opt/chroot /bin/sh
 export LD_LIBRARYN32_PATH=/usr/sgug/lib32
 /usr/sgug/bin/rpm --help
 ```
+
+---
+
+## Session Summary (2026-02-03, Bootstrap Rebuild)
+
+### Clean Rebuild of All 14 Bootstrap Packages
+
+Ran `./cleanup.sh` and rebuilt entire bootstrap chain from scratch:
+
+| # | Package | Version | Status |
+|---|---------|---------|--------|
+| 1 | zlib-ng | 2.1.6 | ✅ |
+| 2 | bzip2 | 1.0.8 | ✅ |
+| 3 | popt | 1.19 | ✅ |
+| 4 | openssl | 3.2.1 | ✅ |
+| 5 | libxml2 | 2.12.5 | ✅ |
+| 6 | curl | 8.6.0 | ✅ |
+| 7 | xz | 5.4.6 | ✅ |
+| 8 | lua | 5.4.6 | ✅ |
+| 9 | file | 5.45 | ✅ |
+| 10 | sqlite | 3.45.1 | ✅ |
+| 11 | rpm | 4.19.1.1 | ✅ |
+| 12 | libsolv | 0.7.28 | ✅ |
+| 13 | tdnf | 3.5.14 | ✅ |
+| 14 | sgugrse-release | 0.0.7beta | ✅ |
+
+**Total: 70 MIPS RPMs built**
+
+### Issues Fixed During Rebuild
+
+1. **Multilib header symlinks** - Clang defines `__mips64` even for n32 ABI, but OpenSSL/Lua only ship `configuration-mips.h` / `luaconf-mips.h`. Created symlinks:
+   - `configuration-mips64.h -> configuration-mips.h`
+   - `luaconf-mips64.h -> luaconf-mips.h`
+
+2. **curl OpenSSL detection** - Updated `rules/packages/curl.yaml` to pass explicit `--with-openssl=/opt/sgug-staging/usr/sgug` path instead of relying on pkg-config.
+
+3. **ldconfig scriptlet failures** - Added `macros.ldconfig` to rpm package that makes `%ldconfig*` macros no-ops (IRIX uses rld, not ldconfig).
+
+### Files Modified
+
+- `rules/packages/curl.yaml` - Explicit OpenSSL path
+- `rules/packages/rpm.yaml` - Added macros.ldconfig creation
+- `configs/rpm/macros.ldconfig` - New file (IRIX ldconfig stub macros)
+
+### Bootstrap Tarball
+
+- Location: `tmp/irix-bootstrap.tar.gz` (40MB)
+- Includes macros.ldconfig for silent ldconfig scriptlets
+- **VERIFIED**: tdnf installing packages from remote repo on IRIX
+
+### Remaining Inline Seds (Deferred)
+
+These packages still have inline seds but are working fine:
+
+| Package | Sed Count | Purpose |
+|---------|-----------|---------|
+| libsolv | 2 | xmlErrorPtr const, HAVE_FUNOPEN |
+| tdnf | 6 | CMake subdirs, tdnf.conf paths |
+| rpm | 5 | BZip2 target, SONAME fixes |
+
+Most are CMake/config changes that don't fit well as source patches. Not blocking.

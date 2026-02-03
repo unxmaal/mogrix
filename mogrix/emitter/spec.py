@@ -18,6 +18,7 @@ class SpecWriter:
         result: TransformResult,
         drops: list[str] | None = None,
         adds: list[str] | None = None,
+        add_requires: list[str] | None = None,
         cppflags: str | None = None,
         compat_sources: str | None = None,
         compat_prep: str | None = None,
@@ -142,6 +143,18 @@ class SpecWriter:
                     lines.insert(last_br_idx + 1, f"BuildRequires: {dep}")
                     last_br_idx += 1
                 content = "\n".join(lines)
+
+        # Add new Requires (after Name: line)
+        # Cross-compiled packages have AutoReq: no, so dependencies must be explicit
+        if add_requires:
+            lines = content.splitlines()
+            for i, line in enumerate(lines):
+                if line.strip().startswith("Name:"):
+                    # Insert after Name line (in reverse order so first dep ends up first)
+                    for dep in reversed(add_requires):
+                        lines.insert(i + 1, f"Requires: {dep}")
+                    break
+            content = "\n".join(lines)
 
         # Inject configure --disable flags
         if result.configure_disable:

@@ -89,6 +89,10 @@ rules:
     - "rm -f $RPM_BUILD_ROOT%{_libdir}/libjq.a"
     - "rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/jq"
 
+  # Add explicit dependencies (auto-requires doesn't work for cross-compiled packages)
+  add_requires:
+    - oniguruma
+
   # Apply libtool fixes after configure
   spec_replacements:
     # The configure uses autoreconf -if then %configure, insert fix after configure runs

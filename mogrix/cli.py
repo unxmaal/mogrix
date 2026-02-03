@@ -408,6 +408,7 @@ def _generate_converted_spec(
         patch_prep=patch_prep,
         ac_cv_overrides=result.ac_cv_overrides if result.ac_cv_overrides else None,
         drop_requires=result.drop_requires if result.drop_requires else None,
+        add_requires=result.add_requires if result.add_requires else None,
         remove_lines=result.remove_lines if result.remove_lines else None,
         rpm_macros=result.rpm_macros if result.rpm_macros else None,
         export_vars=result.export_vars if result.export_vars else None,

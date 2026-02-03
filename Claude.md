@@ -9,6 +9,9 @@
 
 **Primary mission: STORE KNOWLEDGE.** Every fix must be written into mogrix rules so it never needs to be rediscovered.
 
+### Task Tracking
+> **Read**: `rules/methods/task-tracking.md` declares that you must use ultralist for tracking tasks and defines how to use it.
+
 ### No Shortcuts
 
 When you hit an obstacle:
