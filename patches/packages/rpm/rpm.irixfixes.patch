@@ -1,0 +1,303 @@
+diff -Naur rpm-4.19.1.1.origfedora/CMakeLists.txt rpm-4.19.1.1/CMakeLists.txt
+--- rpm-4.19.1.1.origfedora/CMakeLists.txt	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/CMakeLists.txt	2026-02-02 15:25:43.741699328 +0000
+@@ -399,7 +399,7 @@
+ add_subdirectory(sign)
+ add_subdirectory(tools)
+ 
+-if (EXISTS ${CMAKE_SOURCE_DIR}/po/rpm.pot)
++if (EXISTS ${CMAKE_SOURCE_DIR}/po/rpm.pot AND ENABLE_NLS)
+ 	add_subdirectory(po)
+ endif()
+ 
+diff -Naur rpm-4.19.1.1.origfedora/lib/fsm.c rpm-4.19.1.1/lib/fsm.c
+--- rpm-4.19.1.1.origfedora/lib/fsm.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/lib/fsm.c	2026-02-02 15:27:11.637981911 +0000
+@@ -617,7 +617,14 @@
+ 	{ .tv_sec = mtime, .tv_nsec = 0 },
+     };
+ 
++    /* IRIX fix: futimens() uses /dev/fd/N internally, but IRIX's utimes()
++     * fails with ENOENT on /dev/fd paths. Force the utimensat() path which
++     * uses the actual pathname instead. */
++#if defined(__sgi)
++    if (0 && fd >= 0)
++#else
+     if (fd >= 0)
++#endif
+ 	rc = futimens(fd, stamps);
+     else
+ 	rc = utimensat(dirfd, path, stamps, AT_SYMLINK_NOFOLLOW);
+diff -Naur rpm-4.19.1.1.origfedora/lib/headerfmt.c rpm-4.19.1.1/lib/headerfmt.c
+--- rpm-4.19.1.1.origfedora/lib/headerfmt.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/lib/headerfmt.c	2026-02-02 15:25:44.982717434 +0000
+@@ -221,7 +221,7 @@
+ static void hsaError(headerSprintfArgs hsa, const char *fmt, ...)
+ {
+     /* Use thread local buffer as headerFormat() errmsg arg is const */
+-    static __thread char *errbuf = NULL;
++    static char *errbuf = NULL;
+ 
+     if (fmt == NULL) {
+ 	hsa->errmsg = NULL;
+diff -Naur rpm-4.19.1.1.origfedora/lib/rpmrc.c rpm-4.19.1.1/lib/rpmrc.c
+--- rpm-4.19.1.1.origfedora/lib/rpmrc.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/lib/rpmrc.c	2026-02-02 15:27:50.331546637 +0000
+@@ -1151,7 +1151,7 @@
+ 	    strcpy(un.machine, __power_pc() ? "ppc" : "rs6000");
+ 	    sprintf(un.sysname,"aix%s.%s", un.version, un.release);
+ 	}
+-	else if (rstreq(un.sysname, "Darwin")) { 
++	else if (rstreq(un.sysname, "Darwin")) {
+ #if defined(__ppc__)
+ 	    strcpy(un.machine, "ppc");
+ #elif defined(__i386__)
+@@ -1162,7 +1162,26 @@
+ 	    strcpy(un.machine, "aarch64");
+ #else
+ 	    #warning "No architecture defined! Automatic detection may not work!"
+-#endif 
++#endif
++	}
++	else if (rstreqn(un.sysname, "IRIX", 4)) {
++	    /* IRIX: uname returns IP30/IP32/etc for machine, force to mips */
++#if __MIPS_SIM == _MIPS_SIM_ABI64
++	    /* 64-bit ABI */
++#if !defined(__mips_isa_rev) || __mips_isa_rev < 6
++	    strcpy(un.machine, "mips64");
++#else
++	    strcpy(un.machine, "mips64r6");
++#endif
++#else
++	    /* N32 or O32 ABI */
++#if !defined(__mips_isa_rev) || __mips_isa_rev < 6
++	    strcpy(un.machine, "mips");
++#else
++	    strcpy(un.machine, "mipsr6");
++#endif
++#endif
++	    sprintf(un.sysname, "irix");
+ 	}
+ 	else if (rstreq(un.sysname, "SunOS")) {
+ 	    /* Solaris 2.x: n.x.x becomes n-3.x.x */
+@@ -1187,6 +1206,8 @@
+ 	for (chptr = un.machine; *chptr != '\0'; chptr++)
+ 	    if (*chptr == '/') *chptr = '-';
+ 
++/* Skip generic MIPS detection on IRIX - we handle it above */
++#if !defined(__sgi)
+ #	if defined(__MIPSEL__) || defined(__MIPSEL) || defined(_MIPSEL)
+ 	    /* little endian */
+ #		if defined(__mips64)
+@@ -1230,6 +1251,7 @@
+ #			endif
+ #		endif
+ #	endif
++#endif /* !__sgi */
+ 
+ #if defined(__loongarch64)
+ 	strcpy(un.machine, "loongarch64");
+diff -Naur rpm-4.19.1.1.origfedora/lib/rpmug.c rpm-4.19.1.1/lib/rpmug.c
+--- rpm-4.19.1.1.origfedora/lib/rpmug.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/lib/rpmug.c	2026-02-02 15:25:46.218735468 +0000
+@@ -18,7 +18,7 @@
+     gid_t lastGid;
+ };
+ 
+-static __thread struct rpmug_s *rpmug = NULL;
++static struct rpmug_s *rpmug = NULL;
+ 
+ static const char *getpath(const char *bn, const char *dfl, char **dest)
+ {
+diff -Naur rpm-4.19.1.1.origfedora/macros.in rpm-4.19.1.1/macros.in
+--- rpm-4.19.1.1.origfedora/macros.in	2026-02-02 15:25:01.706086081 +0000
++++ rpm-4.19.1.1/macros.in	2026-02-02 15:25:24.738422079 +0000
+@@ -117,7 +117,7 @@
+ %_builddir		%{_topdir}/BUILD
+ 
+ #	The interpreter used for build scriptlets.
+-%_buildshell		/bin/sh
++%_buildshell		%{_bindir}/sh
+ 
+ #	The location of the rpm database file(s).
+ %_dbpath		%{_usr}/lib/sysimage/rpm
+@@ -786,6 +786,12 @@
+   export CLASSPATH}\
+   PKG_CONFIG_PATH=\"${PKG_CONFIG_PATH}:%{_libdir}/pkgconfig:%{_datadir}/pkgconfig\"\
+   export PKG_CONFIG_PATH\
++  LD_LIBRARYN32_PATH="%{_libdir}:/usr/lib32:/lib32"\
++  export LD_LIBRARYN32_PATH\
++  SHELL="%{_bindir}/sh"\
++  SHELL_PATH="${SHELL}"\
++  CONFIG_SHELL="${SHELL}"\
++  export SHELL SHELL_PATH CONFIG_SHELL\
+   CONFIG_SITE=${CONFIG_SITE:-NONE}\
+   export CONFIG_SITE
+ 
+diff -Naur rpm-4.19.1.1.origfedora/misc/fts.c rpm-4.19.1.1/misc/fts.c
+--- rpm-4.19.1.1.origfedora/misc/fts.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/misc/fts.c	2026-02-02 15:26:35.292451511 +0000
+@@ -37,7 +37,7 @@
+ #endif
+ 
+ /* Conditional to set up proper fstat64 implementation */
+-#if defined(hpux) || defined(sun) || (defined(__APPLE__) && defined(_DARWIN_FEATURE_ONLY_64_BIT_INODE))
++#if defined(hpux) || defined(sun) || defined(__sgi) || (defined(__APPLE__) && defined(_DARWIN_FEATURE_ONLY_64_BIT_INODE))
+ #   define FTS_FSTAT64(_fd, _sbp)   fstat((_fd), (_sbp))
+ #else
+ #   define FTS_FSTAT64(_fd, _sbp)   fstat64((_fd), (_sbp))
+@@ -56,6 +56,13 @@
+ #else
+
+ /* Conditionals for working around non-GNU environments */
++#if defined(__sgi)
++#   include <sys/types.h>
++#   define __errno_location()	(&errno)
++#   define dirfd(dirp)		((dirp)->dd_fd)
++/* Note: DO NOT define stat64 as stat - IRIX has both types and this
++ * causes struct redefinition errors. FTS_FSTAT64 above uses fstat(). */
++#endif
+ #if defined(hpux)
+ #   define        _INCLUDE_POSIX_SOURCE
+ #   define __errno_location() 	(&errno)
+diff -Naur rpm-4.19.1.1.origfedora/misc/system.h rpm-4.19.1.1/misc/system.h
+--- rpm-4.19.1.1.origfedora/misc/system.h	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/misc/system.h	2026-02-02 15:26:48.480643964 +0000
+@@ -80,6 +80,14 @@
+ # error "Did not find any sutable implementation of xsetprogname/xgetprogname"
+ #endif
+
++/* IRIX: stpcpy/stpncpy declarations (implementations in mogrix-compat)
++ * These are in a separate block because HAVE_SETPROGNAME=1 is set for IRIX
++ * (since mogrix-compat provides setprogname), which skips the #elif __sgi branch above */
++#if defined(__sgi)
++  extern char *stpcpy(char *dest, const char *src);
++  extern char *stpncpy(char *dest, const char *src, size_t n);
++#endif
++
+ /* Take care of NLS matters.  */
+ #if defined(ENABLE_NLS)
+ # include <locale.h>
+diff -Naur rpm-4.19.1.1.origfedora/rpmio/macro.c rpm-4.19.1.1/rpmio/macro.c
+--- rpm-4.19.1.1.origfedora/rpmio/macro.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/rpmio/macro.c	2026-02-02 15:26:59.656807060 +0000
+@@ -619,7 +619,11 @@
+ #endif
+     /* Fallback to sysconf() if the above isn't supported or didn't work */
+     if (ncpus < 1)
++#if defined(__sgi)
++	ncpus = sysconf(_SC_NPROC_ONLN);
++#else
+ 	ncpus = sysconf(_SC_NPROCESSORS_ONLN);
++#endif
+     /* If all else fails, there's always the one we're running on... */
+     if (ncpus < 1)
+ 	ncpus = 1;
+diff -Naur rpm-4.19.1.1.origfedora/rpmio/rpmlog.c rpm-4.19.1.1/rpmio/rpmlog.c
+--- rpm-4.19.1.1.origfedora/rpmio/rpmlog.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/rpmio/rpmlog.c	2026-02-02 15:26:08.570061585 +0000
+@@ -283,7 +283,7 @@
+ 
+ static void logerror(void)
+ {
+-    static __thread int lasterr = 0;
++    static int lasterr = 0;
+     if (errno != EPIPE && errno != lasterr) {
+ 	lasterr = errno;
+ 	perror(_("Error writing to log"));
+@@ -293,7 +293,7 @@
+ static int rpmlogDefault(FILE *stdlog, rpmlogRec rec)
+ {
+     FILE *msgout = (stdlog ? stdlog : stderr);
+-    static __thread int color = -1;
++    static int color = -1;
+     const char * colorOn = NULL;
+ 
+     if (color < 0)
+@@ -442,6 +442,34 @@
+     n = vsnprintf(NULL, 0, fmt, ap);
+     va_end(ap);
+ 
++#if defined(__sgi)
++    /* IRIX vsnprintf returns -1 for size queries (pre-C99 behavior).
++     * Use iterative doubling approach instead. */
++    if (n < 0) {
++	struct rpmlogRec_s rec;
++	size_t nb = 256;  /* Start with reasonable initial size */
++	char *msg = NULL;
++	for (;;) {
++	    msg = xmalloc(nb);
++	    va_start(ap, fmt);
++	    n = vsnprintf(msg, nb, fmt, ap);
++	    va_end(ap);
++	    if (n >= 0 && (size_t)n < nb)
++		break;  /* Success - output fit in buffer */
++	    free(msg);
++	    nb *= 2;
++	    if (nb > 1024 * 1024)  /* Safety limit: 1MB */
++		goto exit;
++	}
++	rec.code = code;
++	rec.pri = pri;
++	rec.message = msg;
++	dolog(&rec, saverec);
++	free(msg);
++	goto exit;
++    }
++#endif
++
+     if (n >= -1) {
+ 	struct rpmlogRec_s rec;
+ 	size_t nb = n + 1;
+diff -Naur rpm-4.19.1.1.origfedora/rpmio/rpmstring.c rpm-4.19.1.1/rpmio/rpmstring.c
+--- rpm-4.19.1.1.origfedora/rpmio/rpmstring.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/rpmio/rpmstring.c	2026-02-02 15:26:20.501235677 +0000
+@@ -71,21 +71,45 @@
+     int n;
+     char * p = NULL;
+     va_list aq;
+-  
+-    if (strp == NULL) 
++
++    if (strp == NULL)
+ 	return -1;
+ 
+     va_copy(aq, ap);
+     n = vsnprintf(NULL, 0, fmt, aq);
+     va_end(aq);
+ 
++#if defined(__sgi)
++    /* IRIX vsnprintf returns -1 for size queries (pre-C99 behavior).
++     * Use iterative doubling approach instead. */
++    if (n < 0) {
++	size_t nb = 128;  /* Start with reasonable initial size */
++	for (;;) {
++	    p = xmalloc(nb);
++	    va_copy(aq, ap);
++	    n = vsnprintf(p, nb, fmt, aq);
++	    va_end(aq);
++	    if (n >= 0 && (size_t)n < nb)
++		break;  /* Success - output fit in buffer */
++	    free(p);
++	    nb *= 2;
++	    if (nb > 1024 * 1024) {  /* Safety limit: 1MB */
++		*strp = NULL;
++		return -1;
++	    }
++	}
++	*strp = p;
++	return n;
++    }
++#endif
++
+     if (n >= -1) {
+ 	size_t nb = n + 1;
+ 	p = xmalloc(nb);
+ 	va_copy(aq, ap);
+         n = vsnprintf(p, nb, fmt, aq);
+ 	va_end(aq);
+-    } 
++    }
+     *strp = p;
+     return n;
+ }

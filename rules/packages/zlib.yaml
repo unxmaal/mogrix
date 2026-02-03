@@ -43,3 +43,9 @@ rules:
     # Delete minizip static library - created despite --enable-static=no
     - pattern: "find $RPM_BUILD_ROOT -name '*.la' -delete"
       replacement: "find $RPM_BUILD_ROOT -name '*.la' -delete\nrm -f $RPM_BUILD_ROOT%{_libdir}/libminizip.a"
+    # Fix minizip libtool before building (minizip has its own libtool in contrib/minizip/)
+    - pattern: "%configure --enable-static=no\n%make_build\n%endif"
+      replacement: "%configure --enable-static=no\n/opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1\n%make_build\n%endif"
+    # Remove versioned minizip library (IRIX doesn't use versioned libs)
+    - pattern: "%{_libdir}/libminizip.so.*"
+      replacement: "# %{_libdir}/libminizip.so.* - IRIX doesn't use versioned libs"

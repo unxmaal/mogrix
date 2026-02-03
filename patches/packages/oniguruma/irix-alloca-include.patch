@@ -1,0 +1,12 @@
+--- a/src/regint.h
++++ b/src/regint.h
+@@ -115,7 +115,8 @@
+ #include <stdint.h>
+ #endif
+
+-#if defined(HAVE_ALLOCA_H) && !defined(__GNUC__)
++/* IRIX/clang: Always include alloca.h when available */
++#if defined(HAVE_ALLOCA_H)
+ #include <alloca.h>
+ #endif
+

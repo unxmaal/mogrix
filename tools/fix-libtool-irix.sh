@@ -64,11 +64,11 @@ if grep -q '^version_type=none$' "$LIBTOOL"; then
 fi
 
 # Fix soname_spec if empty
-# Note: The $ variables need to be preserved literally in the libtool file
+# Note: The $ variables MUST be backslash-escaped to prevent shell expansion in libtool
 if grep -q '^soname_spec=""$' "$LIBTOOL"; then
     "$SAFEPATCH" "$LIBTOOL" \
         --old 'soname_spec=""' \
-        --new 'soname_spec="$libname${shared_ext}$major"' \
+        --new 'soname_spec="\$libname\${shared_ext}\$major"' \
         --count 0 --no-backup --quiet
     echo "  Fixed: soname_spec"
 fi
@@ -77,7 +77,7 @@ fi
 if grep -q '^library_names_spec=""$' "$LIBTOOL"; then
     "$SAFEPATCH" "$LIBTOOL" \
         --old 'library_names_spec=""' \
-        --new 'library_names_spec="$libname${shared_ext}$versuffix $libname${shared_ext}$major $libname${shared_ext}"' \
+        --new 'library_names_spec="\$libname\${shared_ext}\$versuffix \$libname\${shared_ext}\$major \$libname\${shared_ext}"' \
         --count 0 --no-backup --quiet
     echo "  Fixed: library_names_spec"
 fi

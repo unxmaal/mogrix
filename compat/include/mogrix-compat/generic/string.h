@@ -1,8 +1,12 @@
 /*
  * mogrix-compat/generic/string.h
  *
- * Wrapper that includes the real string.h and adds GNU extensions
+ * Wrapper that includes the real string.h and adds GNU/POSIX extensions
  * for IRIX compatibility.
+ *
+ * IMPORTANT: Declarations are unconditional. Multiple identical declarations
+ * are legal C. Conditional (#ifndef) guards caused silent failures when
+ * macros defined the function names.
  */
 
 #ifndef _MOGRIX_COMPAT_STRING_H
@@ -15,52 +19,21 @@
 extern "C" {
 #endif
 
-/*
- * strdup - duplicate a string (POSIX.1-2001)
- * strndup - duplicate n bytes of a string (POSIX.1-2008)
- *
- * IRIX may not have declarations in strict C99 mode.
- */
 #include <stddef.h>  /* for size_t */
 
-#ifndef strdup
+/* strdup/strndup - POSIX string duplication */
 char *strdup(const char *s);
-#endif
-
-#ifndef strndup
 char *strndup(const char *s, size_t n);
-#endif
 
-/*
- * stpcpy/stpncpy - copy string returning pointer to end (POSIX.1-2008)
- *
- * IRIX may not have declarations in strict C99 mode.
- */
-#ifndef stpcpy
+/* stpcpy/stpncpy - POSIX.1-2008, copy returning pointer to end */
 char *stpcpy(char *dest, const char *src);
-#endif
-
-#ifndef stpncpy
 char *stpncpy(char *dest, const char *src, size_t n);
-#endif
 
-/*
- * strcasestr - case-insensitive substring search (GNU extension)
- *
- * IRIX doesn't have strcasestr. We provide our own implementation.
- */
-#ifndef strcasestr
+/* strcasestr - GNU extension, case-insensitive search */
 char *strcasestr(const char *haystack, const char *needle);
-#endif
 
-/*
- * strsep - extract token from string (BSD extension)
- *
- * IRIX doesn't have strsep. We provide our own implementation.
- */
-#ifndef strsep
+/* strsep - BSD extension, token extraction */
 char *strsep(char **stringp, const char *delim);
-#endif
 
 #ifdef __cplusplus
 }

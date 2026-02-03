@@ -1,0 +1,25 @@
+# createrepo_c - Repository metadata generator
+# cmake-based build, needs glib2
+package: createrepo_c
+
+rules:
+  # Replace bash-specific pushd/popd with POSIX cd
+  spec_replacements:
+    # %build section - fix pushd
+    - pattern: "pushd build-py3"
+      replacement: "cd build-py3"
+
+    # %build section - fix popd after doc-c
+    - pattern: "make doc-c\npopd"
+      replacement: "make doc-c\ncd .."
+
+    # %install section - fix pushd/popd
+    - pattern: "pushd build-py3\n  # Install createrepo_c"
+      replacement: "cd build-py3\n  # Install createrepo_c"
+
+    - pattern: "make install DESTDIR=%{buildroot}\npopd"
+      replacement: "make install DESTDIR=%{buildroot}\ncd .."
+
+    # Replace %cmake macro with actual cmake command (macro not available on build host)
+    - pattern: "%cmake .."
+      replacement: "cmake .. -DCMAKE_INSTALL_PREFIX=%{_prefix} -DLIB_SUFFIX=32"

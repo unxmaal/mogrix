@@ -408,6 +408,7 @@ def _generate_converted_spec(
         patch_prep=patch_prep,
         ac_cv_overrides=result.ac_cv_overrides if result.ac_cv_overrides else None,
         drop_requires=result.drop_requires if result.drop_requires else None,
+        add_requires=result.add_requires if result.add_requires else None,
         remove_lines=result.remove_lines if result.remove_lines else None,
         rpm_macros=result.rpm_macros if result.rpm_macros else None,
         export_vars=result.export_vars if result.export_vars else None,
@@ -1569,6 +1570,48 @@ def _clean_staged_packages(
     console.print("  - Compat headers (dicl-clang-compat, mogrix-compat)")
     console.print("  - libsoft_float_stubs.a")
     console.print("  - Pre-existing libraries (zlib, bz2, lzma, ncurses, readline)")
+
+
+@main.command("sync-headers")
+@click.option(
+    "--staging-dir",
+    type=click.Path(),
+    default="/opt/sgug-staging/usr/sgug",
+    help="Staging directory (default: /opt/sgug-staging/usr/sgug)",
+)
+def sync_headers(staging_dir: str):
+    """Sync compat headers from repo to staging.
+
+    This forces a resync of mogrix-compat and dicl-clang-compat headers
+    from the mogrix repo to the staging environment.
+
+    Use this after editing compat headers in the repo to update staging.
+
+    Example:
+        mogrix sync-headers
+    """
+    from .staging import StagingConfig, StagingManager, StagingStatus
+
+    console.print("[bold]Syncing compat headers to staging...[/bold]")
+
+    config = StagingConfig()
+    config.staging_dir = Path(staging_dir)
+
+    manager = StagingManager(config)
+    status = StagingStatus()
+
+    # Ensure directories exist
+    config.include_dir.mkdir(parents=True, exist_ok=True)
+
+    # Force sync headers
+    manager._ensure_headers(status, verbose=True, force=True)
+
+    if status.errors:
+        for error in status.errors:
+            console.print(f"[red]Error: {error}[/red]")
+        raise SystemExit(1)
+
+    console.print("[bold green]Headers synced successfully![/bold green]")
 
 
 if __name__ == "__main__":

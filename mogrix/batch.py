@@ -132,6 +132,7 @@ class BatchConverter:
                 compat_build=compat_build,
                 ac_cv_overrides=transform.ac_cv_overrides or None,
                 drop_requires=transform.drop_requires or None,
+                add_requires=transform.add_requires or None,
                 remove_lines=transform.remove_lines or None,
                 rpm_macros=transform.rpm_macros or None,
             )

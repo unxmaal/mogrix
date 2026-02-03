@@ -1,8 +1,13 @@
 """Spec file writer for mogrix."""
 
 import re
+from pathlib import Path
 
 from mogrix.rules.engine import TransformResult
+
+# Calculate MOGRIX_ROOT from this file's location
+# This allows $MOGRIX_ROOT/tools/... to work in specs
+MOGRIX_ROOT = str(Path(__file__).parent.parent.parent.resolve())
 
 
 class SpecWriter:
@@ -13,6 +18,7 @@ class SpecWriter:
         result: TransformResult,
         drops: list[str] | None = None,
         adds: list[str] | None = None,
+        add_requires: list[str] | None = None,
         cppflags: str | None = None,
         compat_sources: str | None = None,
         compat_prep: str | None = None,
@@ -39,6 +45,12 @@ class SpecWriter:
             macro_lines = ["# IRIX/SGUG path macros (injected by mogrix)"]
             for name, value in rpm_macros.items():
                 macro_lines.append(f"%define {name} {value}")
+            # Disable automatic dependency detection for cross-compiled packages
+            # IRIX system libraries aren't in the RPM database
+            macro_lines.append("")
+            macro_lines.append("# Disable auto-deps for cross-compilation")
+            macro_lines.append("AutoReq: no")
+            macro_lines.append("AutoProv: no")
             macro_lines.append("")
             content = "\n".join(macro_lines) + content
 
@@ -52,17 +64,62 @@ class SpecWriter:
 
         # Remove dropped BuildRequires
         for dep in drops:
-            # Match BuildRequires line containing the dep (with optional version)
-            # Handles: BuildRequires: pkg, BuildRequires: pkg >= 1.0, etc.
-            pattern = rf"^BuildRequires:\s*{re.escape(dep)}(\s*[<>=].*)?$"
+            escaped_dep = re.escape(dep)
+            # Pattern 1: Single-package BuildRequires line
+            # Matches: BuildRequires: pkg, BuildRequires: pkg >= 1.0, BuildRequires: pkg%{_isa}
+            pattern = rf"^BuildRequires:\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
             content = re.sub(pattern, "", content, flags=re.MULTILINE)
+
+            # Pattern 2: Package in a multi-package BuildRequires line
+            def remove_from_multi_buildrequires(match):
+                full_line = match.group(0)
+                prefix = match.group(1)  # "BuildRequires:"
+                packages = match.group(2)
+                # Remove the specific package (with optional version constraint)
+                # Use word boundary (?![a-zA-Z0-9_-]) to avoid matching pkg in pkg-devel
+                pkg_pattern = rf"(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
+                new_packages = re.sub(pkg_pattern, " ", packages).strip()
+                new_packages = re.sub(r"\s+", " ", new_packages)
+                if not new_packages:
+                    return ""
+                return f"{prefix} {new_packages}"
+
+            pattern_multi = rf"^(BuildRequires:)\s+(.+(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-]).*)$"
+            content = re.sub(pattern_multi, remove_from_multi_buildrequires, content, flags=re.MULTILINE)
 
         # Remove dropped Requires
         if drop_requires:
             for dep in drop_requires:
-                # Match Requires line (but not BuildRequires)
-                pattern = rf"^Requires:\s*{re.escape(dep)}(\s*[<>=].*)?$"
+                escaped_dep = re.escape(dep)
+                # Match all Requires variants: Requires:, Requires(pre):, Requires(post):, etc.
+                # Also handle %{_isa} suffix and version constraints
+                # Pattern 1: Single-package Requires line (with optional scriptlet qualifier)
+                # Matches: Requires: pkg, Requires(pre): pkg, Requires: pkg%{_isa} >= 1.0
+                pattern = rf"^Requires(\([^)]+\))?:\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
                 content = re.sub(pattern, "", content, flags=re.MULTILINE)
+
+                # Pattern 2: Package in a multi-package Requires line
+                # Remove just that package from the line, preserving others
+                # Matches: "Requires: foo bar pkg baz" -> "Requires: foo bar baz"
+                def remove_from_multi_requires(match):
+                    full_line = match.group(0)
+                    prefix = match.group(1)  # "Requires:" or "Requires(pre):" etc
+                    packages = match.group(2)
+                    # Remove the specific package (with optional version constraint)
+                    # Handle: pkg, pkg >= 1.0, pkg%{_isa}, pkg%{_isa} >= 1.0
+                    # Use negative lookahead (?![a-zA-Z0-9_-]) to avoid matching pkg in pkg-devel
+                    pkg_pattern = rf"(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
+                    new_packages = re.sub(pkg_pattern, " ", packages).strip()
+                    # Clean up multiple spaces
+                    new_packages = re.sub(r"\s+", " ", new_packages)
+                    if not new_packages:
+                        return ""  # Remove entire line if no packages left
+                    return f"{prefix} {new_packages}"
+
+                # Match Requires lines that contain multiple packages
+                # Use word boundary to avoid matching pkg in pkg-devel
+                pattern_multi = rf"^(Requires(?:\([^)]+\))?:)\s+(.+(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-]).*)$"
+                content = re.sub(pattern_multi, remove_from_multi_requires, content, flags=re.MULTILINE)
 
         # Remove specific lines (substring match - removes lines containing pattern)
         if remove_lines:
@@ -86,6 +143,18 @@ class SpecWriter:
                     lines.insert(last_br_idx + 1, f"BuildRequires: {dep}")
                     last_br_idx += 1
                 content = "\n".join(lines)
+
+        # Add new Requires (after Name: line)
+        # Cross-compiled packages have AutoReq: no, so dependencies must be explicit
+        if add_requires:
+            lines = content.splitlines()
+            for i, line in enumerate(lines):
+                if line.strip().startswith("Name:"):
+                    # Insert after Name line (in reverse order so first dep ends up first)
+                    for dep in reversed(add_requires):
+                        lines.insert(i + 1, f"Requires: {dep}")
+                    break
+            content = "\n".join(lines)
 
         # Inject configure --disable flags
         if result.configure_disable:
@@ -157,25 +226,87 @@ class SpecWriter:
                     lines.insert(last_source_idx, src_line)
                 content = "\n".join(lines)
 
-        # Inject Patch entries (after last Source/Patch line)
+        # Inject Patch entries
+        # If %patchlist exists, add patch filenames to end of patchlist
+        # (so they're applied AFTER other patchlist patches)
+        # Otherwise, add as PatchN: tags after last Source/Patch line
         if patch_sources:
             lines = content.splitlines()
-            last_source_idx = -1
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-                if (
-                    stripped.startswith("Source") or stripped.startswith("Patch")
-                ) and ":" in stripped:
-                    last_source_idx = i
+            has_patchlist = any("%patchlist" in line for line in lines)
 
-            if last_source_idx >= 0:
-                # Insert after last Source/Patch line with a comment
-                lines.insert(last_source_idx + 1, "# Mogrix patches (IRIX compatibility)")
-                last_source_idx += 1
-                for patch_line in patch_sources.splitlines():
+            if has_patchlist:
+                # Find %patchlist and the next section after it
+                patchlist_idx = -1
+                patchlist_end_idx = -1
+                for i, line in enumerate(lines):
+                    if "%patchlist" in line:
+                        patchlist_idx = i
+                    elif patchlist_idx >= 0 and line.strip().startswith("%"):
+                        # Found next section (e.g., %prep, %description)
+                        patchlist_end_idx = i
+                        break
+
+                if patchlist_idx >= 0:
+                    # Find last non-empty line before next section
+                    if patchlist_end_idx < 0:
+                        patchlist_end_idx = len(lines)
+                    insert_idx = patchlist_end_idx
+                    # Work backwards to find last non-blank line in patchlist
+                    for i in range(patchlist_end_idx - 1, patchlist_idx, -1):
+                        if lines[i].strip() and not lines[i].strip().startswith("#"):
+                            insert_idx = i + 1
+                            break
+
+                    # Extract just patch filenames from PatchN: lines
+                    patch_filenames = []
+                    for patch_line in patch_sources.splitlines():
+                        if patch_line.strip():
+                            # Extract filename from "Patch200: filename.patch"
+                            if ":" in patch_line:
+                                patch_filenames.append(patch_line.split(":", 1)[1].strip())
+                            else:
+                                patch_filenames.append(patch_line.strip())
+
+                    # Insert patch filenames into patchlist
+                    lines.insert(insert_idx, "# Mogrix IRIX compatibility patches")
+                    for pf in patch_filenames:
+                        insert_idx += 1
+                        lines.insert(insert_idx, pf)
+                    content = "\n".join(lines)
+            else:
+                # No patchlist - use Patch tags
+                last_source_idx = -1
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    if (
+                        stripped.startswith("Source") or stripped.startswith("Patch")
+                    ) and ":" in stripped:
+                        last_source_idx = i
+
+                if last_source_idx >= 0:
+                    # Insert after last Source/Patch line with a comment
+                    lines.insert(last_source_idx + 1, "# Mogrix patches (IRIX compatibility)")
                     last_source_idx += 1
-                    lines.insert(last_source_idx, patch_line)
-                content = "\n".join(lines)
+                    for patch_line in patch_sources.splitlines():
+                        last_source_idx += 1
+                        lines.insert(last_source_idx, patch_line)
+                    content = "\n".join(lines)
+
+        # Create .origfedora copy for patch development
+        # This goes FIRST, before any patches or modifications are applied
+        origfedora_cmd = """
+# Create .origfedora copy for patch development (mkpatch workflow)
+# Run 'rpmbuild --short-circuit -bp' then diff against .origfedora to create patches
+_srcdir=$(basename $(pwd))
+cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
+"""
+        content = re.sub(
+            r"^(%(auto)?setup\s+.*)$",
+            f"\\1\n{origfedora_cmd}",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
 
         # Inject compat prep commands (after %setup or %autosetup)
         if compat_prep:
@@ -241,9 +372,13 @@ class SpecWriter:
                 )
 
         # Inject export_vars (e.g., LD for libtool)
+        # Always include MOGRIX_ROOT so helper scripts can be found
+        all_export_vars = {"MOGRIX_ROOT": MOGRIX_ROOT}
         if export_vars:
+            all_export_vars.update(export_vars)
+        if all_export_vars:
             export_lines = "\n".join(
-                f'export {var}="{val}"' for var, val in export_vars.items()
+                f'export {var}="{val}"' for var, val in all_export_vars.items()
             )
             if "%build" in content:
                 content = re.sub(

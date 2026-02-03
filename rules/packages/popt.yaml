@@ -23,6 +23,7 @@ rules:
   inject_compat_functions:
     - strdup
     - strndup
+    - stpcpy     # IRIX libc lacks stpcpy; popt's internal version disabled by patch
     - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
 
   # Configure options for cross-compilation
@@ -50,8 +51,9 @@ rules:
     # IRIX doesn't have these wide character functions
     ac_cv_func_mbsnrtowcs: "no"
     ac_cv_func_mbsrtowcs: "no"
-    # Tell configure we have vasprintf (via mogrix-compat)
+    # Tell configure we have these functions (via mogrix-compat)
     ac_cv_func_vasprintf: "yes"
+    ac_cv_func_stpcpy: "yes"
 
   # Libtool needs help finding the right linker - the wrapper handles this
   spec_replacements:

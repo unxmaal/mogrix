@@ -1,0 +1,26 @@
+# oniguruma - Regular expressions library
+# Standard autoconf package, required by jq
+package: oniguruma
+
+rules:
+  # Fix alloca include - source skips it when __GNUC__ is defined (clang defines this)
+  add_patch:
+    - irix-alloca-include.patch
+
+  # Export GNU ld for shared library building
+  export_vars:
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+
+  # Remove .la and .a files (not needed, and .a shouldn't exist with --disable-static)
+  install_cleanup:
+    - "find $RPM_BUILD_ROOT -name '*.la' -delete"
+    - "find $RPM_BUILD_ROOT -name '*.a' -delete"
+
+  # Apply libtool fixes after configure completes
+  # The %{nil} ends the configure command block, insert fix after it
+  spec_replacements:
+    - pattern: "%{nil}\n%make_build"
+      replacement: |
+        %{nil}
+        /opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
+        %make_build

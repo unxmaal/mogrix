@@ -1,0 +1,12 @@
+--- a/zbuild.h
++++ b/zbuild.h
+@@ -15,6 +15,9 @@
+ #include <stddef.h>
+ #include <string.h>
+ #include <stdlib.h>
++/* IRIX needs inttypes.h for UINT64_C macro used by CRC-32 */
++/* stdint.h alone doesn't define it on older systems */
++#include <inttypes.h>
+ #include <stdint.h>
+
+ /* Determine compiler version of C Standard */

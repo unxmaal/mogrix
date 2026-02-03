@@ -34,6 +34,7 @@ class TransformResult:
     spec_replacements: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     add_patches: list[str] = field(default_factory=list)  # Patch filenames to add
+    add_requires: list[str] = field(default_factory=list)  # Runtime deps to add (cross-compiled pkgs)
 
 
 class RuleEngine:
@@ -230,6 +231,11 @@ class RuleEngine:
         if "drop_requires" in rules:
             result.drop_requires.extend(rules["drop_requires"])
             result.applied_rules.append(f"drop_requires: {rules['drop_requires']}")
+
+        # Add runtime Requires (for cross-compiled packages with AutoReq disabled)
+        if "add_requires" in rules:
+            result.add_requires.extend(rules["add_requires"])
+            result.applied_rules.append(f"add_requires: {rules['add_requires']}")
 
         # Lines to remove
         if "remove_lines" in rules:

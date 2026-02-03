@@ -1,7 +1,23 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-01
-**Status**: TDNF FULLY WORKING - Package manager operational on IRIX
+**Last Updated**: 2026-02-03
+**Status**: ✅ TDNF WORKING - Full package manager bootstrap complete, installing from remote repos
+
+---
+
+## ✅ RESOLVED: rpm --help working (2026-02-03)
+
+**Problem**: `rpm --help` (and ALL rpm options) were failing with "unknown option", but popt itself worked correctly.
+
+**ROOT CAUSE**: LLD 14 (vvuk's fork) generates incorrect R_MIPS_REL32 relocations for external data symbols in static arrays on MIPS N32.
+
+**FIX**: Updated `cross/bin/irix-ld` to use **LLD 18 with IRIX patches** (`ld.lld-irix-18`). The patches in `lld-fixes/` fix the relocation bug.
+
+**VERIFIED WORKING**: 2026-02-03 - `rpm --help` confirmed working on IRIX.
+
+**WARNING**: Do NOT try using GNU ld for executables - it crashes IRIX rld. See `rules/methods/linker-selection.md`.
+
+---
 
 ---
 
@@ -27,21 +43,19 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 
 ## Current Progress
 
-### What's Done (2026-02-01)
-- All 13 packages cross-compile successfully
+### What's Done (2026-02-02)
+- All 14 packages cross-compile successfully
 - **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
 - popt rebuilt with vasprintf injection
 - rpm rebuilt with rvasprintf and rpmlog fixes
-- **RPM INSTALL FULLY WORKING** - Fixed three critical bugs:
-  1. futimens sed too broad (Bug 1)
-  2. utimensat symlink handling (Bug 2)
-  3. **O_NOFOLLOW not supported on IRIX (Bug 3)** - causes EINVAL on open()
-- **TDNF FULLY WORKING** - Complete package manager chain operational:
-  - `tdnf makecache` - downloads repo metadata
-  - `tdnf list` - shows available packages
-  - `tdnf install <pkg>` - downloads and installs packages
-- **sed→patch migration VALIDATED** - 8 of 11 packages migrated, bzip2 + popt build-tested successfully
-- **Documentation restructured** - Added `rules/methods/` with process documentation
+- **RPM INSTALL was WORKING** - Fixed three critical bugs previously
+- **TDNF STILL WORKING** - `tdnf --help`, `tdnf --version` work
+- **sed→patch migration VALIDATED** - 8 of 11 packages migrated
+- **Removed stub sqlite3.h** - Was shadowing real sqlite3.h in compat headers
+
+### ✅ Fixed (2026-02-03)
+- **rpm --help** now working - required LLD 18 with IRIX patches (see `lld-fixes/`)
+- Root cause was LLD 14 generating bad relocations for external data symbols
 
 ### Additional Fixes for tdnf (2026-02-01)
 
@@ -104,12 +118,12 @@ Updating / installing...
    1:sgugrse-release-0.0.7beta-1      ################################# [100%]
 ```
 
-### Verified in /opt/chroot on IRIX
+### Verified in /opt/chroot on IRIX (2026-02-03)
 
 | Test | Result |
 |------|--------|
 | `rpm --version` | ✓ RPM version 4.19.1.1 |
-| `rpm --help` | ✓ Shows options AND descriptions correctly |
+| `rpm --help` | ✓ Shows options AND descriptions correctly (LLD 18 fix) |
 | `rpm -qpl <pkg>` | ✓ Lists package contents |
 | `rpm --initdb` | ✓ Creates sqlite database |
 | `rpm -ivh --nodeps` | ✓ Installs with progress bars |
@@ -311,12 +325,15 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 
 ## Next Steps
 
-1. ~~**Test tdnf install on IRIX**~~ - ✅ DONE (2026-02-01) - `tdnf install popt` works
-2. ~~**Bootstrap tarball workflow**~~ - ✅ DONE (2026-02-01) - Self-contained, repeatable
-3. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
-4. **Build more packages** - Expand the mogrix repo with more useful packages
-5. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
-6. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+### ✅ COMPLETED: tdnf installing from remote repos (2026-02-03)
+
+### Next priorities:
+1. **Build more packages** - Expand the mogrix repo (ncurses, bash, coreutils, etc.)
+2. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
+3. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+
+### Deferred (low priority):
+- **Remaining inline seds** - libsolv (2), tdnf (6), rpm (5) still have inline seds but are working. These are mostly CMake/config changes that are hard to express as source patches. Not blocking.
 
 ---
 
@@ -560,23 +577,34 @@ When linking a static archive (.a) into a shared library (.so), symbols that are
 
 ---
 
-## Build Order (FC40) - Status
+## Build Order (FC40/Photon5) - Status
 
-| # | Package | Version | Status |
-|---|---------|---------|--------|
-| 1 | zlib-ng | 2.1.6 | COMPLETE |
-| 2 | bzip2 | 1.0.8 | COMPLETE |
-| 3 | popt | 1.19 | **REBUILT with vasprintf** |
-| 4 | openssl | 3.2.1 | COMPLETE |
-| 5 | libxml2 | 2.12.5 | COMPLETE |
-| 6 | curl | 8.6.0 | COMPLETE |
-| 7 | xz | 5.4.6 | COMPLETE |
-| 8 | lua | 5.4.6 | COMPLETE |
-| 9 | file | 5.45 | COMPLETE |
-| 10 | sqlite | 3.45.1 | COMPLETE |
-| 11 | rpm | 4.19.1.1 | **REBUILT with vsnprintf fixes** |
-| 12 | libsolv | 0.7.28 | **REBUILT with funopen** |
-| 13 | tdnf | 3.5.14 | **FULLY WORKING** |
+All 14 bootstrap packages built successfully (2026-02-02).
+
+| # | Package | Version | Status | RPMs |
+|---|---------|---------|--------|------|
+| 1 | zlib-ng | 2.1.6 | ✅ COMPLETE | 5 |
+| 2 | bzip2 | 1.0.8 | ✅ COMPLETE | 4 |
+| 3 | popt | 1.19 | ✅ COMPLETE | 3 |
+| 4 | openssl | 3.2.1 | ✅ COMPLETE | 4 |
+| 5 | libxml2 | 2.12.5 | ✅ COMPLETE | 3 |
+| 6 | curl | 8.6.0 | ✅ COMPLETE | 1 |
+| 7 | xz | 5.4.6 | ✅ COMPLETE | 5 |
+| 8 | lua | 5.4.6 | ✅ COMPLETE | 4 |
+| 9 | file | 5.45 | ✅ COMPLETE | 4 |
+| 10 | sqlite | 3.45.1 | ✅ COMPLETE | 3 |
+| 11 | rpm | 4.19.1.1 | ✅ COMPLETE | 14 |
+| 12 | libsolv | 0.7.28 | ✅ COMPLETE | 4 |
+| 13 | tdnf | 3.5.14 | ✅ COMPLETE | 8 |
+| 14 | sgugrse-release | 0.0.7beta | ✅ COMPLETE | 2 |
+
+**Total: 80 MIPS RPMs**
+
+Key fixes applied during this rebuild:
+- **setjmp.h wrapper** - IRIX headers check MIPS1-4 but clang defines MIPS64
+- **math.h float functions** - Added ldexpf/frexpf wrappers (IRIX has them in `#if 0`)
+- **stat64 conflict resolved** - IRIX has separate struct stat64, can't `#define stat64 stat`
+- **UINT64_C macro** - IRIX inttypes.h requires _SGIAPI which conflicts with _XOPEN_SOURCE
 
 ---
 
@@ -591,6 +619,23 @@ When linking a static archive (.a) into a shared library (.so), symbols that are
 | Python venv | `.venv/bin/activate` |
 | IRIX host | `ssh edodd@192.168.0.81` |
 | IRIX chroot | `/opt/chroot` |
+
+### Directory Conventions
+
+| Directory | Purpose |
+|-----------|---------|
+| `~/rpmbuild/SRPMS/fc40/` | Original Fedora 40 SRPMs (persistent inputs) |
+| `/tmp/mogrix-converted/<pkg>/` | Conversion output (ephemeral, regenerate anytime) |
+| `~/rpmbuild/RPMS/mips/` | Built MIPS packages (rpmbuild output) |
+| `~/rpmbuild/RPMS/noarch/` | Built noarch packages |
+| `/tmp/mogrix-repo/` | Distribution repository (copy of what ships) |
+
+**Key principles:**
+- **Original SRPMs are inputs** - keep them in `~/rpmbuild/SRPMS/fc40/`
+- **Converted output is ephemeral** - regenerate from originals + rules anytime
+- **Built RPMs are outputs** - rpmbuild puts them in `~/rpmbuild/RPMS/`
+- **Repo is for distribution** - copy built RPMs here, run createrepo_c
+- **Never store build artifacts in the mogrix repo** - keep it code-only
 
 ---
 
@@ -970,3 +1015,545 @@ When debugging path issues:
 2. Use `par` on IRIX to trace system calls and see actual paths accessed
 3. Use `strings` on binaries to verify compiled-in paths
 4. Check ALL header files for duplicate defines (not just the obvious one)
+
+---
+
+## Session Summary (2026-02-02, Continued)
+
+### Patch Creation Workflow (mkpatch)
+
+Integrated sgug-rse style patch creation workflow into mogrix:
+
+**New Components:**
+- `tools/mkpatch` - Script for creating patches from changes vs .origfedora
+- `mogrix/emitter/spec.py` - Modified to inject .origfedora copy after %setup/%autosetup
+- `rules/INDEX.md` - Updated with Patch Creation section
+
+**Workflow:**
+```bash
+# 1. Convert the package (creates spec with .origfedora support)
+mogrix convert ~/rpmbuild/SRPMS/fc40/foo-1.0.src.rpm -o /tmp/foo/
+
+# 2. Run prep phase only (extracts source AND creates .origfedora copy)
+rpmbuild -bp /tmp/foo/foo.spec --nodeps
+
+# 3. Enter source directory and make changes
+cd ~/rpmbuild/BUILD/foo-1.0
+vim src/file.c
+
+# 4. Create patch from your changes
+mkpatch diff .
+# -> patches/packages/foo/foo.irixfixes.patch
+
+# 5. Add to YAML
+# add_patch:
+#   - foo.irixfixes.patch
+```
+
+**Benefits:**
+- Patches preferred over sed for source modifications (sed silently fails on pattern mismatch)
+- .origfedora copy created automatically during conversion
+- Patches are version-controlled and reviewable
+- mkpatch tool handles diff formatting and naming conventions
+
+**tdnf sed→patch Migration:**
+- Replaced ~25 lines of sed commands with `tdnf.irixfixes.patch` (112 lines)
+- Patch covers: strings.h in 4 includes.h files, IRIX headers, statfs signature, mips arch hardcode
+- Validated by successful tdnf build
+
+---
+
+## Session Summary (2026-02-02)
+
+### Dependency Installation Fixes
+
+Multiple issues prevented clean package installation without `--nodeps`:
+
+**Issue 1: drop_requires regex too simplistic**
+
+Original `drop_requires` only matched simple `Requires: packagename` lines. Failed on:
+- `Requires(pre): sed grep gawk` - multi-package lines
+- `Requires: rpm-sequoia%{_isa}` - ISA suffix
+- Partial match: `libsolv` matched `libsolv-devel` leaving `Requires: -devel`
+
+**Fix**: Enhanced `mogrix/emitter/spec.py:drop_requires()` to:
+- Handle `Requires(pre/post/preun/postun):` variants
+- Handle multi-package lines by removing just the matching package
+- Use negative lookahead `(?![a-zA-Z0-9_-])` to match whole package names only
+- Handle `%{_isa}` suffixes
+
+**Issue 2: setenv unresolved symbol in librpm.so**
+
+The `--whole-archive` flag was only in `CMAKE_EXE_LINKER_FLAGS`, not `CMAKE_SHARED_LINKER_FLAGS`.
+
+**Fix**: Added `--whole-archive` to both linker flags in `rules/packages/rpm.yaml`:
+```yaml
+-DCMAKE_EXE_LINKER_FLAGS="-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen"
+-DCMAKE_SHARED_LINKER_FLAGS="-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen"
+```
+
+**Issue 3: Missing /bin/sh provider**
+
+Packages with shell scriptlets require `/bin/sh`. IRIX has `/bin/sh` but it's not in the RPM database.
+
+**Fix**: Created `rules/packages/sgugrse-release.yaml` to add:
+```yaml
+spec_replacements:
+  - pattern: "Provides:       system-release\n"
+    replacement: "Provides:       system-release\nProvides:       /bin/sh\nProvides:       /usr/bin/sh\n"
+```
+
+Also disabled swidtag entries (Fedora-specific macros undefined on IRIX).
+
+**Issue 4: IRIX ln doesn't support -r (relative symlinks)**
+
+RPM's `%pre` and `%posttrans` scriptlets use `ln -sfr`. IRIX `ln` fails with "Illegal option -- r".
+
+**Fix**: Added to `rules/packages/rpm.yaml`:
+```yaml
+- pattern: "ln -sfr"
+  replacement: "ln -sf"
+```
+
+**Issue 5: IRIX sed doesn't support | delimiter**
+
+The `%pre` scriptlet uses `sed 's|^/var/lib/rpm/||g'` which IRIX sed doesn't parse.
+
+**Fix**: Added to `rules/packages/rpm.yaml`:
+```yaml
+- pattern: "rpmdb_files=$(find /var/lib/rpm ...| sed 's|^/var/lib/rpm/||g' | sort)..."
+  replacement: "for rpmdb_path in /var/lib/rpm/*; do\n        [ -f \"$rpmdb_path\" ] || continue\n        rpmdb_file=$(basename \"$rpmdb_path\")..."
+```
+
+### Current Status
+
+**rpm is broken** after reinstall attempts. The chroot needs to be reset and bootstrap tarball re-extracted.
+
+**Packages installed before breakage**:
+- sgugrse-release, rpm, rpm-libs installed (but rpm became non-functional)
+- tdnf packages need reinstall
+
+### Files Modified
+
+- `mogrix/emitter/spec.py` - Enhanced `drop_requires()` regex handling
+- `rules/packages/rpm.yaml` - Added `--whole-archive` to SHARED_LINKER_FLAGS, `ln -sfr` fix, sed→basename fix
+- `rules/packages/sgugrse-release.yaml` - New file: provides /bin/sh, disables swidtag
+- `rules/packages/tdnf.yaml` - Updated drop_requires list
+
+### Packages Rebuilt with Fixes
+
+**rpm-4.19.1.1-1.mips.rpm** (2026-02-02 00:29):
+- ✅ IRIX sed fix applied - uses basename instead of `sed 's|...|'`
+- ✅ ln -sfr→ln -sf fix applied
+- ✅ --whole-archive in SHARED_LINKER_FLAGS
+
+**sgugrse-release-0.0.7beta-1.mips.rpm** (2026-02-02 00:30):
+- ✅ Provides /bin/sh and /usr/bin/sh
+- ✅ swidtag entries disabled
+
+### Bootstrap Tarball Status
+
+The bootstrap tarball script is ready at `scripts/bootstrap-tarball.sh`.
+
+**Note**: tdnf package needs rebuild (has `/var/cache/tdnf` instead of `/usr/sgug/var/cache/tdnf`), but this directory will be created automatically when tdnf runs. The existing package is functional.
+
+All other packages validated and ready.
+
+### Recovery Steps
+
+1. Reset chroot on IRIX (user can do this)
+2. Run `./scripts/bootstrap-tarball.sh` to create tarball
+3. Copy to IRIX: `scp tmp/irix-bootstrap.tar.gz root@192.168.0.81:/tmp/`
+4. On IRIX:
+   ```bash
+   cd /opt/chroot
+   gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
+   mkdir -p /opt/chroot/usr/sgug/var/cache/tdnf  # Create if missing
+   chroot /opt/chroot /bin/sh
+   export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+   /usr/sgug/bin/rpm --initdb
+   /usr/sgug/bin/rpm -Uvh /tmp/bootstrap-rpms/sgugrse-release*.rpm
+   /usr/sgug/bin/rpm -Uvh /tmp/bootstrap-rpms/rpm*.rpm
+   /usr/sgug/bin/rpm -Uvh /tmp/bootstrap-rpms/*.rpm
+   ```
+5. Test: `/usr/sgug/bin/sgug-exec /usr/sgug/bin/rpm --version`
+
+---
+
+## Session Summary (2026-02-02, Evening)
+
+### rpm.irixfixes.patch Complete
+
+**Problem**: rpm 4.19.1.1 had many IRIX compatibility issues scattered across inline sed commands in the rules file. These were unreliable (sed silently fails when patterns don't match) and hard to maintain.
+
+**Solution**: Created comprehensive `patches/packages/rpm/rpm.irixfixes.patch` (298 lines, 11 files) adapting sgug-rse's rpm 4.15 patch for rpm 4.19.
+
+### Patch Contents
+
+| File | Fix |
+|------|-----|
+| `CMakeLists.txt` | Conditional NLS for po directory |
+| `lib/fsm.c` | futimens workaround for IRIX /dev/fd paths |
+| `lib/headerfmt.c` | Remove `__thread` TLS (IRIX rld doesn't support) |
+| `lib/rpmrc.c` | IRIX architecture detection + skip generic MIPS |
+| `lib/rpmug.c` | Remove `__thread` TLS |
+| `macros.in` | `_buildshell` path + `LD_LIBRARYN32_PATH` export |
+| `misc/fts.c` | `dirfd`, `stat64`, `__errno_location` for IRIX |
+| `misc/system.h` | `xsetprogname`/`xgetprogname` for IRIX |
+| `rpmio/macro.c` | `_SC_NPROC_ONLN` for CPU detection |
+| `rpmio/rpmlog.c` | Remove `__thread` + iterative vsnprintf |
+| `rpmio/rpmstring.c` | Iterative vsnprintf for IRIX |
+
+### Key IRIX Compatibility Issues Addressed
+
+1. **IRIX vsnprintf pre-C99**: `vsnprintf(NULL, 0, fmt, ap)` returns -1 instead of buffer size
+   - Fix: Iterative doubling approach in `rvasprintf()` and `rpmlog()`
+
+2. **IRIX rld doesn't support `__thread` TLS**: Thread-local storage causes link failures
+   - Fix: Remove `__thread` keyword (accept single-threaded limitation)
+
+3. **IRIX futimens/utimes with /dev/fd**: `utimes("/dev/fd/N", ...)` fails with ENOENT
+   - Fix: Force `utimensat()` path which uses actual pathname
+
+4. **IRIX uname returns IP30/IP32**: Not recognized as valid architecture
+   - Fix: Hardcode "mips" based on `__MIPS_SIM` ABI detection
+
+5. **IRIX uses `_SC_NPROC_ONLN`**: Not `_SC_NPROCESSORS_ONLN` for CPU count
+   - Fix: Conditional `#if defined(__sgi)` for sysconf call
+
+### mogrix/emitter/spec.py Fix
+
+**Problem**: Patches added as `Patch200:` tags were applied BEFORE `%patchlist` patches. This caused line number mismatches since Fedora patches modify macros.in.
+
+**Fix**: Modified spec emitter to detect `%patchlist` and add patch filenames to the END of patchlist instead of using Patch tags. This ensures IRIX patches apply after all Fedora patches.
+
+### Files Modified
+
+- `patches/packages/rpm/rpm.irixfixes.patch` - New comprehensive IRIX patch (298 lines)
+- `mogrix/emitter/spec.py` - Add patches to %patchlist when present
+- `rules/packages/rpm.yaml` - Already had `add_patch: rpm.irixfixes.patch`
+
+### Verification
+
+Patch applies cleanly after all Fedora patchlist patches:
+```bash
+rpmbuild -bp ~/rpmbuild/SPECS/rpm.spec --nodeps
+# No errors, all 11 files patched successfully
+```
+
+### Next Steps
+
+1. Continue rebuilding bootstrap packages (libxml2 next)
+2. Regenerate bootstrap tarball when complete
+3. Deploy to IRIX chroot for testing
+
+---
+
+## Session Summary (2026-02-02, Afternoon)
+
+### Bootstrap Chain Rebuild Progress
+
+Rebuilt 4 of 14 bootstrap packages:
+
+| Package | Version | Status |
+|---------|---------|--------|
+| zlib-ng | 2.1.6 | ✅ Built |
+| bzip2 | 1.0.8 | ✅ Built |
+| popt | 1.19 | ✅ Built |
+| openssl | 3.2.1 | ✅ Built |
+
+### Infrastructure Improvements
+
+#### 1. MOGRIX_ROOT Auto-Detection
+
+**Problem**: Rules used `$MOGRIX_ROOT/tools/fix-libtool-irix.sh` but MOGRIX_ROOT wasn't being set, causing build failures.
+
+**Fix**: Modified `mogrix/emitter/spec.py` to:
+- Calculate MOGRIX_ROOT from the package location at runtime
+- Automatically export it in every spec's `%build` section
+
+```python
+# mogrix/emitter/spec.py
+MOGRIX_ROOT = str(Path(__file__).parent.parent.parent.resolve())
+# ... later in write() ...
+all_export_vars = {"MOGRIX_ROOT": MOGRIX_ROOT}
+```
+
+Now rules can use `$MOGRIX_ROOT/tools/...` without hardcoding paths - portable across installations.
+
+#### 2. UINT64_C Macro Fix
+
+**Problem**: zlib-ng build failed with "call to undeclared function 'UINT64_C'".
+
+**Root cause**: IRIX's `inttypes.h` only defines `UINT64_C` when `_SGIAPI` is true. But `_SGIAPI` is disabled when `_XOPEN_SOURCE` or `_POSIX_C_SOURCE` are defined (common in portable code like zlib-ng's zbuild.h).
+
+**Fix**: Added fallback definitions to `/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/inttypes.h`:
+```c
+#ifndef UINT64_C
+#define UINT64_C(c) c ## ULL
+#endif
+/* ... and INT64_C, UINT32_C, etc. */
+```
+
+#### 3. origfedora/diff Workflow Confirmed
+
+All converted specs automatically include:
+```bash
+# Create .origfedora copy for patch development (mkpatch workflow)
+_srcdir=$(basename $(pwd))
+cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
+```
+
+This enables proper patch creation workflow - no sed for source modifications.
+
+### Rules Best Practices Enforced
+
+1. **Never hardcode absolute paths in rules** - Use `$MOGRIX_ROOT` or staging paths
+2. **Use `add_patch` for source modifications** - Not sed in `prep_commands`
+3. **Tools go in staging** - `/opt/sgug-staging/share/mogrix/` for helper scripts
+4. **Patches go in patches/packages/<pkg>/** - Version controlled, reviewable
+
+### Files Modified
+
+- `mogrix/emitter/spec.py` - MOGRIX_ROOT auto-detection + export
+- `/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/inttypes.h` - UINT64_C fallback
+- `rules/packages/zlib-ng.yaml` - Cleaned up, uses add_patch properly
+- `rules/packages/popt.yaml` - Uses $MOGRIX_ROOT for fix-libtool-irix.sh
+- `patches/packages/zlib-ng/zlib-ng-inttypes.patch` - Adds inttypes.h include to zbuild.h
+
+---
+
+## Session Summary (2026-02-02, Final)
+
+### Bootstrap Chain Complete!
+
+All 14 packages in the bootstrap chain have been rebuilt successfully, producing 80 MIPS RPMs.
+
+**Key Issue Fixed: Wrong SRPM Used for tdnf**
+
+The tdnf conversion was failing with "Source100 defined multiple times". Investigation revealed:
+- `/home/edodd/rpmbuild/SRPMS/fc40/tdnf-3.5.14-1.src.rpm` was a PREVIOUSLY CONVERTED SRPM (already had Source100-104 injected)
+- `/home/edodd/rpmbuild/SRPMS/fc40/tdnf-3.5.14-1.ph5.src.rpm` is the original Photon 5 SRPM
+
+**Fix**: Use the `.ph5.src.rpm` (original Photon) instead of the already-converted SRPM.
+
+**Lesson learned**: Always verify SRPMs are originals before conversion. A previously-converted SRPM will have compat sources already injected.
+
+### Compat Header Fixes Applied
+
+During the rebuild, several compat header issues were discovered and fixed:
+
+1. **setjmp.h** (`/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/setjmp.h`)
+   - IRIX setjmp.h checks `_MIPS_ISA_MIPS[1-4]` but clang defines `_MIPS_ISA_MIPS64`
+   - Without this wrapper, jmp_buf typedef doesn't happen and setjmp/longjmp fail to compile
+
+2. **math.h** (`/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/math.h`)
+   - IRIX math.h has ldexpf/frexpf in `#if 0 /* not yet implemented */`
+   - Added inline wrappers that call the double versions
+
+3. **inttypes.h** - UINT64_C macro fix (from earlier)
+
+### stat64 Issue in rpm.irixfixes.patch
+
+The rpm patch originally had `#define stat64 stat` which caused:
+```
+error: redefinition of 'stat'
+```
+
+**Root cause**: IRIX has BOTH `struct stat` AND `struct stat64` as separate types. The macro caused the preprocessor to turn `struct stat64 {...}` into `struct stat {...}`, conflicting with the existing struct stat definition.
+
+**Fix**: Removed the `#define stat64 stat` line. IRIX's `fstat()` works with `struct stat` directly (the FTS_FSTAT64 macro already uses fstat() for IRIX).
+
+---
+
+## Session Summary (2026-02-02, stpcpy Fix)
+
+### rpm --help Regression Fixed
+
+**Problem**: `rpm --help: unknown option` error on IRIX - popt wasn't recognizing POPT_AUTOHELP alias.
+
+**Root cause**: The compat header deployment was out of sync. The `stpcpy` declaration had been removed from the staging header at `/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/string.h` but the repo version still had it. popt uses stpcpy internally, and without the declaration, popt's internal stpcpy copy was used incorrectly.
+
+**Fixes applied**:
+
+1. **Restored stpcpy declaration** in compat headers
+2. **Removed #ifndef guards** from all compat declarations - multiple identical declarations are legal C, but #ifndef caused silent failures if something else defined the symbol as a macro
+3. **Added `mogrix sync-headers` command** - Forces resync of compat headers from repo to staging
+4. **Updated staging.py** - Added `force` parameter so headers resync properly
+
+### Documentation Consolidation
+
+Cleaned up documentation to reduce token usage:
+
+| File | Change |
+|------|--------|
+| `rules/INDEX.md` | Compacted to ~70 lines (was 317), now just a lookup table |
+| `Claude.md` | Trimmed to ~80 lines, just philosophy + file pointers |
+| `rules/methods/patch-creation.md` | New file with patch workflow content |
+| `rules/methods/build-order.md` | Moved from root `BUILD_ORDER.md` |
+| `docs/archive/BOOTSTRAP.md` | Archived from root |
+
+### Files Modified
+
+- `compat/include/mogrix-compat/generic/string.h` - Removed #ifndef guards, unconditional declarations
+- `mogrix/staging.py` - Added `force_headers` parameter to `ensure_ready()`
+- `mogrix/cli.py` - Added `sync-headers` command
+- `rules/methods/compat-functions.md` - Added sync documentation
+- `compat/catalog.yaml` - Added standalone stpcpy entry
+
+### Verification Needed
+
+Bootstrap tarball with stpcpy fix has been created and deployed to IRIX at `/tmp/irix-bootstrap.tar.gz`.
+
+**Test commands on IRIX:**
+```bash
+cd /opt/chroot
+rm -rf usr/sgug
+gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --help
+```
+
+### Next Steps
+
+1. Verify `rpm --help` works on IRIX with the new bootstrap tarball
+2. Continue with Package Catalog Expansion (ncurses chain, GPG chain, etc.)
+
+---
+
+## Session Summary (2026-02-02/03, LLD 18 Fix)
+
+### ROOT CAUSE IDENTIFIED
+
+**Problem**: `rpm --help` returned "unknown option" despite popt library working correctly (tdnf --help worked fine).
+
+**Root cause**: LLD 14 (vvuk's fork) generates incorrect relocations for external data symbols embedded in static arrays on MIPS N32.
+
+When rpm's `optionsTable` array includes pointers to external symbols like `poptHelpOptions`:
+```c
+static struct poptOption optionsTable[] = {
+    POPT_AUTOHELP  // expands to { ..., &poptHelpOptions, ... }
+    POPT_AUTOALIAS // expands to { ..., &poptAliasOptions, ... }
+    POPT_TABLEEND
+};
+```
+
+**LLD 14 generated** (BROKEN):
+```
+00035f9c  00000003 R_MIPS_REL32     (no symbol)
+```
+These anonymous relocations leave the pointers as NULL at runtime.
+
+### WRONG FIX ATTEMPTED: GNU ld for executables
+
+Initially tried switching to GNU ld for all linking. This generates correct relocations BUT crashes IRIX rld with SIGSEGV during initialization (wrong segment layout for executables).
+
+**This is a known bad fix - do not attempt again.** See `rules/methods/linker-selection.md`.
+
+### CORRECT FIX: LLD 18 with IRIX patches
+
+The `lld-fixes/` directory contains patches for LLD 18 that fix the relocation bug. The patched binary is at:
+```
+/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18
+```
+
+Updated `cross/bin/irix-ld` to use LLD 18 instead of LLD 14:
+```bash
+LLD="${IRIX_LLD:-/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18}"
+```
+
+### Verification
+
+After rebuilding rpm with LLD 18:
+```bash
+$ readelf -r rpm | grep -E "(poptHelp|poptAlias|rpmInstall)"
+00035ffc  00007b03 R_MIPS_REL32      00000000   rpmInstallPoptTable
+00036050  00007d03 R_MIPS_REL32      00000000   poptAliasOptions
+0003606c  00007e03 R_MIPS_REL32      00000000   poptHelpOptions
+```
+
+All external data symbols now have proper symbol-referencing relocations.
+
+### Bootstrap Tarball
+
+Created `/tmp/bootstrap-lld18.tar.gz` (41.8MB) - copied to IRIX for testing.
+
+### Documentation Added
+
+To prevent repeating this mistake:
+- `rules/methods/linker-selection.md` - Documents linker strategy and KNOWN BAD FIXES
+- `rules/INDEX.md` - Added "STOP - Before Making Significant Changes" section
+- `cross/bin/irix-ld` - Added warning comments about GNU ld
+
+### Test Commands for IRIX
+
+```bash
+cd /opt/chroot
+rm -rf usr/sgug
+gzcat /tmp/bootstrap-lld18.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --help
+```
+
+---
+
+## Session Summary (2026-02-03, Bootstrap Rebuild)
+
+### Clean Rebuild of All 14 Bootstrap Packages
+
+Ran `./cleanup.sh` and rebuilt entire bootstrap chain from scratch:
+
+| # | Package | Version | Status |
+|---|---------|---------|--------|
+| 1 | zlib-ng | 2.1.6 | ✅ |
+| 2 | bzip2 | 1.0.8 | ✅ |
+| 3 | popt | 1.19 | ✅ |
+| 4 | openssl | 3.2.1 | ✅ |
+| 5 | libxml2 | 2.12.5 | ✅ |
+| 6 | curl | 8.6.0 | ✅ |
+| 7 | xz | 5.4.6 | ✅ |
+| 8 | lua | 5.4.6 | ✅ |
+| 9 | file | 5.45 | ✅ |
+| 10 | sqlite | 3.45.1 | ✅ |
+| 11 | rpm | 4.19.1.1 | ✅ |
+| 12 | libsolv | 0.7.28 | ✅ |
+| 13 | tdnf | 3.5.14 | ✅ |
+| 14 | sgugrse-release | 0.0.7beta | ✅ |
+
+**Total: 70 MIPS RPMs built**
+
+### Issues Fixed During Rebuild
+
+1. **Multilib header symlinks** - Clang defines `__mips64` even for n32 ABI, but OpenSSL/Lua only ship `configuration-mips.h` / `luaconf-mips.h`. Created symlinks:
+   - `configuration-mips64.h -> configuration-mips.h`
+   - `luaconf-mips64.h -> luaconf-mips.h`
+
+2. **curl OpenSSL detection** - Updated `rules/packages/curl.yaml` to pass explicit `--with-openssl=/opt/sgug-staging/usr/sgug` path instead of relying on pkg-config.
+
+3. **ldconfig scriptlet failures** - Added `macros.ldconfig` to rpm package that makes `%ldconfig*` macros no-ops (IRIX uses rld, not ldconfig).
+
+### Files Modified
+
+- `rules/packages/curl.yaml` - Explicit OpenSSL path
+- `rules/packages/rpm.yaml` - Added macros.ldconfig creation
+- `configs/rpm/macros.ldconfig` - New file (IRIX ldconfig stub macros)
+
+### Bootstrap Tarball
+
+- Location: `tmp/irix-bootstrap.tar.gz` (40MB)
+- Includes macros.ldconfig for silent ldconfig scriptlets
+- **VERIFIED**: tdnf installing packages from remote repo on IRIX
+
+### Remaining Inline Seds (Deferred)
+
+These packages still have inline seds but are working fine:
+
+| Package | Sed Count | Purpose |
+|---------|-----------|---------|
+| libsolv | 2 | xmlErrorPtr const, HAVE_FUNOPEN |
+| tdnf | 6 | CMake subdirs, tdnf.conf paths |
+| rpm | 5 | BZip2 target, SONAME fixes |
+
+Most are CMake/config changes that don't fit well as source patches. Not blocking.

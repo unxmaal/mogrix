@@ -40,6 +40,11 @@ functions:
     header: string.h
     description: Extract token from string (BSD extension)
 
+  stpcpy:
+    file: runtime/stpcpy.c
+    header: string.h
+    description: Copy string and return pointer to end (POSIX.1-2008)
+
   # stdio functions
   getline:
     file: stdio/getline.c
@@ -80,6 +85,20 @@ functions:
     description: Custom stream I/O (BSD extension for libsolv)
     requires_pthread: true
     notes: BSD-style cookie I/O, more reliable on IRIX than fopencookie
+
+  # setenv/unsetenv (IRIX only has putenv)
+  setenv:
+    file: stdlib/setenv.c
+    header: stdlib.h
+    description: Set environment variable (POSIX)
+    provides:
+      - setenv
+      - unsetenv
+
+  unsetenv:
+    file: stdlib/setenv.c
+    header: stdlib.h
+    description: Remove environment variable (POSIX)
 
   # stdlib functions
   strtof:

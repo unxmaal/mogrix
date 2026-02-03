@@ -31,9 +31,12 @@ package: tdnf
 # IRIX-specific patches
 # client-defines.sgifixes.patch - fixes hardcoded /etc paths to /usr/sgug/etc
 # gpgcheck-rpm419.sgifixes.patch - fixes gpgcheck for rpm 4.19 API
+# tdnf-common-utils.sgifixes.patch - bypasses realpath() which returns EINVAL on IRIX for non-existent paths
 add_patch:
   - client-defines.sgifixes.patch
   - gpgcheck-rpm419.sgifixes.patch
+  - tdnf-common-utils.sgifixes.patch
+  - tdnf.irixfixes.patch
 
 rules:
   # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
@@ -52,6 +55,13 @@ rules:
 
   drop_requires:
     - systemd
+    # Linux package names don't match IRIX package names
+    # These deps are satisfied by equivalent IRIX packages
+    - rpm-libs
+    - curl-libs
+    - libsolv
+    - zlib
+    - openssl-libs
 
   # tdnf uses cmake
   # CMake options for IRIX:
@@ -107,33 +117,12 @@ rules:
         sed -i 's|add_subdirectory.*repogpgcheck.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
         # Disable metalink plugin - also requires gpgme
         sed -i 's|add_subdirectory.*metalink.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
-        # Path fixes are handled by client-defines.sgifixes.patch (added via add_patch rule)
-        # Add strings.h include for strcasecmp on IRIX (needed in multiple files)
-        find . -name "*.c" -exec grep -l "strcasecmp\|strncasecmp" {} \; | while read f; do
-          sed -i '1i #include <strings.h>' "$f"
-        done
-        # Fix IRIX header order - ensure BSD types are defined before sys/vfs.h
-        # Add sys/types.h and sys/bsd_types.h right after the header guard
-        sed -i '/#define __CLIENT_INCLUDES_H__/a #include <sys/bsd_types.h>' client/includes.h
-        sed -i '/#define __CLIENT_INCLUDES_H__/a #include <sys/types.h>' client/includes.h
-        # gpgcheck.c ported to rpm 4.19 API via gpgcheck-rpm419.sgifixes.patch
-        # Add sys/statfs.h for IRIX (statfs is not in sys/vfs.h on IRIX)
-        sed -i '/#include <sys\/vfs.h>/a #include <sys/statfs.h>' client/includes.h
-        # DEBUG: To add debug tracing, manually apply /home/edodd/rpmbuild/SOURCES/tdnf-debug.patch
-        # after extraction, or run /home/edodd/rpmbuild/SOURCES/apply-debug.py in the source dir
-        # Add sys/ttold.h for struct winsize (unconditional), sys/termios.h for TIOCGWINSZ, sys/ioccom.h for _IOR
-        sed -i '1i #include <sys/ioctl.h>' tools/cli/lib/output.c
-        sed -i '1i #include <sys/termios.h>' tools/cli/lib/output.c
-        sed -i '1i #include <sys/ttold.h>' tools/cli/lib/output.c
-        sed -i '1i #include <sys/ioccom.h>' tools/cli/lib/output.c
-        # Add rpm/rpmmacro.h for rpmDefineMacro
-        sed -i '/#include <rpm\/header.h>/a #include <rpm/rpmmacro.h>' client/includes.h
-        # Fix statfs call for IRIX (different signature and struct)
-        # IRIX: statfs(path, buf, len, 0) and uses f_bfree instead of f_bavail
-        sed -i 's/statfs(pConf->pszCacheDir, \&stfs)/statfs(pConf->pszCacheDir, \&stfs, sizeof(stfs), 0)/' client/packageutils.c
-        sed -i 's/stfs.f_bavail/stfs.f_bfree/' client/packageutils.c
-        # IRIX uname reports machine as IP30, IP32, etc. - hardcode to mips for IRIX
-        sed -i 's/pool_setarch(pPool, systemInfo.machine)/pool_setarch(pPool, "mips")/' solv/tdnfpool.c
+        # IRIX source fixes are in tdnf.irixfixes.patch:
+        # - strings.h for strcasecmp (all includes.h files)
+        # - sys/types.h, sys/bsd_types.h, sys/statfs.h, rpm/rpmmacro.h (client/includes.h)
+        # - sys/ioccom.h, sys/ttold.h, sys/termios.h (tools/cli/lib/output.c)
+        # - statfs() signature and f_bfree (client/packageutils.c)
+        # - hardcoded mips arch (solv/tdnfpool.c)
         export COMPAT_DIR=$(pwd)/mogrix-compat
         # Create mogrix-compat directory and build compat library
         mkdir -p $COMPAT_DIR

@@ -1,0 +1,22 @@
+# tree-pkg - File system tree viewer
+# Simple Makefile-based package, minimal dependencies
+package: tree-pkg
+
+rules:
+  # IRIX pwd.h defines 'struct comment' which conflicts with tree's struct
+  add_patch:
+    - irix-comment-rename.patch
+
+  # Export cross-compiler for Makefile
+  export_vars:
+    CC: "%{__cc}"
+
+  # Replace the sed that sets LINUX define - use __sgi for IRIX
+  spec_replacements:
+    # Fix the platform define for IRIX
+    - pattern: "sed -e 's/LINUX/__linux__/' -i tree.c"
+      replacement: "sed -e 's/LINUX/__sgi/' -i tree.c"
+
+    # Override CFLAGS in make to use our cross-compiler flags
+    - pattern: '%make_build CFLAGS="$RPM_OPT_FLAGS $(getconf LFS_CFLAGS)" LDFLAGS="$LDFLAGS"'
+      replacement: '%make_build CC="%{__cc}" CFLAGS="$RPM_OPT_FLAGS" LDFLAGS="$LDFLAGS"'

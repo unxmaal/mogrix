@@ -66,6 +66,12 @@ generic:
 
   # RPM macros injected directly (replaces sgug-rpm-config)
   rpm_macros:
+    # Target architecture for cross-compilation
+    _target_cpu: mips
+    _arch: mips
+    # Disable automatic dependency detection - IRIX system libs aren't in RPM db
+    __find_requires: "%{nil}"
+    __find_provides: "%{nil}"
     _prefix: /usr/sgug
     _exec_prefix: /usr/sgug
     _bindir: /usr/sgug/bin
@@ -77,7 +83,7 @@ generic:
     _infodir: /usr/sgug/share/info
     _sysconfdir: /usr/sgug/etc
     _localstatedir: /usr/sgug/var
-    _var: /usr/sgug/var
+    # NOTE: Do NOT set _var - it's used by RPM for %_tmppath and must remain /var
     _sharedstatedir: /usr/sgug/var/lib
     _docdir: /usr/sgug/share/doc
     _pkgdocdir: "%{_docdir}/%{name}"
