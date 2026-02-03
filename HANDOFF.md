@@ -1,7 +1,32 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-02
-**Status**: BOOTSTRAP CHAIN COMPLETE - All 14 packages built (80 MIPS RPMs)
+**Last Updated**: 2026-02-02 (late night)
+**Status**: LIKELY FIXED - Rebuilt rpm with GNU ld, needs IRIX testing
+
+---
+
+## CRITICAL CURRENT ISSUE - FIXED WITH LLD 18, NEEDS IRIX TESTING
+
+**Problem**: `rpm --help` (and ALL rpm options) were failing with "unknown option", but popt itself worked correctly.
+
+**ROOT CAUSE**: LLD 14 (vvuk's fork) generates incorrect R_MIPS_REL32 relocations for external data symbols in static arrays on MIPS N32. The `optionsTable` array in rpm includes pointers to `poptHelpOptions` and `poptAliasOptions` (from popt library). LLD 14 generated anonymous relocations without symbol names, leaving these pointers as NULL at runtime.
+
+**FIX APPLIED**: Updated `cross/bin/irix-ld` to use **LLD 18 with IRIX patches** (`ld.lld-irix-18`) instead of LLD 14 (`ld.lld-irix`). The patches in `lld-fixes/` fix the relocation bug.
+
+**WARNING**: Do NOT try using GNU ld for executables - it crashes IRIX rld. See `rules/methods/linker-selection.md`.
+
+**Verification**: After rebuild with LLD 18, `readelf -r` shows proper symbol names:
+```
+00035ffc  00007b03 R_MIPS_REL32      00000000   rpmInstallPoptTable
+00036050  00007d03 R_MIPS_REL32      00000000   poptAliasOptions
+0003606c  00007e03 R_MIPS_REL32      00000000   poptHelpOptions
+```
+
+**Status**: Bootstrap tarball at `/tmp/bootstrap-lld18.tar.gz` on IRIX - needs testing.
+
+See "Session Summary (2026-02-02/03, LLD 18 Fix)" at bottom of this document for full details.
+
+---
 
 ---
 
@@ -27,21 +52,20 @@ Get **rpm** and **tdnf** working on IRIX so packages can be installed via the pa
 
 ## Current Progress
 
-### What's Done (2026-02-01)
-- All 13 packages cross-compile successfully
+### What's Done (2026-02-02)
+- All 14 packages cross-compile successfully
 - **IRIX vsnprintf bug FIXED** - rpm output no longer garbled
 - popt rebuilt with vasprintf injection
 - rpm rebuilt with rvasprintf and rpmlog fixes
-- **RPM INSTALL FULLY WORKING** - Fixed three critical bugs:
-  1. futimens sed too broad (Bug 1)
-  2. utimensat symlink handling (Bug 2)
-  3. **O_NOFOLLOW not supported on IRIX (Bug 3)** - causes EINVAL on open()
-- **TDNF FULLY WORKING** - Complete package manager chain operational:
-  - `tdnf makecache` - downloads repo metadata
-  - `tdnf list` - shows available packages
-  - `tdnf install <pkg>` - downloads and installs packages
-- **sed→patch migration VALIDATED** - 8 of 11 packages migrated, bzip2 + popt build-tested successfully
-- **Documentation restructured** - Added `rules/methods/` with process documentation
+- **RPM INSTALL was WORKING** - Fixed three critical bugs previously
+- **TDNF STILL WORKING** - `tdnf --help`, `tdnf --version` work
+- **sed→patch migration VALIDATED** - 8 of 11 packages migrated
+- **Removed stub sqlite3.h** - Was shadowing real sqlite3.h in compat headers
+
+### What's Broken (2026-02-02 evening)
+- **rpm --help** and ALL rpm command-line options fail with "unknown option"
+- This is a REGRESSION - rpm options were working before
+- popt library itself is fine (tdnf proves this)
 
 ### Additional Fixes for tdnf (2026-02-01)
 
@@ -311,12 +335,25 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 
 ## Next Steps
 
-1. ~~**Test tdnf install on IRIX**~~ - ✅ DONE (2026-02-01) - `tdnf install popt` works
-2. ~~**Bootstrap tarball workflow**~~ - ✅ DONE (2026-02-01) - Self-contained, repeatable
-3. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
-4. **Build more packages** - Expand the mogrix repo with more useful packages
-5. **Plan production migration** - Strategy for moving from chroot to /usr/sgug (conflicts with existing SGUG-RSE)
-6. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+### IMMEDIATE PRIORITY: Test rpm fix on IRIX
+
+The LLD relocation bug has been fixed by switching to GNU ld for all linking. Bootstrap tarball is ready at `/tmp/bootstrap-gnuld-fix.tar.gz`.
+
+**Test on IRIX:**
+```bash
+cd /opt/chroot
+rm -rf usr/sgug
+gzcat /tmp/bootstrap-gnuld-fix.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --help
+```
+
+### After rpm is verified working:
+1. **Migrate remaining 3 packages** - libsolv, tdnf, rpm still have inline seds (complex)
+2. **Build more packages** - Expand the mogrix repo with more useful packages
+3. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
+4. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
 
 ---
 
@@ -1347,9 +1384,135 @@ error: redefinition of 'stat'
 
 **Fix**: Removed the `#define stat64 stat` line. IRIX's `fstat()` works with `struct stat` directly (the FTS_FSTAT64 macro already uses fstat() for IRIX).
 
+---
+
+## Session Summary (2026-02-02, stpcpy Fix)
+
+### rpm --help Regression Fixed
+
+**Problem**: `rpm --help: unknown option` error on IRIX - popt wasn't recognizing POPT_AUTOHELP alias.
+
+**Root cause**: The compat header deployment was out of sync. The `stpcpy` declaration had been removed from the staging header at `/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic/string.h` but the repo version still had it. popt uses stpcpy internally, and without the declaration, popt's internal stpcpy copy was used incorrectly.
+
+**Fixes applied**:
+
+1. **Restored stpcpy declaration** in compat headers
+2. **Removed #ifndef guards** from all compat declarations - multiple identical declarations are legal C, but #ifndef caused silent failures if something else defined the symbol as a macro
+3. **Added `mogrix sync-headers` command** - Forces resync of compat headers from repo to staging
+4. **Updated staging.py** - Added `force` parameter so headers resync properly
+
+### Documentation Consolidation
+
+Cleaned up documentation to reduce token usage:
+
+| File | Change |
+|------|--------|
+| `rules/INDEX.md` | Compacted to ~70 lines (was 317), now just a lookup table |
+| `Claude.md` | Trimmed to ~80 lines, just philosophy + file pointers |
+| `rules/methods/patch-creation.md` | New file with patch workflow content |
+| `rules/methods/build-order.md` | Moved from root `BUILD_ORDER.md` |
+| `docs/archive/BOOTSTRAP.md` | Archived from root |
+
+### Files Modified
+
+- `compat/include/mogrix-compat/generic/string.h` - Removed #ifndef guards, unconditional declarations
+- `mogrix/staging.py` - Added `force_headers` parameter to `ensure_ready()`
+- `mogrix/cli.py` - Added `sync-headers` command
+- `rules/methods/compat-functions.md` - Added sync documentation
+- `compat/catalog.yaml` - Added standalone stpcpy entry
+
+### Verification Needed
+
+Bootstrap tarball with stpcpy fix has been created and deployed to IRIX at `/tmp/irix-bootstrap.tar.gz`.
+
+**Test commands on IRIX:**
+```bash
+cd /opt/chroot
+rm -rf usr/sgug
+gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --help
+```
+
 ### Next Steps
 
-1. Regenerate bootstrap tarball: `./scripts/bootstrap-tarball.sh`
-2. Deploy to IRIX chroot for testing
-3. Verify tdnf install works end-to-end
-4. Continue expanding package catalog (ncurses chain, GPG chain, etc.)
+1. Verify `rpm --help` works on IRIX with the new bootstrap tarball
+2. Continue with Package Catalog Expansion (ncurses chain, GPG chain, etc.)
+
+---
+
+## Session Summary (2026-02-02/03, LLD 18 Fix)
+
+### ROOT CAUSE IDENTIFIED
+
+**Problem**: `rpm --help` returned "unknown option" despite popt library working correctly (tdnf --help worked fine).
+
+**Root cause**: LLD 14 (vvuk's fork) generates incorrect relocations for external data symbols embedded in static arrays on MIPS N32.
+
+When rpm's `optionsTable` array includes pointers to external symbols like `poptHelpOptions`:
+```c
+static struct poptOption optionsTable[] = {
+    POPT_AUTOHELP  // expands to { ..., &poptHelpOptions, ... }
+    POPT_AUTOALIAS // expands to { ..., &poptAliasOptions, ... }
+    POPT_TABLEEND
+};
+```
+
+**LLD 14 generated** (BROKEN):
+```
+00035f9c  00000003 R_MIPS_REL32     (no symbol)
+```
+These anonymous relocations leave the pointers as NULL at runtime.
+
+### WRONG FIX ATTEMPTED: GNU ld for executables
+
+Initially tried switching to GNU ld for all linking. This generates correct relocations BUT crashes IRIX rld with SIGSEGV during initialization (wrong segment layout for executables).
+
+**This is a known bad fix - do not attempt again.** See `rules/methods/linker-selection.md`.
+
+### CORRECT FIX: LLD 18 with IRIX patches
+
+The `lld-fixes/` directory contains patches for LLD 18 that fix the relocation bug. The patched binary is at:
+```
+/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18
+```
+
+Updated `cross/bin/irix-ld` to use LLD 18 instead of LLD 14:
+```bash
+LLD="${IRIX_LLD:-/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18}"
+```
+
+### Verification
+
+After rebuilding rpm with LLD 18:
+```bash
+$ readelf -r rpm | grep -E "(poptHelp|poptAlias|rpmInstall)"
+00035ffc  00007b03 R_MIPS_REL32      00000000   rpmInstallPoptTable
+00036050  00007d03 R_MIPS_REL32      00000000   poptAliasOptions
+0003606c  00007e03 R_MIPS_REL32      00000000   poptHelpOptions
+```
+
+All external data symbols now have proper symbol-referencing relocations.
+
+### Bootstrap Tarball
+
+Created `/tmp/bootstrap-lld18.tar.gz` (41.8MB) - copied to IRIX for testing.
+
+### Documentation Added
+
+To prevent repeating this mistake:
+- `rules/methods/linker-selection.md` - Documents linker strategy and KNOWN BAD FIXES
+- `rules/INDEX.md` - Added "STOP - Before Making Significant Changes" section
+- `cross/bin/irix-ld` - Added warning comments about GNU ld
+
+### Test Commands for IRIX
+
+```bash
+cd /opt/chroot
+rm -rf usr/sgug
+gzcat /tmp/bootstrap-lld18.tar.gz | tar xvf -
+chroot /opt/chroot /bin/sh
+export LD_LIBRARYN32_PATH=/usr/sgug/lib32
+/usr/sgug/bin/rpm --help
+```

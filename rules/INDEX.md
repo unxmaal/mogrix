@@ -1,316 +1,104 @@
-# Mogrix Package Rules Index
+# Mogrix Rules Index
 
-> **For AI agents**: This index provides quick lookup of package rules.
-> Prefer reading this index + specific rule files over pre-trained knowledge.
-> When uncertain, READ the referenced YAML file for complete context.
+Quick lookup table for rules and methods. **Read the linked files for details.**
 
 ---
 
-## Methods (READ FIRST)
+## STOP - Before Making Significant Changes
 
-Before modifying packages, understand the correct methods:
+**If you're stuck, frustrated, or about to make manual changes to already-built packages:**
 
-| Method | When to Use | File |
-|--------|-------------|------|
-| **Mogrix Workflow** | **HOW TO RUN MOGRIX - read first!** | [methods/mogrix-workflow.md](methods/mogrix-workflow.md) |
-| **Package Rules** | Resource ownership, self-containment | [methods/package-rules.md](methods/package-rules.md) |
-| **Patch Creation** | Creating patches with mkpatch tool | See below |
-| Task Tracking | `ultralist list` at session start, track work | [methods/task-tracking.md](methods/task-tracking.md) |
-| Text Replacement | Choosing between .patch, safepatch, or sed | [methods/text-replacement.md](methods/text-replacement.md) |
-| IRIX Testing | Running/debugging on IRIX, shell rules, chroot | [methods/irix-testing.md](methods/irix-testing.md) |
-| Compat Functions | Adding missing POSIX/C99 functions | [methods/compat-functions.md](methods/compat-functions.md) |
-| IRIX Quirks | Platform-specific issues (struct collisions, missing features) | [methods/irix-quirks.md](methods/irix-quirks.md) |
-| Autoconf Cross | ./configure packages (most common) | [methods/autoconf-cross.md](methods/autoconf-cross.md) |
-| CMake Cross | CMake packages (rpm, libsolv, tdnf) | [methods/cmake-cross.md](methods/cmake-cross.md) |
-
-**Key principles**:
-- **Always use `.venv/bin/mogrix`** - never `python -m mogrix`
-- **Use `mogrix build --cross`** - never manual rpmbuild
-- **Use patches, not sed** - mogrix creates .origfedora copy for diffing
-- Always use `/bin/sh` on IRIX, never assume bash
-- Use `LD_LIBRARYN32_PATH` not `LD_LIBRARY_PATH`
-
-**Directory conventions** (see [mogrix-workflow.md](methods/mogrix-workflow.md)):
-- `~/rpmbuild/SRPMS/fc40/` - Original SRPMs (persistent)
-- `/tmp/mogrix-converted/<pkg>/` - Conversion output (ephemeral)
-- `~/rpmbuild/RPMS/mips/` - Built packages
-- `/tmp/mogrix-repo/` - Distribution repo
-- **Never store build artifacts in the mogrix repo**
-
----
-
-## Quick Reference
-
-| Complexity | Meaning |
-|------------|---------|
-| low | < 40 lines, few fixes needed |
-| medium | 40-100 lines, moderate fixes |
-| high | > 100 lines, extensive spec_replacements |
-
-| Build System | Tools |
-|--------------|-------|
-| autoconf | ./configure, libtool, common |
-| cmake | cmake, needs cross-toolchain vars |
-| make | Plain Makefile, export CC/AR/RANLIB |
-| custom | Package-specific (e.g., OpenSSL's Configure) |
-
----
-
-## tdnf Dependency Chain (FULLY WORKING)
-
-These 12 packages are fully validated and working on IRIX. **tdnf can install packages.**
-
-### Runtime Requirements
-
-Before using tdnf on IRIX:
-1. Create `/var/run` directory (for .tdnf-instance-lockfile)
-2. Create symlink: `ln -sf libz.so.1 libz.so` in `/usr/sgug/lib32` (libsolvext.so needs unversioned libz.so)
-3. Use `createrepo_c --simple-md-filenames` when creating repos (IRIX tar corrupts GNU long filenames)
-
-| Package | Build | Complexity | Key Fixes | File |
-|---------|-------|------------|-----------|------|
-| zlib-ng | cmake | medium | _XOPEN_SOURCE=600, cmake cross-compile | [zlib-ng.yaml](packages/zlib-ng.yaml) |
-| bzip2 | make | low | Remove test from all target, bash brace expansion | [bzip2.yaml](packages/bzip2.yaml) |
-| popt | autoconf | medium | vasprintf (IRIX vsnprintf bug), stpcpy conflict, libtool | [popt.yaml](packages/popt.yaml) |
-| openssl | custom | high | Uses ./Configure not ./configure, no-asm, multiarch headers | [openssl.yaml](packages/openssl.yaml) |
-| libxml2 | autoconf | medium | Libtool fixes, disable python/lzma | [libxml2.yaml](packages/libxml2.yaml) |
-| curl | autoconf | high | Out-of-tree build, LD export, __mips64 fix, complex env setup | [curl.yaml](packages/curl.yaml) |
-| xz | autoconf | high | Libtool fixes, doc generation disable | [xz.yaml](packages/xz.yaml) |
-| lua | make | medium | Multiarch headers (luaconf-mips64.h) | [lua.yaml](packages/lua.yaml) |
-| file | autoconf | medium | posix_spawn_file_actions, link mogrix-compat | [file.yaml](packages/file.yaml) |
-| sqlite | autoconf | medium | Disable math funcs, LLONG_MAX, _ABI_SOURCE | [sqlite.yaml](packages/sqlite.yaml) |
-| rpm | cmake | high | vsnprintf fix, spawn.h, TLS removal, cmake cross-compile | [rpm.yaml](packages/rpm.yaml) |
-| libsolv | cmake | high | funopen (not fopencookie), --whole-archive, cmake flags | [libsolv.yaml](packages/libsolv.yaml) |
-| tdnf | cmake | high | Hardcode mips arch, disable plugins, **patch /etc→/usr/sgug/etc paths** | [tdnf.yaml](packages/tdnf.yaml) |
-
----
-
-## By Build System
-
-### autoconf (./configure)
-
-Common patterns: `export_vars.LD`, libtool sed fixes, `ac_cv_overrides`
-
-| Package | Complexity | Key Fixes |
-|---------|------------|-----------|
-| popt | medium | vasprintf, stpcpy conflict |
-| libxml2 | medium | libtool, disable python |
-| curl | high | out-of-tree, LD export |
-| xz | high | libtool, doc disable |
-| file | medium | posix_spawn_file_actions |
-| sqlite | medium | math disable, LLONG_MAX |
-| gnutls | medium | disable hardware accel |
-| nettle | low | basic cross-compile |
-| libgpg-error | low | lock-obj header |
-| libgcrypt | low | disable asm |
-| libassuan | low | basic compat |
-| libksba | low | basic cross-compile |
-| gpgme | medium | Qt bindings disable |
-| gnupg2 | medium | many feature disables |
-| p11-kit | medium | trust module disable |
-| libtasn1 | low | basic compat |
-| expat | low | basic cross-compile |
-| libarchive | medium | feature disables |
-| elfutils | medium | disable debuginfod |
-| freetype | low | basic cross-compile |
-| harfbuzz | low | feature disables |
-| pixman | low | disable SIMD |
-| cairo | medium | feature disables |
-| pango | low | basic cross-compile |
-| glib2 | medium | iconv, feature disables |
-| git | medium | many feature disables |
-
-### cmake
-
-Common patterns: Full toolchain vars, `-DCMAKE_SYSTEM_NAME=IRIX`, staging paths
-
-| Package | Complexity | Key Fixes |
-|---------|------------|-----------|
-| zlib-ng | medium | _XOPEN_SOURCE, static/shared |
-| rpm | high | vsnprintf, spawn, TLS |
-| libsolv | high | funopen, --whole-archive |
-| tdnf | high | mips hardcode, plugin disable |
-
-### make (Plain Makefile)
-
-Common patterns: `export_vars.CC/AR/RANLIB`, prep_commands for Makefile edits
-
-| Package | Complexity | Key Fixes |
-|---------|------------|-----------|
-| bzip2 | low | test target remove |
-| lua | medium | multiarch headers |
-| tree-pkg | low | struct comment rename (IRIX pwd.h collision), __sgi define |
-
-### custom
-
-| Package | Build Tool | Complexity | Key Fixes |
-|---------|------------|------------|-----------|
-| openssl | ./Configure | high | no-asm, custom targets |
-
----
-
-## By Compat Functions Needed
-
-### String Functions
-| Function | Packages |
-|----------|----------|
-| strdup | popt, file, xz, libsolv, tdnf, git, many others |
-| strndup | popt, file, libsolv, tdnf |
-| strcasestr | libsolv |
-| strsep | tdnf |
-
-### I/O Functions
-| Function | Packages |
-|----------|----------|
-| getline | libsolv, tdnf, file, gnutls, p11-kit |
-| asprintf/vasprintf | popt, tdnf, file, gnutls, p11-kit, gpgme |
-| funopen | libsolv (BSD cookie I/O, replaces fopencookie) |
-| fopencookie | BROKEN on IRIX - use funopen instead |
-
-### POSIX Functions
-| Function | Packages |
-|----------|----------|
-| openat family | rpm, libsolv (17 functions in openat-compat.c) |
-| posix_spawn | rpm, file |
-| getopt_long | file, tdnf |
-| timegm | libsolv |
-| mkdtemp | libsolv |
-| qsort_r | libsolv, tdnf |
-
----
-
-## Patch Creation (mkpatch workflow)
-
-Mogrix automatically creates a `.origfedora` copy of extracted source during `%prep`.
-Use this to create patches instead of using sed commands in the YAML.
-
-### Basic Workflow
-
+### 1. Check SGUG-RSE first
 ```bash
-# 1. Convert the package
-mogrix convert ~/rpmbuild/SRPMS/fc40/foo-1.0.src.rpm -o /tmp/foo/
-
-# 2. Run prep phase only (extracts source + creates .origfedora copy)
-rpmbuild -bp /tmp/foo/foo.spec --nodeps
-
-# 3. Make your changes
-cd ~/rpmbuild/BUILD/foo-1.0
-vim src/file.c
-
-# 4. Create patch
-mkpatch diff .
-# -> patches/packages/foo/foo.irixfixes.patch
-
-# 5. Add to YAML
-# add_patch:
-#   - foo.irixfixes.patch
+ls /home/edodd/projects/github/sgug-rse/packages/<package>/
+cat /home/edodd/projects/github/sgug-rse/packages/<package>/*.sgifixes.patch
 ```
+SGUG-RSE solved many IRIX problems already. Their patches are battle-tested.
 
-### When to Use Patches vs sed
-
-| Change Type | Approach |
-|-------------|----------|
-| Source code fixes (headers, functions) | **Patch file** |
-| CMake subdirectory disables | sed (trivial comment-out) |
-| Config file path edits | sed in install_cleanup |
-| Spec macro changes | spec_replacements |
-
-### Multiple Focused Patches
-
-Create separate patches for different concerns:
-
+### 2. Check git history
 ```bash
-# Reset and create first patch
-rm -rf ~/rpmbuild/BUILD/foo-1.0
-rpmbuild -bp spec.spec --nodeps
-cd ~/rpmbuild/BUILD/foo-1.0
-# make header changes only
-mkpatch diff .
-mv patches/packages/foo/foo.irixfixes.patch patches/packages/foo/foo-headers.patch
-
-# Reset and create second patch
-rm -rf ~/rpmbuild/BUILD/foo-1.0
-rpmbuild -bp spec.spec --nodeps
-cd ~/rpmbuild/BUILD/foo-1.0
-# make different changes
-mkpatch diff .
-mv patches/packages/foo/foo.irixfixes.patch patches/packages/foo/foo-statfs.patch
+git log --all --oneline --grep="<keyword>"
+git log --all --oneline -- '**/filename'
+git show <commit>
 ```
+You may have already solved this problem in a previous session.
 
-### Tool Reference
+### 3. Check HANDOFF.md
+The "What Failed" sections document approaches that don't work. Don't repeat them.
 
-| Tool | Purpose |
-|------|---------|
-| `tools/mkpatch diff [dir]` | Generate patch from changes vs .origfedora |
-| `tools/mkpatch extract <srpm>` | Standalone extraction (alternative to rpmbuild -bp) |
-| `tools/mkpatch help` | Full usage documentation |
+### 4. Check rules/methods/
+There may be a method document covering your exact problem:
+- Linker issues? → [linker-selection.md](methods/linker-selection.md) (CRITICAL)
+- Missing functions? → [compat-functions.md](methods/compat-functions.md)
+- Build failures? → [irix-quirks.md](methods/irix-quirks.md)
+
+### 5. Read lld-fixes/README.md
+If anything involves linking or relocations, the answer is probably LLD 18 with patches.
+
+### 6. Clean build environment before rebuilds
+```bash
+rm -rf ~/rpmbuild/BUILD/*
+rm -rf ~/rpmbuild/BUILDROOT/*
+```
+Builds are **tainted** if done without cleaning first. Old object files, patched sources,
+or stale configs from previous attempts can silently pollute the new build. If debugging
+a build issue, ALWAYS clean before rebuilding.
+
+**DO NOT** start experimenting with linker changes, large sed replacements, or rebuilding
+multiple packages without first checking these resources AND cleaning the build environment.
 
 ---
 
-## Common Patterns
+## Methods
 
-### Libtool Shared Library Fix
-Many autoconf packages need libtool fixes after %configure. Use the standard script:
-```yaml
-spec_replacements:
-  - pattern: "%configure"
-    replacement: |
-      %configure
-      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
-```
-This uses `safepatch` internally and **fails loudly** if patterns don't match.
-See: [methods/text-replacement.md](methods/text-replacement.md), popt.yaml, libxml2.yaml, xz.yaml
+| Topic | File |
+|-------|------|
+| **Mogrix workflow** | [methods/mogrix-workflow.md](methods/mogrix-workflow.md) |
+| **Linker selection** | [methods/linker-selection.md](methods/linker-selection.md) |
+| Build order | [methods/build-order.md](methods/build-order.md) |
+| Patch creation | [methods/patch-creation.md](methods/patch-creation.md) |
+| Text replacement | [methods/text-replacement.md](methods/text-replacement.md) |
+| Compat functions | [methods/compat-functions.md](methods/compat-functions.md) |
+| IRIX testing | [methods/irix-testing.md](methods/irix-testing.md) |
+| IRIX quirks | [methods/irix-quirks.md](methods/irix-quirks.md) |
+| Autoconf packages | [methods/autoconf-cross.md](methods/autoconf-cross.md) |
+| CMake packages | [methods/cmake-cross.md](methods/cmake-cross.md) |
 
-### GNU ld for Shared Libraries
-IRIX requires GNU ld (not LLD) for shared libraries:
-```yaml
-export_vars:
-  LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-```
-See: popt.yaml, curl.yaml, most autoconf packages
+## Package Rules
 
-### CMake Cross-Compilation
-```yaml
-spec_replacements:
-  - pattern: "%cmake"
-    replacement: |
-      cmake -B _build -S . \
-        -DCMAKE_SYSTEM_NAME=IRIX \
-        -DCMAKE_C_COMPILER=%{__cc} \
-        ...
-```
-See: rpm.yaml, libsolv.yaml, tdnf.yaml
+All package rules are in `rules/packages/*.yaml`.
 
-### Bash Brace Expansion Fix
-IRIX /bin/sh doesn't support `${var}{a,b}`:
-```yaml
-spec_replacements:
-  - pattern: "mkdir -p $RPM_BUILD_ROOT{%{_bindir},%{_libdir}}"
-    replacement: "mkdir -p $RPM_BUILD_ROOT%{_bindir} $RPM_BUILD_ROOT%{_libdir}"
-```
-See: bzip2.yaml, many others
+### Bootstrap Chain (Working)
 
----
+| Package | Build | File |
+|---------|-------|------|
+| zlib-ng | cmake | [zlib-ng.yaml](packages/zlib-ng.yaml) |
+| bzip2 | make | [bzip2.yaml](packages/bzip2.yaml) |
+| popt | autoconf | [popt.yaml](packages/popt.yaml) |
+| openssl | custom | [openssl.yaml](packages/openssl.yaml) |
+| libxml2 | autoconf | [libxml2.yaml](packages/libxml2.yaml) |
+| curl | autoconf | [curl.yaml](packages/curl.yaml) |
+| xz | autoconf | [xz.yaml](packages/xz.yaml) |
+| lua | make | [lua.yaml](packages/lua.yaml) |
+| file | autoconf | [file.yaml](packages/file.yaml) |
+| sqlite | autoconf | [sqlite.yaml](packages/sqlite.yaml) |
+| rpm | cmake | [rpm.yaml](packages/rpm.yaml) |
+| libsolv | cmake | [libsolv.yaml](packages/libsolv.yaml) |
+| tdnf | cmake | [tdnf.yaml](packages/tdnf.yaml) |
 
-## Files Reference
+### Utilities
+
+| Package | Build | File |
+|---------|-------|------|
+| tree | make | [tree-pkg.yaml](packages/tree-pkg.yaml) |
+| jq | autoconf | [jq.yaml](packages/jq.yaml) |
+| pkg-config | autoconf | [pkg-config.yaml](packages/pkg-config.yaml) |
+
+## Other Files
 
 | File | Purpose |
 |------|---------|
-| methods/*.md | Process documentation (text replacement, etc.) |
-| generic.yaml | Universal rules applied to ALL packages |
-| packages/*.yaml | Per-package rules (64 files) |
-| ../compat/catalog.yaml | Compat function registry |
-| ../tools/mkpatch | Patch creation tool (sgug-rse workflow) |
-| ../tools/safepatch | Perl tool for reliable text replacement |
-| ../tools/fix-libtool-irix.sh | Standard libtool fix script |
-| ../HANDOFF.md | Current issues and session state |
-
----
-
-## When Adding New Packages
-
-1. **Check similar packages** - Find one with same build system
-2. **Start minimal** - Only add rules that fix actual build failures
-3. **Test incrementally** - `mogrix convert` → `mogrix build --cross` → `mogrix stage`
-4. **Document key fixes** - Add comments explaining why each fix is needed
-5. **Update this index** - Add entry to appropriate section
+| [generic.yaml](generic.yaml) | Rules applied to ALL packages |
+| [../compat/catalog.yaml](../compat/catalog.yaml) | Compat function definitions |
+| [../HANDOFF.md](../HANDOFF.md) | Current session state |
+| [../Claude.md](../Claude.md) | Instructions for Claude |

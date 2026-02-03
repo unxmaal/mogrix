@@ -2,11 +2,21 @@
 #
 # IRIX linker wrapper with automatic linker selection
 #
+# ============================================================================
+# WARNING: DO NOT CHANGE LINKER SELECTION WITHOUT TESTING ON IRIX!
+#
+# KNOWN BAD FIX: Using GNU ld for executables causes SIGSEGV during rld init.
+# This has been tried multiple times and always fails. If you're seeing
+# relocation issues, the fix is to use LLD 18 with patches, NOT GNU ld.
+#
+# See: rules/methods/linker-selection.md
+# ============================================================================
+#
 # Selects the appropriate linker based on the build type:
 # - Shared libraries (-shared flag): Uses GNU ld (mips-sgi-irix6.5-ld.bfd)
 #   GNU ld produces the correct 2-LOAD-segment layout that IRIX expects
-# - Executables: Uses vvuk's LLD (ld.lld-irix)
-#   LLD works fine for executables and is faster
+# - Executables: Uses LLD 18 with IRIX patches (ld.lld-irix-18)
+#   LLD 18 fixes the relocation bug in LLD 14 for external data symbols
 #
 # Deployed by: mogrix setup-cross
 #
@@ -14,7 +24,8 @@
 # Configurable paths - set by mogrix setup-cross or environment
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
 STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
-LLD="${IRIX_LLD:-/opt/cross/bin/ld.lld-irix}"
+# LLD 18 with IRIX patches - fixes relocation bug for external data symbols
+LLD="${IRIX_LLD:-/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18}"
 GNULD="${IRIX_GNULD:-/opt/cross/bin/mips-sgi-irix6.5-ld.bfd}"
 
 # Filter out GCC-specific flags that don't apply to clang/lld

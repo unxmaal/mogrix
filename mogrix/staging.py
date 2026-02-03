@@ -111,20 +111,21 @@ class StagingManager:
 
         return status
 
-    def ensure_ready(self, verbose: bool = False) -> StagingStatus:
+    def ensure_ready(self, verbose: bool = False, force_headers: bool = False) -> StagingStatus:
         """Ensure staging environment is ready, creating missing resources.
 
         This is the main entry point - call this before any build operation.
 
         Args:
             verbose: If True, print detailed progress
+            force_headers: If True, resync compat headers even if they exist
 
         Returns:
             StagingStatus with details about what was created
         """
         status = self.check_status()
 
-        if status.is_ready:
+        if status.is_ready and not force_headers:
             if verbose:
                 console.print("[dim]Staging environment is ready[/dim]")
             return status
@@ -137,7 +138,7 @@ class StagingManager:
         self.config.include_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy headers first - compiler needs them to build runtime libs
-        self._ensure_headers(status, verbose)
+        self._ensure_headers(status, verbose, force=force_headers)
 
         # Build missing runtime libraries (requires headers to be in place)
         self._ensure_runtime_libs(status, verbose)
@@ -217,16 +218,25 @@ class StagingManager:
             except Exception as e:
                 status.errors.append(f"Error building {lib_name}: {e}")
 
-    def _ensure_headers(self, status: StagingStatus, verbose: bool) -> None:
-        """Copy missing compat headers to staging."""
+    def _ensure_headers(self, status: StagingStatus, verbose: bool, force: bool = False) -> None:
+        """Copy missing compat headers to staging.
+
+        Args:
+            status: StagingStatus to update
+            verbose: Print progress
+            force: If True, overwrite existing headers (for sync)
+        """
         # dicl-clang-compat headers
         src_dicl = self.config.cross_include_dir / "dicl-clang-compat"
         dst_dicl = self.config.include_dir / "dicl-clang-compat"
 
-        if src_dicl.exists() and not dst_dicl.exists():
+        if src_dicl.exists() and (force or not dst_dicl.exists()):
             if verbose:
-                console.print("  Copying dicl-clang-compat headers...")
+                action = "Syncing" if force else "Copying"
+                console.print(f"  {action} dicl-clang-compat headers...")
             try:
+                if dst_dicl.exists():
+                    shutil.rmtree(dst_dicl)
                 shutil.copytree(src_dicl, dst_dicl)
                 status.created_resources.append("include/dicl-clang-compat")
             except Exception as e:
@@ -236,10 +246,13 @@ class StagingManager:
         src_mogrix = self.config.compat_include_dir / "mogrix-compat"
         dst_mogrix = self.config.include_dir / "mogrix-compat"
 
-        if src_mogrix.exists() and not dst_mogrix.exists():
+        if src_mogrix.exists() and (force or not dst_mogrix.exists()):
             if verbose:
-                console.print("  Copying mogrix-compat headers...")
+                action = "Syncing" if force else "Copying"
+                console.print(f"  {action} mogrix-compat headers...")
             try:
+                if dst_mogrix.exists():
+                    shutil.rmtree(dst_mogrix)
                 shutil.copytree(src_mogrix, dst_mogrix)
                 status.created_resources.append("include/mogrix-compat")
             except Exception as e:

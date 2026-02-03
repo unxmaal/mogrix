@@ -11,6 +11,18 @@
 /* Include the real IRIX math.h */
 #include_next <math.h>
 
+/*
+ * C99 float/long double infinity constants (IRIX only has HUGE_VAL for double)
+ * These are needed by code that checks for float/long double math function availability
+ */
+#ifndef HUGE_VALF
+#define HUGE_VALF __builtin_huge_valf()
+#endif
+
+#ifndef HUGE_VALL
+#define HUGE_VALL __builtin_huge_vall()
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +31,19 @@ extern "C" {
  * C99 math functions that may be missing from IRIX headers.
  * These are typically available in libm but not declared in headers.
  */
+
+/*
+ * Float math functions that IRIX has in headers but commented out with #if 0.
+ * ldexpf and frexpf are disabled in IRIX math.h - we provide inline wrappers.
+ * (modff is available in IRIX - don't redefine)
+ */
+#ifndef ldexpf
+static inline float ldexpf(float x, int exp) { return (float)ldexp((double)x, exp); }
+#endif
+
+#ifndef frexpf
+static inline float frexpf(float x, int *exp) { return (float)frexp((double)x, exp); }
+#endif
 
 /* log2 - base-2 logarithm (C99) */
 #ifndef log2

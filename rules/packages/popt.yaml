@@ -15,6 +15,7 @@ package: popt
 
 # Use patch files instead of sed
 add_patch:
+  - popt-disable-stpcpy.patch
   - popt-disable-mbsrtowcs.patch
 
 rules:
@@ -22,8 +23,8 @@ rules:
   inject_compat_functions:
     - strdup
     - strndup
+    - stpcpy     # IRIX libc lacks stpcpy; popt's internal version disabled by patch
     - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
-    - stpcpy     # popt uses stpcpy internally
 
   # Configure options for cross-compilation
   configure_opts:
@@ -50,9 +51,8 @@ rules:
     # IRIX doesn't have these wide character functions
     ac_cv_func_mbsnrtowcs: "no"
     ac_cv_func_mbsrtowcs: "no"
-    # Tell configure we have vasprintf (via mogrix-compat)
+    # Tell configure we have these functions (via mogrix-compat)
     ac_cv_func_vasprintf: "yes"
-    # Tell configure stpcpy is available (via mogrix-compat)
     ac_cv_func_stpcpy: "yes"
 
   # Libtool needs help finding the right linker - the wrapper handles this

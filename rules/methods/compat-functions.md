@@ -173,3 +173,17 @@ After adding a function:
 | `compat/stdlib/*.c` | Standard library implementations |
 | `compat/dicl/*.c` | POSIX "at" functions (openat family) |
 | `compat/include/mogrix-compat/generic/*.h` | Header declarations |
+
+---
+
+## Syncing Headers to Staging
+
+After editing compat headers in the repo, sync them to staging:
+
+```bash
+mogrix sync-headers
+```
+
+This copies headers from `mogrix/compat/include/` to `/opt/sgug-staging/usr/sgug/include/`.
+
+**Important**: Never edit headers directly in `/opt/sgug-staging/`. Always edit in the repo and sync.

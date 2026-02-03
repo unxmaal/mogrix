@@ -1571,5 +1571,47 @@ def _clean_staged_packages(
     console.print("  - Pre-existing libraries (zlib, bz2, lzma, ncurses, readline)")
 
 
+@main.command("sync-headers")
+@click.option(
+    "--staging-dir",
+    type=click.Path(),
+    default="/opt/sgug-staging/usr/sgug",
+    help="Staging directory (default: /opt/sgug-staging/usr/sgug)",
+)
+def sync_headers(staging_dir: str):
+    """Sync compat headers from repo to staging.
+
+    This forces a resync of mogrix-compat and dicl-clang-compat headers
+    from the mogrix repo to the staging environment.
+
+    Use this after editing compat headers in the repo to update staging.
+
+    Example:
+        mogrix sync-headers
+    """
+    from .staging import StagingConfig, StagingManager, StagingStatus
+
+    console.print("[bold]Syncing compat headers to staging...[/bold]")
+
+    config = StagingConfig()
+    config.staging_dir = Path(staging_dir)
+
+    manager = StagingManager(config)
+    status = StagingStatus()
+
+    # Ensure directories exist
+    config.include_dir.mkdir(parents=True, exist_ok=True)
+
+    # Force sync headers
+    manager._ensure_headers(status, verbose=True, force=True)
+
+    if status.errors:
+        for error in status.errors:
+            console.print(f"[red]Error: {error}[/red]")
+        raise SystemExit(1)
+
+    console.print("[bold green]Headers synced successfully![/bold green]")
+
+
 if __name__ == "__main__":
     main()
