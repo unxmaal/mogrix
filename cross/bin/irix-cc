@@ -93,10 +93,10 @@ elif [ "$link_only" = "true" ]; then
             -o)
                 next_is_output=true
                 ;;
-            # Translate -Wl,xxx to xxx (linker passthrough flags)
+            # Translate -Wl,xxx,yyy to xxx yyy (linker passthrough flags)
             -Wl,*)
-                # Strip -Wl, prefix and add the actual linker flag
-                ld_flag=$(echo "$arg" | sed 's/^-Wl,//')
+                # Strip -Wl, prefix and split remaining commas into spaces
+                ld_flag=$(echo "$arg" | sed 's/^-Wl,//' | tr ',' ' ')
                 link_args="$link_args $ld_flag"
                 ;;
             # Skip compile-only flags (but not -Wl which is handled above)
@@ -149,9 +149,9 @@ else
             -l*|-L*)
                 libs="$libs $arg"
                 ;;
-            # Translate -Wl,xxx to xxx for linker (strip -Wl, prefix)
+            # Translate -Wl,xxx,yyy to xxx yyy for linker
             -Wl,*)
-                ld_flag=$(echo "$arg" | sed 's/^-Wl,//')
+                ld_flag=$(echo "$arg" | sed 's/^-Wl,//' | tr ',' ' ')
                 link_args="$link_args $ld_flag"
                 ;;
             -D*|-I*|-W*|-O*|-g*|-f*|-m*|-std=*|-Q*)

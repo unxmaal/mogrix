@@ -1,0 +1,17 @@
+# autoconf package rules for IRIX cross-compilation
+package: autoconf
+
+# Autoconf is noarch (Perl scripts + m4 macros).
+# No compilation needed, just packaging fixes.
+
+rules:
+  # No NLS in cross-compilation
+  skip_find_lang: true
+
+  # Disable emacs support (not needed on IRIX)
+  spec_replacements:
+    - pattern: "%bcond_without autoconf_enables_emacs"
+      replacement: "%bcond_with autoconf_enables_emacs"
+    # The _emacs_sitelispdir macro may not be defined
+    - pattern: "--with-lispdir=%{_emacs_sitelispdir}/autoconf"
+      replacement: ""

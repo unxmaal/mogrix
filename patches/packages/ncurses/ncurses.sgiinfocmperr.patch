@@ -1,0 +1,14 @@
+--- a/progs/infocmp.c	2026-02-03 20:56:10.827854376 +0000
++++ b/progs/infocmp.c	2026-02-03 20:56:17.112947564 +0000
+@@ -41,6 +41,11 @@
+ 
+ #include <progs.priv.h>
+ 
++#if defined(__sgi) && !defined(_nc_read_entry2)
++#define _nc_free_termtype2(t) _nc_free_termtype(t)
++#define _nc_read_entry2(n,f,t) _nc_read_entry(n,f,t)
++#endif
++
+ #include <dump_entry.h>
+ 
+ MODULE_ID("$Id: infocmp.c,v 1.163 2023/12/16 17:27:47 tom Exp $")

@@ -182,6 +182,18 @@ functions:
     header: rld_interface.h
     description: IRIX rld interface stub for cross-compilation
 
+  # mmap-based malloc (bypasses IRIX brk heap ceiling)
+  dlmalloc:
+    file: malloc/dlmalloc.c
+    header: stdlib.h
+    description: mmap-based malloc replacement for IRIX (bypasses 176MB brk heap limit)
+    extra_files:
+      - malloc/dlmalloc-src.inc
+    notes: |
+      Uses dlmalloc 2.8.6 (MIT-0) configured with HAVE_MORECORE=0.
+      All allocations go through mmap, bypassing the brk() ceiling at
+      libpthread (0x0C080000). See rules/methods/irix-address-space.md.
+
   # SQLite3 stub for packages that optionally use sqlite3 (e.g., tdnf history)
   sqlite3_stub:
     file: sqlite/sqlite3_stub.c

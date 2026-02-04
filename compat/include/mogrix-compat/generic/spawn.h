@@ -11,9 +11,31 @@
 #define _MOGRIX_SPAWN_H
 
 #include <sys/types.h>
+#include <signal.h>
+#include <sched.h>
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+/* POSIX spawn attribute flags - IRIX doesn't define any of these */
+#ifndef POSIX_SPAWN_RESETIDS
+#define POSIX_SPAWN_RESETIDS      0x01
+#endif
+#ifndef POSIX_SPAWN_SETPGROUP
+#define POSIX_SPAWN_SETPGROUP     0x02
+#endif
+#ifndef POSIX_SPAWN_SETSIGDEF
+#define POSIX_SPAWN_SETSIGDEF     0x04
+#endif
+#ifndef POSIX_SPAWN_SETSIGMASK
+#define POSIX_SPAWN_SETSIGMASK    0x08
+#endif
+#ifndef POSIX_SPAWN_SETSCHEDPARAM
+#define POSIX_SPAWN_SETSCHEDPARAM 0x10
+#endif
+#ifndef POSIX_SPAWN_SETSCHEDULER
+#define POSIX_SPAWN_SETSCHEDULER  0x20
 #endif
 
 /*

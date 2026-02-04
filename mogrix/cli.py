@@ -275,10 +275,12 @@ def _convert_srpm_full(
         if result.compat_functions:
             injector = CompatInjector(compat_path)
             compat_files = injector.resolve_functions(result.compat_functions)
-            for compat_file in compat_files:
+            extra_files = injector.get_extra_files(result.compat_functions)
+            all_compat = list(compat_files) + extra_files
+            for compat_file in all_compat:
                 dest_file = out_path / compat_file.name
                 shutil.copy2(compat_file, dest_file)
-            console.print(f"[bold]Compat sources:[/bold] {len(compat_files)} files ({', '.join(f.name for f in compat_files)})")
+            console.print(f"[bold]Compat sources:[/bold] {len(all_compat)} files ({', '.join(f.name for f in all_compat)})")
 
         # Copy patch files from mogrix patches directory if add_patch is specified
         patch_files = []
@@ -295,10 +297,25 @@ def _convert_srpm_full(
             if patch_files:
                 console.print(f"[bold]Patches added:[/bold] {len(patch_files)} files ({', '.join(patch_files)})")
 
-        # Regenerate spec content with patches if any were added
-        if patch_files:
+        # Copy extra source files from mogrix patches directory if add_source is specified
+        source_files = []
+        if result.add_sources:
+            patches_pkg_dir = PATCHES_DIR / "packages" / spec.name
+            for source_name in result.add_sources:
+                source_path = patches_pkg_dir / source_name
+                if source_path.exists():
+                    dest_file = out_path / source_name
+                    shutil.copy2(source_path, dest_file)
+                    source_files.append(source_name)
+                else:
+                    console.print(f"[yellow]Warning:[/yellow] Source not found: {source_path}")
+            if source_files:
+                console.print(f"[bold]Sources added:[/bold] {len(source_files)} files ({', '.join(source_files)})")
+
+        # Regenerate spec content with patches/sources if any were added
+        if patch_files or source_files:
             content = _generate_converted_spec(
-                spec, result, headers_path, compat_path, patch_files
+                spec, result, headers_path, compat_path, patch_files, source_files
             )
 
         # Write converted spec (overwriting the original)
@@ -356,6 +373,7 @@ def _generate_converted_spec(
     headers_path: Path,
     compat_path: Path,
     patch_files: list[str] | None = None,
+    source_files: list[str] | None = None,
 ) -> str:
     """Generate the converted spec content."""
     # Determine what was dropped/added
@@ -384,15 +402,24 @@ def _generate_converted_spec(
     patch_sources = None
     patch_prep = None
     if patch_files:
-        # Generate Patch entries (start at 200 to avoid conflicts)
+        # Generate Patch entries (start at 500 to avoid conflicts with existing patches)
         patch_entries = []
         patch_cmds = []
         for i, patch_name in enumerate(patch_files):
-            patch_num = 200 + i
+            patch_num = 500 + i
             patch_entries.append(f"Patch{patch_num}: {patch_name}")
             patch_cmds.append(f"%patch -P{patch_num} -p1")
         patch_sources = "\n".join(patch_entries)
         patch_prep = "\n".join(patch_cmds)
+
+    # Generate extra source entries (no prep commands - sources are just copied)
+    extra_sources = None
+    if source_files:
+        source_entries = []
+        for i, source_name in enumerate(source_files):
+            source_num = 100 + i
+            source_entries.append(f"Source{source_num}: {source_name}")
+        extra_sources = "\n".join(source_entries)
 
     # Write modified spec
     writer = SpecWriter()
@@ -406,6 +433,7 @@ def _generate_converted_spec(
         compat_build=compat_build,
         patch_sources=patch_sources,
         patch_prep=patch_prep,
+        extra_sources=extra_sources,
         ac_cv_overrides=result.ac_cv_overrides if result.ac_cv_overrides else None,
         drop_requires=result.drop_requires if result.drop_requires else None,
         add_requires=result.add_requires if result.add_requires else None,

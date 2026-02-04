@@ -25,6 +25,7 @@ class SpecWriter:
         compat_build: str | None = None,
         patch_sources: str | None = None,
         patch_prep: str | None = None,
+        extra_sources: str | None = None,
         ac_cv_overrides: dict[str, str] | None = None,
         drop_requires: list[str] | None = None,
         remove_lines: list[str] | None = None,
@@ -95,7 +96,8 @@ class SpecWriter:
                 # Also handle %{_isa} suffix and version constraints
                 # Pattern 1: Single-package Requires line (with optional scriptlet qualifier)
                 # Matches: Requires: pkg, Requires(pre): pkg, Requires: pkg%{_isa} >= 1.0
-                pattern = rf"^Requires(\([^)]+\))?:\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
+                # Handle: pkg, pkg%{_isa}, pkg(%{version}), pkg(%{version}) >= 1.0
+                pattern = rf"^Requires(\([^)]+\))?:\s*{escaped_dep}(\([^)]*\))?(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
                 content = re.sub(pattern, "", content, flags=re.MULTILINE)
 
                 # Pattern 2: Package in a multi-package Requires line
@@ -222,6 +224,25 @@ class SpecWriter:
             if last_source_idx >= 0:
                 # Insert after last Source/Patch line
                 for src_line in compat_sources.splitlines():
+                    last_source_idx += 1
+                    lines.insert(last_source_idx, src_line)
+                content = "\n".join(lines)
+
+        # Inject extra Source entries (after last Source/Patch line)
+        if extra_sources:
+            lines = content.splitlines()
+            last_source_idx = -1
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if (
+                    stripped.startswith("Source") or stripped.startswith("Patch")
+                ) and ":" in stripped:
+                    last_source_idx = i
+
+            if last_source_idx >= 0:
+                lines.insert(last_source_idx + 1, "# Mogrix extra sources")
+                last_source_idx += 1
+                for src_line in extra_sources.splitlines():
                     last_source_idx += 1
                     lines.insert(last_source_idx, src_line)
                 content = "\n".join(lines)
@@ -575,10 +596,25 @@ cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
                 subpkg_name = pkg_match.group(1)
                 # Check if this subpackage matches the pattern
                 if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
-                    # Comment out %package line
+                    # Comment out %package line and its metadata
+                    # (Summary, Requires, Provides, etc. until next section)
                     result_lines.append("#" + line)
                     current_subpackage = subpkg_name
                     i += 1
+                    _pkg_section_markers = re.compile(
+                        r"^%(package|description|files|prep|build|install|"
+                        r"check|pre|post|preun|postun|pretrans|posttrans|"
+                        r"changelog|clean|verifyscript)\b"
+                    )
+                    while i < len(lines):
+                        next_line = lines[i]
+                        next_stripped = next_line.strip()
+                        if _pkg_section_markers.match(next_stripped):
+                            break
+                        result_lines.append(
+                            "#" + next_line if next_line.strip() else next_line
+                        )
+                        i += 1
                     continue
 
             # Check for %description of a dropped subpackage
@@ -608,15 +644,21 @@ cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
                     # Comment out %files and its content
                     result_lines.append("#" + line)
                     i += 1
-                    # Comment lines until next section or end
+                    # Comment lines until next RPM section or end.
+                    # Only actual RPM section markers should stop commenting.
+                    # %files directives (%dir, %doc, %license, etc.) and
+                    # conditionals (%if, %endif, etc.) are part of %files
+                    # content and should be commented too.
+                    _section_markers = re.compile(
+                        r"^%(files|package|description|prep|build|install|"
+                        r"check|pre|post|preun|postun|pretrans|posttrans|"
+                        r"changelog|clean|verifyscript)\b"
+                    )
                     while i < len(lines):
                         next_line = lines[i]
-                        if next_line.strip().startswith(
-                            "%"
-                        ) and not next_line.strip().startswith("%{"):
-                            # Don't treat %{macro} as a section start
-                            if re.match(r"^%[a-z]", next_line.strip()):
-                                break
+                        next_stripped = next_line.strip()
+                        if _section_markers.match(next_stripped):
+                            break
                         result_lines.append(
                             "#" + next_line if next_line.strip() else next_line
                         )

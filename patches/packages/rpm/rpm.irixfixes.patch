@@ -252,17 +252,7 @@ diff -Naur rpm-4.19.1.1.origfedora/rpmio/rpmlog.c rpm-4.19.1.1/rpmio/rpmlog.c
 diff -Naur rpm-4.19.1.1.origfedora/rpmio/rpmstring.c rpm-4.19.1.1/rpmio/rpmstring.c
 --- rpm-4.19.1.1.origfedora/rpmio/rpmstring.c	2024-02-07 13:36:51.000000000 +0000
 +++ rpm-4.19.1.1/rpmio/rpmstring.c	2026-02-02 15:26:20.501235677 +0000
-@@ -71,21 +71,45 @@
-     int n;
-     char * p = NULL;
-     va_list aq;
--  
--    if (strp == NULL) 
-+
-+    if (strp == NULL)
- 	return -1;
- 
-     va_copy(aq, ap);
+@@ -78,6 +78,30 @@
      n = vsnprintf(NULL, 0, fmt, aq);
      va_end(aq);
  
@@ -293,11 +283,21 @@ diff -Naur rpm-4.19.1.1.origfedora/rpmio/rpmstring.c rpm-4.19.1.1/rpmio/rpmstrin
      if (n >= -1) {
  	size_t nb = n + 1;
  	p = xmalloc(nb);
- 	va_copy(aq, ap);
-         n = vsnprintf(p, nb, fmt, aq);
- 	va_end(aq);
--    } 
-+    }
-     *strp = p;
-     return n;
- }
+diff -Naur rpm-4.19.1.1.origfedora/lib/backend/sqlite.c rpm-4.19.1.1/lib/backend/sqlite.c
+--- rpm-4.19.1.1.origfedora/lib/backend/sqlite.c	2024-02-07 13:36:51.000000000 +0000
++++ rpm-4.19.1.1/lib/backend/sqlite.c	2026-02-04 00:00:00.000000000 +0000
+@@ -165,6 +165,14 @@
+ 	sqlite3_busy_timeout(sdb, 10000);
+
+ 	sqlexec(sdb, "PRAGMA secure_delete = OFF");
++
++	/* IRIX fix: Use mmap for database I/O instead of malloc-based page
++	 * cache. SGUG-RSE's rpm 4.15 used BDB which mmaps the database.
++	 * SQLite's default page cache uses malloc, which exhausts the IRIX
++	 * heap when processing packages with many files (e.g., ncurses-term
++	 * with 2757 files). 256MB mmap window covers any reasonable rpmdb. */
++	sqlexec(sdb, "PRAGMA mmap_size = 268435456");
++
+ 	sqlexec(sdb, "PRAGMA case_sensitive_like = ON");
+
+ 	if (sqlite3_db_readonly(sdb, NULL) == 0) {

@@ -3,10 +3,19 @@
  *
  * Wrapper that includes the real getopt.h and adds GNU getopt_long
  * for IRIX compatibility.
+ *
+ * Skipped when gnulib provides its own getopt (detected via __GETOPT_PREFIX).
+ * gnulib's getopt replacement uses rpl_ prefixed functions that conflict
+ * with our declarations.
  */
 
 #ifndef _MOGRIX_COMPAT_GETOPT_H
 #define _MOGRIX_COMPAT_GETOPT_H
+
+/* If gnulib is providing its own getopt, don't interfere */
+#ifdef __GETOPT_PREFIX
+#include_next <getopt.h>
+#else
 
 /* Include unistd.h for basic getopt */
 #include_next <unistd.h>
@@ -56,5 +65,7 @@ int getopt_long_only(int argc, char * const argv[],
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* __GETOPT_PREFIX */
 
 #endif /* _MOGRIX_COMPAT_GETOPT_H */
