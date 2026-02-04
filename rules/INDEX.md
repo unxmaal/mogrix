@@ -46,6 +46,8 @@
 | IRIX /dev/fd + utimes fails | futimens workaround in openat-compat.c | compat/dicl/openat-compat.c |
 | IRIX chroot doesn't isolate | Binaries see base system paths | methods/irix-testing.md |
 | fopencookie crashes | Use funopen instead | compat/stdio/funopen.c |
+| brk() heap limited to 176MB | libpthread at 0x0C080000 blocks heap growth | methods/irix-address-space.md |
+| mmap-based malloc bypasses limit | dlmalloc in compat uses mmap, 1.2GB available | compat/malloc/dlmalloc.c |
 
 ## File Locations
 

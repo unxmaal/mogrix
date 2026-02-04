@@ -275,10 +275,12 @@ def _convert_srpm_full(
         if result.compat_functions:
             injector = CompatInjector(compat_path)
             compat_files = injector.resolve_functions(result.compat_functions)
-            for compat_file in compat_files:
+            extra_files = injector.get_extra_files(result.compat_functions)
+            all_compat = list(compat_files) + extra_files
+            for compat_file in all_compat:
                 dest_file = out_path / compat_file.name
                 shutil.copy2(compat_file, dest_file)
-            console.print(f"[bold]Compat sources:[/bold] {len(compat_files)} files ({', '.join(f.name for f in compat_files)})")
+            console.print(f"[bold]Compat sources:[/bold] {len(all_compat)} files ({', '.join(f.name for f in all_compat)})")
 
         # Copy patch files from mogrix patches directory if add_patch is specified
         patch_files = []

@@ -53,6 +53,27 @@ class CompatInjector:
                 files.add(path)
         return sorted(files)
 
+    def get_extra_files(self, function_names: list[str]) -> list[Path]:
+        """Get extra files needed by compat functions (e.g., .inc files).
+
+        Some compat sources need companion files (like dlmalloc.c needing
+        dlmalloc-src.inc). These are listed in the catalog's extra_files field.
+        They get copied alongside the .c files but are not compiled separately.
+        """
+        functions = self.catalog.get("functions", {})
+        extras = []
+        seen = set()
+        for func in function_names:
+            if func not in functions:
+                continue
+            for rel_path in functions[func].get("extra_files", []):
+                if rel_path not in seen:
+                    full_path = self.compat_dir / rel_path
+                    if full_path.exists():
+                        extras.append(full_path)
+                        seen.add(rel_path)
+        return extras
+
     def get_source_entries(
         self,
         function_names: list[str],
@@ -68,8 +89,10 @@ class CompatInjector:
             String with Source entries for the spec file
         """
         files = self.resolve_functions(function_names)
+        extras = self.get_extra_files(function_names)
+        all_files = list(files) + extras
         lines = []
-        for i, path in enumerate(files):
+        for i, path in enumerate(all_files):
             source_num = start_num + i
             lines.append(f"Source{source_num}: {path.name}")
         return "\n".join(lines)
@@ -92,8 +115,11 @@ class CompatInjector:
         if not files:
             return ""
 
+        extras = self.get_extra_files(function_names)
+        all_files = list(files) + extras
+
         lines = ["# Mogrix compat sources", "mkdir -p mogrix-compat"]
-        for i, path in enumerate(files):
+        for i, path in enumerate(all_files):
             source_num = start_num + i
             lines.append(f"cp %{{SOURCE{source_num}}} mogrix-compat/")
 

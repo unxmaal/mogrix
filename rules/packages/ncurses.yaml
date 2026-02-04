@@ -25,8 +25,17 @@ rules:
   drop_subpackages:
     - c++-libs
 
-  # Fix bashisms - /bin/sh doesn't have pushd/popd or brace expansion
+  # Note: bashism fixes below only matter for %pre/%post scriptlets (install-time on IRIX).
+  # %build/%install scripts run on Linux where bash is available.
+  # ncurses has no install-time scriptlets, so most bashism fixes are precautionary.
   spec_replacements:
+    # CRITICAL: Convert terminfo symlinks to hardlinks after install
+    # Host tic creates symlinks by default, but symlinks cause rpm memory exhaustion
+    # on IRIX when installing ncurses-term (2700+ files). SGUG-RSE used hardlinks.
+    # The --disable-symlinks configure option only affects the cross-compiled tic,
+    # not the host tic used during make install.
+    - pattern: "done 2> /dev/null | sort -u | comm -2 -3 - terms.base > terms.term"
+      replacement: "done 2> /dev/null | sort -u | comm -2 -3 - terms.base > terms.term\n\n# Convert terminfo symlinks to hardlinks (host tic creates symlinks, but they\n# cause rpm memory exhaustion on IRIX). This matches SGUG-RSE's package format.\necho \"Converting terminfo symlinks to hardlinks...\"\nfind $RPM_BUILD_ROOT%{_datadir}/terminfo -type l | while read link; do\n    target=$(readlink -f \"$link\")\n    if [ -f \"$target\" ]; then\n        rm -f \"$link\"\n        ln \"$target\" \"$link\"\n    fi\ndone"
     - pattern: "iconv -f iso8859-1 -t utf8 -o ${f}{_,} &&\n        touch -r ${f}{,_} && mv -f ${f}{_,}"
       replacement: "iconv -f iso8859-1 -t utf8 -o ${f}_ ${f} && touch -r ${f} ${f}_ && mv -f ${f}_ ${f}"
 
@@ -77,10 +86,21 @@ rules:
 
     # Note: c++-libs subpackage is dropped via drop_subpackages
 
-    # Fix %files base - remove -f terms.base (bashisms in generator)
-    - pattern: "%files base -f terms.base"
-      replacement: "%files base"
+    # Fix bashism: ${t::1} (bash substring) -> use expr for first char
+    - pattern: 'echo "%dir %{_datadir}/terminfo/${t::1}"'
+      replacement: '_fc=$(expr substr "$t" 1 1); echo "%dir %{_datadir}/terminfo/$_fc"'
+    - pattern: 'echo %{_datadir}/terminfo/${t::1}/$t'
+      replacement: '_fc=$(expr substr "$t" 1 1); echo "%{_datadir}/terminfo/$_fc/$t"'
 
-    # Fix %files term - remove -f terms.term (bashisms in generator)
-    - pattern: "%files term -f terms.term"
-      replacement: "%files term\n%{_datadir}/terminfo/*"
+    # Fix brace expansion in termname list - expand each individually
+    - pattern: "putty{,-256color}"
+      replacement: "putty putty-256color"
+    - pattern: 'rxvt{,-\*}'
+      replacement: 'rxvt rxvt-\*'
+    # screen pattern has nested braces - fix the corrupted result from putty replacement
+    - pattern: 'screen{,-\*color,.[^mlp]\*,.linux,.mlterm\*,.putty putty-256color,.mrxvt}'
+      replacement: 'screen screen-\*color screen.[^mlp]\* screen.linux screen.mlterm\* screen.putty screen.putty-256color screen.mrxvt'
+    - pattern: 'st{,-\*color}'
+      replacement: 'st st-\*color'
+    - pattern: 'tmux{,-\*}'
+      replacement: 'tmux tmux-\*'

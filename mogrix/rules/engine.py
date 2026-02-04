@@ -184,6 +184,13 @@ class RuleEngine:
             result.compat_functions.extend(funcs)
             result.applied_rules.append(f"inject_compat_functions: {funcs}")
 
+        # Always include mmap-based malloc when compat functions are used.
+        # IRIX brk() heap is limited to 176MB by libpthread at 0x0C080000.
+        # dlmalloc uses mmap instead, accessing 1.2GB of free address space.
+        if result.compat_functions and "dlmalloc" not in result.compat_functions:
+            result.compat_functions.append("dlmalloc")
+            result.applied_rules.append("auto-inject dlmalloc (IRIX mmap malloc)")
+
         # Add additional BuildRequires
         if "add_buildrequires" in rules:
             for br in rules["add_buildrequires"]:

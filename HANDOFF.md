@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-03
-**Status**: ✅ TDNF WORKING - Full package manager bootstrap complete, installing from remote repos
+**Last Updated**: 2026-02-04
+**Status**: mmap-based malloc (dlmalloc) integrated - bypasses 176MB IRIX brk() heap ceiling
 
 ---
 
@@ -328,12 +328,104 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 ### ✅ COMPLETED: tdnf installing from remote repos (2026-02-03)
 
 ### Next priorities:
-1. **Build more packages** - Expand the mogrix repo (ncurses, bash, coreutils, etc.)
-2. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
-3. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
+1. ~~**Rebuild rpm** with the image-base fix~~ **DONE** (2026-02-04)
+2. ~~**Implement mmap-based malloc**~~ **DONE** (2026-02-04) - dlmalloc 2.8.6 integrated into compat system. All packages using compat functions auto-get mmap-based malloc, bypassing 176MB brk() heap ceiling. RPMs deployed to IRIX at `/tmp/` for testing.
+3. **Test dlmalloc on IRIX** - Install rpm-4.19.1.1-1.mips.rpm + rpm-libs + sqlite-libs from `/tmp/` on IRIX, verify ncurses-term install still works
+4. **Make `--image-base=0x1000000` the default for all executables** - Update `cross/bin/irix-ld` (less critical now with dlmalloc, but still beneficial)
+5. **Continue build chain** - readline, autoconf, automake, libtool, perl, bash
+6. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
+7. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
 
 ### Deferred (low priority):
 - **Remaining inline seds** - libsolv (2), tdnf (6), rpm (5) still have inline seds but are working. These are mostly CMake/config changes that are hard to express as source patches. Not blocking.
+
+---
+
+## ✅ RESOLVED: ncurses-term installation (2026-02-04)
+
+**Problem**: Installing ncurses-term (2757 files) on IRIX fails: `memory alloc (176 bytes) returned NULL.`
+
+### Root Cause: IRIX rld quickstart mapping blocks heap
+
+IRIX's runtime linker (rld) places an internal data structure at address **0x200000** (2MB). When rpm is linked with the default image base of 0x10000, the heap starts at ~0x38000 and can only grow to 0x1FF000 before hitting this mapping. That gives only **~1.8MB of heap** - not enough for installing packages with many files.
+
+The par trace confirmed: `brk(0x244000) errno = 12 (Not enough space)` while all previous brk() calls succeeded up to 0x1cc000.
+
+A test program linked against the same libraries as rpm confirmed the heap limit, while a simple test program (only libc) could allocate 250MB - proving the issue is address space layout, not system limits.
+
+### Investigation Trail (SQLite was a red herring)
+
+1. Initially suspected SQLite malloc vs BDB mmap (SGUG-RSE used BDB, we use SQLite)
+2. Enabled SQLite mmap: added `SQLITE_MAX_MMAP_SIZE=268435456` to sqlite build and `PRAGMA mmap_size` to rpm's sqlite.c - **did not fix** because the heap exhaustion wasn't from SQLite
+3. `rpm -Uvh --test` (dry run) **succeeded** - proving database queries weren't the issue
+4. Built address space probe program that found the mapping at 0x200000 blocking heap growth
+5. Tested `--image-base=0x1000000` - heap grew from 1.8MB to **176MB**
+
+### Fix
+
+Added `--image-base=0x1000000` to rpm's EXE linker flags, moving the binary above rld's quickstart area:
+
+```yaml
+# In rules/packages/rpm.yaml:
+-DCMAKE_EXE_LINKER_FLAGS="-Wl,--image-base=0x1000000 -Wl,--whole-archive ..."
+```
+
+### Files Modified
+
+- `rules/packages/rpm.yaml` - Added `--image-base=0x1000000` to CMAKE_EXE_LINKER_FLAGS
+- `rules/packages/sqlite.yaml` - Added `-DSQLITE_MAX_MMAP_SIZE=268435456` (kept, beneficial)
+- `patches/packages/rpm/rpm.irixfixes.patch` - Added PRAGMA mmap_size (kept, beneficial)
+
+### Verified
+
+```
+ncurses-term-6.4-12.20240127          ########################################
+exit: 0
+```
+
+All 2757 files installed, terminfo entries confirmed working.
+
+### mmap-based malloc (dlmalloc) - IMPLEMENTED (2026-02-04)
+
+**Problem**: Even with `--image-base=0x1000000`, the brk() heap is still limited to 176MB because libpthread.so is mapped at fixed address 0x0C080000. Any program linking pthreads has this ceiling regardless of image base.
+
+**Full IRIX n32 address space mapped** via probe programs:
+
+| Address | What | Size |
+|---------|------|------|
+| 0x00200000 | rld quickstart data | 256KB |
+| 0x00AB0000 | libcrypto.so | ~4.5MB |
+| 0x00F90000 | libm.so | ~1MB |
+| 0x0C080000 | **libpthread.so** (HEAP CEILING) | 2MB |
+| 0x0FC40000-0x5C000000 | **FREE SPACE (mmap target)** | **1.2GB** |
+| 0x7BFC0000 | Stack | 64KB+ |
+
+**Solution**: Integrated dlmalloc 2.8.6 (MIT-0 license) into mogrix compat system. Configured with `HAVE_MORECORE=0` so all allocations use `mmap()` instead of `brk()`. Allocations go to the 1.2GB free region above libpthread.
+
+**Key implementation details**:
+- `compat/malloc/dlmalloc.c` - Config wrapper, sets IRIX-specific options
+- `compat/malloc/dlmalloc-src.inc` - Raw dlmalloc 2.8.6 source (stored as .inc to avoid `*.c` glob compilation)
+- `USE_DL_PREFIX` must be `#undef`, NOT `#define 0` (dlmalloc uses `#ifndef` check)
+- No MAP_ANONYMOUS on IRIX - dlmalloc falls back to `/dev/zero` (built-in)
+- Auto-injected by `mogrix/rules/engine.py` whenever any compat functions are used
+
+**Symbol verification**: rpm binary exports `malloc`/`free`/`calloc`/`realloc` (5880/2500/200/328 bytes) - confirmed standard names, not dl-prefixed.
+
+**Files added/modified**:
+- `compat/malloc/dlmalloc.c` (NEW)
+- `compat/malloc/dlmalloc-src.inc` (NEW)
+- `compat/catalog.yaml` (dlmalloc entry with extra_files)
+- `mogrix/compat/injector.py` (extra_files support)
+- `mogrix/cli.py` (copy extra files)
+- `mogrix/rules/engine.py` (auto-inject dlmalloc)
+- `rules/methods/irix-address-space.md` (NEW - full address map)
+- `rules/INDEX.md` (new invariants)
+
+See `rules/methods/irix-address-space.md` for the complete address space documentation.
+
+### WARNING: All IRIX executables may need `--image-base=0x1000000`
+
+The 0x200000 quickstart mapping affects ALL n32 executables that link multiple shared libraries. Any program with a significant heap requirement should be linked with `--image-base=0x1000000`. Consider making this the default in `cross/bin/irix-ld`.
 
 ---
 
@@ -563,6 +655,9 @@ When linking a static archive (.a) into a shared library (.so), symbols that are
 | `rules/packages/rpm.yaml` | rpm with rvasprintf and rpmlog fixes |
 | `rules/packages/libsolv.yaml` | libsolv - needs HAVE_FUNOPEN=1 |
 | `rules/packages/tdnf.yaml` | tdnf cross-compilation config |
+| `compat/malloc/dlmalloc.c` | mmap-based malloc config wrapper for IRIX |
+| `compat/malloc/dlmalloc-src.inc` | dlmalloc 2.8.6 source (MIT-0 license) |
+| `rules/methods/irix-address-space.md` | Full IRIX n32 address space map |
 | `tools/bin/ld.lld-irix-18` | LLD 18 binary with IRIX patches |
 | `/opt/sgug-staging/usr/sgug/bin/irix-ld` | Linker wrapper (uses LLD 18) |
 
