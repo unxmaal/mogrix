@@ -33,6 +33,8 @@ On 2026-01-27, installing packages directly to /usr/sgug replaced libz.so with z
 3. Console access is available as backup
 4. Recovery plan is documented
 
+**NEVER CHEAT!** work through problems converting packages. Don't copy from old sgugrse! Don't fake it! Check the rules for how to handle being stuck.
+
 ---
 
 ## Goal
@@ -332,14 +334,14 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 2. ~~**Implement mmap-based malloc**~~ **DONE** (2026-02-04) - dlmalloc 2.8.6 integrated into compat system. All packages using compat functions auto-get mmap-based malloc, bypassing 176MB brk() heap ceiling. RPMs deployed to IRIX at `/tmp/` for testing.
 3. ~~**Test dlmalloc on IRIX**~~ **DONE** (2026-02-04) - rpm with mmap-based malloc verified working on IRIX, ncurses-term installs correctly
 4. **Make `--image-base=0x1000000` the default for all executables** - Update `cross/bin/irix-ld` (less critical now with dlmalloc, but still beneficial)
-5. ~~**Phase 2 build tools**~~ **COMPLETE** (2026-02-04)
+5. **Phase 2 build tools** - **IN PROGRESS** - Dependency chain: perl → bash → autoconf → automake → libtool
    - m4 ✅ installed on IRIX
-   - autoconf ✅ installed on IRIX (deps satisfied via sgugrse-release Provides)
-   - automake ✅ installed on IRIX (shebang fixed to /usr/sgug/bin/perl, FindBin @INC fix)
-   - libtool ✅ installed on IRIX (shebang fixed to /usr/sgug/bin/bash, dropped gcc(major) dep)
-   - perl: using SGUG-RSE perl 5.30.0 from base system (copied to chroot, Provides in sgugrse-release)
-   - bash: copied from base SGUG-RSE to chroot (proper cross-compile deferred)
-   - sgugrse-release ✅ rebuilt with Provides for system tools + perl modules
+   - autoconf: BUILT (RPM exists), NOT INSTALLABLE - blocked on perl
+   - automake: BUILT (RPM exists, shebang/FindBin fixes applied), NOT INSTALLABLE - blocked on perl
+   - libtool: BUILT (RPM exists, shebang/drop_requires fixes applied), NOT INSTALLABLE - blocked on autoconf+automake
+   - **perl: NOT BUILT** - Must cross-compile FC40 perl 5.38.2 (SGUG-RSE has 65 patches for reference)
+   - **bash: NOT BUILT** - Must cross-compile FC40 bash 5.2.26
+   - sgugrse-release ✅ rebuilt with Provides for IRIX system tools (sed, tar, findutils, grep, gawk)
 6. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
 7. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
 

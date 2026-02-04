@@ -40,19 +40,6 @@ rules:
         Provides:       gawk
         Provides:       diffutils
         Provides:       coreutils
-        Provides:       perl-interpreter
-        Provides:       perl(File::Compare)
-        Provides:       perl(File::Basename)
-        Provides:       perl(File::Find)
-        Provides:       perl(File::Path)
-        Provides:       perl(File::Temp)
-        Provides:       perl(Getopt::Long)
-        Provides:       perl(Cwd)
-        Provides:       perl(strict)
-        Provides:       perl(warnings)
-        Provides:       perl(Thread::Queue)
-        Provides:       perl(threads)
-        Provides:       /usr/sgug/bin/perl
 
     # Remove swidtag entries (Fedora-specific, macro not defined on our system)
     - pattern: "mkdir -p %{buildroot}%{_swidtagdir}\n"

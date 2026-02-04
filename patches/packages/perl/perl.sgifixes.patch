@@ -1,0 +1,110 @@
+--- a/perl.h
++++ b/perl.h
+@@ -8,9 +8,39 @@
+  *
+  */
+ 
++#if defined(__sgi) && !defined(__GNUC__)
++/*
++ * Stop the inclusion of an annoying header file under native SGI compiler
++ */
++#define _FS_VNODE_H
++#endif
++
+ #ifndef H_PERL
+ #define H_PERL 1
+ 
++#if defined(__sgi)
++/*
++ * IRIX inttypes.h defines UINTMAX_C/INTMAX_C with C-style casts that
++ * break preprocessor #if directives. Override with standard C99 forms.
++ */
++#include <inttypes.h>
++#undef UINTMAX_C
++#undef INTMAX_C
++#define UINTMAX_C(c) c ## ULL
++#define INTMAX_C(c) c ## LL
++
++/*
++ * IRIX math functions not declared in standard math.h
++ * (only in internal/math_core.h which is not a public header)
++ */
++extern int _isinf(double);
++extern int _isinff(float);
++extern int _isinfl(long double);
++extern int _signbit(double);
++extern int _signbitf(float);
++extern int _signbitl(long double);
++#endif
++
+ #if defined(__HP_cc) || defined(__HP_aCC)
+ /* The HPUX compiler for Itanium is very picky and warns about
+  * things that gcc doesn't and that we would prefer it does not.
+@@ -1377,6 +1407,16 @@
+ 
+ #include <setjmp.h>
+ 
++#if defined(__sgi)
++
++#include <signal.h>
++#include <sys/signal.h>
++#include <sys/types.h>
++typedef uchar_t mprot_t;
++
++#else
++
++
+ #ifdef I_SYS_PARAM
+ #   ifdef PARAM_NEEDS_TYPES
+ #	include <sys/types.h>
+@@ -1384,6 +1424,8 @@
+ #   include <sys/param.h>
+ #endif
+ 
++#endif
++
+ /* On BSD-derived systems, <sys/param.h> defines BSD to a year-month
+    value something like 199306.  This may be useful if no more-specific
+    feature test is available.
+@@ -2681,10 +2723,12 @@
+ #       endif
+ #   endif
+ #   ifndef Perl_isinf
+-#       if defined(HAS_ISINFL) && !(defined(isinf) && defined(HAS_C99))
++#       if defined(__sgi)
++#           define Perl_isinf(x) (sizeof(x) == sizeof(double) ? _isinf(x) \
++               : sizeof(x) == sizeof(float) ? _isinff(x) \
++               : _isinfl(x))
++#       elif defined(HAS_ISINFL) && !(defined(isinf) && defined(HAS_C99))
+ #           define Perl_isinf(x) isinfl(x)
+-#       elif defined(__sgi) && defined(__c99)  /* XXX Configure test needed */
+-#           define Perl_isinf(x) isinf(x)
+ #       elif defined(LDBL_MAX) && !defined(NAN_COMPARE_BROKEN)
+ #           define Perl_isinf(x) ((x) > LDBL_MAX || (x) < -LDBL_MAX)
+ #       endif
+@@ -2779,7 +2823,11 @@
+ #       endif
+ #   endif
+ #   ifndef Perl_isinf
+-#       if defined(HAS_ISINF)
++#       if defined(__sgi)
++#           define Perl_isinf(x) (sizeof(x) == sizeof(double) ? _isinf(x) \
++               : sizeof(x) == sizeof(float) ? _isinff(x) \
++               : _isinfl(x))
++#       elif defined(HAS_ISINF)
+ #           define Perl_isinf(x) isinf(x)
+ #       elif defined(DBL_MAX) && !defined(NAN_COMPARE_BROKEN)
+ #           define Perl_isinf(x) ((x) > DBL_MAX || (x) < -DBL_MAX)
+@@ -4764,7 +4812,11 @@
+ =cut
+ */
+ 
+-#ifdef HAS_SIGNBIT
++#if defined(HAS_SIGNBIT) && defined(__sgi)
++#  define Perl_signbit(x) (sizeof(x) == sizeof(double) ? _signbit(x) \
++               : sizeof(x) == sizeof(float) ? _signbitf(x) \
++               : _signbitl(x))
++#elif defined(HAS_SIGNBIT)
+ #  ifndef Perl_signbit
+ #    define Perl_signbit signbit
+ #  endif

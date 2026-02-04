@@ -34,6 +34,7 @@ class TransformResult:
     spec_replacements: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     add_patches: list[str] = field(default_factory=list)  # Patch filenames to add
+    add_sources: list[str] = field(default_factory=list)  # Extra source files to add
     add_requires: list[str] = field(default_factory=list)  # Runtime deps to add (cross-compiled pkgs)
 
 
@@ -176,6 +177,13 @@ class RuleEngine:
             result.add_patches.extend(pkg_rules["add_patch"])
             result.applied_rules.append(
                 f"add_patch: {len(pkg_rules['add_patch'])} patches"
+            )
+
+        # Handle add_source at top level (outside rules section)
+        if "add_source" in pkg_rules:
+            result.add_sources.extend(pkg_rules["add_source"])
+            result.applied_rules.append(
+                f"add_source: {len(pkg_rules['add_source'])} sources"
             )
 
         # Inject compat functions
@@ -334,4 +342,11 @@ class RuleEngine:
             result.add_patches.extend(rules["add_patch"])
             result.applied_rules.append(
                 f"add_patch: {len(rules['add_patch'])} patches"
+            )
+
+        # Extra source files to add
+        if "add_source" in rules:
+            result.add_sources.extend(rules["add_source"])
+            result.applied_rules.append(
+                f"add_source: {len(rules['add_source'])} sources"
             )
