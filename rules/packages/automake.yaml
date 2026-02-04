@@ -1,7 +1,21 @@
 # automake package rules for IRIX cross-compilation
+# Automake is noarch (Perl/shell scripts + m4 macros)
 package: automake
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - automake.sgifixes.patch
+rules:
+  skip_find_lang: true
+  skip_check: true
+
+  install_cleanup:
+    # Fix perl shebang: /usr/bin/perl is ancient IRIX system perl 5.004
+    # Must use /usr/sgug/bin/perl (SGUG-RSE perl 5.30)
+    - "sed -i 's|#!/usr/bin/perl|#!/usr/sgug/bin/perl|g' %{buildroot}%{_bindir}/automake %{buildroot}%{_bindir}/aclocal"
+    # Fix @INC: use FindBin for relocatable module path
+    # Without this, /usr/sgug/share/automake-1.16 resolves to base IRIX system's
+    # old automake modules (different prototypes) because chroot doesn't isolate
+    - "sed -i \"s|unshift (\\@INC, '%{_datadir}/automake-%{api_version}')|use FindBin; unshift (\\@INC, \\\"\\$FindBin::RealBin/../share/automake-%{api_version}\\\")|\" %{buildroot}%{_bindir}/automake %{buildroot}%{_bindir}/aclocal"
+
+  # Old sgifixes patch was for 1.16.1 test files, may not apply to 1.16.5
+  # add_patch:
+  #   - automake.sgifixes.patch
 

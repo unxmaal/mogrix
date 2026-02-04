@@ -95,7 +95,8 @@ class SpecWriter:
                 # Also handle %{_isa} suffix and version constraints
                 # Pattern 1: Single-package Requires line (with optional scriptlet qualifier)
                 # Matches: Requires: pkg, Requires(pre): pkg, Requires: pkg%{_isa} >= 1.0
-                pattern = rf"^Requires(\([^)]+\))?:\s*{escaped_dep}(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
+                # Handle: pkg, pkg%{_isa}, pkg(%{version}), pkg(%{version}) >= 1.0
+                pattern = rf"^Requires(\([^)]+\))?:\s*{escaped_dep}(\([^)]*\))?(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
                 content = re.sub(pattern, "", content, flags=re.MULTILINE)
 
                 # Pattern 2: Package in a multi-package Requires line

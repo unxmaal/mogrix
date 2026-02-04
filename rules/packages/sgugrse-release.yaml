@@ -13,12 +13,47 @@
 package: sgugrse-release
 
 rules:
+  # sgugrse-repos is Fedora repo config - we use our own mogrix.repo
+  drop_requires:
+    - "sgugrse-repos"
+
   # Provide /bin/sh so packages with shell scriptlets can install
   # IRIX has /bin/sh but it's not in the RPM database
   spec_replacements:
     # Match the exact format with multiple spaces
     - pattern: "Provides:       system-release\n"
-      replacement: "Provides:       system-release\nProvides:       /bin/sh\nProvides:       /usr/bin/sh\n"
+      replacement: |
+        Provides:       system-release
+        Provides:       /bin/sh
+        Provides:       /usr/bin/sh
+        Provides:       /usr/bin/sed
+        Provides:       /usr/bin/tar
+        Provides:       /usr/bin/find
+        Provides:       /usr/bin/grep
+        Provides:       /usr/bin/gawk
+        Provides:       /usr/bin/awk
+        Provides:       /usr/bin/diff
+        Provides:       sed
+        Provides:       tar
+        Provides:       findutils
+        Provides:       grep
+        Provides:       gawk
+        Provides:       diffutils
+        Provides:       coreutils
+        Provides:       perl-interpreter
+        Provides:       perl(File::Compare)
+        Provides:       perl(File::Basename)
+        Provides:       perl(File::Find)
+        Provides:       perl(File::Path)
+        Provides:       perl(File::Temp)
+        Provides:       perl(Getopt::Long)
+        Provides:       perl(Cwd)
+        Provides:       perl(strict)
+        Provides:       perl(warnings)
+        Provides:       perl(Thread::Queue)
+        Provides:       perl(threads)
+        Provides:       /usr/sgug/bin/perl
+
     # Remove swidtag entries (Fedora-specific, macro not defined on our system)
     - pattern: "mkdir -p %{buildroot}%{_swidtagdir}\n"
       replacement: "# mkdir -p %{buildroot}%{_swidtagdir} - disabled for IRIX\n"

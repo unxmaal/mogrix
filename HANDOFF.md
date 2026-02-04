@@ -332,7 +332,14 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 2. ~~**Implement mmap-based malloc**~~ **DONE** (2026-02-04) - dlmalloc 2.8.6 integrated into compat system. All packages using compat functions auto-get mmap-based malloc, bypassing 176MB brk() heap ceiling. RPMs deployed to IRIX at `/tmp/` for testing.
 3. ~~**Test dlmalloc on IRIX**~~ **DONE** (2026-02-04) - rpm with mmap-based malloc verified working on IRIX, ncurses-term installs correctly
 4. **Make `--image-base=0x1000000` the default for all executables** - Update `cross/bin/irix-ld` (less critical now with dlmalloc, but still beneficial)
-5. **Continue build chain** - readline, autoconf, automake, libtool, perl, bash
+5. ~~**Phase 2 build tools**~~ **COMPLETE** (2026-02-04)
+   - m4 ✅ installed on IRIX
+   - autoconf ✅ installed on IRIX (deps satisfied via sgugrse-release Provides)
+   - automake ✅ installed on IRIX (shebang fixed to /usr/sgug/bin/perl, FindBin @INC fix)
+   - libtool ✅ installed on IRIX (shebang fixed to /usr/sgug/bin/bash, dropped gcc(major) dep)
+   - perl: using SGUG-RSE perl 5.30.0 from base system (copied to chroot, Provides in sgugrse-release)
+   - bash: copied from base SGUG-RSE to chroot (proper cross-compile deferred)
+   - sgugrse-release ✅ rebuilt with Provides for system tools + perl modules
 6. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
 7. **Long-term goal**: Port WebKitGTK 2.38.x for a modern browser on IRIX
 
@@ -1652,3 +1659,169 @@ These packages still have inline seds but are working fine:
 | rpm | 5 | BZip2 target, SONAME fixes |
 
 Most are CMake/config changes that don't fit well as source patches. Not blocking.
+
+---
+
+## Session Summary (2026-02-04, Phase 2 Build Tools)
+
+### Phase 2: Build Tools Chain for IRIX
+
+Building native build tools so IRIX can compile packages locally. Build order: m4 -> autoconf -> libtool -> automake -> bash -> perl.
+
+### m4 1.4.19 - COMPLETE
+
+**SRPMs**: `/home/edodd/rpmbuild/SRPMS/fc40/m4-1.4.19-9.fc40.src.rpm`
+
+Required 5 fixes for cross-compilation with clang on IRIX:
+
+1. **wcrtomb/mbsinit undeclared** - IRIX `wchar.h` hides C99/XPG5 functions behind `_WCHAR_CORE_EXTENSIONS_1` (requires `__c99` or `_XOPEN_SOURCE>=500`). Clang doesn't define `__c99` (SGI MIPSpro thing). Fix: `ac_cv_func_mbsinit: "no"`, `ac_cv_func_wcrtomb: "no"` so gnulib provides replacements.
+
+2. **strerror_r linker error** - `dicl-clang-compat/string.h` declared `char *strerror_r()` but no implementation existed. Configure found the declaration → `HAVE_STRERROR_R=1` → linker error. Fix: Removed dead declaration from string.h. error.c falls back to `strerror()`.
+
+3. **gnulib select replacement** - `gl_cv_func_select_detects_ebadf` defaults to "guessing no" for cross-compilation, causing gnulib to replace `select()`. IRIX's select() works fine. Fix: `gl_cv_func_select_detects_ebadf: "yes"`.
+
+4. **getrandom** - Our compat `sys/random.h` provides a stub. Fix: `ac_cv_func_getrandom: "yes"` to prevent gnulib from compiling its own.
+
+5. **find_lang** - NLS disabled for cross-compilation. Fix: `skip_find_lang: true`.
+
+**Key insight**: IRIX `wchar_core.h` (lines 417-458) hides these functions behind `_WCHAR_CORE_EXTENSIONS_1`: btowc, wctob, mbsinit, mbrlen, mbrtowc, wcrtomb, mbsrtowcs, wcsrtombs. Any package using gnulib regex will hit this.
+
+**SGUG-RSE comparison**: They used m4 1.4.18 with native GCC, never hit `_WCHAR_CORE_EXTENSIONS_1` issues. Their patches were getprogname and glibc compat only.
+
+**Verified on IRIX**: `m4 --version` and macro expansion test passed.
+
+### autoconf 2.71 - COMPLETE
+
+**SRPMs**: `/home/edodd/rpmbuild/SRPMS/fc40/autoconf-2.71-10.fc40.src.rpm`
+
+Noarch package (Perl scripts + m4 macros). Only packaging fixes needed:
+
+1. **Emacs support disabled** - `%bcond_without autoconf_enables_emacs` → `%bcond_with`
+2. **_emacs_sitelispdir macro removed** - Not defined for IRIX
+3. **find_lang skipped** - `skip_find_lang: true`
+
+**Verified on IRIX**: `autoconf --version` passed.
+
+### libtool 2.4.7 - BUILT, NEEDS DEPLOY
+
+**SRPMs**: `/home/edodd/rpmbuild/SRPMS/fc40/libtool-2.4.7-10.fc40.src.rpm`
+
+Required 6 fixes:
+
+1. **Old sgifixes.patch removed** - 2.4.6 patch doesn't apply to 2.4.7. All IRIX inherit_rpath fixes already in upstream 2.4.7.
+
+2. **help2man missing** - Dropped BuildRequires, added `HELP2MAN=true` to both `%make_build` and `%make_install`.
+
+3. **%_hardening_cflags not defined** - Fedora hardening macros (`CUSTOM_LTDL_CFLAGS/LDFLAGS`) not available for IRIX. Removed from make command.
+
+4. **Info files not compressed** - Fedora's `__brp_compress` doesn't run during cross-compilation. Changed `%{_infodir}/libtool.info*.gz` to `%{_infodir}/libtool.info*`.
+
+5. **host_os=irix doesn't match libtool patterns** - rpmbuild's `--target mips-sgi-irix` sets `host_os=irix`, but libtool's configure checks for `irix5*` | `irix6*` patterns to enable shared library support. Fix: Added `--host=mips-sgi-irix6.5` to override the `%configure` expansion, making `host_os=irix6.5`.
+
+6. **Brace expansion in rpmbuild shell** - `rm -f libltdl.{a,la}` not supported. Expanded to separate filenames.
+
+**Built RPMs**: `libtool-2.4.7-10.mips.rpm`, `libtool-ltdl-2.4.7-10.mips.rpm`, `libtool-ltdl-devel-2.4.7-10.mips.rpm`
+
+**Deploy command** (needs `--nodeps` due to `gcc(major)` and `automake` deps):
+```bash
+scp ~/rpmbuild/RPMS/mips/libtool-2.4.7-10.mips.rpm ~/rpmbuild/RPMS/mips/libtool-ltdl-2.4.7-10.mips.rpm ~/rpmbuild/RPMS/mips/libtool-ltdl-devel-2.4.7-10.mips.rpm edodd@192.168.0.81:/tmp/
+ssh root@192.168.0.81 '/usr/sgug/bin/sgug-exec /usr/sgug/bin/rpm -Uvh --nodeps /tmp/libtool-ltdl-2.4.7-10.mips.rpm /tmp/libtool-2.4.7-10.mips.rpm /tmp/libtool-ltdl-devel-2.4.7-10.mips.rpm'
+```
+
+### Pending: automake, bash, perl
+
+Task list:
+- **#14** automake - pending (blocked by autoconf - now unblocked)
+- **#15** bash - pending
+- **#16** perl - pending
+
+### Important Pattern: ac_cv Overrides for IRIX Cross-Compilation
+
+When cross-compiling GNU packages with gnulib, IRIX's non-standard header layout causes cascading issues. The pattern is:
+1. Configure's link tests find functions in libc (they exist in the shared library)
+2. Compile-time headers don't declare them due to missing guard macros (`_WCHAR_CORE_EXTENSIONS_1`, `_SGIAPI`, etc.)
+3. Build fails with "call to undeclared function"
+
+**Solution**: Override `ac_cv_func_X: "no"` in the package's YAML rules so gnulib provides its own replacement implementation with proper declarations.
+
+### Important: mogrix convert Bakes Overrides
+
+`ac_cv_overrides` and other rules are baked into the converted SRPM during `mogrix convert`. They are NOT applied at build time. **Must re-run `mogrix convert` after changing rules**, then rebuild from the new converted SRPM.
+
+### Files Modified
+
+- `rules/packages/m4.yaml` - ac_cv overrides for mbsinit, wcrtomb, select, getrandom; skip_find_lang
+- `rules/packages/autoconf.yaml` - NEW: disable emacs, skip_find_lang
+- `rules/packages/libtool.yaml` - Updated: remove old patch, help2man, hardening flags, info gz, host triple, brace expansion
+- `cross/include/dicl-clang-compat/string.h` - Removed dead strerror_r declaration
+- `cross/include/dicl-clang-compat/sys/select.h` - NEW: declares select() for IRIX
+
+### Dependency Fix (2026-02-04)
+
+Attempted to install autoconf and libtool on IRIX - both failed due to missing dependencies:
+
+- **autoconf**: Requires `perl-interpreter` and `perl(File::Compare)` - autoconf is Perl scripts, perl is a genuine runtime dependency
+- **libtool**: Requires `autoconf`, `automake`, `findutils`, `gcc(major)=13`, `sed`, `tar`
+
+**Fixes applied**:
+- `rules/packages/libtool.yaml` - Added `drop_requires` for `gcc(major)` (Fedora GCC, we use clang) and `automake = 1.16.5` (version lock too strict)
+- `rules/packages/sgugrse-release.yaml` - Added `Provides:` for IRIX system tools (sed, tar, findutils, grep, gawk, diffutils, coreutils) so RPM deps are satisfied
+
+**Correct Phase 2 build order**: perl → autoconf → automake → libtool
+
+**Lesson**: A package is not complete until it can be installed with `rpm -Uvh` without `--nodeps`. Build success != installable.
+
+### Phase 2 Build Tools Complete (2026-02-04)
+
+All Phase 2 build tools installed on IRIX **without `--nodeps`**:
+
+| Package | Version | Status | Key Fix |
+|---------|---------|--------|---------|
+| m4 | 1.4.19 | ✅ Installed | ac_cv overrides for wchar/gnulib |
+| autoconf | 2.71 | ✅ Installed | Noarch, disabled emacs |
+| automake | 1.16.5 | ✅ Installed | Shebang→/usr/sgug/bin/perl, FindBin @INC |
+| libtool | 2.4.7 | ✅ Installed | Shebang→/usr/sgug/bin/bash, dropped gcc(major) |
+| libtool-ltdl | 2.4.7 | ✅ Installed | Shared library for IRIX |
+
+**Key issues solved:**
+
+1. **Perl shebang**: `/usr/bin/perl` on IRIX is ancient system perl 5.004. Changed to `/usr/sgug/bin/perl` (SGUG-RSE 5.30.0)
+
+2. **Automake @INC conflict**: IRIX chroot doesn't isolate, so automake's `@INC` path `/usr/sgug/share/automake-1.16` found the base system's SGUG-RSE automake (has `parse_warnings($$)` prototype) instead of our version (has `parse_warnings(@)`). Fixed with `FindBin` for relocatable module path.
+
+3. **Bash shebang**: libtool uses `#!/bin/bash` but IRIX has no `/bin/bash`. Changed to `#!/usr/sgug/bin/bash`.
+
+4. **sgugrse-release Provides**: Added system tool + perl module Provides so RPM deps are satisfied without `--nodeps`. Includes: sed, tar, findutils, grep, gawk, diffutils, coreutils, perl-interpreter, perl(File::Compare), perl(Thread::Queue), perl(threads).
+
+5. **sgugrse-repos drop_requires**: Dropped `sgugrse-repos(%{version})` dependency from sgugrse-release-common (we use our own mogrix.repo). Also fixed `drop_requires` regex to handle `pkg(%{version})` syntax.
+
+6. **RPM --target mips-sgi-irix**: sgugrse-release packages must be built with `--target` flag or they get OS=linux tag which IRIX rpm rejects.
+
+7. **Perl for chroot**: Copied SGUG-RSE perl 5.30.0 binary and modules from base IRIX system to chroot. Perl doesn't work inside IRIX chroot (rld issues) but works from outside with `LD_LIBRARYN32_PATH`.
+
+**Packages installed in chroot RPM database:**
+```
+ncurses-term-6.4-12.20240127.noarch
+m4-1.4.19-9.mips
+autoconf-2.71-10.mips
+automake-1.16.5-16.mips
+libtool-2.4.7-10.mips
+libtool-ltdl-2.4.7-10.mips
+libtool-ltdl-devel-2.4.7-10.mips
+sgugrse-release-0.0.7beta-1.mips
+sgugrse-release-common-0.0.7beta-1.mips
+```
+
+### Files Modified (2026-02-04 session)
+
+- `rules/packages/sgugrse-release.yaml` - Added Provides for system tools + perl modules, drop_requires for sgugrse-repos
+- `rules/packages/libtool.yaml` - drop_requires (gcc(major), automake version), bash shebang fix
+- `rules/packages/automake.yaml` - perl shebang fix, FindBin @INC fix, skip_check
+- `rules/packages/autoconf.yaml` - (unchanged, was already working)
+- `mogrix/emitter/spec.py` - Fixed drop_requires regex for `pkg(...)` syntax
+
+### IRIX Host Info
+
+- IP: 192.168.0.81 (edodd@ for scp, root@ for install)
+- Chroot: /opt/chroot
+- Install: `ssh root@192.168.0.81 '/bin/sh -c "LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32:/usr/sgug/lib32 /opt/chroot/usr/sgug/bin/rpm -Uvh --root=/opt/chroot /tmp/<pkg>.rpm"'`
