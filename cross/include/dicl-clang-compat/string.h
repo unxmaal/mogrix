@@ -1,25 +1,17 @@
 /*
  * DICL clang compat string.h
- * Add GNU/POSIX functions not available in IRIX string.h
+ * Wrapper for IRIX string.h
+ *
+ * Note: strerror_r is NOT declared here. IRIX doesn't have it,
+ * and unconditionally declaring it conflicts with gnulib's own
+ * strerror_r replacement module. Packages needing strerror_r
+ * should inject the compat function via inject_compat_functions
+ * and let gnulib handle the declaration.
  */
 #ifndef _DICL_STRING_H
 #define _DICL_STRING_H
 
 /* Include IRIX string.h first */
 #include_next <string.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* GNU-style strerror_r (provided by compat library) */
-#ifndef _DICL_STRERROR_R
-#define _DICL_STRERROR_R
-extern char *strerror_r(int errnum, char *buf, size_t buflen);
-#endif
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* _DICL_STRING_H */

@@ -1,7 +1,24 @@
 # m4 package rules for IRIX cross-compilation
 package: m4
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - m4.sgifixes.patch
+# m4 1.4.19 gnulib already has IRIX getprogname support (was missing in 1.4.18)
+# Old m4.sgifixes.patch no longer needed
+
+rules:
+  # IRIX wchar.h hides C99/XPG5 functions behind _WCHAR_CORE_EXTENSIONS_1
+  # (requires __c99 or _XOPEN_SOURCE>=500, neither set with clang).
+  # Tell configure they're missing so gnulib provides its own replacements.
+  ac_cv_overrides:
+    ac_cv_func_mbsinit: "no"
+    gl_cv_func_mbsinit_works: "no"
+    ac_cv_func_wcrtomb: "no"
+    # IRIX select() works fine - prevent gnulib from replacing it.
+    # Cross-compile default "guessing no" is wrong for IRIX.
+    gl_cv_func_select_detects_ebadf: "yes"
+    # Our compat sys/random.h provides static inline getrandom stub.
+    # Tell gnulib it exists so it doesn't compile its own replacement.
+    ac_cv_func_getrandom: "yes"
+
+  # No NLS in cross-compilation
+  skip_find_lang: true
 

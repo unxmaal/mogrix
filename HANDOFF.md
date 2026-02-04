@@ -330,7 +330,7 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 ### Next priorities:
 1. ~~**Rebuild rpm** with the image-base fix~~ **DONE** (2026-02-04)
 2. ~~**Implement mmap-based malloc**~~ **DONE** (2026-02-04) - dlmalloc 2.8.6 integrated into compat system. All packages using compat functions auto-get mmap-based malloc, bypassing 176MB brk() heap ceiling. RPMs deployed to IRIX at `/tmp/` for testing.
-3. **Test dlmalloc on IRIX** - Install rpm-4.19.1.1-1.mips.rpm + rpm-libs + sqlite-libs from `/tmp/` on IRIX, verify ncurses-term install still works
+3. ~~**Test dlmalloc on IRIX**~~ **DONE** (2026-02-04) - rpm with mmap-based malloc verified working on IRIX, ncurses-term installs correctly
 4. **Make `--image-base=0x1000000` the default for all executables** - Update `cross/bin/irix-ld` (less critical now with dlmalloc, but still beneficial)
 5. **Continue build chain** - readline, autoconf, automake, libtool, perl, bash
 6. **Plan production migration** - Strategy for moving from chroot to /usr/sgug

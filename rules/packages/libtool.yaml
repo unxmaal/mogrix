@@ -1,7 +1,29 @@
 # libtool package rules for IRIX cross-compilation
 package: libtool
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - libtool.sgifixes.patch
+# libtool 2.4.7 already has the IRIX inherit_rpath fixes from SGUG-RSE
+# Old libtool.sgifixes.patch no longer needed
+
+rules:
+  # No NLS in cross-compilation
+  skip_find_lang: true
+
+  # help2man not available during cross-compilation
+  drop_buildrequires:
+    - help2man
+
+  spec_replacements:
+    # Replace make command: remove Fedora hardening flags (not defined for IRIX)
+    # and add HELP2MAN=true to skip man page generation
+    - pattern: |
+        %make_build \
+            CUSTOM_LTDL_CFLAGS="%_hardening_cflags" \
+            CUSTOM_LTDL_LDFLAGS="%_hardening_ldflags"
+      replacement: "%make_build HELP2MAN=true"
+    # Also pass HELP2MAN=true during install (Makefile regenerates man pages)
+    - pattern: "%make_install"
+      replacement: "%make_install HELP2MAN=true"
+    # Info files aren't auto-compressed in cross-compilation (no __brp_compress)
+    - pattern: "%{_infodir}/libtool.info*.gz"
+      replacement: "%{_infodir}/libtool.info*"
 
