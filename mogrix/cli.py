@@ -716,6 +716,14 @@ def build(
                     console.print(f"\n[bold]Built RPMs:[/bold]")
                     for rpm in rpms:
                         console.print(f"  {rpm}")
+            # Preserve the converted SRPM alongside built RPMs
+            if is_srpm:
+                import shutil
+                srpms_dir = rpmbuild_path / "SRPMS"
+                dest_srpm = srpms_dir / input_path.name
+                if dest_srpm != input_path.resolve():
+                    shutil.copy2(input_path, dest_srpm)
+                    console.print(f"\n[bold]Saved SRPM:[/bold]\n  {dest_srpm}")
         else:
             # Check for missing dependencies
             combined_output = result.stdout + result.stderr
