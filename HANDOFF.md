@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-02-05
-**Status**: Phase 2 build tools in progress. perl/autoconf/automake INSTALLED on IRIX. Awaiting user smoke test results. libtool + bash remain.
+**Status**: Phase 2 build tools nearly complete. All 6 packages INSTALLED on IRIX (m4, perl, autoconf, automake, bash). libtool RPM built, ready to install.
 
 ---
 
@@ -60,7 +60,7 @@ Verified working: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdn
 | autoconf 2.71 | INSTALLED | Awaiting smoke test |
 | automake 1.16.5 | INSTALLED (shebang+FindBin fixes) | Awaiting smoke test |
 | libtool 2.4.7 | RPM built, ready to install | Has shebang + drop_requires fixes |
-| bash 5.2.26 | NOT BUILT | Must cross-compile FC40 |
+| bash 5.2.26 | INSTALLED | Bundled readline, wchar.h overlay, HAVE_PSELECT fixes |
 
 ---
 
@@ -72,6 +72,15 @@ Verified working: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdn
 - Solution: 4 explicit `Provides:` tags in `perl.yaml` spec_replacements
 - Tags: `perl-interpreter`, `perl(File::Compare)`, `perl(Thread::Queue)`, `perl(threads)`
 - All modules physically exist in the monolithic perl RPM (verified with rpm -qpl)
+
+### Bash 5.2.26 Cross-Compilation
+- 17 rules in `bash.yaml`: configure flags, HAVE_PSELECT fixes, doc cleanup, /bin/sh compat
+- `--without-installed-readline` uses bundled readline (no libreadline.so dependency)
+- Created `compat/include/mogrix-compat/generic/wchar.h` overlay for C99 multibyte functions
+- `ac_cv_header_sys_random_h: "no"` avoids getrandom() conflict with dicl-clang-compat
+- `prep_commands` fix readline/input.c and lib/sh/input_avail.c HAVE_PSELECT bugs
+- `install_cleanup` removes doc files from dropped doc subpackage
+- Verified on IRIX: `bash --version`, brace expansion, for loops all working
 
 ### Rules Cleanup
 - Removed duplicate rules from ~30 package YAMLs (ac_cv_overrides, skip_check, libdicl, drop_buildrequires)
@@ -97,10 +106,9 @@ Package-level `rpm_macros` overrides are NOT supported in `engine.py`. The `_app
 
 ## Next Steps
 
-1. **Verify autoconf/automake smoke tests pass** — user is testing now
-2. **Install libtool** — copy `libtool-2.4.7-10.mips.rpm` + `libtool-ltdl-2.4.7-10.mips.rpm` to IRIX
-3. **Cross-compile bash** — FC40 bash 5.2.26, not yet started
-4. **Plan production migration** — Strategy for moving from chroot to /usr/sgug
+1. **Install libtool** — copy `libtool-2.4.7-10.mips.rpm` + `libtool-ltdl-2.4.7-10.mips.rpm` to IRIX
+2. **Plan production migration** — Strategy for moving from chroot to /usr/sgug
+3. **Begin Phase 3** — user-facing packages (ncurses, coreutils, etc.)
 
 ### Deferred
 - Remaining inline seds in libsolv/tdnf/rpm (working, not blocking)

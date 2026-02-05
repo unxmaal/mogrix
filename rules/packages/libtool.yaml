@@ -19,9 +19,10 @@ rules:
     - "gcc(major)"
     - "automake = 1.16.5"
 
-  # Fix shebangs: /bin/bash doesn't exist on IRIX, use /usr/sgug/bin/bash
+  # Fix shebangs: /bin/bash and /usr/sgug/bin/bash don't work yet (needs libreadline.so.8)
+  # Use /bin/ksh which exists on IRIX and handles most bash-isms libtool needs
   install_cleanup:
-    - "sed -i 's|#!.*/bin/bash|#!/usr/sgug/bin/bash|g' %{buildroot}%{_bindir}/libtool %{buildroot}%{_bindir}/libtoolize"
+    - "sed -i 's|#!.*/bin/bash|#!/bin/ksh|g' %{buildroot}%{_bindir}/libtool %{buildroot}%{_bindir}/libtoolize"
 
   spec_replacements:
     # Replace make command: remove Fedora hardening flags (not defined for IRIX)

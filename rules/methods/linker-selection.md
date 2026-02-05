@@ -6,8 +6,24 @@ The `cross/bin/irix-ld` wrapper selects linkers based on output type:
 
 | Output Type | Linker | Why |
 |-------------|--------|-----|
-| Shared libraries (`-shared`) | GNU ld | Correct 2-LOAD segment layout for IRIX rld |
+| Shared libraries (`-shared`) | GNU ld + `-z separate-code` | Forces 3 LOAD segments (R/RE/RW) for IRIX rld |
 | Executables | LLD 18 with patches | Correct relocations, correct segment layout |
+
+### Shared Library Segment Layout (2026-02-05)
+
+Without `-z separate-code`, GNU ld produces a **single RWE LOAD segment** for small
+shared libraries (those with no `.data` section, only `.got`). This crashes IRIX rld
+immediately after `elfmap()` with SIGSEGV. Affects all Perl XS modules (Dumper.so, etc.).
+
+With `-z separate-code`, GNU ld produces 3 LOAD segments:
+- `R` — headers, dynamic, hash, symtab, strtab
+- `RE` — .text, .MIPS.stubs
+- `RW` — .rodata, .got
+
+IRIX rld handles this correctly (tested with `DynaLoader::dl_load_file`).
+
+SGUG-RSE avoided this issue because their patched binutils + GCC produced compatible
+single-segment layout. Our unpatched GNU ld + clang needs the explicit flag.
 
 ## KNOWN BAD FIXES - DO NOT ATTEMPT
 
@@ -56,7 +72,7 @@ The patches fix the relocation bug. Correct output looks like:
 If you suspect a linker problem:
 
 1. **Check relocations**: `readelf -r binary | grep -E "(popt|rpm)"`
-2. **Check segment layout**: `readelf -l binary` (should have 2 LOAD segments for shared libs)
+2. **Check segment layout**: `readelf -l binary` (shared libs need 3 LOAD segments: R/RE/RW)
 3. **Check which linker is used**: Add `echo "Using: $GNULD" >&2` or `echo "Using: $LLD" >&2` to irix-ld
 
 ## See Also

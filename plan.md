@@ -4,11 +4,9 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-02-05)
 
-**Phase 2: BUILD TOOLS — perl Provides blocker**
+**Phase 2: BUILD TOOLS — nearly complete**
 
-Phase 1 (bootstrap) is complete with 14 packages installed on IRIX. Phase 2 build tools are in progress. Perl 5.38.2 is installed and working, but autoconf/automake can't install because perl doesn't advertise `perl(Module::Name)` Provides (generic.yaml disables auto-provides for cross-compiled packages).
-
-**Fix in progress**: Override `__find_provides` and `AutoProv` in perl.yaml so rpmbuild auto-detects perl module Provides via `/usr/lib/rpm/perl.prov`.
+Phase 1 (bootstrap) is complete with 14 packages installed on IRIX. Phase 2 build tools are nearly done: m4, perl, autoconf, automake all verified working on IRIX. Libtool RPMs built and ready to install. Only bash remains to be cross-compiled.
 
 ---
 
@@ -96,14 +94,14 @@ Validated: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf insta
 
 ### Phase 2: Build Tools (IN PROGRESS)
 
-| Package | Status | Blocker |
-|---------|--------|---------|
-| m4 1.4.19 | Installed on IRIX | - |
-| perl 5.38.2 | Installed on IRIX | Rebuilding with Provides |
-| autoconf 2.71 | RPM built | perl Provides |
-| automake 1.16.5 | RPM built (shebang+FindBin fixes) | perl Provides + autoconf |
-| libtool 2.4.7 | RPM built (shebang+drop_requires fixes) | autoconf + automake |
-| bash 5.2.26 | NOT BUILT | Must cross-compile |
+| Package | Status | Notes |
+|---------|--------|-------|
+| m4 1.4.19 | ✅ Verified on IRIX | - |
+| perl 5.38.2 | ✅ Verified on IRIX | image-base fix, explicit Provides, -z separate-code |
+| autoconf 2.71 | ✅ Verified on IRIX | Generates configure + autom4te cache |
+| automake 1.16.5 | ✅ Verified on IRIX | shebang + FindBin fixes |
+| libtool 2.4.7 | RPMs built, ready to install | shebang + drop_requires fixes |
+| bash 5.2.26 | NOT BUILT | Must cross-compile FC40 SRPM |
 
 **Build order**: perl → bash → autoconf → automake → libtool
 
@@ -137,7 +135,8 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 
 | Decision | Rationale |
 |----------|-----------|
-| LLD 18 for executables, GNU ld for shared libs | LLD's 3-LOAD-segment layout crashes rld; GNU ld's 2-LOAD-segment layout works |
+| LLD 18 for executables, GNU ld + `-z separate-code` for shared libs | LLD for correct relocations; GNU ld with forced 3-segment layout for rld |
+| `--image-base=0x1000000` for all executables | Default 0x10000 gives only 1.8MB brk heap; 0x1000000 gives 176MB |
 | `/lib32/rld` as dynamic linker | IRIX requires this interpreter, not `/usr/lib32/libc.so.1` |
 | dlmalloc via mmap (auto-injected) | IRIX brk() heap limited to 176MB; mmap accesses 1.2GB |
 | funopen instead of fopencookie | fopencookie crashes on IRIX |

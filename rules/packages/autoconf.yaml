@@ -15,3 +15,10 @@ rules:
     # The _emacs_sitelispdir macro may not be defined
     - pattern: "--with-lispdir=%{_emacs_sitelispdir}/autoconf"
       replacement: ""
+
+  # Fix shebangs and hardcoded paths baked in from the build host:
+  # - /usr/bin/perl → IRIX system perl 5.004, must use /usr/sgug/bin/perl
+  # - /usr/bin/m4 → IRIX system m4 (not GNU), must use /usr/sgug/bin/m4
+  install_cleanup:
+    - "find %{buildroot}%{_bindir} -type f -exec grep -l '/usr/bin/perl' {} \\; | xargs -r sed -i 's|/usr/bin/perl|/usr/sgug/bin/perl|g'"
+    - "find %{buildroot}%{_bindir} -type f -exec grep -l '/usr/bin/m4' {} \\; | xargs -r sed -i 's|/usr/bin/m4|/usr/sgug/bin/m4|g'"
