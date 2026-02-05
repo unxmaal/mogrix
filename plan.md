@@ -6,7 +6,7 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 **Phase 2: BUILD TOOLS — nearly complete**
 
-Phase 1 (bootstrap) is complete with 14 packages installed on IRIX. Phase 2 build tools are nearly done: m4, perl, autoconf, automake all verified working on IRIX. Libtool RPMs built and ready to install. Only bash remains to be cross-compiled.
+Phase 1 (bootstrap) is complete with 14 packages installed on IRIX. Phase 2 build tools are nearly done: m4, perl, autoconf, automake, bash all verified working on IRIX. Libtool RPMs built and ready to install.
 
 ---
 
@@ -101,7 +101,7 @@ Validated: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf insta
 | autoconf 2.71 | ✅ Verified on IRIX | Generates configure + autom4te cache |
 | automake 1.16.5 | ✅ Verified on IRIX | shebang + FindBin fixes |
 | libtool 2.4.7 | RPMs built, ready to install | shebang + drop_requires fixes |
-| bash 5.2.26 | NOT BUILT | Must cross-compile FC40 SRPM |
+| bash 5.2.26 | ✅ Verified on IRIX | Bundled readline, wchar.h overlay, HAVE_PSELECT fixes |
 
 **Build order**: perl → bash → autoconf → automake → libtool
 

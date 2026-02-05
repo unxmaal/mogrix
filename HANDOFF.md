@@ -60,7 +60,7 @@ Verified working: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdn
 | autoconf 2.71 | INSTALLED | Awaiting smoke test |
 | automake 1.16.5 | INSTALLED (shebang+FindBin fixes) | Awaiting smoke test |
 | libtool 2.4.7 | RPM built, ready to install | Has shebang + drop_requires fixes |
-| bash 5.2.26 | INSTALLED | Bundled readline, wchar.h overlay, HAVE_PSELECT fixes |
+| bash 5.2.26 | INSTALLED | System readline, libtinfo for termcap, HAVE_PSELECT fixes |
 
 ---
 
@@ -75,12 +75,19 @@ Verified working: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdn
 
 ### Bash 5.2.26 Cross-Compilation
 - 17 rules in `bash.yaml`: configure flags, HAVE_PSELECT fixes, doc cleanup, /bin/sh compat
-- `--without-installed-readline` uses bundled readline (no libreadline.so dependency)
+- `--with-installed-readline` uses system readline (not bundled — SGUG-RSE bundled out of bootstrap necessity)
+- `bash_cv_termcap_lib: "libtinfo"` — SGUG-RSE ncurses splits termcap into libtinfo.so
 - Created `compat/include/mogrix-compat/generic/wchar.h` overlay for C99 multibyte functions
 - `ac_cv_header_sys_random_h: "no"` avoids getrandom() conflict with dicl-clang-compat
-- `prep_commands` fix readline/input.c and lib/sh/input_avail.c HAVE_PSELECT bugs
+- `prep_commands` fix lib/sh/input_avail.c HAVE_PSELECT bugs
 - `install_cleanup` removes doc files from dropped doc subpackage
 - Verified on IRIX: `bash --version`, brace expansion, for loops all working
+
+### ncurses Linker Script Fix
+- Fedora ncurses creates `libcurses.so`, `libcursesw.so`, `libtermcap.so` as GNU ld scripts (`INPUT(-lfoo)`)
+- IRIX rld can't load linker scripts — only real ELF .so files
+- Fixed in `ncurses.yaml`: replace `echo "INPUT(...)"` with `ln -s` for all 3 files
+- Also dropped `ncurses-c++-libs` (subpackage dropped) and `pkgconfig` requires from ncurses-devel
 
 ### Rules Cleanup
 - Removed duplicate rules from ~30 package YAMLs (ac_cv_overrides, skip_check, libdicl, drop_buildrequires)
