@@ -12,21 +12,14 @@ rules:
     - vasprintf
     - getline
 
-  # Drop libdicl dependency
+  # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   drop_buildrequires:
-    - libdicl-devel
-    - libdicl
     - trousers-devel
     - libidn2-devel
 
-  drop_requires:
-    - libdicl
-    - libdicl-devel
-
   # Autoconf cache overrides
+  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
-    ac_cv_func_malloc_0_nonnull: "yes"
-    ac_cv_func_realloc_0_nonnull: "yes"
     gl_cv_func_working_getdelim: "yes"
 
   # Configure flags
@@ -50,7 +43,4 @@ rules:
   configure_disable:
     - seccomp-tests
 
-  # Remove libdicl-related lines
-  remove_lines:
-    - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
-    - 'export LIBS="-ldicl-0.1"'
+  # NOTE: libdicl remove_lines handled by generic.yaml

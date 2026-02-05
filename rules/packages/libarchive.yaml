@@ -14,16 +14,10 @@ rules:
     - strdup
     - strndup
 
-  # Drop problematic dependencies
+  # NOTE: libacl-devel/libattr-devel drop_buildrequires handled by generic.yaml
+  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   drop_buildrequires:
-    - libacl-devel
-    - libattr-devel
     - e2fsprogs-devel
-
-  # Autoconf cache overrides
-  ac_cv_overrides:
-    ac_cv_func_malloc_0_nonnull: "yes"
-    ac_cv_func_realloc_0_nonnull: "yes"
 
   # Configure flags
   configure_flags:

@@ -17,22 +17,17 @@ rules:
     - vasprintf
     - getline
 
-  # Drop libdicl dependency
+  # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   drop_buildrequires:
-    - libdicl-devel
-    - libdicl
     - libusb1-devel
     - openldap-devel
 
   drop_requires:
-    - libdicl
-    - libdicl-devel
     - pinentry
 
   # Autoconf cache overrides
+  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
-    ac_cv_func_malloc_0_nonnull: "yes"
-    ac_cv_func_realloc_0_nonnull: "yes"
     gl_cv_func_working_getdelim: "yes"
 
   # Configure flags
@@ -52,7 +47,4 @@ rules:
       - --enable-g13
       - --enable-large-secmem
 
-  # Remove problematic lines
-  remove_lines:
-    - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
-    - 'export LIBS="-ldicl-0.1"'
+  # NOTE: libdicl remove_lines handled by generic.yaml

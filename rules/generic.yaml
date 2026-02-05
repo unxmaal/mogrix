@@ -1,16 +1,21 @@
-# generic.yaml - Universal rules applied to ALL packages
+# generic.yaml - Universal rules applied to ALL packages BEFORE package-specific rules.
+#
+# DO NOT duplicate these rules in rules/packages/*.yaml.
+# See rules/INDEX.md for the full list of what generic handles.
 #
 # ---metadata---
 # scope: global (applies to every package)
 # purpose: Remove Linux-specific deps, set IRIX paths, skip %check
 # key_sections:
-#   - drop_buildrequires: systemd, selinux, kernel-headers, libdicl, etc.
+#   - drop_buildrequires: systemd, selinux, kernel-headers, libdicl, gnupg2, etc.
 #   - drop_requires: libdicl (replaced by mogrix compat injection)
-#   - remove_lines: gpgverify, ldconfig_scriptlets, systemd scriptlets
+#   - remove_lines: gpgverify, ldconfig_scriptlets, libdicl exports, systemd scriptlets
+#   - ac_cv_overrides: malloc_0_nonnull, realloc_0_nonnull
 #   - rpm_macros: _prefix=/usr/sgug, _libdir=/usr/sgug/lib32
 #   - configure_disable: selinux, systemd, udev, inotify, epoll, etc.
 #   - header_overlays: generic (stdarg.h, stdio.h, etc.)
 #   - skip_check: true (can't run cross-compiled tests)
+#   - drop_subpackages: debuginfo, debugsource, langpack-*
 # ---
 
 generic:

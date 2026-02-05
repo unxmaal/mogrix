@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-02-04
-**Status**: mmap-based malloc (dlmalloc) integrated - bypasses 176MB IRIX brk() heap ceiling
+**Status**: Perl 5.38.2 ✅ INSTALLED on IRIX. Next: install autoconf + automake.
 
 ---
 
@@ -331,15 +331,15 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 
 ### Next priorities:
 1. ~~**Rebuild rpm** with the image-base fix~~ **DONE** (2026-02-04)
-2. ~~**Implement mmap-based malloc**~~ **DONE** (2026-02-04) - dlmalloc 2.8.6 integrated into compat system. All packages using compat functions auto-get mmap-based malloc, bypassing 176MB brk() heap ceiling. RPMs deployed to IRIX at `/tmp/` for testing.
-3. ~~**Test dlmalloc on IRIX**~~ **DONE** (2026-02-04) - rpm with mmap-based malloc verified working on IRIX, ncurses-term installs correctly
-4. **Make `--image-base=0x1000000` the default for all executables** - Update `cross/bin/irix-ld` (less critical now with dlmalloc, but still beneficial)
+2. ~~**Implement mmap-based malloc**~~ **DONE** (2026-02-04)
+3. ~~**Test dlmalloc on IRIX**~~ **DONE** (2026-02-04)
+4. **Make `--image-base=0x1000000` the default for all executables** - Update `cross/bin/irix-ld`
 5. **Phase 2 build tools** - **IN PROGRESS** - Dependency chain: perl → bash → autoconf → automake → libtool
    - m4 ✅ installed on IRIX
+   - **perl: RPM BUILT (build 23)** - scp'd to IRIX at `/opt/chroot/tmp/perl-5.38.2-506.mips.rpm`, awaiting install test
    - autoconf: BUILT (RPM exists), NOT INSTALLABLE - blocked on perl
    - automake: BUILT (RPM exists, shebang/FindBin fixes applied), NOT INSTALLABLE - blocked on perl
    - libtool: BUILT (RPM exists, shebang/drop_requires fixes applied), NOT INSTALLABLE - blocked on autoconf+automake
-   - **perl: NOT BUILT** - Must cross-compile FC40 perl 5.38.2 (SGUG-RSE has 65 patches for reference)
    - **bash: NOT BUILT** - Must cross-compile FC40 bash 5.2.26
    - sgugrse-release ✅ rebuilt with Provides for IRIX system tools (sed, tar, findutils, grep, gawk)
 6. **Plan production migration** - Strategy for moving from chroot to /usr/sgug
@@ -347,6 +347,76 @@ createrepo_c --simple-md-filenames ~/rpmbuild/RPMS/mips/
 
 ### Deferred (low priority):
 - **Remaining inline seds** - libsolv (2), tdnf (6), rpm (5) still have inline seds but are working. These are mostly CMake/config changes that are hard to express as source patches. Not blocking.
+
+---
+
+## Perl 5.38.2 Cross-Compilation (2026-02-04)
+
+**Status**: RPM built (build 23), on IRIX at `/opt/chroot/tmp/perl-5.38.2-506.mips.rpm`
+
+### Approach: Monolithic Package
+
+Fedora perl has 188 subpackages. For cross-compilation, we build a single monolithic package:
+- `drop_subpackages: ["[A-Za-z]*"]` comments out all subpackages
+- `%files -f perl-filelist.txt` uses an auto-generated file manifest
+- `%global dual_life 1` keeps all core modules (otherwise %install removes them)
+- `remove_lines` strips orphaned Requires from dropped subpackages
+- `%define _unpackaged_files_terminate_build 0` as safety net
+
+### RPM Contents
+- **3556 files** total, **652 .pm modules**, **23 .so extensions**
+- All critical modules: Carp, Exporter, strict, warnings, ExtUtils::MakeMaker, File::Path, File::Spec, Getopt::Long, Data::Dumper, Encode, POSIX, Test::More, Socket, Storable, etc.
+- Binary: ELF 32-bit MSB executable, MIPS, N32 MIPS-III
+- **No external Requires** (only rpmlib internals)
+- **Known missing**: FindBin.pm (investigate - needed by automake's aclocal)
+
+### Key Files
+- `rules/packages/perl.yaml` - All perl cross-compilation rules (12 spec_replacements)
+- `patches/packages/perl/perl.irix6_clang_config.sh` - Pre-generated config.sh for IRIX
+- `patches/packages/perl/perl.sgifixes.patch` - IRIX-specific source patches
+- Original FC40 SRPM: `~/rpmbuild/SRPMS/fc40/perl-5.38.2-506.fc40.src.rpm`
+
+### Cross-Compilation Strategy
+1. **Pre-generated config.sh** adapted from SGUG-RSE tells Perl about IRIX target
+2. `Configure -S` reads config.sh without probing (no interactive configure)
+3. **Native miniperl** built on host (gcc) runs build scripts; IRIX perl is the real target
+4. `CC=irix-cc` compiles C code for IRIX target via clang cross-compiler
+
+### Native Miniperl (Critical)
+The host system cannot run IRIX MIPS binaries. A native x86 miniperl is built to run build scripts:
+- Compiled with `gcc` from perl's own source files
+- `MINIPERL = ./miniperl.native -Ilib -I.` (lib MUST be first for buildcustomize.pl)
+- **op.c, perl.c, universal.c excluded** from first loop (only mini variants compiled with -DPERL_IS_MINIPERL)
+- Must clean stale artifacts from Configure -S's internal `make depend` before spec's `make`
+
+### IRIX-Specific Config Disables
+In `perl.irix6_clang_config.sh`:
+- Removed DB_File, GDBM_File, NDBM_File, ODBM_File (no headers on IRIX)
+- `i_fenv='undef'` (IRIX fenv.h requires `__c99` mode which conflicts with vsscanf)
+- 14 C99 math functions set to `'undef'`: d_fdim, d_fegetround, d_fma, d_fmax, d_fmin, d_lrint, d_lrintl, d_lround, d_lroundl, d_nearbyint, d_nexttoward, d_remquo, d_tgamma, d_wcrtomb
+- `d_mbrlen='undef'`, `d_mbrtowc='undef'`
+
+### Mogrix Fixes Applied This Session
+Two bugs fixed in `mogrix/emitter/spec.py` `_comment_subpackage()`:
+1. **%files content commenting stopped at %dir/%doc/%license** - Changed from broad `%[a-z]` section detection to a whitelist of actual RPM section markers
+2. **%package metadata not commented** - Added loop to comment Summary/Requires/Provides between `%package` and `%description`
+
+### What Failed (Don't Repeat)
+- `drop_subpackages: ["*"]` matches `-f` in `%files -f`, commenting out the main %files section. Use `["[A-Za-z]*"]` instead.
+- Build without `dual_life 1` removes 1000+ dual-life modules (Carp, Exporter, etc.) in %install
+- `rm -f` (section 10) makes removals non-fatal but doesn't PREVENT them - files still get deleted
+- Converting a previously-converted SRPM causes duplicate Source100/Patch500. Always convert from original FC40 SRPM.
+- `-I. -Ilib` order makes @INC[0]=`.`, breaking buildcustomize.pl loading. Must be `-Ilib -I.`
+- Configure -S runs `make depend` internally, creating stale .o files and `makefile` (lowercase). Must `rm -f *.o makefile ...` before spec's `make`
+
+### Install Test Commands (for IRIX)
+```bash
+# In chroot on IRIX:
+rpm -Uvh /tmp/perl-5.38.2-506.mips.rpm
+/usr/sgug/bin/perl -v
+/usr/sgug/bin/perl -e 'use Config; print $Config{archname}, "\n"'
+/usr/sgug/bin/perl -e 'use Carp; use Exporter; use strict; print "Core modules OK\n"'
+```
 
 ---
 

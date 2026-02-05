@@ -25,7 +25,7 @@ add_source:
 
 rules:
   skip_find_lang: true
-  skip_check: true
+  # NOTE: skip_check is inherited from generic.yaml
 
   # Drop all 188 subpackages - cross-compiled perl uses monolithic packaging.
   # Subpackage %files sections reference wrong paths (archlib vs privlib).
@@ -33,9 +33,8 @@ rules:
   drop_subpackages:
     - "[A-Za-z]*"
 
-  # Drop Linux-specific BuildRequires
+  # Drop Linux-specific BuildRequires (systemtap-sdt-devel handled by generic.yaml)
   drop_buildrequires:
-    - systemtap-sdt-devel
     - gdbm-devel
     - libdb-devel
     - groff-base
