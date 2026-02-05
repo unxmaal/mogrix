@@ -6,7 +6,7 @@
 # key_fixes: [pre-generated config.sh, cross-compilation, IRIX math functions]
 # similar_to: []
 # depends: [zlib-ng, bzip2]
-# status: IN_PROGRESS
+# status: INSTALLED (rebuilding with Provides)
 # ---
 #
 # Cross-compilation approach:
@@ -239,6 +239,22 @@ rules:
     # Cross-compilation may leave unexpected files; don't fail the build
     - pattern: "%global perl_archname mips-thread-multi"
       replacement: "%global perl_archname mips-thread-multi\n%define _unpackaged_files_terminate_build 0"
+
+    # === 13. Explicit perl module Provides ===
+    # rpmmacros.irix sets __find_provides=%{nil} + AutoProv:no globally for
+    # cross-compiled packages, and this CANNOT be overridden from the spec
+    # (macro files loaded via --macros have higher priority than %global).
+    # Instead, we add explicit Provides for the modules that Phase 2 packages
+    # need: autoconf requires perl(File::Compare) + perl-interpreter,
+    # automake requires perl(Thread::Queue) + perl(threads).
+    # All these modules ARE physically present in our monolithic perl RPM.
+    - pattern: "Provides:       perl-core = %{perl_version}-%{release}"
+      replacement: |
+        Provides: perl-interpreter
+        Provides: perl(File::Compare)
+        Provides: perl(Thread::Queue)
+        Provides: perl(threads)
+        Provides:       perl-core = %{perl_version}-%{release}
 
   # Fix shebangs for IRIX and generate file manifest
   install_cleanup:
