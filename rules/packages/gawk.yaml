@@ -4,6 +4,7 @@
 # %zu errors in node.c, re.c, support/pma.c, builtin.c, support/malloc/dynarray_at_failure.c
 
 package: gawk
+classes: [nls-disabled]
 
 rules:
   # Compat functions needed for IRIX
@@ -26,13 +27,8 @@ rules:
     - mpfr-devel          # not built yet, build without MPFR
     - bison               # tarball has pre-generated parsers
 
-  # Avoid getrandom/sys/random.h conflict with dicl-clang-compat header
-  ac_cv_overrides:
-    ac_cv_header_sys_random_h: "no"
-
   configure_flags:
     add:
-      - --disable-nls
       - --without-mpfr
 
   # Fix %zu format specifiers (IRIX libc doesn't support %zu)
@@ -47,8 +43,7 @@ rules:
     - doc           # no TeX/docs on cross-build host
     - all-langpacks # NLS disabled
 
-  # NLS disabled, no lang files
-  skip_find_lang: true
+  # NLS and %find_lang handled by nls-disabled class
 
   # Remove unpackaged doc/info files
   install_cleanup:
@@ -63,11 +58,6 @@ rules:
       replacement: "# git add removed (cross-build)"
     - pattern: "git commit --all --amend --no-edit > /dev/null"
       replacement: "# git commit removed (cross-build)"
-    # Remove lang file reference from %files
-    - pattern: "%find_lang %{name}"
-      replacement: "# %find_lang disabled (--disable-nls)"
-    - pattern: "%files -f %{name}.lang"
-      replacement: "%files"
     # Skip doc building (no TeX available on build host)
     - pattern: "%make_build -C doc pdf"
       replacement: "# doc building skipped (cross-build)"

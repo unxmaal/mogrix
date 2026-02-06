@@ -5,6 +5,7 @@
 # Most findings are in gnulib-tests/ which won't compile (skip_check)
 
 package: sed
+classes: [nls-disabled]
 
 rules:
   # Compat functions needed for IRIX
@@ -26,17 +27,11 @@ rules:
     - glibc-langpack-ru   # test locales
     - perl-Getopt-Long    # test-only
 
-  # Avoid getrandom/sys/random.h conflict with dicl-clang-compat header
-  ac_cv_overrides:
-    ac_cv_header_sys_random_h: "no"
-
-  # Disable NLS (no gettext available yet) and ACL (no libacl on IRIX)
   # Use included regex: IRIX libc only has POSIX regex (regcomp/regexec),
   # not GNU regex extensions (re_compile_pattern/re_search/re_set_syntax).
   # Fedora uses --without-included-regex because glibc has GNU regex.
   configure_flags:
     add:
-      - --disable-nls
       - --disable-acl
     remove:
       - --without-included-regex
@@ -49,12 +44,4 @@ rules:
     - "sed -i 's/%zu/%u/g' lib/malloc/dynarray_at_failure.c"
     - "sed -i 's/gnulib-tests//' Makefile.in"
 
-  # NLS disabled, no lang files
-  skip_find_lang: true
-
-  spec_replacements:
-    # Remove lang file reference from %files
-    - pattern: "%find_lang %{name}"
-      replacement: "# %find_lang disabled (--disable-nls)"
-    - pattern: "%files -f %{name}.lang"
-      replacement: "%files"
+  # NLS and %find_lang handled by nls-disabled class

@@ -84,7 +84,8 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Category | Path | Contents |
 |----------|------|----------|
 | Generic rules | rules/generic.yaml | Applied to ALL packages |
-| Package rules | rules/packages/*.yaml | Per-package overrides (76 packages) |
+| Class rules | rules/classes/*.yaml | Shared rules for package groups |
+| Package rules | rules/packages/*.yaml | Per-package overrides (79 packages) |
 | Source checks | rules/source_checks.yaml | IRIX source pattern definitions |
 | Compat functions | compat/catalog.yaml | Function registry + source patterns |
 | Compat sources | compat/string/, compat/stdio/, compat/stdlib/, compat/dicl/, compat/malloc/ | Implementation files |
@@ -92,8 +93,27 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Patches | patches/packages/*/ | Source patches by package |
 | rpmlint config | rpmlint.toml | IRIX-specific rpmlint filters |
 | Source analyzer | mogrix/analyzers/source.py | Ripgrep-based source scanner |
+| Rule auditor | mogrix/analyzers/rules.py | Duplication detection across packages |
 | Spec validator | mogrix/validators/spec.py | Specfile structural validator |
 | Methods | rules/methods/*.md | Process documentation |
+
+## Rule Hierarchy
+
+Rules are applied in order: **generic → class → package**. Each layer adds to or overrides the previous.
+
+- **generic.yaml** — Universal IRIX fixes (all packages get these)
+- **classes/*.yaml** — Shared patterns for groups of packages (opt-in via `classes:` in package yaml)
+- **packages/*.yaml** — Package-specific overrides
+
+**Adding a class:** Create `rules/classes/<name>.yaml` with a `class:` key and `rules:` section. Packages opt in by adding `classes: [<name>]` to their top-level yaml.
+
+**Available classes:**
+
+| Class | Purpose | Packages |
+|-------|---------|----------|
+| `nls-disabled` | Disables NLS, skips %find_lang, removes lang file refs | gawk, grep, sed |
+
+**Auditing for elevation:** Run `mogrix audit-rules` to detect duplicated rules across packages and flag candidates for promotion to class or generic level.
 
 ## Source Analysis
 

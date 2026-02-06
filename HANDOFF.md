@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-06 (evening)
-**Status**: Phase 3b GNU text tools complete — sed, gawk, grep all built, installed, and verified working on IRIX. Next: coreutils and gettext (complex packages with many deps).
+**Last Updated**: 2026-02-06 (night)
+**Status**: Phase 3b GNU text tools complete. Rule auditing and class-based elevation system implemented. Next: coreutils and gettext (complex packages with many deps).
 
 ---
 
@@ -96,11 +96,39 @@ The explicit_bzero compat uses `volatile unsigned char *` pointer (safe on IRIX)
 | grep | 3.11-7 | INSTALLED | GNU regex bundled, PCRE2 disabled, autopoint skipped |
 
 **Next packages**:
-- coreutils, gettext (complex, many dependencies — deferred from this session)
+- coreutils, gettext (complex, many dependencies — deferred)
+- Consider full clean rebuild before tackling these
 
 ---
 
-## This Session's Key Fixes
+## Rule Auditing & Class Elevation (This Session)
+
+### `mogrix audit-rules` — New Command
+- Scans all 79 package yamls, counts duplicated rule values, flags elevation candidates
+- Thresholds: 2 packages = WATCH, 3+ = CLASS candidate
+- Shows Rich table with rule key, value, count, and package list
+- Also shows existing classes and generic ac_cv_overrides
+- File: `mogrix/analyzers/rules.py` (RuleAuditor class)
+
+### Rule Classes Wired Up in Engine
+- `rules/classes/` was scaffolded but unused (only `.gitkeep`)
+- `loader.py` already had `load_class()` — now called by engine.py between generic and package rules
+- Chain: **generic → class → package** (each layer adds to previous)
+- Packages opt in via `classes: [nls-disabled]` at top level
+- `validator.py` validates class references (checks file exists)
+
+### First Class: `nls-disabled`
+- Provides: `--disable-nls`, `skip_find_lang: true`, `%find_lang`/`%files -f` spec replacements
+- Used by: gawk, grep, sed (removed 5 identical spec_replacement blocks)
+- Bash and popt handle NLS differently (embedded in other spec_replacements) — NOT class candidates
+
+### Elevated to Generic: `ac_cv_header_sys_random_h`
+- `ac_cv_header_sys_random_h: "no"` moved from 4 package yamls (bash, gawk, grep, sed) to generic.yaml
+- Universal IRIX fix: dicl-clang-compat's sys/random.h stub conflicts with packages probing for getrandom()
+
+---
+
+## Previous Session's Key Fixes
 
 ### IRIX struct timespec Feature Gate (Fixed in dicl-clang-compat + mogrix-compat sys/stat.h)
 - IRIX `sys/timespec.h` defines `struct __timespec` unconditionally but `struct timespec` only under `_POSIX93 || _ABIAPI`
@@ -132,7 +160,20 @@ The explicit_bzero compat uses `volatile unsigned char *` pointer (safe on IRIX)
 
 ---
 
-## New Mogrix Features (This Session)
+## New Mogrix Features (Recent Sessions)
+
+### Rule Auditing (`mogrix audit-rules`)
+- Scans all package yamls for duplicated rules across packages
+- Reports CLASS candidates (3+ packages) and WATCH entries (2 packages)
+- Shows existing classes and generic overrides for context
+- Read-only, no side effects — safe to run anytime
+- File: `mogrix/analyzers/rules.py`
+
+### Rule Classes (`rules/classes/*.yaml`)
+- Shared rule sets that packages can opt into via `classes: [name]`
+- Applied between generic and package rules in engine.py
+- Validator checks that referenced class files exist
+- First class: `nls-disabled` (--disable-nls + skip_find_lang + %find_lang replacements)
 
 ### Spec Validation (`mogrix validate-spec`, integrated into `mogrix convert`)
 - Uses `specfile` (packit) library for structural validation of converted specs
@@ -304,6 +345,8 @@ Package-level `rpm_macros` overrides are NOT supported in `engine.py`. Use `spec
 | `AUTOPOINT=true autoreconf` | Skip gettext's autopoint when building with `--disable-nls` |
 | Modify Makefile.am not .in | autoreconf regenerates .in from .am — prep_commands on .in get overwritten |
 | `__timespec` define before includes | IRIX timespec feature gate requires macro before sys/stat.h include chain |
+| Rule hierarchy: generic → class → package | Classes share common patterns without duplicating rules across packages |
+| `ac_cv_header_sys_random_h` in generic | Universal IRIX fix — every package hits the dicl-clang-compat sys/random.h conflict |
 
 ---
 

@@ -1282,6 +1282,107 @@ def validate_rules(rules_dir: str | None, compat_dir: str | None):
         raise SystemExit(1)
 
 
+@main.command("audit-rules")
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show WATCH-level entries (2 packages) in addition to CLASS candidates",
+)
+def audit_rules(rules_dir: str | None, verbose: bool):
+    """Audit package rules for duplication and elevation candidates.
+
+    Scans all package yamls and reports rules that appear in multiple
+    packages, suggesting candidates for elevation to class or generic level.
+
+    \b
+    Thresholds:
+      CLASS: 3+ packages share the same rule value
+      WATCH: 2 packages share the same rule value (shown with -v)
+    """
+    from mogrix.analyzers.rules import RuleAuditor
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+
+    console.print(f"[bold]Auditing rules in:[/bold] {rules_path}\n")
+
+    auditor = RuleAuditor(rules_path)
+    report = auditor.audit()
+
+    console.print(f"[bold]Packages scanned:[/bold] {report.packages_scanned}\n")
+
+    # Show CLASS candidates
+    class_candidates = report.class_candidates
+    if class_candidates:
+        table = Table(title="CLASS Candidates (3+ packages)")
+        table.add_column("Rule Key", style="cyan")
+        table.add_column("Value", style="white")
+        table.add_column("#", style="bold yellow", justify="right")
+        table.add_column("Packages", style="dim")
+
+        for entry in class_candidates:
+            pkgs = ", ".join(entry.packages[:6])
+            if len(entry.packages) > 6:
+                pkgs += f", ...+{len(entry.packages) - 6}"
+            table.add_row(
+                entry.rule_key,
+                entry.value,
+                str(entry.count),
+                pkgs,
+            )
+
+        console.print(table)
+    else:
+        console.print("[green]No CLASS candidates found[/green]")
+
+    # Show WATCH list (verbose only)
+    if verbose:
+        watch = report.watch_list
+        if watch:
+            console.print()
+            table = Table(title="WATCH List (2 packages)")
+            table.add_column("Rule Key", style="cyan")
+            table.add_column("Value", style="white")
+            table.add_column("#", style="dim", justify="right")
+            table.add_column("Packages", style="dim")
+
+            for entry in watch:
+                table.add_row(
+                    entry.rule_key,
+                    entry.value,
+                    str(entry.count),
+                    ", ".join(entry.packages),
+                )
+
+            console.print(table)
+
+    # Summary
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  CLASS candidates: [yellow]{len(class_candidates)}[/yellow]")
+    console.print(f"  WATCH entries: [dim]{len(report.watch_list)}[/dim]")
+
+    # Show existing classes
+    classes_dir = rules_path / "classes"
+    if classes_dir.exists():
+        class_files = sorted(classes_dir.glob("*.yaml"))
+        if class_files:
+            console.print(f"\n[bold]Existing classes:[/bold]")
+            for cf in class_files:
+                console.print(f"  - {cf.stem}")
+
+    # Show which rules are already in generic
+    if report.generic_rules.get("ac_cv_overrides"):
+        console.print(f"\n[bold]Already in generic.yaml ac_cv_overrides:[/bold]")
+        for key, val in report.generic_rules["ac_cv_overrides"].items():
+            console.print(f"  {key}={val}")
+
+
 @main.command()
 @click.argument("packages", nargs=-1, required=True)
 @click.option(
