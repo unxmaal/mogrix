@@ -1,0 +1,90 @@
+# bash package rules for IRIX cross-compilation
+package: bash
+
+rules:
+  skip_find_lang: true
+
+  drop_buildrequires:
+    - glibc-all-langpacks   # test-only
+
+  drop_requires:
+    - "filesystem >= 3"     # Fedora-specific
+
+  drop_subpackages:
+    - "doc"                 # not needed on IRIX
+
+  spec_replacements:
+    # Drop audit patch — audit-libs not available on IRIX
+    - pattern: "Patch131: bash-4.3-audit.patch"
+      replacement: "# Patch131: bash-4.3-audit.patch"
+
+    # Cross-compilation configure flags
+    #   --disable-nls: no gettext on IRIX
+    #   --with-installed-readline: use system readline (available in sysroot)
+    #   --host: cross-compile target
+    # NOTE: SGUG-RSE used bundled readline because they bootstrapped without it.
+    # We have readline+ncurses in our sysroot — use them. Bundled readline would
+    # link against libcurses.so which is a GNU ld script on IRIX (rld can't load it).
+    - pattern: "%configure --with-bash-malloc=no --with-afs"
+      replacement: "%configure --with-bash-malloc=no --with-afs --disable-nls --with-installed-readline --host=mips-sgi-irix6.5"
+
+    # Fix DEFAULT_PATH to include /usr/sgug/bin
+    - pattern: "/usr/local/bin:/usr/bin"
+      replacement: "/usr/sgug/bin:/usr/local/bin:/usr/bin"
+
+    # Fix STANDARD_UTILS_PATH to include /usr/sgug paths
+    - pattern: "/bin:/usr/bin:/usr/sbin:/sbin"
+      replacement: "/usr/sgug/bin:/bin:/usr/bin:/usr/sbin:/sbin"
+
+    # Fix hardcoded /etc/skel → %{_sysconfdir}/skel (/usr/sgug/etc/skel)
+    - pattern: "%{buildroot}/etc/skel"
+      replacement: "%{buildroot}%{_sysconfdir}/skel"
+    - pattern: "%config(noreplace) /etc/skel/.b*"
+      replacement: "%config(noreplace) %{_sysconfdir}/skel/.b*"
+
+    # bashbug LONG_BIT: getconf returns host (64), force 32 for IRIX n32
+    - pattern: "LONG_BIT=$(getconf LONG_BIT)"
+      replacement: "LONG_BIT=32"
+
+    # pushd/popd are bash builtins, rpmbuild uses /bin/sh
+    - pattern: "pushd doc"
+      replacement: "cd doc"
+    - pattern: "popd"
+      replacement: "cd .."
+
+    # Bash brace expansion doesn't work in /bin/sh (RPM %doc processing)
+    - pattern: "%doc doc/{FAQ,INTRO,README,bash{,ref}.html}"
+      replacement: "%doc doc/FAQ doc/INTRO doc/README doc/bash.html doc/bashref.html"
+
+    # Symlinks already created by make install, force to avoid errors
+    - pattern: "ln -s bash.1 %{buildroot}%{_mandir}/man1/sh.1"
+      replacement: "ln -sf bash.1 %{buildroot}%{_mandir}/man1/sh.1"
+    - pattern: "ln -s bashbug.1 %{buildroot}/%{_mandir}/man1/bashbug-"
+      replacement: "ln -sf bashbug.1 %{buildroot}/%{_mandir}/man1/bashbug-"
+
+    # Remove %dir for doc dir (doc subpackage dropped, contents cleaned up)
+    - pattern: "%dir %{_pkgdocdir}/"
+      replacement: "# %dir %{_pkgdocdir}/  # doc subpackage dropped"
+
+  # Remove doc files installed for the dropped doc subpackage
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_pkgdocdir}"
+
+  # Don't detect our getrandom stub header — bash has its own /dev/urandom fallback
+  # Our dicl-clang-compat/sys/random.h provides static inline getrandom() which
+  # conflicts with bash's own getrandom() function in lib/sh/random.c
+  ac_cv_overrides:
+    ac_cv_header_sys_random_h: "no"
+    # Force libtinfo for termcap functions. SGUG-RSE ncurses splits termcap
+    # symbols (tputs, tgetent, etc.) into libtinfo.so. Configure's default search
+    # hits libcurses first — a GNU ld script (INPUT(-lncurses)) that IRIX rld
+    # can't load. libtinfo has the actual symbols and is a real ELF .so.
+    bash_cv_termcap_lib: "libtinfo"
+
+  # Fix bugs where HAVE_PSELECT guards code also needed by HAVE_SELECT.
+  # IRIX has select() but not pselect(), exposing these latent bugs.
+  prep_commands:
+    # bundled readline input.c: only matters if --without-installed-readline (kept for safety)
+    - "sed -i '808s/#if defined (HAVE_PSELECT)$/#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)/' lib/readline/input.c"
+    # bash's own input_avail.c: signal.h included under HAVE_PSELECT but sigprocmask used under HAVE_SELECT
+    - "sed -i '36s/#if defined (HAVE_PSELECT)$/#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)/' lib/sh/input_avail.c"

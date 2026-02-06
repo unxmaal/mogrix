@@ -25,6 +25,11 @@ rules:
   drop_subpackages:
     - c++-libs
 
+  # Drop requires that aren't available or came from dropped subpackages
+  drop_requires:
+    - "%{name}-c++-libs"   # dropped subpackage
+    - pkgconfig             # not yet built for IRIX
+
   # Note: bashism fixes below only matter for %pre/%post scriptlets (install-time on IRIX).
   # %build/%install scripts run on Linux where bash is available.
   # ncurses has no install-time scriptlets, so most bashism fixes are precautionary.
@@ -71,9 +76,17 @@ rules:
     - pattern: "for l in $RPM_BUILD_ROOT%{_libdir}/libncurses{,w}.so; do"
       replacement: "for l in $RPM_BUILD_ROOT%{_libdir}/libncurses.so $RPM_BUILD_ROOT%{_libdir}/libncursesw.so; do"
 
-    # Fix brace expansion in rm for libcurses
+    # Fix brace expansion in rm for libcurses, then replace linker scripts with
+    # symlinks. Fedora creates GNU ld scripts (INPUT(-lncurses)) but IRIX rld
+    # can't load linker scripts — it only understands ELF shared objects.
     - pattern: "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurses{,w}.so"
       replacement: "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurses.so $RPM_BUILD_ROOT%{_libdir}/libcursesw.so"
+    - pattern: 'echo "INPUT(-lncurses)" > $RPM_BUILD_ROOT%{_libdir}/libcurses.so'
+      replacement: "ln -s libncurses.so $RPM_BUILD_ROOT%{_libdir}/libcurses.so"
+    - pattern: 'echo "INPUT(-lncursesw)" > $RPM_BUILD_ROOT%{_libdir}/libcursesw.so'
+      replacement: "ln -s libncursesw.so $RPM_BUILD_ROOT%{_libdir}/libcursesw.so"
+    - pattern: 'echo "INPUT(-ltinfo)" > $RPM_BUILD_ROOT%{_libdir}/libtermcap.so'
+      replacement: "ln -s libtinfo.so $RPM_BUILD_ROOT%{_libdir}/libtermcap.so"
 
     # Comment out tinfo linker script loop - no shared libs on IRIX (per SGUG-RSE)
     - pattern: "for l in $RPM_BUILD_ROOT%{_libdir}/libncurses.so $RPM_BUILD_ROOT%{_libdir}/libncursesw.so; do\n    soname=$(basename $(readlink $l))\n    rm -f $l\n    echo \"INPUT($soname -ltinfo)\" > $l\ndone"

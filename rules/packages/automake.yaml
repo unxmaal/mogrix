@@ -4,7 +4,7 @@ package: automake
 
 rules:
   skip_find_lang: true
-  skip_check: true
+  # NOTE: skip_check is inherited from generic.yaml
 
   install_cleanup:
     # Fix perl shebang: /usr/bin/perl is ancient IRIX system perl 5.004

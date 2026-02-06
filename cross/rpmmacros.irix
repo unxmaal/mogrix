@@ -6,10 +6,14 @@
 # Usage: rpmbuild --macros=/path/to/rpmmacros.irix -ba package.spec
 
 # Target architecture
+# Note: rpmbuild --target mips-sgi-irix overrides _target/_target_os at runtime.
+# RPM OS tag must be 'irix' (not 'irix6.5') for IRIX rpm compatibility.
+# Configure's --host uses 'mips-irix6.5' (hardcoded in _configure_args below)
+# so libtool recognizes irix[56]* patterns and builds shared libraries.
 %_target_platform       mips-sgi-irix6.5
 %_target                mips-sgi-irix6.5
 %_target_cpu            mips
-%_target_os             irix6.5
+%_target_os             irix
 
 # Cross-compilation paths
 %_irix_sysroot          /opt/irix-sysroot
@@ -50,11 +54,15 @@
 
 # Configure script options for cross-compilation
 %_configure_script      ./configure
-%_configure_args        --prefix=%{_prefix} --exec-prefix=%{_exec_prefix} --bindir=%{_bindir} --sbindir=%{_sbindir} --libdir=%{_libdir} --includedir=%{_includedir} --datadir=%{_datadir} --mandir=%{_mandir} --infodir=%{_infodir} --sysconfdir=%{_sysconfdir} --host=%{_target} --build=%{_build}
+# --host must use irix6.5 (not just irix) so config.sub preserves the version,
+# giving host_os=irix6.5 which matches libtool's irix[56]* patterns for shared
+# library support. RPM's --target sets _target to mips-irix (no version), so we
+# hardcode the full triplet here instead of using %{_target}.
+%_configure_args        --prefix=%{_prefix} --exec-prefix=%{_exec_prefix} --bindir=%{_bindir} --sbindir=%{_sbindir} --libdir=%{_libdir} --includedir=%{_includedir} --datadir=%{_datadir} --mandir=%{_mandir} --infodir=%{_infodir} --sysconfdir=%{_sysconfdir} --host=mips-irix6.5 --build=%{_build}
 
 # Environment for cross-compilation
 %_build                 %(uname -m)-linux-gnu
-%_host                  %{_target}
+%_host                  mips-irix6.5
 
 # Compiler flags
 # Note: Most flags are handled by the wrapper scripts
@@ -81,6 +89,8 @@
   export AR="%{__ar}"; \
   export RANLIB="%{__ranlib}"; \
   export LD="%{__ld}"; \
+  export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig"; \
+  export PATH="%{_sgug_staging}/bin:$PATH"; \
   %{_configure_script} %{_configure_args}
 
 # Cross-compilation aware make_build macro

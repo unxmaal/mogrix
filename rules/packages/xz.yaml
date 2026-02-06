@@ -13,17 +13,14 @@
 package: xz
 
 rules:
-  # Skip tests - can't run cross-compiled binaries
-  skip_check: true
+  # NOTE: skip_check is inherited from generic.yaml
 
   # Compat functions that may be needed
   inject_compat_functions:
     - strdup
     - strndup
 
-  # Drop problematic dependencies
-  drop_buildrequires:
-    - gnupg2   # Not needed for cross-compilation
+  # gnupg2 drop_buildrequires handled by generic.yaml
 
   # Configure flags
   configure_flags:

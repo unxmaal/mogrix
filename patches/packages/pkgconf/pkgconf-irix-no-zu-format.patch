@@ -1,0 +1,12 @@
+--- a/libpkgconf/stdinc.h
++++ b/libpkgconf/stdinc.h
+@@ -52,7 +52,8 @@
+ # define PKGCONF_ITEM_SIZE (_MAX_PATH + 1024)
+ #else
+ # define PATH_DEV_NULL	"/dev/null"
+-# define SIZE_FMT_SPECIFIER	"%zu"
++/* IRIX libc is pre-C99: %zu is not supported and corrupts varargs parsing */
++# define SIZE_FMT_SPECIFIER	"%u"
+ # ifdef __HAIKU__
+ #  include <FindDirectory.h>
+ # endif

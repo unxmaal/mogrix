@@ -21,8 +21,7 @@ add_patch:
   - libxml2-disable-check.patch
 
 rules:
-  # Skip tests - can't run cross-compiled binaries
-  skip_check: true
+  # NOTE: skip_check is inherited from generic.yaml
 
   # Compat functions that may be needed
   inject_compat_functions:

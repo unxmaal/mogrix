@@ -66,6 +66,45 @@ int n = vsnprintf(NULL, 0, "hello");
 
 **Affected packages**: popt, rpm (both inject vasprintf compat function)
 
+### `%zu` format specifier (CRITICAL — causes SIGSEGV)
+
+**Problem**: IRIX libc's printf family does NOT support the C99 `z` length modifier (`%zu`, `%zd`, `%zx`). When printf encounters `%zu`, it does not correctly consume the `size_t` argument. This **corrupts the varargs parsing**, causing all subsequent format arguments to read from wrong positions. If a `%s` follows, it reads a garbage pointer and crashes with SIGSEGV.
+
+**Symptom**: SIGSEGV inside snprintf/fprintf/printf when the format string contains `%zu` followed by `%s`. The crash appears to be in the function calling printf, not in printf itself. Debug markers using `write()` will work but `fprintf()` markers will also crash (since fprintf uses printf internally).
+
+**Example**:
+```c
+// CRASHES on IRIX — %zu corrupts varargs, %s reads garbage → SIGSEGV
+fprintf(stderr, "file %s line %zu func %s", "foo.c", (size_t)42, "main");
+
+// WORKS — %u is understood by IRIX libc
+fprintf(stderr, "file %s line %u func %s", "foo.c", (unsigned int)42, "main");
+```
+
+**Fix**: Replace `%zu` with `%u` (safe on MIPS n32 where `size_t` is 4 bytes = `unsigned int`). Also replace `%zd` with `%d` and `%zx` with `%x`.
+
+**Debugging tip**: When debugging crashes on IRIX, use raw `write(2, msg, len)` for markers — never use fprintf/printf, as those will also crash if the bug is a `%zu` format string issue.
+
+**Affected packages**: pkgconf (`SIZE_FMT_SPECIFIER` macro, patched in `pkgconf-irix-no-zu-format.patch`)
+
+**WARNING**: Many modern C packages use `%zu`. This WILL be a recurring issue. Always search for `%zu`, `%zd`, `%zx` when porting a new package.
+
+### dlmalloc + libc allocator mismatch (CRITICAL — causes SIGSEGV)
+
+**Problem**: mogrix injects dlmalloc which replaces `malloc`/`calloc`/`realloc`/`free` in our binaries. However, IRIX libc functions like `strdup`, `asprintf`, `getline` internally call **libc's** malloc (not dlmalloc). If our code calls libc's `strdup()` and later calls dlmalloc's `free()` on the result, the heap is corrupted → SIGSEGV.
+
+**Symptom**: Crash during normal operations after successful library loading and initialization. Often in `free()` or `realloc()` when processing data that was allocated by a libc function.
+
+**Solution**: Any package using dlmalloc must also inject compat replacements for libc functions that allocate memory:
+- `strdup` — calls our `malloc` instead of libc's
+- `strndup` — same
+- `asprintf` / `vasprintf` — if used
+- `getline` / `getdelim` — if used
+
+The compat versions call `malloc` (which resolves to dlmalloc), ensuring consistent allocator usage.
+
+**Affected packages**: pkgconf (injects strdup + strndup compat)
+
 ### O_NOFOLLOW
 
 **Problem**: IRIX doesn't support O_NOFOLLOW flag - returns EINVAL.
@@ -81,6 +120,31 @@ int n = vsnprintf(NULL, 0, "hello");
 **Solution**: Patch source to use static variables or pthreads instead.
 
 **Affected packages**: rpm (patched to remove `static __thread`)
+
+---
+
+## Linker / Loader Issues
+
+### GNU ld linker scripts (rld can't load them)
+
+**Problem**: Some Fedora packages install `.so` files that are actually GNU ld linker scripts (text files containing `INPUT(-lfoo)` or `GROUP(-lfoo -lbar)`). IRIX rld can ONLY load real ELF `.so` files and crashes when trying to parse linker scripts.
+
+**Symptom**:
+```
+rld: Error: elfmap failed on /usr/sgug/lib32/libcurses.so : read 16 bytes too short to be elf header
+```
+
+**Solution**: Replace `echo "INPUT(-lfoo)"` with `ln -sf` symlinks in the package's install step.
+
+**Affected packages**: ncurses (libcurses.so, libcursesw.so, libtermcap.so — fixed in ncurses.yaml)
+
+**WARNING**: Check for this in any package that creates `.so` wrapper files. Search for `INPUT(` or `GROUP(` in installed `.so` files.
+
+### `-z separate-code` for shared libraries
+
+**Problem**: Without `-z separate-code`, GNU ld may produce shared libraries with a single RWE LOAD segment (when there's no `.data` section). IRIX rld crashes on these because it expects at least 3 segments (R/RE/RW).
+
+**Solution**: Already fixed in `irix-ld` (2026-02-05) — the `-z separate-code` flag is passed automatically for all shared library links.
 
 ---
 

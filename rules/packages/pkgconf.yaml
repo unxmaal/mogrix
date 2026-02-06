@@ -3,18 +3,61 @@
 package: pkgconf
 
 rules:
-  # IRIX has strndup declared but not implemented in libc
+  # IRIX has strndup declared but not implemented in libc.
+  # strdup IS in IRIX libc, but it uses libc's malloc internally.
+  # Since dlmalloc replaces malloc/free, we must also replace strdup
+  # so that strdup-allocated memory is freed by dlmalloc's free.
   inject_compat_functions:
     - strndup
+    - strdup
 
-  # Apply libtool fixes after configure for shared library building
+  # IRIX libc is pre-C99 and doesn't support %zu format specifier.
+  # When printf encounters %zu, it corrupts the varargs parsing, causing
+  # subsequent %s arguments to read garbage pointers → SIGSEGV.
+  # Fix: change SIZE_FMT_SPECIFIER from "%zu" to "%u" (size_t is 4 bytes on n32).
+  add_patch:
+    - pkgconf-irix-no-zu-format.patch
+
+  # Build static-only: dlmalloc inside a shared library causes SIGSEGV on
+  # IRIX (rld issue with symbol resolution between .so and libc). Static
+  # linking puts everything in one binary, avoiding the problem. No other
+  # package currently needs libpkgconf.so.
+  configure_disable:
+    - shared
+
   spec_replacements:
-    - pattern: "%make_build"
+    # Comment out libpkgconf subpackage %files (no .so with --disable-shared)
+    # drop_subpackages can't handle %package -n style names
+    - pattern: |
+        %files -n lib%{name}
+        %license COPYING
+        %{_libdir}/lib%{name}*.so.%{libsomajor}{,.*}
       replacement: |
-        /opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
-        %make_build
+        # Disabled: static build, no shared library
+        #%%files -n lib%%{name}
+    - pattern: |
+        %files -n lib%{name}-devel
+        %{_libdir}/lib%{name}*.so
+        %{_includedir}/%{name}/
+        %{_libdir}/pkgconfig/lib%{name}.pc
+      replacement: |
+        # Disabled: static build, no devel package
+        #%%files -n lib%%{name}-devel
+    # Replace pkg-config wrapper that uses 'rpm --eval' (won't work on IRIX)
+    # with a simple script that calls the platform-specific binary directly
+    - pattern: |
+        install -pm 0755 %{SOURCE2} %{buildroot}%{_bindir}/pkg-config
 
-  # Remove unpackaged files (static lib and duplicate docs)
+        sed -e "s|@PKGCONF_BINDIR@|%{_bindir}|" \
+            -i %{buildroot}%{_bindir}/pkg-config
+      replacement: |
+        printf '#!/bin/sh\nexec %{_bindir}/%{_target_platform}-pkg-config "$@"\n' > %{buildroot}%{_bindir}/pkg-config
+        chmod 0755 %{buildroot}%{_bindir}/pkg-config
+
   install_cleanup:
-    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libpkgconf.a"
     - "rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/pkgconf"
+    # Remove files from disabled libpkgconf/devel subpackages
+    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libpkgconf.a"
+    - "rm -f $RPM_BUILD_ROOT%{_libdir}/pkgconfig/libpkgconf.pc"
+    - "rm -rf $RPM_BUILD_ROOT%{_includedir}/pkgconf"
+    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/licenses/libpkgconf-*"

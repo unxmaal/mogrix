@@ -13,10 +13,13 @@
 # ============================================================================
 #
 # Selects the appropriate linker based on the build type:
-# - Shared libraries (-shared flag): Uses GNU ld (mips-sgi-irix6.5-ld.bfd)
-#   GNU ld produces the correct 2-LOAD-segment layout that IRIX expects
+# - Shared libraries (-shared flag): Uses GNU ld with -z separate-code
+#   Forces 3 LOAD segments (R/RE/RW) so IRIX rld can handle small .so files
+#   Without this, small libs get a single RWE segment that crashes rld
 # - Executables: Uses LLD 18 with IRIX patches (ld.lld-irix-18)
 #   LLD 18 fixes the relocation bug in LLD 14 for external data symbols
+#   --image-base=0x1000000 moves binary above rld quickstart table at 0x200000
+#   giving 176MB of brk heap instead of 1.8MB (see irix-address-space.md)
 #
 # Deployed by: mogrix setup-cross
 #
@@ -54,9 +57,13 @@ for arg in "$@"; do
 done
 
 if [ "$is_shared" = "1" ]; then
-    # Shared library: use GNU ld (produces correct IRIX segment layout)
-    # GNU ld creates 2 LOAD segments; LLD creates 3 which crashes IRIX rld
+    # Shared library: use GNU ld with -z separate-code
+    # Without -z separate-code, small .so files (no .data section) get a single
+    # RWE LOAD segment that crashes IRIX rld. With -z separate-code, GNU ld
+    # produces 3 LOAD segments (R / RE / RW) which IRIX rld handles correctly.
+    # SGUG-RSE avoided this via patched binutils; we use the linker flag instead.
     exec $GNULD \
+      -z separate-code \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
       -L$STAGING/lib32 \
@@ -67,8 +74,12 @@ else
     CRT1=$SYSROOT/usr/lib32/mips3/fixed/crt1.o
     CRTN=$SYSROOT/usr/lib32/mips3/fixed/crtn.o
 
+    # --image-base=0x1000000: Move binary above rld quickstart table (0x200000)
+    # Default base 0x10000 gives only 1.8MB of brk heap; 0x1000000 gives 176MB
+    # See rules/methods/irix-address-space.md for full address map
     exec $LLD \
       --allow-shlib-undefined \
+      --image-base=0x1000000 \
       -dynamic-linker /lib32/rld \
       $CRT1 \
       $filtered_args \

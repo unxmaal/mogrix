@@ -35,6 +35,9 @@ char *strcasestr(const char *haystack, const char *needle);
 /* strsep - BSD extension, token extraction */
 char *strsep(char **stringp, const char *delim);
 
+/* explicit_bzero - OpenBSD/glibc, zero memory without optimization */
+void explicit_bzero(void *buf, size_t len);
+
 #ifdef __cplusplus
 }
 #endif

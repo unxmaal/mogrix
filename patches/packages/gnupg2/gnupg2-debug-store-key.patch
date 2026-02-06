@@ -1,0 +1,24 @@
+--- a/agent/genkey.c
++++ b/agent/genkey.c
+@@ -120,17 +120,22 @@
+   else
+     err = agent_write_private_key (ctrl, grip, buf, len, force,
+                                    NULL, NULL, NULL, timestamp);
++  write(2, "DBG:D\n", 6);
+
+   if (!err)
+     {
+       char hexgrip[2*KEYGRIP_LEN+1];
+
+       bin2hex (grip, KEYGRIP_LEN, hexgrip);
++      write(2, "DBG:E\n", 6);
+       agent_write_status (ctrl, "KEYGRIP", hexgrip, NULL);
++      write(2, "DBG:F\n", 6);
+     }
+
++  write(2, "DBG:G\n", 6);
+  leave:
+   xfree (buf);
++  write(2, "DBG:H\n", 6);
+   return err;
+ }

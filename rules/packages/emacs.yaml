@@ -6,8 +6,7 @@ add_patch:
   - emacs.sgifixes.patch
 
 # Linux-only dependencies to remove
+# NOTE: libacl-devel/libselinux-devel handled by generic.yaml
 drop_buildrequires:
   - glibc-devel
-  - libacl-devel
-  - libselinux-devel
 

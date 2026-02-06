@@ -5,7 +5,5 @@ package: tcl
 add_patch:
   - tcl.sgifixes.patch
 
-# Linux-only dependencies to remove
-drop_buildrequires:
-  - systemtap-sdt-devel
+# NOTE: systemtap-sdt-devel drop_buildrequires handled by generic.yaml
 

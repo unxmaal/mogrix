@@ -1,39 +1,82 @@
 # gnupg2 - GNU Privacy Guard
-# Has sgifixes patches, needs compat functions
+# Cross-compilation for IRIX
+# Components: gpg, gpgv, gpg-agent, gpgsm, gpgconf, gpgtar, watchgnupg
+# Disabled: dirmngr (no gnutls), scdaemon (no libusb), g13, wks-tools, tpm2d
 
 package: gnupg2
 
-
-# IRIX-specific patches from SGUG-RSE
+# IRIX-specific patches from SGUG-RSE (fixes for 2.2.20, applies to 2.4.4 with offsets)
 add_patch:
   - gnupg2.sgifixes.patch
+  # IRIX lacks timegm, so common/gettime.c compiles the fallback timegm()
+  # which calls gnupg_unsetenv(). That function is declared in sysutils.h
+  # but gettime.c only includes util.h. On Linux this codepath is dead.
+  - gnupg2-gettime-sysutils-include.patch
 
 rules:
-  # Compat functions needed
+  # Compat functions needed (dlmalloc requires matching strdup/strndup)
   inject_compat_functions:
     - strdup
     - strndup
     - asprintf
     - vasprintf
     - getline
+    - stpcpy
+    - explicit_bzero
 
-  # Drop libdicl dependency
+  # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   drop_buildrequires:
-    - libdicl-devel
-    - libdicl
     - libusb1-devel
     - openldap-devel
+    - tpm2-tss-devel
+    - gnutls-devel
+    - pcsc-lite-libs
+    - fuse
+    - docbook-utils
+    - swtpm
 
   drop_requires:
-    - libdicl
-    - libdicl-devel
     - pinentry
 
   # Autoconf cache overrides
+  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
-    ac_cv_func_malloc_0_nonnull: "yes"
-    ac_cv_func_realloc_0_nonnull: "yes"
     gl_cv_func_working_getdelim: "yes"
+    # stpcpy is provided by mogrix-compat; tell configure it exists
+    # so gnupg doesn't define its own static version (conflicts with our header)
+    ac_cv_func_stpcpy: "yes"
+    # explicit_bzero provided by mogrix-compat; wipememory's volatile function
+    # pointer to memset crashes on IRIX (static initializer relocation issue)
+    ac_cv_func_explicit_bzero: "yes"
+
+  # npth-config doesn't exist in FC40's npth package (only .pc file).
+  # gnupg2's configure uses AM_PATH_NPTH which requires npth-config or gpgrt-config.
+  # gpgrt-config can't find modules because irix-cc doesn't support -print-search-dirs.
+  # Solution: create a minimal npth-config wrapper during %prep.
+  # Remove tests from build (gpgscm uses -imacros flag that lld rejects)
+  prep_commands:
+    - sed -i 's/\${tests}//' Makefile.in
+    - |
+      mkdir -p npth-config-wrapper
+      cat > npth-config-wrapper/npth-config << 'NPTHEOF'
+      #!/bin/sh
+      prefix=/usr/sgug
+      exec_prefix=/usr/sgug
+      libdir=/usr/sgug/lib32
+      includedir=/usr/sgug/include
+      case "$1" in
+        --version) echo "1.7" ;;
+        --cflags) echo "-I${includedir}" ;;
+        --libs) echo "-L${libdir} -lnpth -lpthread" ;;
+        --api-version) echo "1" ;;
+        --host) echo "mips-unknown-irix6.5" ;;
+        *) echo "Usage: npth-config [--version|--cflags|--libs|--api-version|--host]" >&2 ;;
+      esac
+      NPTHEOF
+      chmod +x npth-config-wrapper/npth-config
+
+  export_vars:
+    NPTH_CONFIG: "$(pwd)/npth-config-wrapper/npth-config"
 
   # Configure flags
   configure_flags:
@@ -46,13 +89,75 @@ rules:
       - --disable-photo-viewers
       - --disable-card-support
       - --disable-wks-tools
+      - --disable-g13
+      - --disable-tpm2d
+      - --disable-tofu
       - --without-libusb
       - --without-readline
     remove:
       - --enable-g13
       - --enable-large-secmem
+      - --with-tss=intel
 
-  # Remove problematic lines
-  remove_lines:
-    - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
-    - 'export LIBS="-ldicl-0.1"'
+  skip_find_lang: true
+
+  spec_replacements:
+    # Remove lang file reference from %files (NLS disabled, no .lang file)
+    - pattern: "%files -f %{name}.lang"
+      replacement: "%files"
+    # Remove dirmngr binaries (--disable-dirmngr)
+    - pattern: "%{_bindir}/dirmngr\n%{_bindir}/dirmngr-client"
+      replacement: "# dirmngr disabled for IRIX (no gnutls)"
+    # Remove g13 (--disable-g13)
+    - pattern: "%{_bindir}/g13\n"
+      replacement: "# g13 disabled for IRIX\n"
+    # Remove wks-server (--disable-wks-tools; client is built anyway)
+    - pattern: "%{_bindir}/gpg-wks-server\n"
+      replacement: "# wks-server disabled for IRIX\n"
+    # Remove systemd unit install (no systemd on IRIX)
+    - pattern: |
+        install -d -m755 %{buildroot}%{_userunitdir}
+        mv %{buildroot}%{_pkgdocdir}/examples/systemd-user/*.socket %{buildroot}%{_userunitdir}
+        mv %{buildroot}%{_pkgdocdir}/examples/systemd-user/*.service %{buildroot}%{_userunitdir}
+      replacement: |
+        # No systemd on IRIX
+    # Remove systemd units from %files
+    - pattern: "%{_userunitdir}/*"
+      replacement: "# No systemd units on IRIX"
+    # Remove info pages from %files (--disable-doc)
+    - pattern: "%{_infodir}/*.info*"
+      replacement: "# No info pages (--disable-doc)"
+    # Remove sbindir glob (nothing installed there with our disabled features)
+    - pattern: "%{_sbindir}/*"
+      replacement: "# sbindir empty with disabled features"
+    # Remove libexecdir glob (gpg-preset-passphrase etc. may not be built)
+    # Actually keep it — gpg-agent helpers go here
+    # Remove man page symlinks (--disable-doc means no man dirs exist)
+    - pattern: |
+        ln -sf gpg.1 %{buildroot}%{_mandir}/man1/gpg2.1
+        ln -sf gpgv.1 %{buildroot}%{_mandir}/man1/gpgv2.1
+        ln -sf gnupg.7 %{buildroot}%{_mandir}/man7/gnupg2.7
+      replacement: |
+        # No man pages (--disable-doc)
+    # Remove man page globs from %files (--disable-doc)
+    - pattern: "%{_mandir}/man?/*"
+      replacement: "# No man pages (--disable-doc)"
+    - pattern: "%exclude %{_mandir}/man?/gpgsm*"
+      replacement: "# No man pages to exclude (--disable-doc)"
+    # Remove man page reference from smime subpackage
+    - pattern: "%{_mandir}/man?/gpgsm*\n"
+      replacement: "# No man pages (--disable-doc)\n"
+    # Remove the pcsclib sed (scdaemon disabled, no pcsc-lite on IRIX)
+    - pattern: |
+        sed -i -e 's/"libpcsclite\.so"/"%{pcsclib}"/' scd/scdaemon.c
+      replacement: |
+        # scdaemon disabled, no pcsc-lite fixup needed
+
+  install_cleanup:
+    - "rm -rf $RPM_BUILD_ROOT%{_infodir}"
+    - "rm -rf $RPM_BUILD_ROOT%{_sbindir}"
+    - "rm -rf $RPM_BUILD_ROOT%{_mandir}"
+    # Remove systemd-related doc examples
+    - "rm -rf $RPM_BUILD_ROOT%{_pkgdocdir}/examples/systemd-user"
+
+  # NOTE: libdicl remove_lines handled by generic.yaml

@@ -417,7 +417,7 @@ def _generate_converted_spec(
     if source_files:
         source_entries = []
         for i, source_name in enumerate(source_files):
-            source_num = 100 + i
+            source_num = 200 + i
             source_entries.append(f"Source{source_num}: {source_name}")
         extra_sources = "\n".join(source_entries)
 
@@ -658,9 +658,11 @@ def build(
     if cross:
         cmd.append("--nodeps")
         cmd.append("--nocheck")
-        # --target ensures RPM filenames use target arch (mips) not host (x86_64)
+        # --target sets the RPM package OS/arch tags. Must use 'irix' (not 'irix6.5')
+        # so IRIX rpm accepts the packages (it expects OS=irix).
+        # Configure's --host needs 'irix6.5' for libtool shared lib support —
+        # this is hardcoded in rpmmacros.irix's %_configure_args.
         cmd.extend(["--target", "mips-sgi-irix"])
-        cmd.extend(["--define", "_target mips-sgi-irix6.5"])
         cmd.extend(["--define", "_target_cpu mips"])
         cmd.extend(["--define", "_target_os irix"])
         cmd.extend(["--define", "_arch mips"])
@@ -716,6 +718,14 @@ def build(
                     console.print(f"\n[bold]Built RPMs:[/bold]")
                     for rpm in rpms:
                         console.print(f"  {rpm}")
+            # Preserve the converted SRPM alongside built RPMs
+            if is_srpm:
+                import shutil
+                srpms_dir = rpmbuild_path / "SRPMS"
+                dest_srpm = srpms_dir / input_path.name
+                if dest_srpm != input_path.resolve():
+                    shutil.copy2(input_path, dest_srpm)
+                    console.print(f"\n[bold]Saved SRPM:[/bold]\n  {dest_srpm}")
         else:
             # Check for missing dependencies
             combined_output = result.stdout + result.stderr

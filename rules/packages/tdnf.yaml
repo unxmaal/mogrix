@@ -48,9 +48,8 @@ rules:
     - asprintf      # includes vasprintf with IRIX-safe iterative implementation
     - getopt_long
 
-  # Drop problematic dependencies (libdicl handled in generic.yaml)
+  # Drop problematic dependencies (systemd-devel and libdicl handled by generic.yaml)
   drop_buildrequires:
-    - systemd-devel
     - gpgme-devel
 
   drop_requires:
@@ -73,8 +72,7 @@ rules:
     - with_systemd
     - systemd
 
-  # Skip tests - can't run cross-compiled binaries
-  skip_check: true
+  # NOTE: skip_check is inherited from generic.yaml
 
   # Use cross-compiled deps from staging
   export_vars:

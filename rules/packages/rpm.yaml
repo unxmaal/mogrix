@@ -33,17 +33,13 @@ rules:
     - setenv  # IRIX has putenv but not setenv
 
   # Drop problematic dependencies
+  # (libselinux-devel, libcap-devel, libacl-devel, audit-libs-devel, systemd-devel
+  #  are handled by generic.yaml)
   drop_buildrequires:
-    - libselinux-devel
-    - libcap-devel
-    - libacl-devel
-    - audit-libs-devel
-    - systemd-devel
     - dbus-devel
     - fapolicyd-devel
     - libfsverity-devel
     - ima-evm-utils-devel
-    # libsqlite3x-devel - now using our cross-compiled sqlite3
     - python3-devel
     - sequoia-sq
     - sequoia-policy-config-devel

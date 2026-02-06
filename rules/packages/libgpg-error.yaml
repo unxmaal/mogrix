@@ -1,18 +1,18 @@
 # libgpg-error - GnuPG error library
-# Needs compat functions for IRIX
+# Build system: autoconf/automake/libtool
 #
-# IMPORTANT: Cross-compilation requires generating a platform-specific lock object file.
-# Before building, you must:
-#   1. Cross-compile src/gen-posix-lock-obj.c for IRIX:
-#      irix-cc -DHAVE_CONFIG_H -I.. -I. -DUSE_POSIX_THREADS=1 -o gen-posix-lock-obj-irix gen-posix-lock-obj.c -lpthread
-#   2. Run it on IRIX to generate the lock object header:
-#      ./gen-posix-lock-obj-irix > src/syscfg/lock-obj-pub.irix6.5.h
-#   3. The output shows IRIX needs 32 bytes for pthread_mutex_t (vs 24 on Linux MIPS)
+# IMPORTANT: Cross-compilation requires a platform-specific lock object file.
+# The file at compat/libgpg-error/lock-obj-pub.irix6.5.h was generated on IRIX
+# by cross-compiling gen-posix-lock-obj.c and running it on the target.
+# IRIX needs 32 bytes for pthread_mutex_t (vs 24 on Linux MIPS).
 #
-# The generated file should contain:
-#   typedef struct { long _vers; union { volatile char _priv[32]; ... } u; } gpgrt_lock_t;
+# The lock object file is added as Source100 and copied into the source tree
+# during %prep so that mkheader finds it for cross-compilation.
 
 package: libgpg-error
+
+add_source:
+  - lock-obj-pub.irix6.5.h
 
 rules:
   # Compat functions needed
@@ -20,10 +20,48 @@ rules:
     - strdup
     - strndup
 
+  skip_find_lang: true
+  skip_check: true
+
+  # Remove static library (libtool builds it even with --disable-static)
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.a"
+
   # Configure flags
   configure_flags:
     add:
+      - --disable-static
+      - --disable-rpath
       - --disable-languages
       - --disable-doc
+      - --enable-install-gpg-error-config
     remove:
       - --with-libiconv-prefix
+
+  # Install the lock object file so mkheader can find it during cross-compilation
+  prep_commands:
+    # mkheader looks for lock-obj-pub.<host_os>.h
+    # With --host=mips-irix6.5, config.sub gives host_os=irix6.5
+    - "cp %{SOURCE200} src/syscfg/lock-obj-pub.irix6.5.h"
+
+  spec_replacements:
+    # Fedora hardcodes libdir=@exec_prefix@/lib in gpg-error-config.in for
+    # multilib compatibility. This breaks us because we use lib32. Remove the
+    # libdir rewrite so configure substitutes @libdir@ → /usr/sgug/lib32 correctly.
+    # Keep the GPG_ERROR_CONFIG_HOST substitution.
+    - pattern: "s|^libdir=@libdir@$|libdir=@exec_prefix@/lib|g;s|@GPG_ERROR_CONFIG_HOST@|none|g"
+      replacement: "s|@GPG_ERROR_CONFIG_HOST@|none|g"
+
+    # --disable-languages means no locale data in share/libgpg-error
+    - pattern: "%{_datadir}/libgpg-error"
+      replacement: "# %{_datadir}/libgpg-error — removed (languages disabled)"
+
+    # --disable-doc means no yat2m, info pages, or man pages
+    - pattern: "%{_bindir}/yat2m\n"
+      replacement: ""
+    - pattern: "%{_infodir}/gpgrt.info*\n"
+      replacement: ""
+    - pattern: "%{_mandir}/man1/gpg-error-config.*\n"
+      replacement: ""
+    - pattern: "%{_mandir}/man1/gpgrt-config.*\n"
+      replacement: ""
