@@ -48,17 +48,42 @@ VALID_PACKAGE_RULE_KEYS = {
     "configure_disable",
     "configure_enable",
     "configure_flags",
+    "configure_opts",
     "ac_cv_overrides",
     "header_overlays",
     "remove_lines",
     "comment_conditionals",
+    "remove_conditionals",
+    "force_conditionals",
+    "drop_subpackages",
     "prep_commands",
+    "export_vars",
+    "skip_find_lang",
+    "skip_check",
+    "skip_manpages",
+    "install_cleanup",
+    "spec_replacements",
+    "add_patch",
+    "add_source",
+    "extra_cflags",
+    "make_env",
+    "files_no_lang",
     "patches",
     "notes",
 }
 
 # Valid top-level keys for package rule files
-VALID_PACKAGE_TOP_KEYS = {"package", "rules", "version", "notes"}
+VALID_PACKAGE_TOP_KEYS = {
+    "package",
+    "rules",
+    "version",
+    "notes",
+    "add_patch",
+    "add_source",
+    "aliases",
+    "ac_cv_overrides",
+    "drop_buildrequires",
+}
 
 
 class RuleValidator:

@@ -120,5 +120,5 @@ def test_ac_cv_overrides(basic_spec):
         result, ac_cv_overrides={"ac_cv_func_malloc_0_nonnull": "yes"}
     )
 
-    assert "export ac_cv_func_malloc_0_nonnull=yes" in content
+    assert 'export ac_cv_func_malloc_0_nonnull="yes"' in content
     assert "Autoconf cache overrides" in content
