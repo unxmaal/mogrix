@@ -1,0 +1,51 @@
+--- a/common/name-value.c	2026-02-06 11:52:42.618656885 +0000
++++ b/common/name-value.c	2026-02-06 12:00:51.524870969 +0000
+@@ -34,6 +34,7 @@
+ 
+ #include <config.h>
+ #include <assert.h>
++#include <unistd.h>
+ #include <gcrypt.h>
+ #include <gpg-error.h>
+ #include <string.h>
+@@ -117,15 +118,16 @@
+   if (entry == NULL)
+     return;
+ 
++  write(2, "E:n\n", 4);
+   xfree (entry->name);
+-  if (entry->value && private_key_mode)
+-    wipememory (entry->value, strlen (entry->value));
++  write(2, "E:v\n", 4);
++  /* SKIP all wipememory - use non-wipe paths regardless of private_key_mode */
+   xfree (entry->value);
+-  if (private_key_mode)
+-    free_strlist_wipe (entry->raw_value);
+-  else
+-    free_strlist (entry->raw_value);
++  write(2, "E:s\n", 4);
++  free_strlist (entry->raw_value);
++  write(2, "E:e\n", 4);
+   xfree (entry);
++  write(2, "E:!\n", 4);
+ }
+ 
+ 
+@@ -138,13 +140,17 @@
+   if (pk == NULL)
+     return;
+ 
++  write(2, "NR:0\n", 5);
+   for (e = pk->first; e; e = next)
+     {
++      write(2, "NR:L\n", 5);
+       next = e->next;
+       nve_release (e, pk->private_key_mode);
+     }
+ 
++  write(2, "NR:F\n", 5);
+   xfree (pk);
++  write(2, "NR:!\n", 5);
+ }
+ 
+ 

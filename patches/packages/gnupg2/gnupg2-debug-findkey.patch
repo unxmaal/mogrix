@@ -1,0 +1,36 @@
+--- a/agent/findkey.c
++++ b/agent/findkey.c
+@@ -412,25 +412,34 @@
+     }
+
+   bump_key_eventcounter ();
++  write(2, "WPK:0\n", 6);
+
+  leave:
++  write(2, "WPK:1\n", 6);
+   if (blocksigs)
+     gnupg_unblock_all_signals ();
+   if (ctrl->ephemeral_mode)
+     wipe_and_fclose (fp);
+   else
+     es_fclose (fp);
++  write(2, "WPK:2\n", 6);
+   if (removetmp && tmpfname)
+     gnupg_remove (tmpfname);
+   xfree (orig_key_value);
++  write(2, "WPK:3\n", 6);
+   xfree (fname);
++  write(2, "WPK:4\n", 6);
+   xfree (tmpfname);
++  write(2, "WPK:5\n", 6);
+   xfree (token);
+   xfree (token0);
+   xfree (dispserialno_buffer);
+   xfree (tokenfields);
++  write(2, "WPK:6\n", 6);
+   gcry_sexp_release (key);
++  write(2, "WPK:7\n", 6);
+   nvc_release (pk);
++  write(2, "WPK:8\n", 6);
+   return err;
+ }

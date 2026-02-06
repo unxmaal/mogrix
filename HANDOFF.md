@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-02-06
-**Status**: Phase 3 in progress. pkgconf SIGSEGV root-caused and fixed (%zu format specifier). pkgconf 2.1.0 fully working on IRIX. Crypto chain libraries staged. Ready for gnupg2.
+**Status**: Phase 3 in progress. gnupg2 2.4.4 fully working on IRIX (key gen, sign, verify). All crypto chain libraries installed. Next: gettext, coreutils, grep, sed, gawk.
 
 ---
 
@@ -68,30 +68,26 @@ Verified working: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdn
 
 ### Phase 3: User-Facing Packages (IN PROGRESS)
 
-**Libraries built and staged** (awaiting IRIX install/test):
-
 | Package | Version | Status | Notes |
 |---------|---------|--------|-------|
-| readline | 8.2-8 | BUILT | Uses system ncurses |
-| libgpg-error | 1.48-1 | BUILT | lock-obj-pub generated on IRIX, strdup/strndup compat |
-| libgcrypt | 1.10.3-3 | BUILT | FIPS removed, ASM disabled |
-| libassuan | 2.5.7-1 | BUILT | unsetenv decl fix, SCM_RIGHTS defined |
-| libksba | 1.6.6-1 | BUILT | Clean build |
-| npth | 1.7-1 | BUILT | pthread_atfork in unistd.h (IRIX POSIX1C) |
-
-All RPMs at `edodd@192.168.0.81:/tmp/` — install in chroot with `rpm -Uvh /tmp/*.mips.rpm`.
-
 | pkgconf | 2.1.0 | INSTALLED | Static build, %zu→%u fix, working on IRIX |
+| readline | 8.2-8 | INSTALLED | Uses system ncurses |
+| libgpg-error | 1.48-1 | INSTALLED | lock-obj-pub generated on IRIX, strdup/strndup compat |
+| libgcrypt | 1.10.3-3 | INSTALLED | FIPS removed, ASM disabled |
+| libassuan | 2.5.7-1 | INSTALLED | unsetenv decl fix, SCM_RIGHTS defined |
+| libksba | 1.6.6-1 | INSTALLED | Clean build |
+| npth | 1.7-1 | INSTALLED | pthread_atfork in unistd.h (IRIX POSIX1C) |
+| gnupg2 | 2.4.4-1 | INSTALLED | Key gen + sign + verify working on IRIX |
 
-**pkgconf SIGSEGV root cause**: IRIX libc's printf family does NOT support the C99 `%zu` format
-specifier. When printf encounters `%zu`, it corrupts the varargs parsing, causing subsequent `%s`
-arguments to dereference garbage pointers → SIGSEGV. pkgconf's `SIZE_FMT_SPECIFIER` macro was
-`"%zu"` and was used in `pkgconf_trace()` which is called from `pkgconf_client_init()`.
-Fix: patch `libpkgconf/stdinc.h` to use `"%u"` instead (size_t is 4 bytes on MIPS n32).
-Patch at `patches/packages/pkgconf/pkgconf-irix-no-zu-format.patch`.
+**gnupg2 SIGSEGV root cause**: `wipememory()` in common/mischelp.c uses
+`static void *(*volatile memset_ptr)(...) = (void *)memset;` — a volatile function pointer
+with a static initializer. IRIX rld doesn't handle the relocation for this static initializer
+correctly in our cross-compiled binaries, so the function pointer contains garbage → SIGSEGV.
+Fix: provide `explicit_bzero` in mogrix-compat + set `ac_cv_func_explicit_bzero: "yes"`.
+When HAVE_EXPLICIT_BZERO is defined, wipememory uses it instead of the volatile function pointer.
+The explicit_bzero compat uses `volatile unsigned char *` pointer (safe on IRIX).
 
 **Next packages**:
-- gnupg2 — needs all crypto libs installed on IRIX first (it's an application, not just a library)
 - gettext, coreutils, grep, sed, gawk (user-facing tools)
 
 ---
@@ -114,6 +110,18 @@ Patch at `patches/packages/pkgconf/pkgconf-irix-no-zu-format.patch`.
 - Also still using `--disable-shared` (no other package needs libpkgconf.so)
 - Debugging methodology: systematically narrowed crash location using write() syscall markers
   (fprintf was unsafe — it uses printf internally which has the same bug)
+
+### gnupg2 2.4.4 — wipememory / explicit_bzero Fix
+- gnupg2 built and installed, but gpg-agent crashed (SIGSEGV) during key generation
+- Crash narrowed to `nvc_release(pk)` → `nve_release` → `wipememory(entry->value, strlen(...))`
+- `wipememory()` uses `static volatile` function pointer to `memset` — a common anti-optimization trick
+- IRIX rld doesn't handle the static initializer relocation for the memset address correctly
+- The function pointer contains garbage → calling it SIGSEGVs
+- NOT an allocator mismatch (tested with and without dlmalloc — same crash)
+- Fix: `explicit_bzero` compat function (byte-by-byte volatile zero) + `ac_cv_func_explicit_bzero: "yes"`
+- gnupg2's `wipememory` has `#elif defined(HAVE_EXPLICIT_BZERO)` path that avoids the volatile pointer
+- **This is a generic IRIX issue**: any code using `static volatile` function pointers with initializers may crash
+- Debugging methodology: binary search with `write(2, ...)` syscall markers to find exact crash location
 
 ### IRIX MCP Server
 - Added `tools/irix-mcp-server.py` — MCP server for safe chroot access from Claude Code
@@ -212,6 +220,7 @@ Package-level `rpm_macros` overrides are NOT supported in `engine.py`. Use `spec
 | Symlinks not linker scripts | IRIX rld can't load GNU ld scripts (`INPUT(-lfoo)`) |
 | System libs over bundled | We have a full sysroot; don't copy SGUG-RSE's bootstrap shortcuts |
 | `%u` not `%zu` for size_t | IRIX libc is pre-C99; `%zu` corrupts varargs → SIGSEGV |
+| `explicit_bzero` compat | IRIX rld breaks `static volatile` function pointer initializers → wipememory crashes |
 
 ---
 
@@ -248,6 +257,7 @@ scp ~/rpmbuild/RPMS/mips/<package>*.rpm root@192.168.0.81:/opt/chroot/tmp/
 ## Known Issues
 
 - **`%zu` format specifier crashes IRIX libc** — use `%u` for size_t, `%lu` for unsigned long. IRIX printf doesn't understand the `z` length modifier (C99). Corrupts varargs → SIGSEGV when followed by `%s`.
+- **Volatile function pointer static initializers crash** — `static volatile fptr = (void *)func;` doesn't get the right relocation from rld. Provide `explicit_bzero` for packages using `wipememory`-style patterns.
 - fopencookie crashes on IRIX — use funopen instead
 - sqlite3 CLI crashes when writing to files (rpm database writes work fine)
 - IRIX chroot doesn't fully isolate — processes see base system paths

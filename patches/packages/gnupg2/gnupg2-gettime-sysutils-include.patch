@@ -1,0 +1,11 @@
+diff -u a/common/gettime.c b/common/gettime.c
+--- a/common/gettime.c
++++ b/common/gettime.c
+@@ -44,6 +44,7 @@
+ #include <stdint.h>    /* We use uint64_t.  */
+
+ #include "util.h"
++#include "sysutils.h"
+ #include "i18n.h"
+ #include "gettime.h"
+
