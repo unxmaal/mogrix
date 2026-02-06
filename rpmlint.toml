@@ -1,0 +1,178 @@
+# rpmlint configuration for mogrix cross-compiled IRIX packages
+#
+# Usage:
+#   mogrix lint <files>                    (auto-loaded)
+#   rpmlint -c rpmlint.toml <files>        (manual)
+#
+# These filters suppress errors/warnings that are expected when
+# cross-compiling Fedora packages for IRIX with a /usr/sgug prefix.
+
+# ---------------------------------------------------------------------------
+# Suppress entire error categories that are always irrelevant
+# ---------------------------------------------------------------------------
+FilterErrorTitles = [
+    # We don't GPG-sign packages
+    "no-signature",
+
+    # No Packager: tag set — not needed for our builds
+    "no-packager-tag",
+
+    # Fedora dropped Group: years ago; IRIX rpm doesn't need it either
+    "no-group-tag",
+
+    # /usr/sgug is our prefix — it's non-standard by design
+    "non-standard-dir-in-usr",
+
+    # Cross-compiled MIPS binaries are not stripped on the build host
+    "unstripped-binary-or-object",
+
+    # PIE suggestions don't apply to IRIX MIPS n32 ABI
+    "position-independent-executable-suggested",
+
+    # Shebangs use /usr/sgug/bin/perl, /usr/sgug/bin/bash — intentional
+    "wrong-script-interpreter",
+
+    # Inherited from upstream Fedora sources, not our problem
+    "incorrect-fsf-address",
+
+    # rpmlint spell checker false positives (ksh, csh, natively, etc.)
+    "spelling-error",
+
+    # Data/devel-only packages legitimately have no binaries
+    "no-binary",
+
+    # Subpackage Requires: on exact release is intentional
+    "requires-on-release",
+
+    # SPDX license identifier format differences (GPL-3.0-or-later vs GPLv3+)
+    "invalid-license",
+
+    # License exception format warnings
+    "invalid-license-exception",
+
+    # Scripts installed as data (config files, m4 macros) don't need +x
+    "non-executable-script",
+
+    # Our packages don't always ship docs
+    "no-documentation",
+
+    # Devel files (.so symlinks, .h, .pc) in main package is fine —
+    # we sometimes merge devel into main for simplicity
+    "devel-file-in-non-devel-package",
+
+    # Static libraries without debuginfo — expected for cross-compiled .a
+    "static-library-without-debuginfo",
+
+    # Duplicate files across subpackages (e.g. man page aliases)
+    "files-duplicate",
+    "files-duplicated-waste",
+
+    # Summary style nits
+    "summary-not-capitalized",
+    "summary-ended-with-dot",
+    "name-repeated-in-summary",
+    "description-shorter-than-summary",
+
+    # Conffiles under /usr/sgug/etc — expected with our prefix
+    "non-etc-or-var-file-marked-as-conffile",
+
+    # Hidden dotfiles (e.g. .bashrc in skel) are fine
+    "hidden-file-or-dir",
+
+    # Library naming conventions don't apply to our layout
+    "no-major-in-name",
+
+    # We don't provide Obsoletes: we replace — fine for fresh installs
+    "obsolete-not-provided",
+    "self-obsoletion",
+
+    # Scriptlet warnings that don't apply to our IRIX packages
+    "one-line-command-in-%post",
+    "one-line-command-in-%postun",
+    "postin-without-ghost-file-creation",
+    "ghost-files-without-postin",
+    "empty-%post",
+    "empty-%postun",
+    "empty-%preun",
+    "dangerous-command-in-%pre",
+    "dangerous-command-in-%posttrans",
+    "dangerous-command-in-%trigger",
+    "depscript-without-disabling-depgen",
+
+    # rpmlint doesn't understand /usr/sgug/lib32 layout
+    "no-provides",
+    "only-non-binary-in-usr-lib",
+
+    # Encoding nit
+    "file-not-utf8",
+
+    # Description length — inherited from upstream
+    "description-line-too-long",
+
+    # RPATH to /usr/sgug/lib32 is intentional — IRIX rld needs it
+    "binary-or-shlib-defines-rpath",
+
+    # Devel .so symlinks "dangle" because the versioned .so is in the
+    # main package, not the -devel subpackage. rpmlint only checks within
+    # one RPM, so it reports these as broken. They resolve at install time.
+    "dangling-relative-symlink",
+
+    # Symlinks to shell scripts with shebangs — expected for bzip2, bash, etc.
+    "symlink-to-binary-with-shebang",
+]
+
+# ---------------------------------------------------------------------------
+# Regex filters for remaining edge cases
+# ---------------------------------------------------------------------------
+Filters = [
+    # env-script-interpreter for /usr/sgug/bin/env is fine
+    "env-script-interpreter",
+
+    # mktemp usage in bash itself is not a vulnerability
+    "call-to-mktemp.*/usr/sgug/bin/bash",
+
+    # setgroups before setuid — IRIX doesn't have setgroups the same way
+    "missing-call-to-setgroups-before-setuid",
+
+    # gethostbyname in libs — these are inherited from upstream
+    "binary-or-shlib-calls-gethostbyname",
+
+    # Changelog version mismatch from Fedora-era entries
+    "incoherent-version-in-changelog",
+
+    # Invalid version format (e.g. epoch in subpackage version)
+    "invalid-version",
+
+    # lib-package-without-%mklibname — Mandriva/Mageia convention, not ours
+    "lib-package-without-%mklibname",
+
+    # Huge docs from upstream
+    "package-with-huge-docs",
+
+    # Install files in docs
+    "install-file-in-docs",
+
+    # Makefile leftovers from upstream
+    "makefile-junk",
+
+    # dir-or-file-in-var-run — if present, inherited from upstream spec
+    "dir-or-file-in-var-run",
+
+    # Non-standard dir permissions from cross-compile
+    "non-standard-dir-perm",
+
+    # No BuildRoot tag — modern RPM doesn't need it
+    "no-buildroot-tag",
+
+    # Library dependency conventions don't apply to our cross-compiled packages
+    "no-library-dependency-for",
+    "no-dependency-on",
+    "explicit-lib-dependency",
+]
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+# Don't use Enchant spell checker (avoids false positives)
+UseEnchant = false

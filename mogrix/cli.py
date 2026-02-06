@@ -22,6 +22,7 @@ HEADERS_DIR = Path(__file__).parent.parent / "headers"
 COMPAT_DIR = Path(__file__).parent.parent / "compat"
 PATCHES_DIR = Path(__file__).parent.parent / "patches"
 CROSS_DIR = Path(__file__).parent.parent / "cross"
+RPMLINT_CONFIG = Path(__file__).parent.parent / "rpmlint.toml"
 
 
 @click.group()
@@ -162,12 +163,24 @@ def analyze(spec_or_srpm: str, rules_dir: str | None):
     default=None,
     help="Output directory (for SRPMs) or file (for specs)",
 )
+@click.option(
+    "--no-validate",
+    is_flag=True,
+    help="Skip spec validation after conversion",
+)
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Treat validation warnings as errors",
+)
 def convert(
     spec_or_srpm: str,
     rules_dir: str | None,
     headers_dir: str | None,
     compat_dir: str | None,
     output_dir: str | None,
+    no_validate: bool,
+    strict: bool,
 ):
     """Convert a spec file or SRPM using rules.
 
@@ -185,11 +198,13 @@ def convert(
 
     if is_srpm:
         _convert_srpm_full(
-            input_path, rules_path, headers_path, compat_path, output_dir
+            input_path, rules_path, headers_path, compat_path, output_dir,
+            validate=not no_validate, strict=strict,
         )
     else:
         _convert_spec_only(
-            input_path, rules_path, headers_path, compat_path, output_dir
+            input_path, rules_path, headers_path, compat_path, output_dir,
+            validate=not no_validate, strict=strict,
         )
 
 
@@ -199,6 +214,8 @@ def _convert_spec_only(
     headers_path: Path,
     compat_path: Path,
     output: str | None,
+    validate: bool = True,
+    strict: bool = False,
 ):
     """Convert a spec file and output the content."""
     # Parse spec
@@ -215,6 +232,10 @@ def _convert_spec_only(
         spec, result, headers_path, compat_path
     )
 
+    # Validate converted spec
+    if validate:
+        _validate_spec_content(content, spec_path.name, strict)
+
     if output:
         Path(output).write_text(content)
         console.print(f"[bold]Wrote:[/bold] {output}")
@@ -228,6 +249,8 @@ def _convert_srpm_full(
     headers_path: Path,
     compat_path: Path,
     output_dir: str | None,
+    validate: bool = True,
+    strict: bool = False,
 ):
     """Extract SRPM, convert spec, copy sources, and repackage."""
     import shutil
@@ -317,6 +340,10 @@ def _convert_srpm_full(
             content = _generate_converted_spec(
                 spec, result, headers_path, compat_path, patch_files, source_files
             )
+
+        # Validate converted spec
+        if validate:
+            _validate_spec_content(content, spec_path.name, strict)
 
         # Write converted spec (overwriting the original)
         converted_spec_path = out_path / spec_path.name
@@ -445,6 +472,160 @@ def _generate_converted_spec(
         install_cleanup=result.install_cleanup if result.install_cleanup else None,
         spec_replacements=result.spec_replacements if result.spec_replacements else None,
     )
+
+
+def _validate_spec_content(content: str, filename: str, strict: bool) -> None:
+    """Validate converted spec content and display results.
+
+    Args:
+        content: Spec file content string.
+        filename: Name for display purposes.
+        strict: If True, treat warnings as errors and abort.
+    """
+    from mogrix.validators.spec import SpecValidator
+
+    validator = SpecValidator()
+    result = validator.validate(content, filename)
+
+    if result.errors:
+        console.print("\n[bold red]Spec validation errors:[/bold red]")
+        for issue in result.errors:
+            line_info = f" (line {issue.line})" if issue.line else ""
+            console.print(f"  [red]✗[/red] {issue.message}{line_info}")
+
+    if result.warnings:
+        console.print("\n[bold yellow]Spec validation warnings:[/bold yellow]")
+        for issue in result.warnings:
+            line_info = f" (line {issue.line})" if issue.line else ""
+            console.print(f"  [yellow]![/yellow] {issue.message}{line_info}")
+
+    if result.is_valid and not result.warnings:
+        console.print("\n[bold green]✓ Spec validation passed[/bold green]")
+    elif result.is_valid and not strict:
+        console.print(
+            f"\n[bold yellow]Spec validation: {len(result.warnings)} warning(s)[/bold yellow]"
+        )
+    elif not result.is_valid or (strict and result.warnings):
+        severity = "errors" if result.errors else "warnings (strict mode)"
+        console.print(f"\n[bold red]✗ Spec validation failed: {severity}[/bold red]")
+        raise SystemExit(1)
+
+
+@main.command("validate-spec")
+@click.argument("spec_file", type=click.Path(exists=True))
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Treat warnings as errors",
+)
+def validate_spec(spec_file: str, strict: bool):
+    """Validate a spec file for structural issues.
+
+    Uses the specfile library to check that the spec can be parsed and
+    has the required tags and sections.
+    """
+    from mogrix.validators.spec import SpecValidator
+
+    spec_path = Path(spec_file)
+    content = spec_path.read_text()
+
+    console.print(f"[bold]Validating:[/bold] {spec_path.name}\n")
+
+    validator = SpecValidator()
+    result = validator.validate(content, spec_path.name)
+
+    if result.errors:
+        console.print("[bold red]Errors:[/bold red]")
+        for issue in result.errors:
+            line_info = f" (line {issue.line})" if issue.line else ""
+            console.print(f"  [red]✗[/red] {issue.message}{line_info}")
+        console.print()
+
+    if result.warnings:
+        console.print("[bold yellow]Warnings:[/bold yellow]")
+        for issue in result.warnings:
+            line_info = f" (line {issue.line})" if issue.line else ""
+            console.print(f"  [yellow]![/yellow] {issue.message}{line_info}")
+        console.print()
+
+    console.print("[bold]Summary:[/bold]")
+    console.print(f"  Errors: [red]{len(result.errors)}[/red]")
+    console.print(f"  Warnings: [yellow]{len(result.warnings)}[/yellow]")
+
+    if result.is_valid and (not strict or not result.warnings):
+        console.print("\n[bold green]✓ Spec validation passed[/bold green]")
+    else:
+        console.print("\n[bold red]✗ Spec validation failed[/bold red]")
+        raise SystemExit(1)
+
+
+@main.command()
+@click.argument("targets", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option(
+    "--config",
+    "-c",
+    type=click.Path(exists=True),
+    default=None,
+    help="Custom rpmlint configuration file",
+)
+def lint(targets: tuple[str, ...], config: str | None):
+    """Lint RPMs or spec files using rpmlint.
+
+    TARGETS are RPM files, spec files, or directories containing RPMs.
+
+    Examples:
+        mogrix lint ~/rpmbuild/RPMS/mips/bash-5.2.26-3.mips.rpm
+        mogrix lint ~/rpmbuild/RPMS/mips/
+        mogrix lint my-package.spec
+    """
+    import shutil
+    import subprocess
+
+    rpmlint_bin = shutil.which("rpmlint")
+    if rpmlint_bin is None:
+        console.print("[red]Error: rpmlint not found.[/red]")
+        console.print("Install it with: uv pip install rpmlint")
+        raise SystemExit(1)
+
+    # Expand directories to individual files
+    files = []
+    for target in targets:
+        target_path = Path(target)
+        if target_path.is_dir():
+            files.extend(sorted(target_path.glob("*.rpm")))
+            files.extend(sorted(target_path.glob("*.spec")))
+        else:
+            files.append(target_path)
+
+    if not files:
+        console.print("[yellow]No RPM or spec files found[/yellow]")
+        return
+
+    console.print(f"[bold]Linting {len(files)} file(s) with rpmlint...[/bold]\n")
+
+    cmd = [rpmlint_bin]
+    if config:
+        cmd.extend(["-c", config])
+    elif RPMLINT_CONFIG.exists():
+        cmd.extend(["-c", str(RPMLINT_CONFIG)])
+        console.print(f"[dim]Using config: {RPMLINT_CONFIG}[/dim]\n")
+    cmd.extend(str(f) for f in files)
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # Display rpmlint output with Rich formatting
+    for line in (result.stdout + result.stderr).splitlines():
+        if ": E: " in line:
+            console.print(f"  [red]{line}[/red]")
+        elif ": W: " in line:
+            console.print(f"  [yellow]{line}[/yellow]")
+        else:
+            console.print(f"  {line}")
+
+    if result.returncode != 0:
+        console.print(f"\n[bold yellow]rpmlint exited with code {result.returncode}[/bold yellow]")
+    else:
+        console.print("\n[bold green]✓ rpmlint passed[/bold green]")
 
 
 @main.command()
