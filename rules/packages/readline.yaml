@@ -1,31 +1,32 @@
 # readline - Command line editing library
-# Build system: autoconf
+# Build system: autoconf (custom shlib build, no libtool)
 # SGUG-RSE reference: packages/readline/
-# Note: Fedora's readline-8.0-shlib.patch already includes SGUG-RSE's fix
+#
+# Key fixes:
+# 1. shobj-conf IRIX case uses MIPSpro flags (-K PIC, -no_unresolved)
+#    which don't work with clang. Patch uses GCC-compatible flags and
+#    adds -ltinfo for termcap symbols.
+# 2. shlib-install doesn't recognize 'irix' (without version number) —
+#    configure normalizes mips-sgi-irix6.5 to mips-unknown-irix. So
+#    .so symlinks must be created manually after install.
+#
+# Note: Do NOT use SGUG-RSE's readline-8.2-shlib.sgi.patch — it conflicts
+# with Fedora's readline-8.0-shlib.patch (both modify same Makefile.in line).
+# Fedora's patch already handles that fix.
 package: readline
 
+add_patch:
+  - readline-8.2-shobj-irix-clang.patch
+
 rules:
-  # Remove gpgverify - we don't have gnupg2 during cross-compile
-  remove_lines:
-    - "%{gpgverify}"
-
-  # Drop static subpackage - we put .a files in main package for static-only build
-  drop_subpackages:
-    - static
-
   spec_replacements:
-    # Rewrite .pc to include "tinfo" library from ncurses (per SGUG-RSE)
+    # After make_install: create .so symlinks and fix pkg-config
+    # shlib-install doesn't create symlinks because host_os='irix' doesn't
+    # match the 'irix[56]*' pattern in the symlink creation case.
     - pattern: "%make_install"
-      replacement: "%make_install\n\n# Rewrite the .pc to include \"tinfo\" library from ncurses\nperl -pi -e \"s|: ncurses|: ncurses tinfo|g\" $RPM_BUILD_ROOT%{_libdir}/pkgconfig/readline.pc"
+      replacement: "%make_install\n\n# Create .so symlinks (shlib-install doesn't recognize 'irix' without version)\nln -sf libreadline.so.8 $RPM_BUILD_ROOT%{_libdir}/libreadline.so\nln -sf libhistory.so.8 $RPM_BUILD_ROOT%{_libdir}/libhistory.so\n\n# Add tinfo to pkg-config (termcap symbols in libtinfo.so)\nperl -pi -e \"s|: ncurses|: ncurses tinfo|g\" $RPM_BUILD_ROOT%{_libdir}/pkgconfig/readline.pc"
 
-    # Comment out ldconfig scriptlets
-    - pattern: "%ldconfig_scriptlets"
-      replacement: "#%ldconfig_scriptlets"
-
-    # Fix %files - no shared libs in cross-compile (static only)
-    - pattern: "%files\n%license COPYING USAGE\n%{_libdir}/libreadline.so.*\n%{_libdir}/libhistory.so.*"
-      replacement: "%files\n%license COPYING USAGE\n%{_libdir}/libreadline.a\n%{_libdir}/libhistory.a"
-
-    # Fix %files devel - remove shared lib symlinks
-    - pattern: "%{_libdir}/libreadline.so\n%{_libdir}/libhistory.so"
-      replacement: "# No shared lib symlinks in static-only build"
+    # IRIX shared libs use major-only versioning (libreadline.so.8 not .so.8.2)
+    # Fix %files to match what actually gets installed
+    - pattern: "%{_libdir}/libreadline.so.*\n%{_libdir}/libhistory.so.*"
+      replacement: "%{_libdir}/libreadline.so.8\n%{_libdir}/libhistory.so.8"

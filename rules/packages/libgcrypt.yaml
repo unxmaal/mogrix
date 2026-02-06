@@ -1,5 +1,12 @@
 # libgcrypt - GnuPG crypto library
-# Core crypto library for GnuPG ecosystem
+# Build system: autoconf/automake/libtool
+#
+# Key fixes:
+# 1. FIPS integrity checking (HMAC, __spec_install_post) stripped — not needed
+# 2. pushd/popd in %install replaced with cd (rpmbuild uses /bin/sh)
+# 3. /sbin/ldconfig calls removed (no ldconfig on IRIX)
+# 4. libdir multilib hack fixed for lib32
+# 5. Assembly disabled — MIPS asm not supported by upstream
 
 package: libgcrypt
 
@@ -9,14 +16,26 @@ rules:
   ac_cv_overrides:
     gcry_cv_gcc_has_platform_cflags: "no"
 
+  skip_find_lang: true
+  skip_check: true
+
+  # Remove static library (libtool builds it despite --disable-static)
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.a"
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+
   # Configure flags
   configure_flags:
     add:
+      - --disable-static
       - --disable-asm
       - --disable-amd64-as-feature-detection
       - --disable-jent-support
+      - --disable-doc
     remove:
       - --enable-m-guard
+      - --enable-hmac-binary-check=%{hmackey}
+      - --enable-noexecstack
 
   # Disable hardware-specific features
   configure_disable:
@@ -24,3 +43,44 @@ rules:
     - drng-support
     - neon-support
     - ppc-crypto-support
+
+  spec_replacements:
+    # Remove the FIPS module name / os-release eval block — not needed for IRIX
+    - pattern: "eval $(sed -n 's/^\\(\\(NAME\\|VERSION_ID\\)=.*\\)/OS_\\1/p' /etc/os-release)\nexport FIPS_MODULE_NAME=\"$OS_NAME ${OS_VERSION_ID%%%%.*} %name\"\n"
+      replacement: ""
+
+    # Remove --with-fips-module-version from configure invocation
+    - pattern: "     --with-fips-module-version=\"$FIPS_MODULE_NAME %{version}-%{srpmhash}\""
+      replacement: ""
+
+    # Remove the sed that fixes libtool dlsearch path (not needed, and breaks)
+    - pattern: "sed -i -e '/^sys_lib_dlsearch_path_spec/s,/lib /usr/lib,/usr/lib /lib64 /usr/lib64 /lib,g' libtool"
+      replacement: "# libtool dlsearch path sed removed (cross-compilation)"
+
+    # Fix the FIPS __spec_install_post override — remove the HMAC/objcopy stuff
+    # Replace the entire block with a simple standard install_post
+    - pattern: "%define __spec_install_post \\\n    %{?__debug_package:%{__debug_install_post}} \\\n    %{__arch_install_post} \\\n    %{__os_install_post} \\\n    cd src \\\n    sed -i -e 's|FILE=.*|FILE=\\\\\\$1|' gen-note-integrity.sh \\\n    READELF=readelf AWK=awk ECHO_N=\"-n\" bash gen-note-integrity.sh %{libpath} > %{libpath}.hmac \\\n    objcopy --update-section .note.fdo.integrity=%{libpath}.hmac %{libpath} %{libpath}.new \\\n    mv -f %{libpath}.new %{libpath} \\\n    rm -f %{libpath}.hmac\n%{nil}"
+      replacement: "# FIPS __spec_install_post removed for cross-compilation"
+
+    # Fix libgcrypt-config: Fedora hardcodes libdir=/usr/lib for multilib.
+    # We need lib32 to stay.
+    - pattern: "sed -i -e 's,^libdir=\"/usr/lib.*\"$,libdir=\"/usr/lib\",g' $RPM_BUILD_ROOT/%{_bindir}/libgcrypt-config"
+      replacement: "# libdir sed removed — lib32 must be preserved for IRIX"
+
+    # Replace pushd/popd with cd (rpmbuild uses /bin/sh)
+    - pattern: "pushd $RPM_BUILD_ROOT/%{gcrylibdir}"
+      replacement: "cd $RPM_BUILD_ROOT/%{gcrylibdir}"
+    - pattern: "popd"
+      replacement: "cd $RPM_BUILD_ROOT"
+
+    # Remove /sbin/ldconfig calls (no ldconfig on IRIX)
+    - pattern: "/sbin/ldconfig -n $RPM_BUILD_ROOT/%{_libdir}\n"
+      replacement: ""
+    - pattern: "/sbin/ldconfig -n $RPM_BUILD_ROOT/%{_lib}/\n"
+      replacement: ""
+
+    # Remove doc/info files from %files devel (--disable-doc)
+    - pattern: "%{_infodir}/gcrypt.info*\n"
+      replacement: ""
+    - pattern: "%{_mandir}/man1/*\n"
+      replacement: ""

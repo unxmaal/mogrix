@@ -1,12 +1,30 @@
 # libksba - X.509 library for GnuPG
 # Handles certificates and CMS
+# Build system: autoconf/automake/libtool
+#
+# Dependencies: libgpg-error, libgcrypt (both in staging sysroot)
+# --disable-doc removes info pages, so %files devel reference must be removed
 
 package: libksba
 
 rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
+  # NOTE: skip_check handled by generic.yaml
+  # NOTE: gpgverify removal handled by generic.yaml
+  # NOTE: ldconfig_scriptlets removal handled by generic.yaml
 
   # Configure flags
   configure_flags:
     add:
       - --disable-doc
+      - --disable-static
+
+  # Remove static/libtool archive files (belt and suspenders)
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.a"
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+
+  spec_replacements:
+    # --disable-doc means no info pages are generated
+    - pattern: "%{_infodir}/ksba.info*\n"
+      replacement: ""

@@ -1,11 +1,11 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-05
-**Status**: Phase 2 build tools nearly complete. All 6 packages INSTALLED on IRIX (m4, perl, autoconf, automake, bash). libtool RPM built, ready to install.
+**Last Updated**: 2026-02-06
+**Status**: Phase 3 in progress. pkgconf SIGSEGV root-caused and fixed (%zu format specifier). pkgconf 2.1.0 fully working on IRIX. Crypto chain libraries staged. Ready for gnupg2.
 
 ---
 
-## CRITICAL WARNING
+## CRITICAL WARNINGS
 
 **NEVER install packages directly to /usr/sgug on the live IRIX system.**
 
@@ -16,13 +16,17 @@ On 2026-01-27, installing directly to /usr/sgug replaced libz.so with zlib-ng, b
 2. Explicit user approval
 3. Console access is available as backup
 
+**NEVER modify IRIX paths directly via SSH.** The chroot at `/opt/chroot` has its own `/usr/sgug/`. The base system's `/usr/sgug/` is separate. When running commands on IRIX, always be explicit about whether you're targeting the chroot or the base system. Let the user handle IRIX operations to avoid path confusion.
+
 **NEVER CHEAT!** Work through problems converting packages. Don't copy from old SGUG-RSE. Don't fake Provides. Check the rules for how to handle being stuck.
+
+**Question SGUG-RSE assumptions.** SGUG-RSE bootstrapped ON IRIX without most deps. They bundled things and skipped system libraries out of necessity. We cross-compile with a full sysroot — prefer system libraries over bundled copies. See `rules/methods/before-you-start.md`.
 
 ---
 
 ## Goal
 
-Get **rpm** and **tdnf** working on IRIX so packages can be installed via the package manager. Then build **Phase 2 tools** (autoconf, automake, libtool) to enable self-hosting.
+Cross-compile Fedora 40 packages for IRIX using mogrix, a deterministic SRPM conversion engine. Phase 1 (bootstrap: rpm/tdnf) and Phase 2 (build tools: autoconf/automake/libtool) are complete. Phase 3 targets user-facing packages.
 
 ---
 
@@ -51,51 +55,118 @@ All 14 bootstrap packages cross-compiled and working on IRIX:
 
 Verified working: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf install`.
 
-### Phase 2: Build Tools (IN PROGRESS)
+### Phase 2: Build Tools (COMPLETE)
 
 | Package | Status | Notes |
 |---------|--------|-------|
 | m4 1.4.19 | INSTALLED | - |
-| perl 5.38.2 | INSTALLED (upgraded with Provides) | Monolithic build, 652 .pm modules |
-| autoconf 2.71 | INSTALLED | Awaiting smoke test |
-| automake 1.16.5 | INSTALLED (shebang+FindBin fixes) | Awaiting smoke test |
-| libtool 2.4.7 | RPM built, ready to install | Has shebang + drop_requires fixes |
-| bash 5.2.26 | INSTALLED | System readline, libtinfo for termcap, HAVE_PSELECT fixes |
+| perl 5.38.2 | INSTALLED | Monolithic build, explicit Provides, 652 .pm modules |
+| autoconf 2.71 | INSTALLED | Generates configure + autom4te cache |
+| automake 1.16.5 | INSTALLED | shebang + FindBin fixes |
+| bash 5.2.26 | INSTALLED | System readline, libtinfo for termcap |
+| libtool 2.4.7 | INSTALLED | shebang + drop_requires fixes |
+
+### Phase 3: User-Facing Packages (IN PROGRESS)
+
+**Libraries built and staged** (awaiting IRIX install/test):
+
+| Package | Version | Status | Notes |
+|---------|---------|--------|-------|
+| readline | 8.2-8 | BUILT | Uses system ncurses |
+| libgpg-error | 1.48-1 | BUILT | lock-obj-pub generated on IRIX, strdup/strndup compat |
+| libgcrypt | 1.10.3-3 | BUILT | FIPS removed, ASM disabled |
+| libassuan | 2.5.7-1 | BUILT | unsetenv decl fix, SCM_RIGHTS defined |
+| libksba | 1.6.6-1 | BUILT | Clean build |
+| npth | 1.7-1 | BUILT | pthread_atfork in unistd.h (IRIX POSIX1C) |
+
+All RPMs at `edodd@192.168.0.81:/tmp/` — install in chroot with `rpm -Uvh /tmp/*.mips.rpm`.
+
+| pkgconf | 2.1.0 | INSTALLED | Static build, %zu→%u fix, working on IRIX |
+
+**pkgconf SIGSEGV root cause**: IRIX libc's printf family does NOT support the C99 `%zu` format
+specifier. When printf encounters `%zu`, it corrupts the varargs parsing, causing subsequent `%s`
+arguments to dereference garbage pointers → SIGSEGV. pkgconf's `SIZE_FMT_SPECIFIER` macro was
+`"%zu"` and was used in `pkgconf_trace()` which is called from `pkgconf_client_init()`.
+Fix: patch `libpkgconf/stdinc.h` to use `"%u"` instead (size_t is 4 bytes on MIPS n32).
+Patch at `patches/packages/pkgconf/pkgconf-irix-no-zu-format.patch`.
+
+**Next packages**:
+- gnupg2 — needs all crypto libs installed on IRIX first (it's an application, not just a library)
+- gettext, coreutils, grep, sed, gawk (user-facing tools)
 
 ---
 
 ## What Worked This Session
 
+### RPM OS Tag + Libtool Triplet Decoupling
+- `--target mips-sgi-irix6.5` gave RPM `OS=irix6.5` — IRIX rpm rejects this (expects `OS=irix`)
+- `--target mips-sgi-irix` gives RPM `OS=irix` but `--host=mips-irix` (no version) breaks libtool
+- Fix: `--target mips-sgi-irix` in cli.py (for RPM), `--host=mips-irix6.5` hardcoded in rpmmacros.irix (for libtool)
+- `_target_os` in rpmmacros set to `irix` (was `irix6.5`)
+
+### pkgconf %zu Format Specifier Fix (Root Cause Found)
+- pkgconf crashed with SIGSEGV inside `pkgconf_client_init()` → `pkgconf_trace()`
+- Root cause: IRIX libc does NOT support the C99 `%zu` printf format specifier
+- `%zu` corrupts varargs parsing — subsequent `%s` reads garbage pointer → SIGSEGV
+- pkgconf's `SIZE_FMT_SPECIFIER` macro defaulted to `"%zu"` on non-Windows platforms
+- Fix: patch `libpkgconf/stdinc.h` to use `"%u"` (size_t = 4 bytes on MIPS n32)
+- **This is a generic IRIX issue**: any package using `%zu`/`%zd`/`%zx` in printf-family calls will break
+- Also still using `--disable-shared` (no other package needs libpkgconf.so)
+- Debugging methodology: systematically narrowed crash location using write() syscall markers
+  (fprintf was unsafe — it uses printf internally which has the same bug)
+
+### IRIX MCP Server
+- Added `tools/irix-mcp-server.py` — MCP server for safe chroot access from Claude Code
+- Registered in `.mcp.json` — tools: `irix_exec`, `irix_copy_to`, `irix_read_file`, `irix_par`
+- All commands wrapped in `chroot /opt/chroot /usr/sgug/bin/sgug-exec /bin/sh -c '...'`
+- Safety blocklist for destructive commands (rm -rf /, reboot, etc.)
+
+### PKG_CONFIG_LIBDIR in rpmmacros.irix
+- Packages needing other staging sysroot libraries (e.g., libgcrypt → libgpg-error) couldn't find them
+- Added `PKG_CONFIG_LIBDIR` and `PATH` exports to `%configure` macro in `cross/rpmmacros.irix`
+
+### Source Numbering Fix
+- Compat sources (dlmalloc, strdup, etc.) use Source100+
+- Extra sources (`add_source` in package yaml) also started at Source100 → conflict
+- Fix: extra sources now start at Source200 in `mogrix/cli.py:420`
+
+### libgpg-error lock-obj-pub
+- Cross-compilation needs platform-specific `lock-obj-pub.<host_os>.h`
+- Generated on IRIX, stored at `compat/libgpg-error/lock-obj-pub.irix6.5.h`
+- Added as Source200 via `add_source`, copied during prep
+
+### IRIX POSIX1C Guards
+- `pthread_atfork` in IRIX `unistd.h` is behind `#if _POSIX1C`
+- `_POSIX1C` is enabled by `_SGI_REENTRANT_FUNCTIONS` (set in irix-cc) or by including `pthread.h` first
+- Include order matters: `pthread.h` before `unistd.h`
+
+### GNU ld Linker Script Fix (ncurses)
+- Fedora ncurses creates `libcurses.so`, `libcursesw.so`, `libtermcap.so` as GNU ld scripts (`INPUT(-lfoo)`)
+- IRIX rld can't load linker scripts — only real ELF .so files
+- Symptom: `rld: Error: elfmap failed on /path/libfoo.so : read N bytes too short to be elf header`
+- Fixed in `ncurses.yaml`: replace `echo "INPUT(...)"` with `ln -s` for all 3 files
+- Also fixed staging sysroot (`/opt/sgug-staging/usr/sgug/lib32/`) — same linker scripts replaced with symlinks
+- Also dropped `ncurses-c++-libs` (subpackage dropped) and `pkgconfig` requires from ncurses-devel
+- **Any package that creates `INPUT()` style .so files needs the same fix**
+
+### Bash 5.2.26 — System Readline (Not Bundled)
+- SGUG-RSE used `--without-installed-readline` because they bootstrapped without readline available
+- We have readline+ncurses in our sysroot — use `--with-installed-readline` instead
+- Bundled readline linked `-lcurses` → `NEEDED: libcurses.so` (the linker script) → rld error
+- SGUG-RSE ncurses splits termcap symbols (tputs, tgetent) into libtinfo.so
+- Must set `bash_cv_termcap_lib: "libtinfo"` — configure's default search hits libcurses before libncurses
+- Readline statically linked from libreadline.a (no .so in sysroot), only libtinfo.so needed at runtime
+
+### Questioning SGUG-RSE Assumptions
+- Added guidance to `rules/methods/before-you-start.md`: SGUG-RSE made decisions under bootstrap constraints that don't apply to us
+- Rule: prefer system libraries over bundled copies when the dependency is available
+
 ### Perl Provides (Approach A — Explicit Tags)
 - `rpmmacros.irix` sets `__find_provides: %{nil}` + `AutoProv: no` globally
 - This CANNOT be overridden from the spec (`--macros` files > `%global` > `%define`)
 - Solution: 4 explicit `Provides:` tags in `perl.yaml` spec_replacements
-- Tags: `perl-interpreter`, `perl(File::Compare)`, `perl(Thread::Queue)`, `perl(threads)`
-- All modules physically exist in the monolithic perl RPM (verified with rpm -qpl)
 
-### Bash 5.2.26 Cross-Compilation
-- 17 rules in `bash.yaml`: configure flags, HAVE_PSELECT fixes, doc cleanup, /bin/sh compat
-- `--with-installed-readline` uses system readline (not bundled — SGUG-RSE bundled out of bootstrap necessity)
-- `bash_cv_termcap_lib: "libtinfo"` — SGUG-RSE ncurses splits termcap into libtinfo.so
-- Created `compat/include/mogrix-compat/generic/wchar.h` overlay for C99 multibyte functions
-- `ac_cv_header_sys_random_h: "no"` avoids getrandom() conflict with dicl-clang-compat
-- `prep_commands` fix lib/sh/input_avail.c HAVE_PSELECT bugs
-- `install_cleanup` removes doc files from dropped doc subpackage
-- Verified on IRIX: `bash --version`, brace expansion, for loops all working
-
-### ncurses Linker Script Fix
-- Fedora ncurses creates `libcurses.so`, `libcursesw.so`, `libtermcap.so` as GNU ld scripts (`INPUT(-lfoo)`)
-- IRIX rld can't load linker scripts — only real ELF .so files
-- Fixed in `ncurses.yaml`: replace `echo "INPUT(...)"` with `ln -s` for all 3 files
-- Also dropped `ncurses-c++-libs` (subpackage dropped) and `pkgconfig` requires from ncurses-devel
-
-### Rules Cleanup
-- Removed duplicate rules from ~30 package YAMLs (ac_cv_overrides, skip_check, libdicl, drop_buildrequires)
-- Updated `rules/INDEX.md` with "Check generic.yaml First" guidance
-- plan.md compacted from 1348 to ~170 lines
-
-### SRPM Preservation
-- `cli.py` now copies converted SRPMs to `~/rpmbuild/SRPMS/` after successful builds
+---
 
 ## What Failed (Don't Repeat)
 
@@ -104,74 +175,43 @@ Verified working: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdn
 2. `%global __find_provides /usr/lib/rpm/perl.prov` in spec — still lower priority than `--macros` files
 3. `AutoProv: yes` before `Name:` in spec — RPM ignores preamble tags before `Name:`
 4. `AutoProv: yes` after `Name:` in spec — rpmmacros.irix's `AutoProv: no` wins
-5. `rewrite_paths` transforms build-host paths — use `/usr/./lib` to avoid `/usr/lib` matching
+
+### Bash Bundled Readline (Wrong Approach)
+- `--without-installed-readline` produces binary with `NEEDED: libcurses.so` (linker script, rld fails)
+- `bash_cv_termcap_lib: "libncurses"` → link error: termcap symbols are in libtinfo, not libncurses
+- Must use `--with-installed-readline` + `bash_cv_termcap_lib: "libtinfo"`
+
+### Modifying Live IRIX System
+- Agent modified `/usr/sgug/lib32/libcurses.so` on the base system instead of the chroot
+- No harm done (base system already had a proper symlink), but reinforces: let user handle IRIX operations
+
+### Fedora Multilib libdir Hacks
+- libgpg-error and libgcrypt specs hardcode `libdir="/usr/lib"` via sed in %prep for multilib compat
+- This breaks our lib32 setup — must remove via spec_replacements
+
+### libgcrypt FIPS Cross-Compilation
+- Fedora's `__spec_install_post` override uses readelf/objcopy on target binaries — fails cross-compiling
+- Must remove entire FIPS block via spec_replacements
 
 ### Key Lesson
-Package-level `rpm_macros` overrides are NOT supported in `engine.py`. The `_apply_package_rules()` method doesn't handle `rpm_macros`. Use `spec_replacements` to inject `Provides:` tags directly.
-
----
-
-## Next Steps
-
-1. **Install libtool** — copy `libtool-2.4.7-10.mips.rpm` + `libtool-ltdl-2.4.7-10.mips.rpm` to IRIX
-2. **Plan production migration** — Strategy for moving from chroot to /usr/sgug
-3. **Begin Phase 3** — user-facing packages (ncurses, coreutils, etc.)
-
-### Deferred
-- Remaining inline seds in libsolv/tdnf/rpm (working, not blocking)
-- Long-term: WebKitGTK 2.38.x for modern browser on IRIX
-
----
-
-## Perl 5.38.2 Cross-Compilation
-
-### Approach: Monolithic Package
-
-Fedora perl has 188 subpackages. For cross-compilation, we build a single monolithic package:
-- `drop_subpackages: ["[A-Za-z]*"]` comments out all subpackages
-- `%files -f perl-filelist.txt` uses an auto-generated file manifest
-- `%global dual_life 1` keeps all core modules
-- `remove_lines` strips orphaned Requires from dropped subpackages
-- Original FC40 SRPM: `~/rpmbuild/SRPMS/fc40/perl-5.38.2-506.fc40.src.rpm`
-
-### RPM Contents
-- 3556 files, 652 .pm modules, 23 .so extensions (XS modules)
-- All critical modules present (Carp, Exporter, strict, MakeMaker, etc.)
-- ELF 32-bit MSB executable, MIPS, N32 MIPS-III
-
-### Cross-Compilation Strategy
-1. Pre-generated `config.sh` (from SGUG-RSE) tells Perl about IRIX target
-2. `Configure -S` reads config.sh without probing
-3. Native miniperl built on host (gcc) runs build scripts
-4. `CC=irix-cc` compiles C code for IRIX via clang cross-compiler
-
-### What Failed (Don't Repeat)
-- `drop_subpackages: ["*"]` matches `-f` in `%files -f`. Use `["[A-Za-z]*"]`.
-- Build without `dual_life 1` removes dual-life modules in %install.
-- Converting a previously-converted SRPM causes duplicate Source100. Always use original FC40 SRPM.
-- `-I. -Ilib` order breaks buildcustomize.pl. Must be `-Ilib -I.`.
-- Configure -S runs `make depend` internally. Must clean stale .o/makefile before spec's `make`.
+Package-level `rpm_macros` overrides are NOT supported in `engine.py`. Use `spec_replacements` to inject `Provides:` tags directly.
 
 ---
 
 ## Key Architectural Decisions
 
-### Linker Selection
-- **LLD 18** with IRIX patches for executables (LLD 14 has MIPS relocation bugs)
-- **GNU ld** for shared libraries (LLD exe layout crashes IRIX rld)
-- See `rules/methods/linker-selection.md`
-
-### IRIX vsnprintf
-- Pre-C99: `vsnprintf(NULL, 0)` returns -1 (not buffer size)
-- Fixed with iterative vasprintf in `compat/stdio/asprintf.c`
-
-### Memory Allocation
-- IRIX brk() heap limited to 176MB (libpthread at 0x0C080000 blocks growth)
-- dlmalloc uses mmap instead, accessing 1.2GB of free address space
-- Auto-injected when any compat functions are used
-
-### Cookie I/O
-- fopencookie crashes on IRIX — use funopen instead (`compat/stdio/funopen.c`)
+| Decision | Rationale |
+|----------|-----------|
+| LLD 18 for executables, GNU ld + `-z separate-code` for shared libs | LLD for correct relocations; GNU ld with forced 3-segment layout for rld |
+| `--image-base=0x1000000` for all executables | Default 0x10000 gives only 1.8MB brk heap; 0x1000000 gives 176MB |
+| `/lib32/rld` as dynamic linker | IRIX requires this interpreter |
+| dlmalloc via mmap (auto-injected) | IRIX brk() heap limited to 176MB; mmap accesses 1.2GB |
+| funopen instead of fopencookie | fopencookie crashes on IRIX |
+| Iterative vasprintf | IRIX vsnprintf(NULL,0) returns -1 (pre-C99) |
+| Per-package compat injection | No shared libdicl dependency; each SRPM is self-contained |
+| Symlinks not linker scripts | IRIX rld can't load GNU ld scripts (`INPUT(-lfoo)`) |
+| System libs over bundled | We have a full sysroot; don't copy SGUG-RSE's bootstrap shortcuts |
+| `%u` not `%zu` for size_t | IRIX libc is pre-C99; `%zu` corrupts varargs → SIGSEGV |
 
 ---
 
@@ -183,8 +223,8 @@ Fedora perl has 188 subpackages. For cross-compilation, we build a single monoli
 | Cross toolchain | `/opt/cross/bin/` |
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
-| IRIX host | `ssh edodd@192.168.0.81` |
-| IRIX chroot | `/opt/chroot` |
+| IRIX host | `ssh edodd@192.168.0.81` (root for installs) |
+| IRIX chroot | `/opt/chroot` (testing environment) |
 | Original FC40 SRPMs | `~/rpmbuild/SRPMS/fc40/` |
 | Built MIPS RPMs | `~/rpmbuild/RPMS/mips/` |
 
@@ -193,12 +233,38 @@ Fedora perl has 188 subpackages. For cross-compilation, we build a single monoli
 - **Converted output is ephemeral** — regenerate from originals + rules anytime
 - **Built RPMs are outputs** — rpmbuild puts them in `~/rpmbuild/RPMS/`
 - **Never store build artifacts in the mogrix git repo**
+- **mogrix convert bakes rules into the SRPM** — must re-convert after rule changes
+
+### Workflow
+```bash
+uv run mogrix convert ~/rpmbuild/SRPMS/fc40/<package>.src.rpm
+uv run mogrix build ~/rpmbuild/SRPMS/fc40/<package>-converted/<package>.src.rpm --cross
+scp ~/rpmbuild/RPMS/mips/<package>*.rpm root@192.168.0.81:/opt/chroot/tmp/
+# User installs in chroot: rpm -Uvh /tmp/<package>*.rpm
+```
 
 ---
 
 ## Known Issues
 
+- **`%zu` format specifier crashes IRIX libc** — use `%u` for size_t, `%lu` for unsigned long. IRIX printf doesn't understand the `z` length modifier (C99). Corrupts varargs → SIGSEGV when followed by `%s`.
 - fopencookie crashes on IRIX — use funopen instead
 - sqlite3 CLI crashes when writing to files (rpm database writes work fine)
 - IRIX chroot doesn't fully isolate — processes see base system paths
 - Existing SGUG-RSE packages conflict with our FC40 packages (zlib-ng-compat vs zlib)
+- `odump` and `elfdump` crash/fail on LLD-produced binaries (dynamic section format differs from GCC/IRIX ld output) — rld loads them fine, but IRIX analysis tools can't parse them
+- rld may probe `.so` files in the library path even if not in NEEDED chain — any non-ELF `.so` file (linker scripts) will produce warnings
+
+---
+
+## Reference Documents
+
+| Document | Purpose |
+|----------|---------|
+| `rules/INDEX.md` | Rules reference, per-package problem guide |
+| `rules/methods/before-you-start.md` | Checklist before debugging (includes SGUG-RSE warning) |
+| `rules/generic.yaml` | Universal rules for all packages |
+| `compat/catalog.yaml` | Compat function registry |
+| `plan.md` | Project plan and architecture |
+| `rules/methods/mogrix-workflow.md` | How to run mogrix |
+| `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging |

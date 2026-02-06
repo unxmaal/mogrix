@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-05)
+## Current Status (2026-02-06)
 
-**Phase 2: BUILD TOOLS — nearly complete**
+**Phase 3: USER-FACING PACKAGES — IN PROGRESS**
 
-Phase 1 (bootstrap) is complete with 14 packages installed on IRIX. Phase 2 build tools are nearly done: m4, perl, autoconf, automake, bash all verified working on IRIX. Libtool RPMs built and ready to install.
+Phase 1 (bootstrap: 14 packages) and Phase 2 (build tools: 6 packages) are complete. Phase 3 in progress: pkgconf installed and working on IRIX, crypto chain libraries (libgpg-error, libgcrypt, libassuan, libksba, npth) built and staged. gnupg2 next.
 
 ---
 
@@ -92,7 +92,7 @@ All 14 packages cross-compiled and verified on IRIX:
 
 Validated: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf install`.
 
-### Phase 2: Build Tools (IN PROGRESS)
+### Phase 2: Build Tools (COMPLETE)
 
 | Package | Status | Notes |
 |---------|--------|-------|
@@ -100,14 +100,29 @@ Validated: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf insta
 | perl 5.38.2 | ✅ Verified on IRIX | image-base fix, explicit Provides, -z separate-code |
 | autoconf 2.71 | ✅ Verified on IRIX | Generates configure + autom4te cache |
 | automake 1.16.5 | ✅ Verified on IRIX | shebang + FindBin fixes |
-| libtool 2.4.7 | RPMs built, ready to install | shebang + drop_requires fixes |
-| bash 5.2.26 | ✅ Verified on IRIX | Bundled readline, wchar.h overlay, HAVE_PSELECT fixes |
+| bash 5.2.26 | ✅ Verified on IRIX | System readline, libtinfo for termcap, wchar.h overlay |
+| libtool 2.4.7 | ✅ Verified on IRIX | shebang + drop_requires fixes |
 
 **Build order**: perl → bash → autoconf → automake → libtool
 
-### Phase 3: Self-Hosting (PLANNED)
+### Phase 3: User-Facing Packages (IN PROGRESS)
 
-With Phase 2 complete, IRIX can run autoconf/automake/libtool. This enables building packages that need `autoreconf` or similar build tool steps on the target.
+With Phase 2 complete, IRIX has a full autotools chain.
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| ncurses 6.4 | ✅ Rebuilt | Linker script fix (symlinks not INPUT()) |
+| readline 8.2 | ✅ Built | Staged in sysroot, uses system ncurses |
+| pkgconf 2.1.0 | ✅ Installed on IRIX | Static build, %zu→%u fix |
+| libgpg-error 1.48 | ✅ Built | Staged, needs IRIX install test |
+| libgcrypt 1.10.3 | ✅ Built | Staged, FIPS removed, ASM disabled |
+| libassuan 2.5.7 | ✅ Built | Staged, unsetenv/SCM_RIGHTS fixes |
+| libksba 1.6.6 | ✅ Built | Staged, clean build |
+| npth 1.7 | ✅ Built | Staged, POSIX1C pthread_atfork fix |
+| gnupg2 | Not started | Needs crypto libs installed first |
+| coreutils | Not started | - |
+| gettext | Not started | - |
+| grep, sed, gawk | Not started | - |
 
 ### Long-Term: Modern Browser
 
@@ -142,6 +157,9 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | funopen instead of fopencookie | fopencookie crashes on IRIX |
 | Iterative vasprintf | IRIX vsnprintf(NULL,0) returns -1 (pre-C99) |
 | Per-package compat injection | No shared libdicl dependency; each SRPM is self-contained |
+| Symlinks not linker scripts | IRIX rld can't load GNU ld scripts (`INPUT(-lfoo)`) |
+| System libs over bundled | Full sysroot available; don't copy SGUG-RSE's bootstrap shortcuts |
+| `%u` not `%zu` for size_t | IRIX libc is pre-C99; `%zu` corrupts varargs → SIGSEGV |
 
 ---
 
@@ -154,7 +172,7 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 5. **Extensible:** Adding new rules requires only YAML ✓
 6. **Reproducible:** Same input SRPM + rules = identical output SRPM ✓
 7. **Package manager on IRIX:** tdnf works ✓
-8. **Build tools on IRIX:** autoconf/automake/libtool (in progress)
+8. **Build tools on IRIX:** autoconf/automake/libtool ✓
 
 ---
 
@@ -165,4 +183,5 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | `HANDOFF.md` | Session continuity, current blockers |
 | `rules/INDEX.md` | Rules reference, per-package problem guide |
 | `rules/generic.yaml` | Universal rules for all packages |
+| `rules/methods/before-you-start.md` | Checklist + SGUG-RSE assumptions warning |
 | `compat/catalog.yaml` | Compat function registry |

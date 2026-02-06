@@ -51,6 +51,8 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Unwanted install files | .la files, duplicate docs | install_cleanup | rules/packages/* | Commands run after %make_install |
 | Legacy libdicl lines | CPPFLAGS/LIBS with libdicl | remove_lines | rules/generic.yaml | Already handled globally |
 | GNU ld linker scripts | `INPUT(-lfoo)` text files as .so | spec_replacements | rules/packages/* | IRIX rld can't load linker scripts; replace with symlinks |
+| `%zu` format specifier | SIGSEGV in printf/snprintf/fprintf | add_patch or prep_commands | rules/packages/* | IRIX libc is pre-C99; `%zu` corrupts varargs → crash. Use `%u` instead. See methods/irix-quirks.md |
+| dlmalloc + libc strdup | SIGSEGV in free/realloc | inject_compat_functions: strdup | rules/packages/* | Packages with dlmalloc must also inject strdup/strndup compat |
 | Spec conditionals | %if blocks for wrong platform | comment_conditionals | rules/packages/* | Comments out entire %if...%endif block |
 | Extra compiler flags | Need -D or -I flags for build | extra_cflags | rules/packages/* | Added to CFLAGS in %build |
 | Make environment | Need env vars for make | make_env | rules/packages/* | Exported before make commands |
@@ -68,6 +70,10 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | IRIX /dev/fd + utimes fails | futimens workaround in openat-compat.c | compat/dicl/openat-compat.c |
 | IRIX chroot doesn't isolate | Binaries see base system paths | methods/irix-testing.md |
 | fopencookie crashes | Use funopen instead | compat/stdio/funopen.c |
+| IRIX libc has no `%zu` support | Use `%u` for size_t, `%d` for ssize_t; `%zu` corrupts varargs → SIGSEGV | methods/irix-quirks.md |
+| dlmalloc replaces malloc but not strdup | Must inject compat strdup/strndup alongside dlmalloc | methods/irix-quirks.md |
+| GNU ld linker scripts crash rld | Replace `INPUT(-lfoo)` .so files with symlinks | methods/irix-quirks.md |
+| `-z separate-code` needed for .so | Without it, GNU ld produces single-segment .so that crashes rld | methods/linker-selection.md |
 | brk() heap limited to 176MB | libpthread at 0x0C080000 blocks heap growth | methods/irix-address-space.md |
 | mmap-based malloc bypasses limit | dlmalloc in compat uses mmap, 1.2GB available | compat/malloc/dlmalloc.c |
 

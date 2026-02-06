@@ -1,0 +1,31 @@
+--- a/support/shobj-conf
++++ b/support/shobj-conf
+@@ -264,25 +264,14 @@
+ #
+ # THE FOLLOWING ARE UNTESTED -- and some may not support the dlopen interface
+ #
+-irix[56]*-*gcc*)
++irix*-*)
+ 	SHOBJ_CFLAGS='-fpic'
+ 	SHOBJ_LD='${CC}'
+ 	SHOBJ_LDFLAGS='-shared -Wl,-soname,$@'
+ 
+-	SHLIB_XLDFLAGS='-Wl,-rpath,$(libdir)'
+-	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
+-	;;
+-
+-irix[56]*)
+-	SHOBJ_CFLAGS='-K PIC'
+-	SHOBJ_LD=ld
+-#	SHOBJ_LDFLAGS='-call_shared -hidden_symbol -no_unresolved -soname $@'
+-#	Change from David Kaelbling <drk@sgi.com>.  If you have problems,
+-#	remove the `-no_unresolved'
+-	SHOBJ_LDFLAGS='-shared -no_unresolved -soname $@'
+-
+-	SHLIB_XLDFLAGS='-rpath $(libdir)'
++	SHLIB_XLDFLAGS=''
+ 	SHLIB_LIBVERSION='$(SHLIB_LIBSUFF).$(SHLIB_MAJOR)'
++	SHLIB_LIBS='-ltinfo'
+ 	;;
+ 
+ hpux9*-*gcc*)

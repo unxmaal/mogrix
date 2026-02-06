@@ -1,0 +1,20 @@
+# npth - New GNU Portable Threads library
+# Build system: autoconf (simple, uses pthreads)
+# Very simple package — wraps POSIX threads with cooperative scheduling API
+
+package: npth
+
+rules:
+  skip_check: true
+
+  # IRIX puts pthread_atfork in unistd.h, not pthread.h
+  # Add include so the declaration is visible
+  prep_commands:
+    - "sed -i '/#include <pthread.h>/a #include <unistd.h>' src/npth.h.in"
+
+  configure_flags:
+    add:
+      - --disable-static
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.a"
