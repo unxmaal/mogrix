@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-06
-**Status**: Phase 3 in progress. gnupg2 2.4.4 fully working on IRIX (key gen, sign, verify). All crypto chain libraries installed. Spec validation, rpmlint, and source-level static analysis now integrated into mogrix. Next: gettext, coreutils, grep, sed, gawk.
+**Last Updated**: 2026-02-06 (evening)
+**Status**: Phase 3b GNU text tools complete — sed, gawk, grep all built, installed, and verified working on IRIX. Next: coreutils and gettext (complex packages with many deps).
 
 ---
 
@@ -87,8 +87,48 @@ Fix: provide `explicit_bzero` in mogrix-compat + set `ac_cv_func_explicit_bzero:
 When HAVE_EXPLICIT_BZERO is defined, wipememory uses it instead of the volatile function pointer.
 The explicit_bzero compat uses `volatile unsigned char *` pointer (safe on IRIX).
 
+### Phase 3b: GNU Text Tools (COMPLETE)
+
+| Package | Version | Status | Notes |
+|---------|---------|--------|-------|
+| sed | 4.9 | INSTALLED | GNU regex bundled (IRIX lacks GNU extensions), gnulib-tests removed |
+| gawk | 5.3.0 | INSTALLED | test/doc dirs removed from SUBDIRS, MPFR disabled, git %prep replaced |
+| grep | 3.11-7 | INSTALLED | GNU regex bundled, PCRE2 disabled, autopoint skipped |
+
 **Next packages**:
-- gettext, coreutils, grep, sed, gawk (user-facing tools)
+- coreutils, gettext (complex, many dependencies — deferred from this session)
+
+---
+
+## This Session's Key Fixes
+
+### IRIX struct timespec Feature Gate (Fixed in dicl-clang-compat + mogrix-compat sys/stat.h)
+- IRIX `sys/timespec.h` defines `struct __timespec` unconditionally but `struct timespec` only under `_POSIX93 || _ABIAPI`
+- The mapping works via `#define __timespec timespec` BEFORE the struct definition
+- **The `#define` MUST come BEFORE `#include_next <sys/stat.h>`** in our overlay headers because IRIX `sys/stat.h` internally includes `sys/timespec.h`
+- Previous attempts put `#define` AFTER the include — too late, struct already defined as `__timespec`
+- Fixed in: `cross/include/dicl-clang-compat/sys/stat.h`, `compat/include/mogrix-compat/generic/sys/stat.h`
+
+### Engine Bug: Generic ac_cv_overrides Never Applied (Fixed in engine.py)
+- `_apply_generic_rules()` didn't process `ac_cv_overrides` or `install_cleanup` — only `_apply_package_rules()` did
+- This means `ac_cv_func_malloc_0_nonnull` and `ac_cv_func_realloc_0_nonnull` from generic.yaml were NEVER applied
+- They worked by luck (IRIX malloc(0) returns non-null natively)
+- Fixed: added ac_cv_overrides + install_cleanup processing to `_apply_generic_rules` in `mogrix/rules/engine.py`
+
+### GL_CFLAG_GNULIB_WARNINGS Poisoning (Fixed in generic.yaml)
+- Cross-compiler's `-E` output includes type definitions from header overlays (e.g., `typedef __builtin_va_list va_list;`)
+- These leak into gnulib's warning flag detection variable, adding semicolons that break shell command parsing
+- Error: `/bin/bash: line 1: -Wno-cast-qual: command not found`
+- Fix: `gl_cv_cc_wallow: "none"` in `rules/generic.yaml` ac_cv_overrides — benefits ALL gnulib-using packages
+
+### GNU Regex vs POSIX Regex on IRIX
+- IRIX libc has POSIX regex only, not GNU extensions (re_compile_pattern, re_search, etc.)
+- Fedora specs use `--without-included-regex` (rely on glibc). For IRIX, must use bundled gnulib regex.
+- Applied to: sed.yaml, grep.yaml (configure_flags remove `--without-included-regex`)
+
+### sgugrse-release: Added filesystem Provides
+- gawk requires `filesystem >= 3` (Fedora package for directory structure)
+- IRIX has the filesystem natively — added `Provides: filesystem = 3.18` to sgugrse-release.yaml
 
 ---
 
@@ -221,6 +261,18 @@ The explicit_bzero compat uses `volatile unsigned char *` pointer (safe on IRIX)
 - Agent modified `/usr/sgug/lib32/libcurses.so` on the base system instead of the chroot
 - No harm done (base system already had a proper symlink), but reinforces: let user handle IRIX operations
 
+### struct timespec: #define After #include (Wrong Order)
+- `#define __timespec timespec` AFTER `#include <sys/timespec.h>` does nothing — the struct was already parsed
+- C preprocessor macros don't retroactively change struct tag names
+- The `#define` is used by the header itself to transform `struct __timespec {` into `struct timespec {` during parsing
+- Must define the macro BEFORE any header that includes `sys/timespec.h`
+
+### Makefile.in prep_commands with autoreconf (Overwritten)
+- Modifying `Makefile.in` in prep_commands is useless if the spec runs `autoreconf` in %build
+- `autoreconf --force` regenerates `Makefile.in` from `Makefile.am`, undoing all changes
+- Must modify `Makefile.am` instead when autoreconf is involved
+- Affected: gawk, grep (both run autoreconf)
+
 ### Fedora Multilib libdir Hacks
 - libgpg-error and libgcrypt specs hardcode `libdir="/usr/lib"` via sed in %prep for multilib compat
 - This breaks our lib32 setup — must remove via spec_replacements
@@ -249,6 +301,9 @@ Package-level `rpm_macros` overrides are NOT supported in `engine.py`. Use `spec
 | System libs over bundled | We have a full sysroot; don't copy SGUG-RSE's bootstrap shortcuts |
 | `%u` not `%zu` for size_t | IRIX libc is pre-C99; `%zu` corrupts varargs → SIGSEGV |
 | `explicit_bzero` compat | IRIX rld breaks `static volatile` function pointer initializers → wipememory crashes |
+| `AUTOPOINT=true autoreconf` | Skip gettext's autopoint when building with `--disable-nls` |
+| Modify Makefile.am not .in | autoreconf regenerates .in from .am — prep_commands on .in get overwritten |
+| `__timespec` define before includes | IRIX timespec feature gate requires macro before sys/stat.h include chain |
 
 ---
 

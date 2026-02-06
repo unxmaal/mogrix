@@ -10,7 +10,7 @@
 #   - drop_buildrequires: systemd, selinux, kernel-headers, libdicl, gnupg2, etc.
 #   - drop_requires: libdicl (replaced by mogrix compat injection)
 #   - remove_lines: gpgverify, ldconfig_scriptlets, libdicl exports, systemd scriptlets
-#   - ac_cv_overrides: malloc_0_nonnull, realloc_0_nonnull
+#   - ac_cv_overrides: malloc_0_nonnull, realloc_0_nonnull, gl_cv_cc_wallow
 #   - rpm_macros: _prefix=/usr/sgug, _libdir=/usr/sgug/lib32
 #   - configure_disable: selinux, systemd, udev, inotify, epoll, etc.
 #   - header_overlays: generic (stdarg.h, stdio.h, etc.)
@@ -68,6 +68,14 @@ generic:
   ac_cv_overrides:
     ac_cv_func_malloc_0_nonnull: "yes"
     ac_cv_func_realloc_0_nonnull: "yes"
+    # Gnulib warning flag detection: configure preprocesses a conftest and
+    # extracts -W flags from the output. Our cross-compiler's -E output
+    # includes extra type definitions from header overlays (e.g.,
+    # "typedef __builtin_va_list va_list;") which leak into
+    # GL_CFLAG_GNULIB_WARNINGS and break compilation (shell interprets
+    # the semicolons as command separators). Setting this to "none"
+    # disables the gnulib warning flag detection entirely.
+    gl_cv_cc_wallow: "none"
 
   # RPM macros injected directly (replaces sgug-rpm-config)
   rpm_macros:

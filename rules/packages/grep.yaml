@@ -1,0 +1,60 @@
+# grep - Pattern matching utilities
+# FC40: grep-3.11-7.fc40
+# Analysis: 35 findings (4 errors %zu, 2 warnings volatile fptr, 29 infos)
+# volatile fptr in lib/c-stack.c:75 (may not be exercised at runtime)
+
+package: grep
+
+rules:
+  # Compat functions needed for IRIX
+  # strdup: dlmalloc/libc allocator mismatch
+  # getopt_long: src/grep.c uses it for option parsing
+  # getline: lib/chdir-long.c
+  # reallocarray: lib/ialloc.h, lib/xmalloc.c
+  # strerror_r: lib/error.c
+  inject_compat_functions:
+    - strdup
+    - getopt_long
+    - getline
+    - reallocarray
+    - strerror_r
+
+  # Drop build deps not available or not needed
+  drop_buildrequires:
+    - gnupg2           # not needed for cross-build
+    - libsigsegv-devel # not built for IRIX yet
+    - pcre2-devel      # not built for IRIX yet
+    - gettext          # not built for IRIX yet (--disable-nls)
+    - gettext-devel    # not built for IRIX yet (--disable-nls)
+    - texinfo          # doc building only
+
+  # Avoid getrandom/sys/random.h conflict with dicl-clang-compat header
+  ac_cv_overrides:
+    ac_cv_header_sys_random_h: "no"
+
+  configure_flags:
+    add:
+      - --disable-nls
+      - --disable-perl-regexp
+    remove:
+      - --without-included-regex
+
+  # Fix %zu format specifiers (IRIX libc doesn't support %zu)
+  # Remove gnulib-tests from build (runs during make all, not just check)
+  prep_commands:
+    - "sed -i 's/%zu/%u/g' lib/malloc/dynarray_at_failure.c"
+    - "sed -i 's/ gnulib-tests//' Makefile.am"
+    - "sed -i 's/ tests//' Makefile.am"
+
+  # NLS disabled, no lang files
+  skip_find_lang: true
+
+  spec_replacements:
+    # Remove lang file reference from %files
+    - pattern: "%find_lang %{name}"
+      replacement: "# %find_lang disabled (--disable-nls)"
+    - pattern: "%files -f %{name}.lang"
+      replacement: "%files"
+    # autopoint (gettext) not needed with --disable-nls, skip it in autoreconf
+    - pattern: "autoreconf -fi"
+      replacement: "AUTOPOINT=true autoreconf -fi"

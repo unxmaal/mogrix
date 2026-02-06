@@ -8,7 +8,16 @@
 /* Ensure types are defined before including IRIX sys/stat.h */
 #include <sys/types.h>
 
-/* Include IRIX sys/stat.h */
+/* Force struct timespec to be defined when IRIX sys/stat.h includes sys/timespec.h.
+ * IRIX timespec.h defines "struct __timespec" unconditionally, but only maps
+ * __timespec -> timespec under _POSIX93 || _ABIAPI. This #define must come BEFORE
+ * #include_next so it's active when IRIX headers parse sys/timespec.h. */
+#ifndef __TIMESPEC_DEFINED
+#define __timespec timespec
+#define __TIMESPEC_DEFINED
+#endif
+
+/* Include IRIX sys/stat.h (which includes sys/timespec.h internally) */
 #include_next <sys/stat.h>
 
 #ifdef __cplusplus
@@ -54,7 +63,6 @@ extern int mknodat(int dirfd, const char *pathname, mode_t mode, dev_t dev);
  * Provided by compat library */
 #ifndef _DICL_HAVE_UTIMENSAT
 #define _DICL_HAVE_UTIMENSAT
-#include <time.h>
 extern int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
 #endif
 
@@ -62,7 +70,6 @@ extern int utimensat(int dirfd, const char *pathname, const struct timespec time
  * Provided by compat library */
 #ifndef _DICL_HAVE_FUTIMENS
 #define _DICL_HAVE_FUTIMENS
-#include <time.h>
 extern int futimens(int fd, const struct timespec times[2]);
 #endif
 
