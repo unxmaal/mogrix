@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
 **Last Updated**: 2026-02-06
-**Status**: Phase 3 in progress. gnupg2 2.4.4 fully working on IRIX (key gen, sign, verify). All crypto chain libraries installed. Next: gettext, coreutils, grep, sed, gawk.
+**Status**: Phase 3 in progress. gnupg2 2.4.4 fully working on IRIX (key gen, sign, verify). All crypto chain libraries installed. Spec validation, rpmlint, and source-level static analysis now integrated into mogrix. Next: gettext, coreutils, grep, sed, gawk.
 
 ---
 
@@ -89,6 +89,34 @@ The explicit_bzero compat uses `volatile unsigned char *` pointer (safe on IRIX)
 
 **Next packages**:
 - gettext, coreutils, grep, sed, gawk (user-facing tools)
+
+---
+
+## New Mogrix Features (This Session)
+
+### Spec Validation (`mogrix validate-spec`, integrated into `mogrix convert`)
+- Uses `specfile` (packit) library for structural validation of converted specs
+- Checks: required tags, required sections, balanced %if/%endif, empty sections
+- `mogrix convert` runs validation automatically (`--no-validate` to skip, `--strict` for warnings-as-errors)
+- Standalone: `mogrix validate-spec <file.spec>`
+- Files: `mogrix/validators/spec.py`, `tests/test_spec_validator.py`
+
+### RPM Linting (`mogrix lint`)
+- Wraps `rpmlint` with IRIX-specific config (`rpmlint.toml`)
+- Filters 40+ expected warning categories for cross-compiled IRIX packages
+- Reduces 108 packages from 604 errors/976 warnings to 2 errors/0 warnings
+- The 2 remaining errors are a real tdnf bug (`${prefix}//usr/sgug/lib32` double-slash in .pc files)
+- Usage: `mogrix lint ~/rpmbuild/RPMS/mips/`
+
+### Source-Level Static Analysis (integrated into `mogrix analyze` and `mogrix convert`)
+- Scans source tarballs for known IRIX-incompatible patterns using ripgrep
+- Patterns defined in YAML rules, not hardcoded:
+  - `rules/source_checks.yaml` — issue-level patterns (%zu, __thread, volatile fptr, epoll, etc.)
+  - `compat/catalog.yaml` `source_patterns` — function-level patterns (strdup, fopencookie, etc.)
+- `mogrix analyze` shows ALL findings (full triage for new packages)
+- `mogrix convert` cross-references with existing rules, shows only UNHANDLED findings
+- Adding a new check = adding a YAML entry, no code changes needed
+- Files: `mogrix/analyzers/source.py`, `rules/source_checks.yaml`, `tests/test_source_analyzer.py`
 
 ---
 
