@@ -49,13 +49,20 @@ def main():
     default=None,
     help="Path to rules directory",
 )
-def analyze(spec_or_srpm: str, rules_dir: str | None):
+@click.option(
+    "--no-source-scan",
+    is_flag=True,
+    help="Skip source code scanning for IRIX compatibility issues",
+)
+def analyze(spec_or_srpm: str, rules_dir: str | None, no_source_scan: bool):
     """Analyze a spec file or SRPM and show what rules would apply."""
     import shutil
+    import tempfile
 
     input_path = Path(spec_or_srpm)
     rules_path = Path(rules_dir) if rules_dir else RULES_DIR
     temp_dir = None
+    extracted_dir = None
 
     # Handle SRPM vs spec file
     if input_path.name.endswith(".src.rpm"):
@@ -63,7 +70,8 @@ def analyze(spec_or_srpm: str, rules_dir: str | None):
 
         console.print(f"[bold]Extracting:[/bold] {input_path.name}")
         extractor = SRPMExtractor(input_path)
-        temp_dir, spec_path = extractor.extract_spec()
+        extracted_dir, spec_path = extractor.extract_spec()
+        temp_dir = extracted_dir
         console.print(f"[bold]Found spec:[/bold] {spec_path.name}\n")
     else:
         spec_path = input_path
@@ -72,68 +80,73 @@ def analyze(spec_or_srpm: str, rules_dir: str | None):
         # Parse spec
         parser = SpecParser()
         spec = parser.parse(spec_path)
+
+        # Load rules and apply
+        loader = RuleLoader(rules_path)
+        engine = RuleEngine(loader)
+        result = engine.apply(spec)
+
+        # Display results
+        console.print(f"\n[bold]Package:[/bold] {spec.name} {spec.version}")
+        console.print(f"[bold]Summary:[/bold] {spec.summary}\n")
+
+        # BuildRequires table
+        table = Table(title="BuildRequires")
+        table.add_column("Original", style="cyan")
+        table.add_column("After Rules", style="green")
+
+        original_br = set(spec.buildrequires)
+        final_br = set(result.spec.buildrequires)
+
+        all_br = original_br | final_br
+        for br in sorted(all_br):
+            orig = br if br in original_br else ""
+            final = br if br in final_br else "[red]REMOVED[/red]"
+            if br not in original_br:
+                orig = "[yellow]ADDED[/yellow]"
+                final = br
+            table.add_row(orig, final)
+
+        console.print(table)
+
+        # Applied rules
+        if result.applied_rules:
+            console.print("\n[bold]Applied Rules:[/bold]")
+            for rule in result.applied_rules:
+                console.print(f"  - {rule}")
+
+        # Configure flags
+        if result.configure_disable:
+            console.print("\n[bold]Configure --disable flags:[/bold]")
+            for flag in result.configure_disable:
+                console.print(f"  --disable-{flag}")
+
+        # Header overlays
+        if result.header_overlays:
+            console.print("\n[bold]Header Overlays:[/bold]")
+            for overlay in result.header_overlays:
+                console.print(f"  - {overlay}")
+
+        # Compat functions
+        if result.compat_functions:
+            console.print("\n[bold]Compat Functions (injected):[/bold]")
+            for func in result.compat_functions:
+                console.print(f"  - {func}")
+
+        # AC_CV overrides
+        if result.ac_cv_overrides:
+            console.print("\n[bold]Autoconf Cache Overrides:[/bold]")
+            for var, val in result.ac_cv_overrides.items():
+                console.print(f"  {var}={val}")
+
+        # Source code scanning (for SRPMs with tarballs)
+        if not no_source_scan and extracted_dir:
+            _run_source_analysis(extracted_dir, show_handled=True)
+
     finally:
         # Clean up temp directory if we extracted an SRPM
         if temp_dir and temp_dir.exists():
             shutil.rmtree(temp_dir)
-
-    # Load rules and apply
-    loader = RuleLoader(rules_path)
-    engine = RuleEngine(loader)
-    result = engine.apply(spec)
-
-    # Display results
-    console.print(f"\n[bold]Package:[/bold] {spec.name} {spec.version}")
-    console.print(f"[bold]Summary:[/bold] {spec.summary}\n")
-
-    # BuildRequires table
-    table = Table(title="BuildRequires")
-    table.add_column("Original", style="cyan")
-    table.add_column("After Rules", style="green")
-
-    original_br = set(spec.buildrequires)
-    final_br = set(result.spec.buildrequires)
-
-    all_br = original_br | final_br
-    for br in sorted(all_br):
-        orig = br if br in original_br else ""
-        final = br if br in final_br else "[red]REMOVED[/red]"
-        if br not in original_br:
-            orig = "[yellow]ADDED[/yellow]"
-            final = br
-        table.add_row(orig, final)
-
-    console.print(table)
-
-    # Applied rules
-    if result.applied_rules:
-        console.print("\n[bold]Applied Rules:[/bold]")
-        for rule in result.applied_rules:
-            console.print(f"  - {rule}")
-
-    # Configure flags
-    if result.configure_disable:
-        console.print("\n[bold]Configure --disable flags:[/bold]")
-        for flag in result.configure_disable:
-            console.print(f"  --disable-{flag}")
-
-    # Header overlays
-    if result.header_overlays:
-        console.print("\n[bold]Header Overlays:[/bold]")
-        for overlay in result.header_overlays:
-            console.print(f"  - {overlay}")
-
-    # Compat functions
-    if result.compat_functions:
-        console.print("\n[bold]Compat Functions (injected):[/bold]")
-        for func in result.compat_functions:
-            console.print(f"  - {func}")
-
-    # AC_CV overrides
-    if result.ac_cv_overrides:
-        console.print("\n[bold]Autoconf Cache Overrides:[/bold]")
-        for var, val in result.ac_cv_overrides.items():
-            console.print(f"  {var}={val}")
 
 
 @main.command()
@@ -173,6 +186,11 @@ def analyze(spec_or_srpm: str, rules_dir: str | None):
     is_flag=True,
     help="Treat validation warnings as errors",
 )
+@click.option(
+    "--no-source-scan",
+    is_flag=True,
+    help="Skip source code scanning for IRIX compatibility issues",
+)
 def convert(
     spec_or_srpm: str,
     rules_dir: str | None,
@@ -181,6 +199,7 @@ def convert(
     output_dir: str | None,
     no_validate: bool,
     strict: bool,
+    no_source_scan: bool,
 ):
     """Convert a spec file or SRPM using rules.
 
@@ -200,6 +219,7 @@ def convert(
         _convert_srpm_full(
             input_path, rules_path, headers_path, compat_path, output_dir,
             validate=not no_validate, strict=strict,
+            source_scan=not no_source_scan,
         )
     else:
         _convert_spec_only(
@@ -251,6 +271,7 @@ def _convert_srpm_full(
     output_dir: str | None,
     validate: bool = True,
     strict: bool = False,
+    source_scan: bool = True,
 ):
     """Extract SRPM, convert spec, copy sources, and repackage."""
     import shutil
@@ -344,6 +365,13 @@ def _convert_srpm_full(
         # Validate converted spec
         if validate:
             _validate_spec_content(content, spec_path.name, strict)
+
+        # Source scan: check for unaddressed IRIX issues
+        if source_scan:
+            _run_source_analysis(
+                extracted_dir,
+                handled_compat_functions=result.compat_functions,
+            )
 
         # Write converted spec (overwriting the original)
         converted_spec_path = out_path / spec_path.name
@@ -509,6 +537,106 @@ def _validate_spec_content(content: str, filename: str, strict: bool) -> None:
         severity = "errors" if result.errors else "warnings (strict mode)"
         console.print(f"\n[bold red]✗ Spec validation failed: {severity}[/bold red]")
         raise SystemExit(1)
+
+
+def _run_source_analysis(
+    extracted_dir: Path,
+    handled_compat_functions: list[str] | None = None,
+    handled_rules: dict | None = None,
+    show_handled: bool = False,
+) -> None:
+    """Scan source tarballs in an extracted SRPM directory for IRIX issues.
+
+    Args:
+        extracted_dir: Directory containing extracted SRPM files.
+        handled_compat_functions: Compat functions already in rules (convert mode).
+        handled_rules: Full package rules dict for cross-referencing.
+        show_handled: If True, show handled findings (analyze mode).
+    """
+    import shutil
+    import tempfile
+
+    from mogrix.analyzers.source import SourceAnalyzer
+
+    # Check for ripgrep
+    if shutil.which("rg") is None:
+        console.print("[dim]Skipping source scan: ripgrep (rg) not found[/dim]")
+        return
+
+    # Find source tarballs
+    tarball_exts = (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")
+    tarballs = [
+        f for f in extracted_dir.iterdir()
+        if f.is_file() and any(f.name.lower().endswith(ext) for ext in tarball_exts)
+    ]
+
+    if not tarballs:
+        return
+
+    analyzer = SourceAnalyzer()
+    all_findings = []
+
+    for tarball in tarballs:
+        scan_dir = Path(tempfile.mkdtemp(prefix="mogrix-scan-"))
+        try:
+            result = analyzer.scan_tarball(
+                tarball,
+                scan_dir,
+                handled_compat_functions=handled_compat_functions,
+                handled_rules=handled_rules,
+            )
+            all_findings.extend(result.findings)
+        finally:
+            shutil.rmtree(scan_dir, ignore_errors=True)
+
+    if not all_findings:
+        console.print("\n[bold green]Source scan:[/bold green] No IRIX compatibility issues found")
+        return
+
+    unhandled = [f for f in all_findings if not f.handled]
+    handled = [f for f in all_findings if f.handled]
+
+    # Display unhandled findings grouped by severity
+    if unhandled:
+        console.print(f"\n[bold]Source Scan: {len(unhandled)} finding(s)[/bold]")
+
+        for severity, style in [("error", "red"), ("warning", "yellow"), ("info", "cyan")]:
+            sev_findings = [f for f in unhandled if f.severity == severity]
+            if not sev_findings:
+                continue
+
+            console.print(f"\n  [{style}]{severity.upper()}S ({len(sev_findings)}):[/{style}]")
+
+            # Group by check_id for cleaner output
+            by_check: dict[str, list] = {}
+            for f in sev_findings:
+                by_check.setdefault(f.check_id, []).append(f)
+
+            for check_id, findings in by_check.items():
+                first = findings[0]
+                console.print(f"    [{style}]{first.message}[/{style}]")
+                if first.fix:
+                    console.print(f"    [dim]Fix: {first.fix}[/dim]")
+                for f in findings[:5]:  # Show up to 5 locations
+                    console.print(f"      {f.file}:{f.line}")
+                if len(findings) > 5:
+                    console.print(f"      [dim]...and {len(findings) - 5} more[/dim]")
+
+    # Display handled findings (analyze mode shows these for reference)
+    if show_handled and handled:
+        console.print(f"\n  [green]HANDLED ({len(handled)}):[/green]")
+        by_check: dict[str, list] = {}
+        for f in handled:
+            by_check.setdefault(f.check_id, []).append(f)
+        for check_id, findings in by_check.items():
+            first = findings[0]
+            console.print(f"    [dim]{first.message} — {first.handled_by}[/dim]")
+
+    if not unhandled:
+        console.print(
+            f"\n[bold green]Source scan:[/bold green] "
+            f"{len(handled)} finding(s), all handled by existing rules"
+        )
 
 
 @main.command("validate-spec")

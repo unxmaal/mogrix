@@ -1,0 +1,109 @@
+# IRIX Source Code Compatibility Checks
+#
+# These patterns detect known IRIX-incompatible code in source tarballs.
+# Used by `mogrix analyze` (full triage) and `mogrix convert` (rule-gap warnings).
+#
+# Adding a new pattern: just add a YAML entry below. No code changes needed.
+#
+# Fields:
+#   id:        Unique identifier (used for cross-referencing and suppression)
+#   severity:  error | warning | info
+#   pattern:   Ripgrep-compatible regex
+#   glob:      Comma-separated file globs to search (default: "*.c,*.h")
+#   message:   Human-readable description of the problem
+#   fix:       Suggested fix strategy
+#   reference: Optional link to docs
+#   handled_by: Optional list of rule fields that address this issue.
+#              If a package's rules contain any of these, the finding is
+#              marked "handled" during convert.
+
+checks:
+  - id: printf-zu
+    severity: error
+    pattern: '"[^"]*%z[udx]'
+    glob: "*.c,*.h"
+    message: "IRIX libc doesn't support %zu/%zd/%zx — use %u/%d/%x (size_t is 4 bytes on n32)"
+    fix: "Patch the format string or add a SIZE_FMT_SPECIFIER macro"
+    reference: "MEMORY.md: %zu format specifier"
+
+  - id: thread-local-storage
+    severity: error
+    pattern: '\b__thread\b'
+    glob: "*.c,*.h"
+    message: "IRIX rld has no __thread TLS support"
+    fix: "Remove __thread, use pthread_key_t or accept single-threaded behavior"
+
+  - id: volatile-fptr-initializer
+    severity: warning
+    pattern: 'static\s+.*\(\s*\*\s*volatile\s+\w+\)'
+    glob: "*.c,*.h"
+    message: "Volatile function pointer static initializers crash on IRIX rld"
+    fix: "Provide explicit_bzero or use direct function calls instead of function pointers"
+    handled_by:
+      - compat_functions:explicit_bzero
+
+  - id: fopencookie-usage
+    severity: error
+    pattern: '\bfopencookie\s*\('
+    glob: "*.c,*.h"
+    message: "fopencookie crashes on IRIX — use funopen instead"
+    fix: "Add inject_compat_functions: [funopen] and patch source to use funopen API"
+    handled_by:
+      - compat_functions:funopen
+
+  - id: epoll-usage
+    severity: info
+    pattern: '\bepoll_create\b|\bepoll_ctl\b|\bepoll_wait\b'
+    glob: "*.c,*.h"
+    message: "IRIX has no epoll — ensure it's disabled at configure time"
+    fix: "Add configure_disable: [epoll] or ac_cv_overrides: ac_cv_func_epoll_create: 'no'"
+
+  - id: inotify-usage
+    severity: info
+    pattern: '\binotify_init\b|\binotify_add_watch\b'
+    glob: "*.c,*.h"
+    message: "IRIX has no inotify — ensure it's disabled at configure time"
+    fix: "Add configure_disable: [inotify] or ac_cv_overrides as appropriate"
+
+  - id: getrandom-usage
+    severity: warning
+    pattern: '\bgetrandom\s*\(|#include\s*<sys/random\.h>'
+    glob: "*.c,*.h"
+    message: "IRIX lacks getrandom/sys/random.h — may conflict with dicl-clang-compat header"
+    fix: "Add ac_cv_overrides: ac_cv_header_sys_random_h: 'no' or ac_cv_func_getrandom: 'no'"
+
+  - id: getauxval-usage
+    severity: warning
+    pattern: '\bgetauxval\s*\('
+    glob: "*.c,*.h"
+    message: "IRIX has no getauxval (no ELF auxiliary vector)"
+    fix: "Add ac_cv_overrides: ac_cv_func_getauxval: 'no'"
+
+  - id: gnu-ld-linker-script
+    severity: warning
+    pattern: '^INPUT\('
+    glob: "*.so,*.so.*"
+    message: "GNU ld linker script — IRIX rld can only load ELF .so files"
+    fix: "Replace INPUT() linker scripts with symlinks in install_cleanup"
+    reference: "MEMORY.md: GNU ld Linker Scripts on IRIX"
+
+  - id: clock-gettime
+    severity: info
+    pattern: '\bclock_gettime\b|\bclock_nanosleep\b'
+    glob: "*.c,*.h"
+    message: "IRIX clock_gettime is in libc but may need -lrt link on some configs"
+    fix: "Usually works — check if configure finds it correctly"
+
+  - id: pipe2-usage
+    severity: info
+    pattern: '\bpipe2\s*\('
+    glob: "*.c,*.h"
+    message: "IRIX lacks pipe2() — configure should detect this, but verify"
+    fix: "Ensure configure tests for pipe2; if not, add ac_cv_func_pipe2: 'no'"
+
+  - id: accept4-usage
+    severity: info
+    pattern: '\baccept4\s*\('
+    glob: "*.c,*.h"
+    message: "IRIX lacks accept4() — configure should detect this"
+    fix: "Ensure configure tests for accept4; if not, add ac_cv_func_accept4: 'no'"
