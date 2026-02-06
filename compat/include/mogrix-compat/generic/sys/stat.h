@@ -8,7 +8,15 @@
 #ifndef _MOGRIX_COMPAT_SYS_STAT_H
 #define _MOGRIX_COMPAT_SYS_STAT_H
 
-/* Include the real IRIX sys/stat.h */
+/* Force struct timespec mapping before IRIX headers parse sys/timespec.h.
+ * dicl-clang-compat/sys/stat.h also sets this, but in case we're included
+ * without dicl-clang-compat in the include path, set it here too. */
+#ifndef __TIMESPEC_DEFINED
+#define __timespec timespec
+#define __TIMESPEC_DEFINED
+#endif
+
+/* Include the real IRIX sys/stat.h (goes through dicl-clang-compat if present) */
 #include_next <sys/stat.h>
 
 #ifdef __cplusplus
@@ -41,14 +49,10 @@ int mknodat(int dirfd, const char *pathname, mode_t mode, dev_t dev);
 int mkfifoat(int dirfd, const char *pathname, mode_t mode);
 
 /*
- * utimensat - change file timestamps relative to directory fd
+ * utimensat/futimens - nanosecond timestamp functions
+ * struct timespec is defined via the __timespec mapping above.
  */
-struct timespec;
 int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
-
-/*
- * futimens - change file timestamps via fd
- */
 int futimens(int fd, const struct timespec times[2]);
 
 #ifdef __cplusplus

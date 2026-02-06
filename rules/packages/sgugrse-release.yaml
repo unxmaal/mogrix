@@ -40,6 +40,8 @@ rules:
         Provides:       gawk
         Provides:       diffutils
         Provides:       coreutils
+        Provides:       filesystem = 3.18
+        Provides:       filesystem(x86-64) = 3.18
 
     # Remove swidtag entries (Fedora-specific, macro not defined on our system)
     - pattern: "mkdir -p %{buildroot}%{_swidtagdir}\n"

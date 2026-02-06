@@ -6,7 +6,7 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 **Phase 3: USER-FACING PACKAGES — IN PROGRESS**
 
-Phase 1 (bootstrap: 14 packages) and Phase 2 (build tools: 6 packages) are complete. Phase 3 in progress: pkgconf installed and working on IRIX, crypto chain libraries (libgpg-error, libgcrypt, libassuan, libksba, npth) built and staged. gnupg2 next.
+Phase 1 (bootstrap: 14 packages) and Phase 2 (build tools: 6 packages) are complete. Phase 3a complete: pkgconf, readline, full crypto chain (libgpg-error → libgcrypt → libassuan → libksba → npth → gnupg2) all installed and verified on IRIX. Phase 3b next: gettext, coreutils, grep, sed, gawk.
 
 ---
 
@@ -114,15 +114,17 @@ With Phase 2 complete, IRIX has a full autotools chain.
 | ncurses 6.4 | ✅ Rebuilt | Linker script fix (symlinks not INPUT()) |
 | readline 8.2 | ✅ Built | Staged in sysroot, uses system ncurses |
 | pkgconf 2.1.0 | ✅ Installed on IRIX | Static build, %zu→%u fix |
-| libgpg-error 1.48 | ✅ Built | Staged, needs IRIX install test |
-| libgcrypt 1.10.3 | ✅ Built | Staged, FIPS removed, ASM disabled |
-| libassuan 2.5.7 | ✅ Built | Staged, unsetenv/SCM_RIGHTS fixes |
-| libksba 1.6.6 | ✅ Built | Staged, clean build |
-| npth 1.7 | ✅ Built | Staged, POSIX1C pthread_atfork fix |
-| gnupg2 | Not started | Needs crypto libs installed first |
-| coreutils | Not started | - |
-| gettext | Not started | - |
-| grep, sed, gawk | Not started | - |
+| libgpg-error 1.48 | ✅ Installed on IRIX | lock-obj-pub generated on IRIX |
+| libgcrypt 1.10.3 | ✅ Installed on IRIX | FIPS removed, ASM disabled |
+| libassuan 2.5.7 | ✅ Installed on IRIX | unsetenv/SCM_RIGHTS fixes |
+| libksba 1.6.6 | ✅ Installed on IRIX | Clean build |
+| npth 1.7 | ✅ Installed on IRIX | POSIX1C pthread_atfork fix |
+| gnupg2 2.4.4 | ✅ Installed on IRIX | Key gen + sign + verify working |
+| gettext | Not started | Needed for i18n in coreutils/grep/sed |
+| coreutils | Not started | Core user tools |
+| grep | Not started | - |
+| sed | Not started | - |
+| gawk | Not started | - |
 
 ### Long-Term: Modern Browser
 
@@ -136,13 +138,17 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 |---------|--------|
 | Spec file parsing, YAML rule loading, rule engine | Done |
 | Header overlay system (16 generic headers) | Done |
-| Compat source injection (25+ functions) | Done |
+| Compat source injection (30+ functions) | Done |
 | SRPM extraction and repackaging | Done |
-| CLI (analyze, convert, build, fetch, stage) | Done |
+| CLI (analyze, convert, build, fetch, stage, lint, validate-spec) | Done |
 | Dependency resolution + Fedora SRPM fetching | Done |
 | Shared library cross-compilation (GNU ld) | Done |
 | Dynamic executables (LLD 18 + /lib32/rld) | Done |
-| 107 tests, all passing | Done |
+| Spec validation (specfile library, integrated into convert) | Done |
+| RPM linting (rpmlint with IRIX-specific config) | Done |
+| Source-level static analysis (ripgrep, rules-integrated) | Done |
+| 76 package rules | Done |
+| 127 tests, all passing | Done |
 
 ---
 
@@ -160,6 +166,7 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | Symlinks not linker scripts | IRIX rld can't load GNU ld scripts (`INPUT(-lfoo)`) |
 | System libs over bundled | Full sysroot available; don't copy SGUG-RSE's bootstrap shortcuts |
 | `%u` not `%zu` for size_t | IRIX libc is pre-C99; `%zu` corrupts varargs → SIGSEGV |
+| `explicit_bzero` for wipememory | Volatile fptr static initializers crash on IRIX rld |
 
 ---
 

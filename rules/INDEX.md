@@ -76,15 +76,35 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | `-z separate-code` needed for .so | Without it, GNU ld produces single-segment .so that crashes rld | methods/linker-selection.md |
 | brk() heap limited to 176MB | libpthread at 0x0C080000 blocks heap growth | methods/irix-address-space.md |
 | mmap-based malloc bypasses limit | dlmalloc in compat uses mmap, 1.2GB available | compat/malloc/dlmalloc.c |
+| Volatile fptr initializers crash | `static volatile fptr = memset;` relocation fails on rld | compat/string/explicit_bzero.c |
+| Source analysis is rules-driven | Patterns in source_checks.yaml + catalog.yaml source_patterns | rules/source_checks.yaml |
 
 ## File Locations
 
 | Category | Path | Contents |
 |----------|------|----------|
 | Generic rules | rules/generic.yaml | Applied to ALL packages |
-| Package rules | rules/packages/*.yaml | Per-package overrides |
-| Compat functions | compat/catalog.yaml | Function registry |
-| Compat sources | compat/runtime/, compat/dicl/, compat/stdio/ | Implementation files |
+| Package rules | rules/packages/*.yaml | Per-package overrides (76 packages) |
+| Source checks | rules/source_checks.yaml | IRIX source pattern definitions |
+| Compat functions | compat/catalog.yaml | Function registry + source patterns |
+| Compat sources | compat/string/, compat/stdio/, compat/stdlib/, compat/dicl/, compat/malloc/ | Implementation files |
 | Compat headers | compat/include/mogrix-compat/generic/ | Header wrappers |
 | Patches | patches/packages/*/ | Source patches by package |
+| rpmlint config | rpmlint.toml | IRIX-specific rpmlint filters |
+| Source analyzer | mogrix/analyzers/source.py | Ripgrep-based source scanner |
+| Spec validator | mogrix/validators/spec.py | Specfile structural validator |
 | Methods | rules/methods/*.md | Process documentation |
+
+## Source Analysis
+
+`mogrix analyze` and `mogrix convert` scan source tarballs for IRIX-incompatible patterns.
+
+**Adding a new check:** Edit `rules/source_checks.yaml` or add `source_patterns` to functions in `compat/catalog.yaml`. No code changes needed.
+
+**Two pattern sources:**
+1. `rules/source_checks.yaml` — Issue-level patterns (need patches/overrides): `%zu`, `__thread`, volatile fptrs, epoll, inotify, getrandom, etc.
+2. `compat/catalog.yaml` `source_patterns` — Function-level patterns (need compat injection): strdup, fopencookie, getline, asprintf, etc.
+
+**Behavior differs by command:**
+- `mogrix analyze` — Shows ALL findings (full triage for new packages)
+- `mogrix convert` — Cross-references with rules, shows only UNHANDLED findings

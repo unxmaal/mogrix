@@ -16,7 +16,11 @@ Mogrix is a complete IRIX cross-compilation system that transforms Fedora SRPMs 
 
 - **SRPM Conversion Engine** - YAML-based rules transform spec files for IRIX compatibility: drops unavailable dependencies, injects compat functions, applies platform-specific patches, and configures autoconf/cmake for cross-compilation.
 
-- **Compat Library** - Drop-in implementations of missing POSIX/C99 functions (openat family, posix_spawn, vasprintf, funopen, etc.) automatically injected into packages that need them.
+- **Compat Library** - Drop-in implementations of 30+ missing POSIX/C99 functions (openat family, posix_spawn, vasprintf, funopen, dlmalloc, explicit_bzero, etc.) automatically injected into packages that need them.
+
+- **Source Analysis** - Scans source tarballs for known IRIX-incompatible patterns (`%zu` format strings, `__thread` TLS, volatile function pointers, epoll/inotify usage) using ripgrep. Patterns defined in YAML rules — adding a new check requires no code changes.
+
+- **Validation** - Spec validation (specfile library) and RPM linting (rpmlint with IRIX-specific config) integrated into the conversion pipeline.
 
 - **Staging System** - Cross-compiled packages are staged to provide headers and libraries for dependent builds, enabling complex dependency chains like the 13-package tdnf stack.
 
@@ -304,8 +308,10 @@ file /tmp/test  # Should show: ELF 32-bit MSB executable, MIPS
 | `mogrix convert <srpm>` | Convert SRPM (applies IRIX rules, repackages) |
 | `mogrix build <srpm> --cross` | Cross-compile converted SRPM for IRIX |
 | `mogrix stage <rpms...>` | Stage cross-compiled RPMs for dependency resolution |
-| `mogrix analyze <srpm>` | Analyze and show what rules would apply |
+| `mogrix analyze <srpm>` | Analyze rules + scan source for IRIX issues |
 | `mogrix batch <dir> <out>` | Convert multiple SRPMs in batch |
+| `mogrix lint <rpms...>` | Lint RPMs/specs with IRIX-specific rpmlint config |
+| `mogrix validate-spec <spec>` | Validate spec file structure |
 | `mogrix list-rules` | List available package rules |
 | `mogrix validate-rules` | Validate all rule files |
 
@@ -429,9 +435,19 @@ rules:
 | `utimensat` | Set timestamps relative to directory fd |
 | `futimens` | Set timestamps via fd |
 | `funopen` | BSD-style cookie I/O (for transparent decompression) |
+| `explicit_bzero` | Zero memory that won't be optimized away |
+| `secure_getenv` | Secure environment variable access |
+| `strerror_r` | Thread-safe strerror |
+| `strcasestr` | Case-insensitive substring search |
+| `strsep` | Token extraction from strings |
+| `setenv` / `unsetenv` | Environment variable manipulation |
 | `qsort_r` | Reentrant quicksort |
 | `timegm` | Inverse of gmtime |
 | `mkdtemp` | Create temporary directory |
+| `dlmalloc` | mmap-based malloc (bypasses IRIX brk heap limit) |
+| `strtof` | String to float conversion |
+| `getopt_long` | GNU long option parsing |
+| `sqlite3_stub` | Stub sqlite3 for optional features |
 
 ## IRIX Bootstrap
 
@@ -474,25 +490,24 @@ mogrix/
 │   ├── emitter/        # Spec and SRPM output
 │   ├── headers/        # Header overlay management
 │   ├── compat/         # Compat source injection
+│   ├── analyzers/      # Source-level static analysis
+│   ├── validators/     # Spec file validation
 │   └── patches/        # Patch catalog
 ├── rules/              # Rule definitions
-│   ├── generic.yaml    # Universal rules
-│   └── packages/       # Package-specific rules
+│   ├── generic.yaml    # Universal rules (applied to ALL packages)
+│   ├── packages/       # Package-specific rules (76 packages)
+│   └── source_checks.yaml  # IRIX source pattern definitions
 ├── headers/            # Header overlay files
 │   └── generic/        # Clang/IRIX compat headers
-├── compat/             # Compat library (libcompat.a)
+├── compat/             # Compat library
+│   ├── catalog.yaml    # Function registry + source patterns
 │   ├── include/        # Compat headers (mogrix-compat/)
 │   │   └── mogrix-compat/
 │   │       └── generic/  # stdlib.h, string.h, fcntl.h, spawn.h, etc.
-│   └── runtime/        # Compat implementations
-│       ├── strdup.c, strndup.c, stpcpy.c
-│       ├── openat.c, fstatat.c, mkdirat.c, etc.
-│       └── spawn.c     # posix_spawn implementation
+│   └── (source dirs)   # string/, stdio/, stdlib/, dicl/, malloc/, etc.
+├── rpmlint.toml        # IRIX-specific rpmlint configuration
 ├── scripts/            # Helper scripts
-│   ├── bootstrap-tarball.sh   # Create IRIX bootstrap tarball
-│   ├── irix-chroot-testing.sh # Safe chroot testing on IRIX
-│   └── irix-bootstrap.sh      # Real IRIX installation
-├── tests/              # Test suite
+├── tests/              # Test suite (127 tests)
 ├── plan.md             # Architecture documentation
 └── HANDOFF.md          # Session handoff notes
 ```
@@ -518,7 +533,7 @@ make clean
 
 ## Package Rules Status
 
-13 packages validated for the tdnf dependency chain:
+28 packages built and verified across 3 phases:
 
 | # | Package | Version | Source | Description |
 |---|---------|---------|--------|-------------|
@@ -546,6 +561,9 @@ Additional supporting package:
 - **O_NOFOLLOW** - IRIX doesn't support this flag; stripped in openat-compat.c.
 - **vsnprintf(NULL, 0)** - Returns -1 on IRIX (not buffer size as in C99). Packages using this pattern need iterative vasprintf.
 - **Thread-local storage** - IRIX rld doesn't support `__tls_get_addr`. Packages using `__thread` need patching.
+- **`%zu` format specifier** - IRIX libc is pre-C99; `%zu` in printf-family calls corrupts varargs → SIGSEGV. Use `%u` instead.
+- **Volatile function pointer initializers** - `static volatile fptr = memset;` crashes on IRIX rld due to relocation issues. Use `explicit_bzero` compat.
+- **GNU ld linker scripts** - IRIX rld can only load ELF .so files. `INPUT(-lfoo)` text files crash rld. Replace with symlinks.
 - **Long tar filenames** - IRIX tar corrupts GNU long filenames. Use `createrepo_c --simple-md-filenames`.
 
 **Build Environment:**

@@ -168,6 +168,20 @@ class RuleEngine:
             result.skip_check = True
             result.applied_rules.append("skip_check: true")
 
+        # AC_CV overrides for autoconf (generic)
+        if "ac_cv_overrides" in rules:
+            result.ac_cv_overrides.update(rules["ac_cv_overrides"])
+            result.applied_rules.append(
+                f"ac_cv_overrides: {list(rules['ac_cv_overrides'].keys())}"
+            )
+
+        # Install cleanup commands (generic)
+        if "install_cleanup" in rules:
+            result.install_cleanup.extend(rules["install_cleanup"])
+            result.applied_rules.append(
+                f"install_cleanup: {len(rules['install_cleanup'])} commands"
+            )
+
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""
         rules = pkg_rules.get("rules", pkg_rules)
