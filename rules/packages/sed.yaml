@@ -7,6 +7,12 @@
 package: sed
 classes: [nls-disabled]
 
+smoke_test:
+  - command: "echo foo | /usr/sgug/bin/sed s/foo/bar/"
+    expect: "bar"
+  - command: "/usr/sgug/bin/sed --version"
+    expect: "4.9"
+
 rules:
   # Compat functions needed for IRIX
   # strdup: dlmalloc/libc allocator mismatch (15+ locations in lib/)

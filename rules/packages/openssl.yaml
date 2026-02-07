@@ -22,11 +22,22 @@ rules:
     - lksctp-tools-devel
     - systemtap-sdt-devel
 
+  # Drop Linux-specific runtime deps (not available on IRIX)
+  drop_requires:
+    - ca-certificates
+    - crypto-policies
+
   # Compat functions needed for IRIX
   inject_compat_functions:
     - secure_getenv
     - strerror_r
     - _rld_new_interface
+
+  # Declare strerror_r in OpenSSL's internal portability header.
+  # dicl-clang-compat/string.h intentionally omits this (gnulib conflict).
+  # OpenSSL doesn't use gnulib so we inject the declaration directly.
+  prep_commands:
+    - "sed -i '/internal\\/numbers.h/a\\extern char *strerror_r(int errnum, char *buf, size_t buflen);' include/internal/e_os.h"
 
   # Export CC for cross-compilation (OpenSSL's Configure needs these)
   export_vars:
@@ -125,6 +136,10 @@ rules:
   # Fix openssl.cnf paths for IRIX - must be rooted at /usr/sgug, not /etc
   # Also disable Fedora crypto-policies and ssl_module (not available on IRIX)
   install_cleanup:
+    # clang defines __mips64 for n32 ABI (64-bit ISA, 32-bit pointers).
+    # Fedora's multiarch configuration.h checks __mips64 before __mips,
+    # so we need configuration-mips64.h pointing to the n32 config.
+    - ln -sf configuration-mips.h $RPM_BUILD_ROOT%{_includedir}/openssl/configuration-mips64.h
     - sed -i 's|^ssl_conf = ssl_module|# ssl_conf = ssl_module  # Disabled for IRIX|' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
     - sed -i 's|^\.include = /etc/crypto-policies|# .include = /etc/crypto-policies  # Disabled for IRIX|' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
     - sed -i 's|= /etc/pki/|= /usr/sgug/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf

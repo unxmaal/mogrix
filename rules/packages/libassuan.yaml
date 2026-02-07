@@ -18,10 +18,14 @@ rules:
   skip_check: true
 
   # Remove static library and .la files
+  # Symlink assuan.h from libassuan2/ subdirectory to top-level include dir
+  # so cross-compiled packages can find it (libassuan-config returns the
+  # subdirectory path which doesn't work through the sysroot)
   install_cleanup:
     - "rm -f %{buildroot}%{_libdir}/*.a"
     - "rm -f %{buildroot}%{_libdir}/*.la"
     - "rm -rf %{buildroot}%{_infodir}"
+    - "ln -sf libassuan2/assuan.h %{buildroot}%{_includedir}/assuan.h"
 
   # Fix missing declarations for unsetenv/clearenv when HAVE_SETENV is not defined.
   # The macros redirect unsetenv→_assuan_unsetenv but only setenv gets a prototype.

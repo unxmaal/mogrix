@@ -347,7 +347,7 @@ cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
                 patch_comment = "# Apply mogrix patches"
                 content = re.sub(
                     r"^(%setup\s+.*)$",
-                    f"\\1\n\n{patch_comment}\n{patch_prep}",
+                    lambda m: f"{m.group(0)}\n\n{patch_comment}\n{patch_prep}",
                     content,
                     count=1,
                     flags=re.MULTILINE,
@@ -359,7 +359,7 @@ cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
             prep_comment = "# Cross-compilation prep fixes (injected by mogrix)"
             content = re.sub(
                 r"^(%(auto)?setup\s+.*)$",
-                f"\\1\n\n{prep_comment}\n{prep_cmds}",
+                lambda m: f"{m.group(0)}\n\n{prep_comment}\n{prep_cmds}",
                 content,
                 count=1,
                 flags=re.MULTILINE,
@@ -489,7 +489,7 @@ cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
             for pattern in patterns:
                 new_content = re.sub(
                     pattern,
-                    f"\\1\\2\n\n{cleanup_comment}\n{cleanup_cmds}",
+                    lambda m: f"{m.group(1)}{m.group(2)}\n\n{cleanup_comment}\n{cleanup_cmds}",
                     content,
                     count=1,
                     flags=re.MULTILINE,
@@ -502,7 +502,7 @@ cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
             if not inserted:
                 content = re.sub(
                     r"(^%install\s*\n.*?)(\n^%(?:files|pre|post|preun|postun|changelog|package|check)\b)",
-                    f"\\1\n\n{cleanup_comment}\n{cleanup_cmds}\\2",
+                    lambda m: f"{m.group(1)}\n\n{cleanup_comment}\n{cleanup_cmds}{m.group(2)}",
                     content,
                     count=1,
                     flags=re.MULTILINE | re.DOTALL,

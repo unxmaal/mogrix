@@ -116,12 +116,15 @@ def test_convert_handles_srpm_extension(mock_srpm_extractor, sample_spec_content
         fake_srpm = temp_dir / "test-package-1.0.0-1.src.rpm"
         fake_srpm.write_bytes(b"fake rpm content")
 
-        # Mock the SRPMExtractor at its source module
-        with patch("mogrix.parser.srpm.SRPMExtractor") as mock_class:
+        # Mock the SRPMExtractor and staging check
+        with patch("mogrix.parser.srpm.SRPMExtractor") as mock_class, \
+             patch("mogrix.cli.ensure_staging_ready") as mock_staging:
             mock_instance = mock_srpm_extractor(temp_dir)
             mock_class.return_value = mock_instance
+            mock_staging.return_value = MagicMock(is_ready=True, created_resources=[], errors=[])
 
-            result = runner.invoke(main, ["convert", str(fake_srpm)])
+            output_dir = temp_dir / "output"
+            result = runner.invoke(main, ["convert", str(fake_srpm), "-o", str(output_dir)])
 
             # Should have called SRPMExtractor
             mock_class.assert_called_once()
@@ -236,11 +239,13 @@ rules:
     - strndup
 """)
 
-        # Mock SRPMExtractor to return our extracted directory
-        with patch("mogrix.parser.srpm.SRPMExtractor") as mock_extractor_class:
+        # Mock SRPMExtractor and staging check
+        with patch("mogrix.parser.srpm.SRPMExtractor") as mock_extractor_class, \
+             patch("mogrix.cli.ensure_staging_ready") as mock_staging:
             mock_extractor = MagicMock()
             mock_extractor.extract_spec.return_value = (extracted_dir, spec_path)
             mock_extractor_class.return_value = mock_extractor
+            mock_staging.return_value = MagicMock(is_ready=True, created_resources=[], errors=[])
 
             # Mock SRPMEmitter to avoid actually building
             with patch("mogrix.emitter.srpm.SRPMEmitter") as mock_emitter_class:

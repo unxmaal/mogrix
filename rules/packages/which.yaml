@@ -1,0 +1,14 @@
+# which - Show full path of (shell) commands
+# FC40: which-2.21-41.fc40
+# Analysis: 3 infos (getopt_long only)
+# Simple autoconf-based build
+
+package: which
+
+smoke_test:
+  - command: "/usr/sgug/bin/which bash"
+    expect: "/usr/sgug/bin/bash"
+
+rules:
+  inject_compat_functions:
+    - getopt_long

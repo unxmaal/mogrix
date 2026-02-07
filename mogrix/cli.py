@@ -24,6 +24,10 @@ PATCHES_DIR = Path(__file__).parent.parent / "patches"
 CROSS_DIR = Path(__file__).parent.parent / "cross"
 RPMLINT_CONFIG = Path(__file__).parent.parent / "rpmlint.toml"
 
+# Default user directories for inputs/outputs
+MOGRIX_INPUTS = Path.home() / "mogrix_inputs"
+MOGRIX_OUTPUTS = Path.home() / "mogrix_outputs"
+
 
 @click.group()
 @click.version_option()
@@ -32,11 +36,11 @@ def main():
 
     \b
     Workflow:
-      1. mogrix setup-cross          # One-time setup
-      2. mogrix fetch <package>      # Download SRPM from Fedora
-      3. mogrix convert <srpm>       # Apply IRIX rules
-      4. mogrix build <srpm> --cross # Cross-compile for IRIX
-      5. mogrix stage <rpms>         # Stage for dependent builds
+      1. mogrix setup-cross                    # One-time setup
+      2. mogrix fetch <package> -y             # → ~/mogrix_inputs/SRPMS/
+      3. mogrix convert <srpm>                 # → ~/mogrix_outputs/SRPMS/
+      4. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
+      5. mogrix stage <rpms>                   # → /opt/sgug-staging/
     """
     pass
 
@@ -282,8 +286,8 @@ def _convert_srpm_full(
     if output_dir:
         out_path = Path(output_dir)
     else:
-        # Default: create directory next to input SRPM
-        out_path = srpm_path.parent / f"{srpm_path.stem}-converted"
+        # Default: ~/mogrix_outputs/SRPMS/<name>-converted
+        out_path = MOGRIX_OUTPUTS / "SRPMS" / f"{srpm_path.stem}-converted"
 
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -702,8 +706,8 @@ def lint(targets: tuple[str, ...], config: str | None):
     TARGETS are RPM files, spec files, or directories containing RPMs.
 
     Examples:
-        mogrix lint ~/rpmbuild/RPMS/mips/bash-5.2.26-3.mips.rpm
-        mogrix lint ~/rpmbuild/RPMS/mips/
+        mogrix lint ~/mogrix_outputs/RPMS/bash-5.2.26-3.mips.rpm
+        mogrix lint ~/mogrix_outputs/RPMS/
         mogrix lint my-package.spec
     """
     import shutil
@@ -883,22 +887,30 @@ CROSS_BINDIR = Path("/opt/cross/bin")
     is_flag=True,
     help="Show what would be done without building",
 )
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Directory to copy built RPMs (default: ~/mogrix_outputs/RPMS/)",
+)
 def build(
     srpm: str,
     rpmbuild_dir: str | None,
     cross: bool,
     macros: str | None,
     dry_run: bool,
+    output_dir: str | None,
 ):
     """Build a converted SRPM.
 
     SRPM is a .src.rpm file to build (typically from mogrix convert).
 
     Workflow:
-        1. mogrix fetch popt
-        2. mogrix convert popt-*.src.rpm
+        1. mogrix fetch popt -y
+        2. mogrix convert ~/mogrix_inputs/SRPMS/popt-*.src.rpm
         3. mogrix build <converted>.src.rpm --cross
-        4. mogrix stage ~/rpmbuild/RPMS/mips/*.rpm
+        4. mogrix stage ~/mogrix_outputs/RPMS/popt*.rpm
 
     Use --cross to enable IRIX cross-compilation, which:
       - Uses the cross-toolchain at /opt/cross/bin/
@@ -1018,23 +1030,27 @@ def build(
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode == 0:
+            import shutil
+
             console.print("\n[bold green]✓ Build succeeded[/bold green]")
-            # Show where RPMs were created
+            # Collect built RPMs
             rpms_dir = rpmbuild_path / "RPMS"
-            if rpms_dir.exists():
-                rpms = list(rpms_dir.glob("**/*.rpm"))
-                if rpms:
-                    console.print(f"\n[bold]Built RPMs:[/bold]")
-                    for rpm in rpms:
-                        console.print(f"  {rpm}")
-            # Preserve the converted SRPM alongside built RPMs
-            if is_srpm:
-                import shutil
-                srpms_dir = rpmbuild_path / "SRPMS"
-                dest_srpm = srpms_dir / input_path.name
-                if dest_srpm != input_path.resolve():
-                    shutil.copy2(input_path, dest_srpm)
-                    console.print(f"\n[bold]Saved SRPM:[/bold]\n  {dest_srpm}")
+            rpms = list(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else []
+
+            if rpms:
+                console.print(f"\n[bold]Built RPMs:[/bold]")
+                for rpm in rpms:
+                    console.print(f"  {rpm}")
+
+            # Copy RPMs to output directory
+            out_rpms = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
+            out_rpms.mkdir(parents=True, exist_ok=True)
+            if rpms:
+                console.print(f"\n[bold]Copying to:[/bold] {out_rpms}")
+                for rpm in rpms:
+                    dest = out_rpms / rpm.name
+                    shutil.copy2(rpm, dest)
+                    console.print(f"  → {dest.name}")
         else:
             # Check for missing dependencies
             combined_output = result.stdout + result.stderr
@@ -1389,8 +1405,8 @@ def audit_rules(rules_dir: str | None, verbose: bool):
     "--output-dir",
     "-o",
     type=click.Path(),
-    default=".",
-    help="Directory to save downloaded SRPMs (default: current directory)",
+    default=None,
+    help="Directory to save downloaded SRPMs (default: ~/mogrix_inputs/SRPMS/)",
 )
 @click.option(
     "--release",
@@ -1427,7 +1443,7 @@ def fetch(
     """
     from mogrix.deps.fedora import FedoraRepo
 
-    output_path = Path(output_dir)
+    output_path = Path(output_dir) if output_dir else MOGRIX_INPUTS / "SRPMS"
     output_path.mkdir(parents=True, exist_ok=True)
 
     repo = FedoraRepo(release=release, base_url=base_url)
@@ -1707,7 +1723,7 @@ def setup_cross(
     console.print("  1. Fetch SRPM:    mogrix fetch <package>")
     console.print("  2. Convert SRPM:  mogrix convert <package>.src.rpm")
     console.print("  3. Build SRPM:    mogrix build <converted>.src.rpm --cross")
-    console.print("  4. Stage RPMs:    mogrix stage ~/rpmbuild/RPMS/mips/*.rpm")
+    console.print("  4. Stage RPMs:    mogrix stage ~/mogrix_outputs/RPMS/*.rpm")
 
 
 @main.command()
@@ -1747,15 +1763,15 @@ def stage(
     their headers and libraries.
 
     Workflow:
-        1. mogrix fetch popt
-        2. mogrix convert popt-*.src.rpm
+        1. mogrix fetch popt -y
+        2. mogrix convert ~/mogrix_inputs/SRPMS/popt-*.src.rpm
         3. mogrix build <converted>.src.rpm --cross
-        4. mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+        4. mogrix stage ~/mogrix_outputs/RPMS/popt*.rpm
         5. (Now dependent packages can find popt headers/libs)
 
     Examples:
-        mogrix stage ~/rpmbuild/RPMS/mips/popt-*.mips.rpm
-        mogrix stage ~/rpmbuild/RPMS/mips/*.rpm
+        mogrix stage ~/mogrix_outputs/RPMS/popt-*.mips.rpm
+        mogrix stage ~/mogrix_outputs/RPMS/*.rpm
         mogrix stage --list
         mogrix stage --clean
     """
@@ -1798,7 +1814,7 @@ def stage(
         console.print("[yellow]No RPMs specified. Use --help for usage.[/yellow]")
         console.print("\nExamples:")
         console.print("  mogrix stage popt-1.19-6.mips.rpm  # Auto-includes popt-devel")
-        console.print("  mogrix stage ~/rpmbuild/RPMS/mips/*.rpm")
+        console.print("  mogrix stage ~/mogrix_outputs/RPMS/*.rpm")
         console.print("  mogrix stage --no-devel popt-1.19-6.mips.rpm  # Skip -devel")
         console.print("  mogrix stage --list")
         console.print("  mogrix stage --clean")

@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-06)
+## Current Status (2026-02-07)
 
-**Phase 3: USER-FACING PACKAGES — IN PROGRESS**
+**Phase 3: COMPLETE — Phase 4 next**
 
-Phase 1 (bootstrap: 14 packages) and Phase 2 (build tools: 6 packages) are complete. Phase 3a complete: pkgconf, readline, full crypto chain (libgpg-error → libgcrypt → libassuan → libksba → npth → gnupg2) all installed and verified on IRIX. Phase 3b next: gettext, coreutils, grep, sed, gawk.
+Phase 1 (bootstrap: 14 packages), Phase 1.5 (system libs: 2), Phase 2 (build tools: 6), Phase 3a (crypto: 7), Phase 3b (GNU text tools: 3) — all complete. 41 packages installed on clean `/opt/chroot` via bootstrap tarball + MCP. Next: coreutils, gettext, and other user-facing packages.
 
 ---
 
@@ -105,14 +105,14 @@ Validated: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf insta
 
 **Build order**: perl → bash → autoconf → automake → libtool
 
-### Phase 3: User-Facing Packages (IN PROGRESS)
+### Phase 3: User-Facing Packages (COMPLETE)
 
 With Phase 2 complete, IRIX has a full autotools chain.
 
 | Package | Status | Notes |
 |---------|--------|-------|
-| ncurses 6.4 | ✅ Rebuilt | Linker script fix (symlinks not INPUT()) |
-| readline 8.2 | ✅ Built | Staged in sysroot, uses system ncurses |
+| ncurses 6.4 | ✅ Verified on IRIX | Linker script fix (symlinks not INPUT()) |
+| readline 8.2 | ✅ Verified on IRIX | Staged in sysroot, uses system ncurses |
 | pkgconf 2.1.0 | ✅ Installed on IRIX | Static build, %zu→%u fix |
 | libgpg-error 1.48 | ✅ Installed on IRIX | lock-obj-pub generated on IRIX |
 | libgcrypt 1.10.3 | ✅ Installed on IRIX | FIPS removed, ASM disabled |
@@ -120,11 +120,21 @@ With Phase 2 complete, IRIX has a full autotools chain.
 | libksba 1.6.6 | ✅ Installed on IRIX | Clean build |
 | npth 1.7 | ✅ Installed on IRIX | POSIX1C pthread_atfork fix |
 | gnupg2 2.4.4 | ✅ Installed on IRIX | Key gen + sign + verify working |
-| gettext | Not started | Needed for i18n in coreutils/grep/sed |
-| coreutils | Not started | Core user tools |
-| grep | Not started | - |
-| sed | Not started | - |
-| gawk | Not started | - |
+| sed 4.9 | ✅ Installed on IRIX | GNU regex bundled, gnulib-tests removed |
+| gawk 5.3.0 | ✅ Installed on IRIX | MPFR disabled, git %prep replaced |
+| grep 3.11 | ✅ Verified on IRIX | GNU regex bundled, PCRE2 disabled |
+
+### Phase 4: User-Facing Packages (NOT STARTED)
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| gettext | Not started | Needed for i18n |
+| coreutils | Not started | Core user tools (head, tail, cat, ls, etc.) |
+| findutils | Not started | find, xargs |
+| diffutils | Not started | diff, cmp |
+| patch | Not started | Applying patches |
+| tar | Not started | Archive handling |
+| make | Not started | Build system |
 
 ### Long-Term: Modern Browser
 
@@ -147,8 +157,11 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | Spec validation (specfile library, integrated into convert) | Done |
 | RPM linting (rpmlint with IRIX-specific config) | Done |
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
-| 76 package rules | Done |
+| 79 package rules + 1 class rule | Done |
+| Rule auditing (`mogrix audit-rules`) | Done |
 | 127 tests, all passing | Done |
+| Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
+| MCP-based IRIX testing (no SSH) | Done |
 
 ---
 

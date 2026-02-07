@@ -130,7 +130,7 @@ generic:
   # and hardcode those paths. On IRIX, these tools are at /usr/sgug/bin/.
   # /usr/bin/env is restored since it exists on IRIX.
   install_cleanup:
-    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | cut -d: -f1 | xargs -r sed -i 's|/usr/bin/|/usr/sgug/bin/|g; s|/usr/sgug/bin/env|/usr/bin/env|g'"
+    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i 's|/usr/bin/|/usr/sgug/bin/|g; s|/usr/sgug/bin/env|/usr/bin/env|g'"
 
   drop_subpackages:
     - "debuginfo"

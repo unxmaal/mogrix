@@ -115,6 +115,26 @@ Rules are applied in order: **generic → class → package**. Each layer adds t
 
 **Auditing for elevation:** Run `mogrix audit-rules` to detect duplicated rules across packages and flag candidates for promotion to class or generic level.
 
+## Smoke Tests
+
+Package YAMLs can include a `smoke_test` field documenting how to verify the package works on IRIX. This is metadata only — the engine ignores it. Humans and agents can read it to know what to test.
+
+```yaml
+smoke_test:
+  - command: "/usr/sgug/bin/bash -c 'echo $BASH_VERSION'"
+    expect: "5.2.26"
+  - command: "/usr/sgug/bin/bash -c 'for i in 1 2 3; do echo $i; done'"
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `command` | Yes | Command to run via MCP `irix_exec` or `sgug-exec` |
+| `expect` | No | Substring expected in stdout. If omitted, just check exit code 0. |
+
+The `smoke_test` field is top-level (sibling of `package:` and `rules:`), not nested under `rules:`.
+
+---
+
 ## Source Analysis
 
 `mogrix analyze` and `mogrix convert` scan source tarballs for IRIX-incompatible patterns.

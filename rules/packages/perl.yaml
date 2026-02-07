@@ -1,5 +1,11 @@
 # perl 5.38.2 package rules for IRIX cross-compilation
 #
+smoke_test:
+  - command: "/usr/sgug/bin/perl -e 'print \"ok\\n\"'"
+    expect: "ok"
+  - command: "/usr/sgug/bin/perl -v"
+    expect: "5.38.2"
+#
 # ---metadata---
 # complexity: high
 # build_system: custom (Perl Configure)
@@ -94,7 +100,7 @@ rules:
         /bin/sh Configure -des \
       replacement: |
         # IRIX: Use pre-generated config.sh for cross-compilation
-        cp %{SOURCE100} config.sh
+        cp %{SOURCE200} config.sh
         sed -i 's|DIDBSINSTALLPREFIX/lib|%{_libdir}|g' config.sh
         sed -i 's|DIDBSINSTALLPREFIX|%{_prefix}|g' config.sh
         # Update perl version paths in config.sh

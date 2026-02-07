@@ -1,6 +1,14 @@
 # bash package rules for IRIX cross-compilation
 package: bash
 
+smoke_test:
+  - command: "/usr/sgug/bin/bash -c 'echo $BASH_VERSION'"
+    expect: "5.2.26"
+  - command: "/usr/sgug/bin/bash -c 'echo {a,b,c}'"
+    expect: "a b c"
+  - command: "/usr/sgug/bin/bash -c 'for i in 1 2 3; do echo $i; done'"
+    expect: "1"
+
 rules:
   skip_find_lang: true
 

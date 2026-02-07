@@ -1,6 +1,12 @@
 # m4 package rules for IRIX cross-compilation
 package: m4
 
+smoke_test:
+  - command: "/usr/sgug/bin/m4 --version"
+    expect: "1.4.19"
+  - command: "echo 'define(FOO,bar)FOO' | /usr/sgug/bin/m4"
+    expect: "bar"
+
 # m4 1.4.19 gnulib already has IRIX getprogname support (was missing in 1.4.18)
 # Old m4.sgifixes.patch no longer needed
 
@@ -15,9 +21,9 @@ rules:
     # IRIX select() works fine - prevent gnulib from replacing it.
     # Cross-compile default "guessing no" is wrong for IRIX.
     gl_cv_func_select_detects_ebadf: "yes"
-    # Our compat sys/random.h provides static inline getrandom stub.
-    # Tell gnulib it exists so it doesn't compile its own replacement.
-    ac_cv_func_getrandom: "yes"
+    # generic.yaml sets ac_cv_header_sys_random_h=no, so gnulib won't see
+    # our compat getrandom. Let gnulib provide its own replacement.
+    ac_cv_func_getrandom: "no"
 
   # No NLS in cross-compilation
   skip_find_lang: true

@@ -82,7 +82,10 @@
 %__ld                   %{_sgug_staging}/bin/irix-ld
 
 # Cross-compilation aware configure macro
-# Export compiler variables so configure finds them
+# Export compiler variables so configure finds them.
+# NOTE: Do NOT add staging/bin to PATH — it contains cross-compiled MIPS
+# binaries (sed, perl, m4, etc.) that can't execute on the build host.
+# Standard tools are overridden explicitly below.
 %configure \
   export CC="%{__cc}"; \
   export CXX="%{__cxx}"; \
@@ -90,7 +93,10 @@
   export RANLIB="%{__ranlib}"; \
   export LD="%{__ld}"; \
   export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig"; \
-  export PATH="%{_sgug_staging}/bin:$PATH"; \
+  export SED="/usr/bin/sed"; \
+  export AWK="/usr/bin/gawk"; \
+  export PERL="/usr/bin/perl"; \
+  export M4="/usr/bin/m4"; \
   %{_configure_script} %{_configure_args}
 
 # Cross-compilation aware make_build macro

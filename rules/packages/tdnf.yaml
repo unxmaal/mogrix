@@ -2,6 +2,11 @@
 # TARGET PACKAGE - The goal of the entire mogrix project
 # Has sgifixes patches, needs compat functions
 #
+smoke_test:
+  - command: "/usr/sgug/bin/tdnf --version"
+    expect: "tdnf"
+  - command: "/usr/sgug/bin/tdnf repolist"
+#
 # ---metadata---
 # complexity: high
 # build_system: cmake
@@ -39,6 +44,11 @@ add_patch:
   - tdnf.irixfixes.patch
 
 rules:
+  # Remove _XOPEN_SOURCE=500 which triggers IRIX sys/time.h static select()
+  # wrapper that conflicts with unistd.h's extern select() declaration
+  prep_commands:
+    - "sed -i '/_XOPEN_SOURCE/d' CMakeLists.txt"
+
   # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
   # These get statically linked so we don't need libdicl at runtime
   inject_compat_functions:
@@ -82,6 +92,10 @@ rules:
 
   # Fix the %check section and cmake macros for cross-compilation
   spec_replacements:
+    # Photon OS uses %include for License tag which breaks specfile validation.
+    # Replace with inline License tag.
+    - pattern: "%include %{SOURCE1}"
+      replacement: "License: LGPL-2.1-only AND LGPL-2.1-or-later AND GPL-2.0-only AND BSD-3-Clause"
     # Use SGUG-RSE compat system, but replace sqlite3_stub with real sqlite3
     # Only disable Source101 (sqlite3_stub) and its cp command
     - pattern: "Source101: sqlite3_stub.c"
@@ -115,23 +129,9 @@ rules:
         sed -i 's|add_subdirectory.*repogpgcheck.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
         # Disable metalink plugin - also requires gpgme
         sed -i 's|add_subdirectory.*metalink.*|# & (disabled - no gpgme)|' plugins/CMakeLists.txt
-        # IRIX source fixes are in tdnf.irixfixes.patch:
-        # - strings.h for strcasecmp (all includes.h files)
-        # - sys/types.h, sys/bsd_types.h, sys/statfs.h, rpm/rpmmacro.h (client/includes.h)
-        # - sys/ioccom.h, sys/ttold.h, sys/termios.h (tools/cli/lib/output.c)
-        # - statfs() signature and f_bfree (client/packageutils.c)
-        # - hardcoded mips arch (solv/tdnfpool.c)
+        # IRIX source fixes are in tdnf.irixfixes.patch
+        # Compat library (libmogrix-compat.a) is auto-built by generic %build preamble
         export COMPAT_DIR=$(pwd)/mogrix-compat
-        # Create mogrix-compat directory and build compat library
-        mkdir -p $COMPAT_DIR
-        # Copy fixed asprintf.c (IRIX vsnprintf(NULL,0) returns -1, not buffer size)
-        cp /opt/sgug-staging/asprintf.c $COMPAT_DIR/asprintf.c
-        # Copy getopt_long.c (IRIX doesn't have getopt_long)
-        cp /home/edodd/projects/github/unxmaal/mogrix/compat/functions/getopt_long.c $COMPAT_DIR/getopt_long.c
-        # Build libmogrix-compat.a
-        %{__cc} -c -o $COMPAT_DIR/asprintf.o $COMPAT_DIR/asprintf.c -I/opt/sgug-staging/usr/sgug/include
-        %{__cc} -c -o $COMPAT_DIR/getopt_long.o $COMPAT_DIR/getopt_long.c -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic
-        %{__ar} rcs $COMPAT_DIR/libmogrix-compat.a $COMPAT_DIR/asprintf.o $COMPAT_DIR/getopt_long.o
         cmake -B _build -S . \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_C_COMPILER=%{__cc} \

@@ -8,7 +8,10 @@
 # The manifest of required packages is defined in this script. If any
 # required package is missing, the script fails loudly.
 #
-# Usage: ./scripts/bootstrap-tarball.sh
+# Usage: ./scripts/bootstrap-tarball.sh [--repo-url URL]
+#
+# Options:
+#   --repo-url URL   Override the tdnf repo baseurl (default: auto-detect build host IP)
 #
 # Output goes to: ./tmp/irix-bootstrap.tar.gz
 #
@@ -18,11 +21,13 @@ set -euo pipefail
 # Configuration - use project-local tmp directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-MIPS_RPM_DIR="${HOME}/rpmbuild/RPMS/mips"
-NOARCH_RPM_DIR="${HOME}/rpmbuild/RPMS/noarch"
+MIPS_RPM_DIR="${HOME}/mogrix_outputs/RPMS"
+NOARCH_RPM_DIR="${HOME}/mogrix_outputs/RPMS"
 TMP_DIR="${PROJECT_DIR}/tmp"
 BOOTSTRAP_DIR="${TMP_DIR}/irix-bootstrap-work"
 TARBALL="${TMP_DIR}/irix-bootstrap.tar"
+REPO_URL=""  # Set via --repo-url or auto-detected
+REPO_PORT=8090
 
 # Colors for output
 RED='\033[0;31m'
@@ -75,6 +80,7 @@ REQUIRED_PACKAGES=(
     "tdnf-[0-9]*:mips"
 
     # Release/config packages (built as mips, not noarch, to get proper provides)
+    "sgugrse-release-common-[0-9]*:mips"
     "sgugrse-release-[0-9]*:mips"
 
     # Development symlinks needed at runtime (libsolvext.so links against libz.so not libz.so.1)
@@ -198,6 +204,118 @@ extract_rpms() {
     log_info "Created /usr/sgug/var/cache/tdnf"
 }
 
+# Install extra tools (sgugshell, sgug-exec) into bootstrap
+install_extras() {
+    log_info "Installing extra tools..."
+
+    # sgugshell - interactive SGUG environment shell
+    if [ -f "$PROJECT_DIR/tools/sgugshell" ]; then
+        cp "$PROJECT_DIR/tools/sgugshell" "$BOOTSTRAP_DIR/usr/sgug/bin/sgugshell"
+        chmod +x "$BOOTSTRAP_DIR/usr/sgug/bin/sgugshell"
+        echo "  [OK] /usr/sgug/bin/sgugshell"
+    else
+        log_warn "tools/sgugshell not found - skipping"
+    fi
+
+    # sgug-exec - single-command wrapper
+    if [ -f "$PROJECT_DIR/tools/sgug-exec" ]; then
+        cp "$PROJECT_DIR/tools/sgug-exec" "$BOOTSTRAP_DIR/usr/sgug/bin/sgug-exec"
+        chmod +x "$BOOTSTRAP_DIR/usr/sgug/bin/sgug-exec"
+        echo "  [OK] /usr/sgug/bin/sgug-exec"
+    else
+        log_warn "tools/sgug-exec not found - skipping"
+    fi
+}
+
+# Generate tdnf repo config and tdnf.conf
+generate_repo_config() {
+    log_info "Generating tdnf repository configuration..."
+
+    # Auto-detect build host IP if not provided via --repo-url
+    if [ -z "$REPO_URL" ]; then
+        local host_ip
+        host_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+        if [ -z "$host_ip" ]; then
+            log_warn "Could not detect host IP. Using localhost."
+            host_ip="127.0.0.1"
+        fi
+        REPO_URL="http://${host_ip}:${REPO_PORT}/"
+    fi
+
+    log_info "Repository URL: $REPO_URL"
+
+    # Write mogrix.repo
+    mkdir -p "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d"
+    cat > "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d/mogrix.repo" << EOF
+[mogrix]
+name=Mogrix Repository
+baseurl=${REPO_URL}
+enabled=1
+gpgcheck=0
+EOF
+    echo "  [OK] /usr/sgug/etc/yum.repos.d/mogrix.repo"
+
+    # Write tdnf.conf (our version, not whatever the RPM shipped)
+    mkdir -p "$BOOTSTRAP_DIR/usr/sgug/etc/tdnf"
+    cp "$PROJECT_DIR/configs/tdnf/tdnf.conf" "$BOOTSTRAP_DIR/usr/sgug/etc/tdnf/tdnf.conf"
+    echo "  [OK] /usr/sgug/etc/tdnf/tdnf.conf"
+}
+
+# Generate serve-repo.sh helper script
+generate_serve_script() {
+    log_info "Generating serve-repo.sh helper..."
+
+    cat > "${TMP_DIR}/serve-repo.sh" << 'SERVEOF'
+#!/bin/bash
+#
+# serve-repo.sh - Serve mogrix RPM repository for IRIX clients
+#
+# Copies all built RPMs to a temporary directory, generates repodata,
+# and starts an HTTP server on port 8090.
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+RPM_SOURCE="${HOME}/mogrix_outputs/RPMS"
+REPO_DIR="${SCRIPT_DIR}/mogrix-repo"
+
+echo "==================================="
+echo "Mogrix Repository Server"
+echo "==================================="
+echo ""
+
+# Create/update repo directory
+mkdir -p "$REPO_DIR"
+
+echo "Copying RPMs from ${RPM_SOURCE}..."
+cp "${RPM_SOURCE}"/*.rpm "$REPO_DIR/" 2>/dev/null || true
+rpm_count=$(ls "$REPO_DIR"/*.rpm 2>/dev/null | wc -l)
+echo "  ${rpm_count} RPMs in repository"
+echo ""
+
+echo "Generating repodata..."
+python3 "${PROJECT_DIR}/scripts/create-repo.py" "$REPO_DIR"
+echo ""
+
+HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+echo "========================================"
+echo "Serving repository at:"
+echo "  http://${HOST_IP:-localhost}:8090/"
+echo ""
+echo "On IRIX, run:"
+echo "  tdnf makecache"
+echo "  tdnf list"
+echo "========================================"
+echo ""
+
+cd "$REPO_DIR" && exec python3 -m http.server 8090
+SERVEOF
+
+    chmod +x "${TMP_DIR}/serve-repo.sh"
+    log_info "Created: ${TMP_DIR}/serve-repo.sh"
+}
+
 # Verify critical files exist
 verify_contents() {
     log_info "Verifying critical files..."
@@ -205,7 +323,7 @@ verify_contents() {
     local errors=0
 
     # Critical binaries
-    for bin in rpm tdnf; do
+    for bin in rpm tdnf sgugshell sgug-exec; do
         if [ -f "$BOOTSTRAP_DIR/usr/sgug/bin/$bin" ]; then
             echo "  [OK] /usr/sgug/bin/$bin"
         else
@@ -235,7 +353,7 @@ verify_contents() {
     done
 
     # Critical config files
-    for cfg in /usr/sgug/etc/tdnf/tdnf.conf /usr/sgug/etc/rpm/macros.sqlite; do
+    for cfg in /usr/sgug/etc/tdnf/tdnf.conf /usr/sgug/etc/rpm/macros.sqlite /usr/sgug/etc/yum.repos.d/mogrix.repo; do
         if [ -f "$BOOTSTRAP_DIR$cfg" ]; then
             echo "  [OK] $cfg"
         else
@@ -333,37 +451,61 @@ print_next_steps() {
     echo "The tarball is self-contained and includes:"
     echo "  - Extracted files under /usr/sgug/"
     echo "  - RPM files in /tmp/bootstrap-rpms/ for database registration"
+    echo "  - sgugshell + sgug-exec environment wrappers"
+    echo "  - tdnf repo config pointing to build host (${REPO_URL})"
     echo ""
     echo "Next steps:"
     echo ""
-    echo "1. Copy tarball to IRIX:"
-    echo "   scp ${TARBALL}.gz root@192.168.0.81:/tmp/"
+    echo "1. Start the repo server on this machine:"
+    echo "   ./tmp/serve-repo.sh"
     echo ""
-    echo "2. On IRIX as root, extract to chroot:"
-    echo "   cd /opt/chroot"
-    echo "   gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -"
+    echo "2. Copy tarball to IRIX and extract to chroot:"
+    echo "   scp ${TARBALL}.gz root@<irix-host>:/tmp/"
+    echo "   # On IRIX: cd /opt/chroot && gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -"
     echo ""
     echo "3. Initialize rpm database and register packages:"
-    echo "   chroot /opt/chroot /bin/sh"
-    echo "   export LD_LIBRARYN32_PATH=/usr/sgug/lib32"
-    echo "   /usr/sgug/bin/rpm --initdb"
-    echo "   /usr/sgug/bin/rpm -Uvh --nodeps /tmp/bootstrap-rpms/sgugrse-release*.noarch.rpm"
+    echo "   chroot /opt/chroot /usr/sgug/bin/sgugshell"
+    echo "   rpm --initdb"
+    echo "   rpm -Uvh --nodeps /tmp/bootstrap-rpms/*.rpm"
     echo ""
-    echo "4. Create local repo from bootstrap RPMs:"
-    echo "   mkdir -p /tmp/mogrix-repo"
-    echo "   cp /tmp/bootstrap-rpms/*.rpm /tmp/mogrix-repo/"
-    echo "   # Run createrepo on Linux, copy repodata to IRIX:"
-    echo "   # createrepo_c --simple-md-filenames /tmp/mogrix-repo"
+    echo "4. Test tdnf (repo server must be running):"
+    echo "   tdnf makecache"
+    echo "   tdnf list"
     echo ""
-    echo "5. Test tdnf:"
-    echo "   /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist"
-    echo "   /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf makecache"
-    echo "   /usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf list"
-    echo ""
+}
+
+# Parse arguments
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --repo-url)
+                REPO_URL="$2"
+                shift 2
+                ;;
+            --repo-url=*)
+                REPO_URL="${1#*=}"
+                shift
+                ;;
+            -h|--help)
+                echo "Usage: $0 [--repo-url URL]"
+                echo ""
+                echo "Options:"
+                echo "  --repo-url URL   Override the tdnf repo baseurl"
+                echo "                   Default: auto-detect build host IP, port ${REPO_PORT}"
+                exit 0
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
 }
 
 # Main
 main() {
+    parse_args "$@"
+
     echo "==================================="
     echo "IRIX Bootstrap Tarball Creator"
     echo "==================================="
@@ -372,9 +514,12 @@ main() {
     check_prerequisites
     validate_manifest
     extract_rpms
+    install_extras
+    generate_repo_config
     verify_contents
     show_contents
     create_tarball
+    generate_serve_script
     cleanup
     print_next_steps
 }

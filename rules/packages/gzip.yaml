@@ -1,23 +1,53 @@
-# gzip package rules for IRIX cross-compilation
-#
-# gzip uses gnulib which has complex compatibility code that conflicts
-# with IRIX headers. We provide ac_cv overrides to tell configure that
-# IRIX's native functions work properly.
+# gzip - GNU compression utility
+# FC40: gzip-1.13-1.fc40
+# Analysis: 13 infos (strdup, getopt_long, getline, reallocarray, strerror_r)
+# Uses gnulib heavily — similar patterns to sed/grep/diffutils
 
 package: gzip
+classes: [nls-disabled]
 
-# Tell configure that IRIX has working implementations
-ac_cv_overrides:
-  # gettimeofday works on IRIX - don't use gnulib replacement
-  gl_cv_func_gettimeofday_clobber: "no"
-  ac_cv_func_gettimeofday: "yes"
-  # sys/time.h exists on IRIX
-  ac_cv_header_sys_time_h: "yes"
-  # IRIX has working time functions
-  ac_cv_func_timegm: "yes"
-  # getprogname replacement not needed - gnulib's will return NULL which is fine
-  ac_cv_func_getprogname: "no"
-  # Tell configure that long double is not available to avoid compiler-rt deps
-  # This prevents gnulib from using long double in printf/vasnprintf
-  ac_cv_type_long_double: "no"
-  gl_cv_have_include_next: "yes"
+smoke_test:
+  - command: "echo hello | /usr/sgug/bin/gzip -c | /usr/sgug/bin/gzip -dc"
+    expect: "hello"
+  - command: "/usr/sgug/bin/gzip --version"
+    expect: "1.13"
+
+rules:
+  # Compat functions needed for IRIX
+  # strdup: dlmalloc/libc allocator mismatch
+  # getopt_long: option parsing
+  # getline: line reading
+  # reallocarray: gnulib xmalloc
+  # strerror_r: error reporting
+  inject_compat_functions:
+    - strdup
+    - getopt_long
+    - getline
+    - reallocarray
+    - strerror_r
+
+  # Tell configure that IRIX has working implementations
+  ac_cv_overrides:
+    gl_cv_func_gettimeofday_clobber: "no"
+    ac_cv_func_gettimeofday: "yes"
+    ac_cv_header_sys_time_h: "yes"
+    ac_cv_func_timegm: "yes"
+    ac_cv_func_getprogname: "no"
+    ac_cv_type_long_double: "no"
+    gl_cv_have_include_next: "yes"
+
+  # Renumber Source100/101 to avoid conflict with compat source injection
+  # (compat sources start at Source100)
+  spec_replacements:
+    - pattern: "Source100: colorzgrep.csh"
+      replacement: "Source50: colorzgrep.csh"
+    - pattern: "Source101: colorzgrep.sh"
+      replacement: "Source51: colorzgrep.sh"
+    - pattern: "%{SOURCE100}"
+      replacement: "%{SOURCE50}"
+    - pattern: "%{SOURCE101}"
+      replacement: "%{SOURCE51}"
+
+  # Remove gnulib-tests from SUBDIRS (built during 'make all' but not needed)
+  prep_commands:
+    - "sed -i 's/gnulib-tests//' Makefile.in"

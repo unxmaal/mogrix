@@ -6,6 +6,12 @@
 package: grep
 classes: [nls-disabled]
 
+smoke_test:
+  - command: "echo hello | /usr/sgug/bin/grep hello"
+    expect: "hello"
+  - command: "/usr/sgug/bin/grep --version"
+    expect: "3.11"
+
 rules:
   # Compat functions needed for IRIX
   # strdup: dlmalloc/libc allocator mismatch
