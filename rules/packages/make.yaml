@@ -1,0 +1,36 @@
+# make - GNU make build tool
+# FC40: make-4.4.1-6.fc40
+# Analysis: 1 error (__thread in Windows-only w32err.c — irrelevant), 9 infos
+# Simple autoconf package, uses bundled glob/getopt
+
+package: make
+classes: [nls-disabled]
+
+smoke_test:
+  - command: "/usr/sgug/bin/make --version"
+    expect: "4.4.1"
+
+rules:
+  # Compat functions needed for IRIX
+  # strdup: dlmalloc/libc allocator mismatch
+  # getopt_long: option parsing (make bundles its own but links compat too)
+  inject_compat_functions:
+    - strdup
+    - getopt_long
+
+  # Drop build deps we don't have
+  drop_buildrequires:
+    - "pkgconfig(guile-3.0)"
+    - procps
+
+  # Disable guile scripting support (we don't have guile)
+  # Disable 'load' directive (uses dlopen + --export-dynamic which crashes on IRIX rld)
+  configure_flags:
+    add:
+      - --without-guile
+      - --disable-load
+
+  # autoreconf needs AUTOPOINT=true when NLS is disabled (no autopoint binary)
+  spec_replacements:
+    - pattern: "autoreconf -vfi"
+      replacement: "AUTOPOINT=true autoreconf -vfi"

@@ -92,17 +92,116 @@ All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/
 
 | Package | Version | Status | Key Fixes |
 |---------|---------|--------|-----------|
-| less | 643 | BUILT | Skip fsync AC_TRY_RUN patch, ac_cv override |
-| which | 2.21 | BUILT | getopt_long compat only |
-| gzip | 1.13 | BUILT | Source renumbering, gnulib-tests removal, nls-disabled |
-| diffutils | 3.10 | BUILT | gnulib select override, gnulib-tests removal, nls-disabled |
-| patch | 2.7.6 | BUILT | posix_spawn compat (full impl), skip SELinux patch |
+| less | 643 | INSTALLED | Skip fsync AC_TRY_RUN patch, ac_cv override |
+| which | 2.21 | INSTALLED | getopt_long compat only |
+| gzip | 1.13 | INSTALLED | Source renumbering, gnulib-tests removal, nls-disabled |
+| diffutils | 3.10 | INSTALLED | gnulib select override, %td fix, nstrftime crash workaround |
+| patch | 2.7.6 | INSTALLED | posix_spawn compat (full impl), skip SELinux patch |
 
-**Total: 37 packages built and staged (32 installed + 5 pending install).**
+### Phase 4b: Build/System Utilities (3 packages)
+
+| Package | Version | Status | Key Fixes |
+|---------|---------|--------|-----------|
+| make | 4.4.1 | INSTALLED | --disable-load (--export-dynamic crashes rld), --without-guile |
+| findutils | 4.9.0 | INSTALLED | Out-of-tree build (_configure macro fix), gnulib-tests post-autoreconf |
+| tar | 1.35 | INSTALLED | --disable-year2038, %zu fixes, brace expansion fix |
+
+### Phase 4c: Core Utilities (1 package)
+
+| Package | Version | Status | Key Fixes |
+|---------|---------|--------|-----------|
+| coreutils | 9.4 | INSTALLED | Source renumbering, pthread_sigmask, strcasestr compat, seq disabled (long double printf) |
+
+**Total: 45 packages built, installed and verified on IRIX (50 RPMs including -devel subpackages).**
 
 ---
 
-## Fixes Made This Session (Phase 4a)
+## Fixes Made This Session (Phase 4c — coreutils)
+
+### 1. Source numbering conflicts with compat injection
+- Coreutils spec uses Source105/106, conflicts with compat sources starting at Source100
+- Fix: spec_replacements renumber Source105→51, Source106→52
+
+### 2. Indented %configure not matched by configure_flags:add
+- Coreutils runs `%configure` inside a `for` loop (indented)
+- The emitter regex `^(%configure\s+)` requires `%configure` at start of line
+- Fix: Use spec_replacements to inject flags directly into the `%configure` line
+
+### 3. posix_memalign declaration for gnulib
+- gnulib builds replacement posix_memalign.c that calls the "real" function via #undef
+- IRIX has no posix_memalign; dlmalloc provides the symbol via `dlposix_memalign`
+- Fix: Declaration in `compat/include/mogrix-compat/generic/stdlib.h`
+
+### 4. strcasestr missing on IRIX
+- `expand-common.c` calls `strcasestr` directly; IRIX lacks it
+- Already had compat implementation in `compat/string/strcasestr.c`
+- Initially added static inline in stdlib.h — conflicted with extern decl in string.h
+- Fix: Removed static inline, added `strcasestr` to inject_compat_functions
+
+### 5. LIBS override clobbered compat library
+- `LIBS="-lpthread" %configure` on the configure line **replaced** the exported `LIBS="-L... -lmogrix-compat"`
+- Fix: Changed to `LIBS="$LIBS -lpthread"` to append rather than replace
+
+### 6. pthread_sigmask in libpthread
+- gnulib's rpl_pthread_sigmask calls real `pthread_sigmask` which is in libpthread, not libc
+- Cross-compilation can't detect it; linker fails with undefined symbol
+- Fix: ac_cv_overrides + `LIBS="$LIBS -lpthread"` to link against libpthread
+
+### 7. seq infinite loop (long double printf)
+- `seq` uses `%Lg` format (long double) for number output
+- IRIX printf doesn't handle long double correctly — counter prints `1` forever, never increments
+- Fix: Added `seq` to `--enable-no-install-program` skip list (runtime limitation, not build issue)
+
+### 8. Multicall/single build remnants in %files
+- Dropped the "single" multicall build but %files still had `%exclude *.single`, `%dir libexec/coreutils`, etc.
+- Fix: spec_replacements to comment out multicall %files entries
+
+### 9. Skipped binaries in supported_utils
+- `--enable-no-install-program` skips pinky/stdbuf/who/users/seq but they're still listed in Source50
+- Fix: spec_replacement on `cp %SOURCE50 .` to also sed-remove skipped entries
+
+---
+
+## Fixes Made Previous Session (Phase 4b)
+
+### 1. --export-dynamic crashes IRIX rld
+- GNU make uses `--export-dynamic` for its `load` directive (dlopen support)
+- With `--export-dynamic`, LLD exports ALL symbols to the dynamic symbol table (468 vs 127)
+- IRIX rld SIGSEGV during initialization when processing the large dynamic symbol table
+- Fix: `--disable-load` configure flag removes the need for `--export-dynamic`
+- **Any package using `-Wl,--export-dynamic` may crash on IRIX rld**
+
+### 2. Out-of-tree builds and %_configure_script
+- findutils uses `mkdir build; cd build; ../configure` (out-of-tree build)
+- Spec sets `%global _configure ../configure` to override configure path
+- Our `rpmmacros.irix` hardcoded `%_configure_script ./configure`
+- Fix: `%_configure_script %{?_configure}%{!?_configure:./configure}` — respects spec overrides
+- Updated both `cross/rpmmacros.irix` and `/opt/sgug-staging/rpmmacros.irix`
+
+### 3. origfedora copy with git repos
+- `cp -a` fails on git object files (mode 0444) when spec uses `%autosetup -S git`
+- The `&&` chain causes `cd` back to fail, leaving pwd in parent dir → subsequent `git rm` fails
+- Fix: Use subshell `(cd .. && cp -a ... 2>/dev/null || true)` — non-fatal, preserves pwd
+- Changed in `mogrix/emitter/spec.py`
+
+### 4. AUTOPOINT=true for NLS-disabled packages
+- Packages with `autoreconf` in spec need `AUTOPOINT=true` prefix when NLS is disabled
+- Without it, autoreconf tries to call `autopoint` which doesn't exist
+- Applied to make, findutils, tar via spec_replacements
+
+### 5. gnulib-tests removal timing with git-patched specs
+- findutils uses `%autosetup -S git` with patches modifying Makefile.am SUBDIRS
+- `prep_commands` run BEFORE patches → our sed conflicts with patch context
+- Fix: Use `spec_replacements` to inject sed AFTER `autoreconf -fiv` instead
+
+### 6. tar brace expansion and Y2038
+- `mv ChangeLog{,~}` uses bash brace expansion but rpmbuild uses /bin/sh
+- Fix: `spec_replacement` to `mv ChangeLog ChangeLog~`
+- configure requires `--disable-year2038` for 32-bit time_t cross-compilation
+
+---
+
+## Fixes Made Previous Session (Phase 4a)
 
 ### 1. posix_spawn compat implementation completed
 - `compat/include/mogrix-compat/generic/spawn.h` — added posix_spawnattr_* functions, file_actions_addopen
@@ -179,7 +278,7 @@ All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | IRIX host | `192.168.0.81` (use MCP, not SSH) |
-| IRIX chroot (active) | `/opt/chroot` (bootstrapped, 41 packages) |
+| IRIX chroot (active) | `/opt/chroot` (bootstrapped, 50 RPMs / 45 packages) |
 | IRIX chroot (backup) | `/opt/chroot_0206` (old SGUG-RSE base) |
 | Original FC40 SRPMs | `~/mogrix_inputs/SRPMS/` |
 | Converted SRPMs | `~/mogrix_outputs/SRPMS/` |
@@ -202,12 +301,11 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 
 ## Next Steps
 
-1. **Install Phase 4a on IRIX** via MCP: less, which, gzip, diffutils, patch (RPMs in ~/mogrix_outputs/RPMS/)
-2. **Phase 4b**: findutils, tar, make, gettext, coreutils
-3. **Phase 5: Development tools**: make, binutils, gcc (if cross-compiling GCC is feasible)
-4. **Clean up stale files**: `-.o`, `m4.lang`, `perl.spec`, `HANDOFF.020426.md`, `docs/`
-5. **tdnf ldconfig warning**: Add `remove_lines: ["/sbin/ldconfig"]` to tdnf.yaml or generic.yaml
-6. **Rebuild pkgconf** with new `drop_requires: libpkgconf` rule (currently installed with `--nodeps`)
+1. **Phase 4c: COMPLETE** — coreutils installed and working (most utilities verified; seq disabled due to long double printf)
+2. **Phase 5: Development tools**: binutils, gcc (if cross-compiling GCC is feasible)
+3. **Clean up stale files**: `-.o`, `m4.lang`, `perl.spec`, `HANDOFF.020426.md`, `docs/`
+4. **tdnf ldconfig warning**: Add `remove_lines: ["/sbin/ldconfig"]` to tdnf.yaml or generic.yaml
+5. **Rebuild pkgconf** with new `drop_requires: libpkgconf` rule (currently installed with `--nodeps`)
 
 ---
 
@@ -221,7 +319,8 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - sqlite3 CLI crashes when writing to files (rpm database writes work fine)
 - odump/elfdump crash on LLD-produced binaries (rld loads them fine)
 - pkgconf installed with `--nodeps` (needs rebuild with `drop_requires: libpkgconf` rule)
-- Bare chroot has no coreutils — `head`, `tail`, `cat`, `ls` etc. are IRIX system versions only
+- coreutils `seq` disabled — IRIX printf doesn't handle `%Lg` (long double) correctly
+- **`--export-dynamic` crashes IRIX rld** — large dynamic symbol tables cause SIGSEGV
 
 ---
 

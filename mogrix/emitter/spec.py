@@ -318,8 +318,9 @@ class SpecWriter:
         origfedora_cmd = """
 # Create .origfedora copy for patch development (mkpatch workflow)
 # Run 'rpmbuild --short-circuit -bp' then diff against .origfedora to create patches
-_srcdir=$(basename $(pwd))
-cd .. && cp -a "$_srcdir" "${_srcdir}.origfedora" && cd "$_srcdir"
+# Use subshell to avoid directory change on failure; exclude .git (mode 0444 objects)
+_mogrix_origdir=$(pwd)
+(cd .. && cp -a "$(basename "$_mogrix_origdir")" "$(basename "$_mogrix_origdir").origfedora" 2>/dev/null || true)
 """
         content = re.sub(
             r"^(%(auto)?setup\s+.*)$",

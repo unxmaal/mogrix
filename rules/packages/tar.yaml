@@ -1,0 +1,66 @@
+# tar - GNU file archiving program
+# FC40: tar-1.35-3.fc40
+# Analysis: 3 errors (%zu in paxerror.c, rtapelib.c, dynarray), 2 warnings, 30 infos
+# Uses gnulib heavily, has autoreconf, selinux bcond
+
+package: tar
+classes: [nls-disabled]
+
+smoke_test:
+  - command: "/usr/sgug/bin/tar --version"
+    expect: "1.35"
+
+rules:
+  # Compat functions needed for IRIX
+  # strdup: dlmalloc/libc allocator mismatch
+  # getopt_long: option parsing
+  # getline: line reading
+  # asprintf: formatted string allocation
+  # reallocarray: gnulib xmalloc
+  # strerror_r: error reporting
+  inject_compat_functions:
+    - strdup
+    - strndup
+    - getopt_long
+    - getline
+    - asprintf
+    - reallocarray
+    - strerror_r
+
+  # Drop build deps we don't have
+  drop_buildrequires:
+    - acl
+    - attr
+    - policycoreutils
+    - texinfo
+
+  # Drop runtime deps not available on IRIX
+  drop_requires:
+    - info
+
+  # Disable SELinux and ACL support, Y2038 (IRIX uses 32-bit time_t)
+  configure_flags:
+    add:
+      - --without-selinux
+      - --without-posix-acls
+      - --disable-year2038
+
+  # Fix brace expansion — rpmbuild uses /bin/sh which doesn't support {,~}
+  # Also prefix autoreconf with AUTOPOINT=true (NLS disabled, no autopoint)
+  spec_replacements:
+    - pattern: "mv ChangeLog{,~}"
+      replacement: "mv ChangeLog ChangeLog~"
+    - pattern: "autoreconf -v"
+      replacement: "AUTOPOINT=true autoreconf -v"
+
+  # Fix %zu format specifiers — IRIX libc doesn't support them
+  # paxerror.c, rtapelib.c use %zu for size_t values
+  # dynarray_at_failure.c also uses %zu
+  # On n32, size_t is 32-bit (same as unsigned int), so %u works correctly
+  # Remove gnulib-tests from SUBDIRS
+  prep_commands:
+    - "sed -i 's/gnulib-tests//' Makefile.in || true"
+    - "sed -i 's/gnulib-tests//' Makefile.am || true"
+    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/paxerror.c"
+    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/rtapelib.c"
+    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' gnu/malloc/dynarray_at_failure.c || true"

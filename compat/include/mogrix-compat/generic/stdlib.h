@@ -74,6 +74,18 @@ void setprogname(const char *progname);
 #endif
 
 /*
+ * posix_memalign - aligned memory allocation (POSIX.1-2001)
+ *
+ * IRIX 6.5 has memalign() in <malloc.h> but not posix_memalign().
+ * Provide a declaration so gnulib's wrapper can see it.
+ * The actual implementation comes from dlmalloc (dlposix_memalign → posix_memalign).
+ * If dlmalloc is not linked, memalign-based fallback would be needed.
+ */
+#ifndef posix_memalign
+int posix_memalign(void **memptr, size_t alignment, size_t size);
+#endif
+
+/*
  * qsort_r - qsort with user-provided argument (GNU extension)
  *
  * IRIX doesn't have qsort_r. We provide an implementation using global state.

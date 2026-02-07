@@ -53,7 +53,7 @@
 %__nm                   %{_cross_bindir}/llvm-nm
 
 # Configure script options for cross-compilation
-%_configure_script      ./configure
+%_configure_script      %{?_configure}%{!?_configure:./configure}
 # --host must use irix6.5 (not just irix) so config.sub preserves the version,
 # giving host_os=irix6.5 which matches libtool's irix[56]* patterns for shared
 # library support. RPM's --target sets _target to mips-irix (no version), so we
