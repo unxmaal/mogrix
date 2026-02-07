@@ -1,6 +1,14 @@
 # bash package rules for IRIX cross-compilation
 package: bash
 
+smoke_test:
+  - command: "/usr/sgug/bin/bash -c 'echo $BASH_VERSION'"
+    expect: "5.2.26"
+  - command: "/usr/sgug/bin/bash -c 'echo {a,b,c}'"
+    expect: "a b c"
+  - command: "/usr/sgug/bin/bash -c 'for i in 1 2 3; do echo $i; done'"
+    expect: "1"
+
 rules:
   skip_find_lang: true
 
@@ -70,11 +78,8 @@ rules:
   install_cleanup:
     - "rm -rf %{buildroot}%{_pkgdocdir}"
 
-  # Don't detect our getrandom stub header — bash has its own /dev/urandom fallback
-  # Our dicl-clang-compat/sys/random.h provides static inline getrandom() which
-  # conflicts with bash's own getrandom() function in lib/sh/random.c
+  # ac_cv_header_sys_random_h handled by generic.yaml
   ac_cv_overrides:
-    ac_cv_header_sys_random_h: "no"
     # Force libtinfo for termcap functions. SGUG-RSE ncurses splits termcap
     # symbols (tputs, tgetent, etc.) into libtinfo.so. Configure's default search
     # hits libcurses first — a GNU ld script (INPUT(-lncurses)) that IRIX rld

@@ -1,0 +1,48 @@
+# patch - Apply diffs to original files
+# FC40: patch-2.7.6-24.fc40
+# Analysis: 16 infos (strdup, getopt_long, getline, asprintf, strerror_r)
+# Autoconf-based, uses gnulib
+# lib/execute.c uses posix_spawn unconditionally — compat provides fork+exec impl
+
+package: patch
+
+smoke_test:
+  - command: "/usr/sgug/bin/patch --version"
+    expect: "2.7.6"
+
+rules:
+  # Compat functions needed for IRIX
+  # strdup: dlmalloc/libc allocator mismatch
+  # getopt_long: option parsing
+  # getline: line reading
+  # asprintf: formatted string allocation (includes vasprintf)
+  # strerror_r: error reporting
+  # posix_spawn: IRIX lacks spawn.h — compat provides fork+exec implementation
+  inject_compat_functions:
+    - strdup
+    - getopt_long
+    - getline
+    - asprintf
+    - strerror_r
+    - posix_spawn
+
+  # ed exists on IRIX base system but isn't RPM-tracked
+  drop_requires:
+    - ed
+
+  # Skip SELinux patch — IRIX has no SELinux; Fedora patch adds
+  # unconditional #include <selinux/selinux.h> and -lselinux
+  spec_replacements:
+    - pattern: "%patch 100 -p1 -b .selinux"
+      replacement: "# %patch 100 skipped - no SELinux on IRIX"
+
+  # Remove unpackaged gnulib files
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/charset.alias"
+
+  # Remove gnulib-tests from SUBDIRS if present
+  prep_commands:
+    - "sed -i 's/gnulib-tests//' Makefile.in || true"
+    - "sed -i 's/gnulib-tests//' Makefile.am || true"
+    # Remove -lselinux from the Makefile (in case configure baked it in)
+    - "sed -i 's/-lselinux//g' src/Makefile.in || true"

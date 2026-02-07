@@ -4,6 +4,13 @@
 # volatile fptr in lib/c-stack.c:75 (may not be exercised at runtime)
 
 package: grep
+classes: [nls-disabled]
+
+smoke_test:
+  - command: "echo hello | /usr/sgug/bin/grep hello"
+    expect: "hello"
+  - command: "/usr/sgug/bin/grep --version"
+    expect: "3.11"
 
 rules:
   # Compat functions needed for IRIX
@@ -28,13 +35,8 @@ rules:
     - gettext-devel    # not built for IRIX yet (--disable-nls)
     - texinfo          # doc building only
 
-  # Avoid getrandom/sys/random.h conflict with dicl-clang-compat header
-  ac_cv_overrides:
-    ac_cv_header_sys_random_h: "no"
-
   configure_flags:
     add:
-      - --disable-nls
       - --disable-perl-regexp
     remove:
       - --without-included-regex
@@ -46,15 +48,9 @@ rules:
     - "sed -i 's/ gnulib-tests//' Makefile.am"
     - "sed -i 's/ tests//' Makefile.am"
 
-  # NLS disabled, no lang files
-  skip_find_lang: true
+  # NLS and %find_lang handled by nls-disabled class
 
   spec_replacements:
-    # Remove lang file reference from %files
-    - pattern: "%find_lang %{name}"
-      replacement: "# %find_lang disabled (--disable-nls)"
-    - pattern: "%files -f %{name}.lang"
-      replacement: "%files"
     # autopoint (gettext) not needed with --disable-nls, skip it in autoreconf
     - pattern: "autoreconf -fi"
       replacement: "AUTOPOINT=true autoreconf -fi"

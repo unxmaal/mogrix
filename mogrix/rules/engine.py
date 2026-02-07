@@ -69,8 +69,17 @@ class RuleEngine:
         if generic and "generic" in generic:
             self._apply_generic_rules(result, generic["generic"])
 
-        # Load and apply package-specific rules
+        # Load package rules to check for class membership
         pkg_rules = self.loader.load_package(spec.name)
+
+        # Load and apply class rules (between generic and package)
+        if pkg_rules:
+            for class_name in pkg_rules.get("classes", []):
+                class_rules = self.loader.load_class(class_name)
+                if class_rules and "rules" in class_rules:
+                    self._apply_class_rules(result, class_rules["rules"], class_name)
+
+        # Apply package-specific rules
         if pkg_rules:
             self._apply_package_rules(result, pkg_rules)
 
@@ -181,6 +190,18 @@ class RuleEngine:
             result.applied_rules.append(
                 f"install_cleanup: {len(rules['install_cleanup'])} commands"
             )
+
+    def _apply_class_rules(
+        self, result: TransformResult, rules: dict, class_name: str
+    ) -> None:
+        """Apply class rules to the result.
+
+        Class rules use the same keys as package rules. Wraps the rules
+        dict and delegates to _apply_package_rules for consistent behavior.
+        """
+        result.applied_rules.append(f"class: {class_name}")
+        # Wrap in the structure _apply_package_rules expects
+        self._apply_package_rules(result, {"rules": rules})
 
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""

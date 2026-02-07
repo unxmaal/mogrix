@@ -1,10 +1,10 @@
 # Mogrix
 
-TransMOGrifies Linux SRPMs into IRIX-compatible packages.
-
 ## Overview
 
-Mogrix is a complete IRIX cross-compilation system that transforms Fedora SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
+Mogrix is a complete IRIX cross-compilation system that transforms Fedora 40 SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
+
+**Current Status:** 41 source packages cross-compiled and installed on IRIX, including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), and a complete package management system (rpm + tdnf).
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -33,10 +33,12 @@ Mogrix is a complete IRIX cross-compilation system that transforms Fedora SRPMs 
 git clone https://github.com/unxmaal/mogrix.git
 cd mogrix
 
-# Create virtual environment and install
-make venv
-source .venv/bin/activate
-make install
+# Install uv (Python package manager) if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies and run
+uv sync
+uv run mogrix --help
 ```
 
 ## Quick Start
@@ -49,57 +51,57 @@ The recommended workflow operates on SRPMs directly. Direct spec file editing sh
 
 | Directory | Purpose |
 |-----------|---------|
-| `~/rpmbuild/SRPMS/fc40/` | Original Fedora 40 SRPMs (persistent inputs) |
-| `/tmp/mogrix-converted/<pkg>/` | Conversion output (ephemeral) |
-| `~/rpmbuild/RPMS/mips/` | Built MIPS packages |
-| `/tmp/mogrix-repo/` | Distribution repository |
+| `~/mogrix_inputs/SRPMS/` | Original Fedora 40 SRPMs (fetched, read-only) |
+| `~/mogrix_outputs/SRPMS/` | Converted SRPMs (mogrix convert output) |
+| `~/mogrix_outputs/RPMS/` | Built MIPS RPMs (known-good outputs) |
+| `~/rpmbuild/` | Ephemeral rpmbuild workspace |
+| `/opt/sgug-staging/` | Cross-compilation staging area |
 
 ```bash
 # 1. One-time setup of cross-compilation environment
-mogrix setup-cross
+uv run mogrix setup-cross
 
 # 2. Fetch SRPM from Fedora
-mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
+uv run mogrix fetch popt -y
 
-# 3. Convert SRPM
-mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
+# 3. Convert SRPM (applies rules, injects compat)
+uv run mogrix convert ~/mogrix_inputs/SRPMS/popt-1.19-6.fc40.src.rpm
 
-# 4. Cross-compile for IRIX (outputs to ~/rpmbuild/RPMS/mips/)
-mogrix build /tmp/mogrix-converted/popt/popt-*.src.rpm --cross
+# 4. Cross-compile for IRIX
+uv run mogrix build ~/mogrix_outputs/SRPMS/popt-1.19-6.fc40.src-converted/popt-1.19-6.src.rpm --cross
 
 # 5. Stage for dependent builds
-mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+uv run mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
 
-# 6. Copy to distribution repo
-cp ~/rpmbuild/RPMS/mips/popt*.rpm /tmp/mogrix-repo/
-createrepo_c --update /tmp/mogrix-repo/
+# 6. Archive built RPMs
+cp ~/rpmbuild/RPMS/mips/popt*.rpm ~/mogrix_outputs/RPMS/
 ```
 
 ### Analyze an SRPM
 
 ```bash
 # See what rules would apply to a package
-mogrix analyze package-1.0-1.fc40.src.rpm
+uv run mogrix analyze package-1.0-1.fc40.src.rpm
 ```
 
 ### Batch Conversion
 
 ```bash
 # Convert multiple SRPMs at once
-mogrix batch srpms_directory/ output_directory/
+uv run mogrix batch srpms_directory/ output_directory/
 ```
 
 ### Build a Converted Package
 
 ```bash
 # Cross-compile for IRIX (primary use case)
-mogrix build converted-package.src.rpm --cross
+uv run mogrix build converted-package.src.rpm --cross
 
 # Dry-run to see cross-compilation command
-mogrix build converted-package.src.rpm --cross --dry-run
+uv run mogrix build converted-package.src.rpm --cross --dry-run
 
 # Native rpmbuild (for testing on Linux)
-mogrix build converted-package.src.rpm
+uv run mogrix build converted-package.src.rpm
 ```
 
 ### Stage Cross-Compiled RPMs
@@ -108,16 +110,16 @@ After cross-compiling packages, stage them to make their headers and libraries a
 
 ```bash
 # Stage RPMs to /opt/sgug-staging
-mogrix stage ~/rpmbuild/RPMS/mips/popt-*.rpm
+uv run mogrix stage ~/rpmbuild/RPMS/mips/popt-*.rpm
 
 # Stage to custom location
-mogrix stage ~/rpmbuild/RPMS/mips/*.rpm --staging-dir /my/staging
+uv run mogrix stage ~/rpmbuild/RPMS/mips/*.rpm --staging-dir /my/staging
 
 # List what's staged
-mogrix stage --list
+uv run mogrix stage --list
 
 # Clean staging area
-mogrix stage --clean
+uv run mogrix stage --clean
 ```
 
 The staging area extracts RPM contents so that subsequent builds can find headers (`-I/opt/sgug-staging/usr/sgug/include`) and libraries (`-L/opt/sgug-staging/usr/sgug/lib32`).
@@ -251,8 +253,7 @@ cp /opt/irix-sysroot/usr/lib32/mips3/crtn.o \
 
 ```bash
 cd mogrix
-source .venv/bin/activate
-mogrix setup-cross
+uv run mogrix setup-cross
 ```
 
 This deploys:
@@ -301,6 +302,8 @@ file /tmp/test  # Should show: ELF 32-bit MSB executable, MIPS
 
 ## CLI Commands
 
+All commands use `uv run mogrix` (or activate the venv first with `source .venv/bin/activate`).
+
 | Command | Description |
 |---------|-------------|
 | `mogrix setup-cross` | One-time cross-compilation environment setup |
@@ -309,11 +312,14 @@ file /tmp/test  # Should show: ELF 32-bit MSB executable, MIPS
 | `mogrix build <srpm> --cross` | Cross-compile converted SRPM for IRIX |
 | `mogrix stage <rpms...>` | Stage cross-compiled RPMs for dependency resolution |
 | `mogrix analyze <srpm>` | Analyze rules + scan source for IRIX issues |
+| `mogrix sync-headers` | Sync compat headers to staging after edits |
 | `mogrix batch <dir> <out>` | Convert multiple SRPMs in batch |
 | `mogrix lint <rpms...>` | Lint RPMs/specs with IRIX-specific rpmlint config |
 | `mogrix validate-spec <spec>` | Validate spec file structure |
 | `mogrix list-rules` | List available package rules |
 | `mogrix validate-rules` | Validate all rule files |
+| `mogrix audit-rules` | Scan package rules for duplicates and class candidates |
+| `mogrix score-rules` | Score package rules by complexity |
 
 ## Dependency Handling
 
@@ -321,27 +327,27 @@ When building a converted package, mogrix detects missing dependencies and offer
 
 ```bash
 # Build will detect missing deps and offer to fetch them
-mogrix build converted-package.src.rpm
+uv run mogrix build converted-package.src.rpm
 
 # Or manually fetch SRPMs from Fedora archives
-mogrix fetch popt zlib curl
+uv run mogrix fetch popt zlib curl
 
 # Search shows matches and prompts for confirmation
-mogrix fetch zlib
+uv run mogrix fetch zlib
 # Found 2 matching packages:
 #   [1] zlib-ada-1.4-0.37.fc40.src.rpm
 #   [2] zlib-ng-2.1.6-2.fc40.src.rpm
 # Select [1]:
 
 # Auto-confirm single matches with -y
-mogrix fetch popt -y
+uv run mogrix fetch popt -y
 
 # Fetch from Photon OS repos (for tdnf, etc.)
-mogrix fetch tdnf --base-url photon5
+uv run mogrix fetch tdnf --base-url photon5
 
 # Available presets: photon5, photon4, photon3
 # Or use a custom URL (ending with / for flat directories)
-mogrix fetch popt --base-url http://my-mirror.example.com/srpms/
+uv run mogrix fetch popt --base-url http://my-mirror.example.com/srpms/
 ```
 
 The build command will:
@@ -447,6 +453,8 @@ rules:
 | `dlmalloc` | mmap-based malloc (bypasses IRIX brk heap limit) |
 | `strtof` | String to float conversion |
 | `getopt_long` | GNU long option parsing |
+| `reallocarray` | Overflow-checked array allocation |
+| `strerror_r` | Thread-safe strerror |
 | `sqlite3_stub` | Stub sqlite3 for optional features |
 
 ## IRIX Bootstrap
@@ -454,30 +462,29 @@ rules:
 After building all required packages, create a self-contained bootstrap tarball for IRIX:
 
 ```bash
-# Create bootstrap tarball (validates 17 required packages)
+# Create bootstrap tarball (includes all base packages)
 ./scripts/bootstrap-tarball.sh
 
-# Copy to IRIX
+# Copy to IRIX and extract into chroot
 scp tmp/irix-bootstrap.tar.gz root@irix-host:/tmp/
-
-# On IRIX, extract and initialize
+# On IRIX:
 cd /opt/chroot
 gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
 chroot /opt/chroot /bin/sh
 export LD_LIBRARYN32_PATH=/usr/sgug/lib32
 /usr/sgug/bin/rpm --initdb
-/usr/sgug/bin/rpm -Uvh --nodeps /tmp/bootstrap-rpms/sgugrse-release*.noarch.rpm
-
-# Test tdnf
-/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist
+cd /tmp/bootstrap-rpms
+/usr/sgug/bin/rpm -Uvh --nodeps sgugrse-release*.noarch.rpm
+/usr/sgug/bin/rpm -Uvh *.rpm
 ```
 
-The bootstrap tarball includes:
-- All tdnf dependency chain packages (extracted)
-- RPM files for database registration (`/tmp/bootstrap-rpms/`)
-- Default repository config pointing to `/tmp/mogrix-repo`
+Additional packages (Phase 2+) are installed individually via `rpm -Uvh` after copying to the chroot. The MCP-based workflow uses `irix_copy_to` and `irix_exec` tools instead of SSH.
 
-See `HANDOFF.md` for detailed IRIX setup instructions.
+The bootstrap tarball includes:
+- All Phase 1 dependency chain packages (extracted to filesystem)
+- RPM files for database registration (`/tmp/bootstrap-rpms/`)
+
+See `HANDOFF.md` for detailed IRIX setup instructions and current package status.
 
 ## Project Structure
 
@@ -495,7 +502,8 @@ mogrix/
 │   └── patches/        # Patch catalog
 ├── rules/              # Rule definitions
 │   ├── generic.yaml    # Universal rules (applied to ALL packages)
-│   ├── packages/       # Package-specific rules (76 packages)
+│   ├── classes/        # Class rules (nls-disabled, etc.)
+│   ├── packages/       # Package-specific rules (79 packages)
 │   └── source_checks.yaml  # IRIX source pattern definitions
 ├── headers/            # Header overlay files
 │   └── generic/        # Clang/IRIX compat headers
@@ -525,7 +533,7 @@ make lint
 make format
 
 # Validate rules
-mogrix validate-rules
+uv run mogrix validate-rules
 
 # Clean build artifacts
 make clean
@@ -533,26 +541,90 @@ make clean
 
 ## Package Rules Status
 
-28 packages built and verified across 3 phases:
+41 source packages built, installed, and verified on IRIX across 8 phases:
 
-| # | Package | Version | Source | Description |
-|---|---------|---------|--------|-------------|
-| 1 | zlib-ng | 2.1.6 | FC40 | Compression library (replaces zlib in FC40) |
-| 2 | bzip2 | 1.0.8 | FC40 | Block-sorting compression |
-| 3 | popt | 1.19 | FC40 | Command-line option parsing |
-| 4 | openssl | 3.2.1 | FC40 | TLS/SSL and crypto library |
-| 5 | libxml2 | 2.12.5 | FC40 | XML parsing library |
-| 6 | curl | 8.6.0 | FC40 | URL transfer library |
-| 7 | xz | 5.4.6 | FC40 | LZMA compression |
-| 8 | lua | 5.4.6 | FC40 | Scripting language (for rpm) |
-| 9 | file | 5.45 | FC40 | File type detection |
-| 10 | sqlite | 3.45.1 | FC40 | Embedded SQL database |
-| 11 | rpm | 4.19.1.1 | FC40 | Package manager |
-| 12 | libsolv | 0.7.28 | FC40 | Dependency solver |
-| 13 | tdnf | 3.5.14 | Photon5 | Package manager CLI (target) |
+### Phase 1: Bootstrap (14 packages)
 
-Additional supporting package:
-- **sgugrse-release** - Distribution release package (noarch, provides distroverpkg)
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 1 | zlib-ng | 2.1.6 | Compression library (replaces zlib in FC40) |
+| 2 | bzip2 | 1.0.8 | Block-sorting compression |
+| 3 | popt | 1.19 | Command-line option parsing |
+| 4 | openssl | 3.2.1 | TLS/SSL and crypto library |
+| 5 | libxml2 | 2.12.5 | XML parsing library |
+| 6 | curl | 8.6.0 | URL transfer library |
+| 7 | xz | 5.4.6 | LZMA compression |
+| 8 | lua | 5.4.6 | Scripting language (for rpm) |
+| 9 | file | 5.45 | File type detection |
+| 10 | sqlite | 3.45.1 | Embedded SQL database |
+| 11 | rpm | 4.19.1.1 | Package manager |
+| 12 | libsolv | 0.7.28 | Dependency solver |
+| 13 | tdnf | 3.5.14 | Package manager CLI |
+| 14 | sgugrse-release | 0.0.7beta | Distribution release package |
+
+### Phase 1.5: System Libraries (2 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 15 | ncurses | 6.4 | Terminal handling library |
+| 16 | readline | 8.2 | Line editing library |
+
+### Phase 2: Build Tools (6 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 17 | m4 | 1.4.19 | Macro processor |
+| 18 | perl | 5.38.2 | Perl interpreter (monolithic build) |
+| 19 | bash | 5.2.26 | Bourne-Again Shell |
+| 20 | autoconf | 2.71 | Configure script generator |
+| 21 | automake | 1.16.5 | Makefile generator |
+| 22 | libtool | 2.4.7 | Shared library support |
+
+### Phase 3a: Crypto Stack (7 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 23 | pkgconf | 2.1.0 | Package configuration tool |
+| 24 | libgpg-error | 1.48 | GnuPG error library |
+| 25 | libgcrypt | 1.10.3 | GnuPG crypto library |
+| 26 | libassuan | 2.5.7 | GnuPG IPC library |
+| 27 | libksba | 1.6.6 | GnuPG X.509 library |
+| 28 | npth | 1.7 | GnuPG threading library |
+| 29 | gnupg2 | 2.4.4 | GNU Privacy Guard |
+
+### Phase 3b: GNU Text Tools (3 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 30 | sed | 4.9 | Stream editor |
+| 31 | gawk | 5.3.0 | Pattern processing language |
+| 32 | grep | 3.11 | Pattern matching |
+
+### Phase 4a: User-Facing Utilities (5 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 33 | less | 643 | File pager |
+| 34 | which | 2.21 | Command locator |
+| 35 | gzip | 1.13 | Compression utility |
+| 36 | diffutils | 3.10 | File comparison |
+| 37 | patch | 2.7.6 | Patch application |
+
+### Phase 4b: Build/System Utilities (3 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 38 | make | 4.4.1 | Build automation |
+| 39 | findutils | 4.9.0 | File search (find, xargs) |
+| 40 | tar | 1.35 | Archive handling |
+
+### Phase 4c: Core Utilities (1 package)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 41 | coreutils | 9.4 | GNU core utilities (ls, cp, mv, cat, head, sort, etc.) |
+
+79 additional package rule files exist for future phases.
 
 ## Known Limitations
 
@@ -561,15 +633,20 @@ Additional supporting package:
 - **O_NOFOLLOW** - IRIX doesn't support this flag; stripped in openat-compat.c.
 - **vsnprintf(NULL, 0)** - Returns -1 on IRIX (not buffer size as in C99). Packages using this pattern need iterative vasprintf.
 - **Thread-local storage** - IRIX rld doesn't support `__tls_get_addr`. Packages using `__thread` need patching.
-- **`%zu` format specifier** - IRIX libc is pre-C99; `%zu` in printf-family calls corrupts varargs → SIGSEGV. Use `%u` instead.
+- **`%zu`/`%zd`/`%td` format specifiers** - IRIX libc is pre-C99; these corrupt varargs → SIGSEGV or literal letter output. Use `%u`/`%d` instead (32-bit on n32).
+- **`%Lg` (long double printf)** - IRIX printf doesn't handle long double formatting. `seq` disabled due to this.
 - **Volatile function pointer initializers** - `static volatile fptr = memset;` crashes on IRIX rld due to relocation issues. Use `explicit_bzero` compat.
 - **GNU ld linker scripts** - IRIX rld can only load ELF .so files. `INPUT(-lfoo)` text files crash rld. Replace with symlinks.
+- **`--export-dynamic`** - Causes IRIX rld to SIGSEGV when dynamic symbol table is very large (468+ entries). Disable features that require it.
 - **Long tar filenames** - IRIX tar corrupts GNU long filenames. Use `createrepo_c --simple-md-filenames`.
+- **pthread_sigmask** - In libpthread, not libc. Must explicitly link `-lpthread` when gnulib provides a replacement.
 
 **Build Environment:**
 - Cross-compiled binaries cannot be tested on the Linux host (use IRIX chroot for testing).
 - Some packages require libtool fixes for IRIX shared library versioning.
 - Packages with assembly code need `--disable-asm` or MIPS-specific implementations.
+- Indented `%configure` (inside for loops) is not matched by `configure_flags:add` — use `spec_replacements` instead.
+- `LIBS="value"` on `%configure` line **replaces** the exported `LIBS`. Always use `LIBS="$LIBS value"` to append.
 
 **Compatibility:**
 - Built packages use `/usr/sgug` prefix (SGUG-RSE convention).
@@ -614,6 +691,16 @@ Run `$MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool` after configure. This patch
 
 Check for TLS usage (`__thread` keyword). IRIX rld doesn't support it - patch to use static variables or pthreads.
 
+Also check for `--export-dynamic` in link commands — large dynamic symbol tables crash rld. And volatile function pointer static initializers (`static volatile fptr = memset;`) cause rld relocation failures.
+
+**Binary crashes during normal operation (not at startup)**
+
+Likely dlmalloc/libc allocator mismatch. libc functions like `strdup`, `asprintf`, `getline` allocate with libc malloc, but our code frees with dlmalloc. Inject compat `strdup`/`strndup` etc. via `inject_compat_functions`.
+
+**Undefined symbol: pthread_sigmask**
+
+IRIX has `pthread_sigmask` in libpthread, not libc. Add `LIBS="$LIBS -lpthread"` to configure environment and set `ac_cv_func_pthread_sigmask: "yes"` in ac_cv_overrides.
+
 ## Integration with Agentic AI
 
 Mogrix is designed for effective collaboration with AI coding assistants like Claude Code. The project includes structured documentation (`rules/INDEX.md`, `HANDOFF.md`, `rules/methods/*.md`) that AI agents can reference to understand patterns and make informed decisions.
@@ -634,9 +721,9 @@ This means the rules are both executable configuration *and* human/AI-readable d
 
 **Use the existing workflow:**
 ```bash
-mogrix fetch <package>
-mogrix convert <package>.src.rpm
-mogrix build <converted>.src.rpm --cross
+uv run mogrix fetch <package> -y
+uv run mogrix convert ~/mogrix_inputs/SRPMS/<package>-*.src.rpm
+uv run mogrix build ~/mogrix_outputs/SRPMS/<package>-*-converted/<package>-*.src.rpm --cross
 # Test on IRIX before proceeding
 ```
 

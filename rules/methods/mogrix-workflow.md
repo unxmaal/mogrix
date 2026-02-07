@@ -25,17 +25,18 @@ uv run mogrix <command>
 
 | Directory | Purpose |
 |-----------|---------|
-| `~/rpmbuild/SRPMS/fc40/` | Original Fedora 40 SRPMs (persistent inputs) |
-| `/tmp/mogrix-converted/<pkg>/` | Conversion output (ephemeral, regenerate anytime) |
-| `~/rpmbuild/RPMS/mips/` | Built MIPS packages (rpmbuild output) |
-| `~/rpmbuild/RPMS/noarch/` | Built noarch packages |
-| `/tmp/mogrix-repo/` | Distribution repository (copy of what ships) |
+| `~/mogrix_inputs/SRPMS/` | Original Fedora 40 SRPMs (fetched, read-only inputs) |
+| `~/mogrix_outputs/SRPMS/` | Converted SRPMs (mogrix convert output) |
+| `~/mogrix_outputs/RPMS/` | Built RPMs (known-good outputs) |
+| `~/rpmbuild/` | Ephemeral rpmbuild workspace (can delete anytime) |
+| `/opt/sgug-staging/` | Cross-compilation staging (setup-cross + staged packages) |
 
 **Key principles:**
 - **Never store build artifacts in the mogrix repo** - keep it code-only
-- **Original SRPMs are inputs** - persistent, reusable
-- **Converted output is ephemeral** - regenerate from originals + rules
-- **Repo is for distribution** - copy built RPMs here, run createrepo_c
+- **Original SRPMs are inputs** - fetched to `~/mogrix_inputs/SRPMS/`
+- **Converted SRPMs are intermediate** - regenerate from originals + rules
+- **Built RPMs are outputs** - copied to `~/mogrix_outputs/RPMS/`
+- **rpmbuild is ephemeral** - workspace only, nothing of value stored there
 
 ---
 
@@ -44,23 +45,21 @@ uv run mogrix <command>
 
 ### 1. Fetch SRPM (if not already present)
 ```bash
-# Fetch to standard location
-uv run mogrix fetch popt -o ~/rpmbuild/SRPMS/fc40/
+# Defaults to ~/mogrix_inputs/SRPMS/
+uv run mogrix fetch popt -y
 ```
 
 ### 2. Convert SRPM
 ```bash
 # From an SRPM (preferred - extracts, converts, repackages)
-uv run mogrix convert ~/rpmbuild/SRPMS/fc40/popt-1.19-6.fc40.src.rpm -o /tmp/mogrix-converted/popt/
-
-# From a spec file (just transforms the spec)
-uv run mogrix convert path/to/package.spec -o /tmp/output-dir/
+# Defaults to ~/mogrix_outputs/SRPMS/<pkg>-converted/
+uv run mogrix convert ~/mogrix_inputs/SRPMS/popt-1.19-6.fc40.src.rpm
 ```
 
 ### 3. Build for IRIX (cross-compile)
 ```bash
-# Use --cross flag - handles rpmbuild invocation correctly
-uv run mogrix build /tmp/mogrix-converted/popt/popt-1.19-6.src.rpm --cross
+# RPMs copied to ~/mogrix_outputs/RPMS/ automatically
+uv run mogrix build ~/mogrix_outputs/SRPMS/popt-1.19-6.fc40.src-converted/popt-1.19-6.src.rpm --cross
 ```
 
 The `--cross` flag automatically:
@@ -70,14 +69,13 @@ The `--cross` flag automatically:
 
 ### 4. Stage for dependent builds
 ```bash
-uv run mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
+uv run mogrix stage ~/mogrix_outputs/RPMS/popt*.rpm
 ```
 
-### 5. Copy to repo and update metadata
+### 5. Install on IRIX
 ```bash
-cp ~/rpmbuild/RPMS/mips/popt*.rpm /tmp/mogrix-repo/
-cp ~/rpmbuild/RPMS/noarch/popt*.rpm /tmp/mogrix-repo/ 2>/dev/null || true
-createrepo_c --update /tmp/mogrix-repo/
+scp ~/mogrix_outputs/RPMS/popt*.rpm root@192.168.0.81:/opt/chroot/tmp/
+# On IRIX: rpm -Uvh /tmp/popt*.rpm
 ```
 
 ---
@@ -88,10 +86,10 @@ Before building a new package, check what it will require at install time:
 
 ```bash
 # After converting, check the spec for Requires:
-grep -E "^Requires:" /tmp/converted/package.spec
+grep -E "^Requires:" ~/mogrix_outputs/SRPMS/<pkg>-converted/<pkg>.spec
 
 # Or check the built RPM:
-rpm -qp --requires ~/rpmbuild/RPMS/mips/package-*.rpm
+rpm -qp --requires ~/mogrix_outputs/RPMS/<pkg>-*.rpm
 ```
 
 **Important considerations:**
@@ -99,13 +97,6 @@ rpm -qp --requires ~/rpmbuild/RPMS/mips/package-*.rpm
 1. **Subpackages have dependencies** - e.g., `pkgconf-pkg-config` requires `pkgconf-m4`
 2. **noarch packages** - Some subpackages (like `-m4`, `-doc`) are `noarch`, not `mips`
 3. **Build order matters** - If package B requires package A, build and stage A first
-
-When copying to a repo, include BOTH architectures:
-```bash
-cp ~/rpmbuild/RPMS/mips/*.rpm /tmp/mogrix-repo/
-cp ~/rpmbuild/RPMS/noarch/*.rpm /tmp/mogrix-repo/
-createrepo_c --simple-md-filenames /tmp/mogrix-repo/
-```
 
 ---
 
@@ -129,10 +120,10 @@ mogrix build converted.src.rpm --cross
 
 | Mistake | Correct |
 |---------|---------|
-| `python -m mogrix` | `source .venv/bin/activate && mogrix` |
-| `python3 -m mogrix.convert` | `mogrix convert` (after activating venv) |
-| `python3 -m mogrix.cli` | `mogrix` (after activating venv) |
-| Manual rpmbuild invocation | `mogrix build --cross` |
+| `python -m mogrix` | `uv run mogrix` |
+| `python3 -m mogrix.convert` | `uv run mogrix convert` |
+| `python3 -m mogrix.cli` | `uv run mogrix` |
+| Manual rpmbuild invocation | `uv run mogrix build --cross` |
 | Forgetting `--cross` flag | Always use `--cross` for IRIX |
 | Wrong output paths | Use `-o` to specify output directory |
 

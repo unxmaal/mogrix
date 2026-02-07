@@ -1,12 +1,31 @@
 # libtool package rules for IRIX cross-compilation
 package: libtool
 
+smoke_test:
+  - command: "/usr/sgug/bin/libtool --version"
+    expect: "2.4.7"
+
 # libtool 2.4.7 already has the IRIX inherit_rpath fixes from SGUG-RSE
 # Old libtool.sgifixes.patch no longer needed
 
 rules:
   # No NLS in cross-compilation
   skip_find_lang: true
+
+  # Libtool's Makefile regenerates autotools files when timestamps are off.
+  # The PATH includes staging which has cross-compiled MIPS autotools binaries.
+  # Force host autotools and prevent regeneration.
+  export_vars:
+    PERL: "/usr/bin/perl"
+    AUTOCONF: "/usr/bin/autoconf"
+    AUTOM4TE: "/usr/bin/autom4te"
+    ACLOCAL: "/usr/bin/aclocal"
+    AUTOMAKE: "/usr/bin/automake"
+    AUTOHEADER: "/usr/bin/autoheader"
+
+  # Touch autotools-generated files to prevent make from regenerating them
+  prep_commands:
+    - "find . -name aclocal.m4 -o -name configure -o -name Makefile.in -o -name config.h.in | xargs touch"
 
   # help2man not available during cross-compilation
   drop_buildrequires:

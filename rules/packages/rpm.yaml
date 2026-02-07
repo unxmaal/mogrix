@@ -13,6 +13,11 @@
 
 package: rpm
 
+smoke_test:
+  - command: "/usr/sgug/bin/rpm --version"
+    expect: "4.19.1.1"
+  - command: "/usr/sgug/bin/rpm -qa"
+
 # Comprehensive IRIX source fixes (adapting sgug-rse's rpm 4.15 patch for 4.19)
 # Covers: arch detection, vsnprintf, TLS removal, futimens, fts.c, system.h,
 #         macros.in paths, elfdeps.c, printf formats

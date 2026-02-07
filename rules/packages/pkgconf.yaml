@@ -2,11 +2,20 @@
 # Provides pkg-config compatibility
 package: pkgconf
 
+smoke_test:
+  - command: "/usr/sgug/bin/pkg-config --version"
+    expect: "2.1.0"
+  - command: "/usr/sgug/bin/pkg-config --list-all"
+
 rules:
   # IRIX has strndup declared but not implemented in libc.
   # strdup IS in IRIX libc, but it uses libc's malloc internally.
   # Since dlmalloc replaces malloc/free, we must also replace strdup
   # so that strdup-allocated memory is freed by dlmalloc's free.
+  # Static build has no libpkgconf.so subpackage
+  drop_requires:
+    - libpkgconf
+
   inject_compat_functions:
     - strndup
     - strdup

@@ -26,6 +26,12 @@ rules:
     - krb5-devel
     - openssl-devel
 
+  # Drop runtime deps for features disabled at configure time
+  drop_requires:
+    - libnghttp2
+    - libpsl
+    - libssh
+
   # Use cross-compiled OpenSSL from staging
   # Export LD for libtool - use GNU ld (LLD doesn't support -print-search-dirs)
   export_vars:

@@ -83,6 +83,7 @@ VALID_PACKAGE_TOP_KEYS = {
     "aliases",
     "ac_cv_overrides",
     "drop_buildrequires",
+    "classes",
 }
 
 
@@ -237,6 +238,30 @@ class RuleValidator:
                             message=f"Unknown top-level key: '{key}'",
                         )
                     )
+
+            # Validate classes references
+            if "classes" in data:
+                classes = data["classes"]
+                if not isinstance(classes, list):
+                    result.issues.append(
+                        ValidationIssue(
+                            file=str(path.name),
+                            severity="error",
+                            message="'classes' must be a list",
+                        )
+                    )
+                else:
+                    classes_dir = self.rules_dir / "classes"
+                    for cls in classes:
+                        cls_path = classes_dir / f"{cls}.yaml"
+                        if not cls_path.exists():
+                            result.issues.append(
+                                ValidationIssue(
+                                    file=str(path.name),
+                                    severity="error",
+                                    message=f"Referenced class not found: '{cls}' (expected {cls_path})",
+                                )
+                            )
 
             # Validate rules section
             if "rules" in data:

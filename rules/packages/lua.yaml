@@ -48,3 +48,8 @@ rules:
     # Add versioned shared library to %files libs (libtool generates .0.0 suffix)
     - pattern: "%{_libdir}/liblua-%{major_version}.so"
       replacement: "%{_libdir}/liblua-%{major_version}.so*"
+
+  # clang defines __mips64 for n32 ABI. Fedora multiarch luaconf.h checks
+  # __mips64 before __mips. Create symlink so it resolves to our n32 config.
+  install_cleanup:
+    - ln -sf luaconf-mips.h $RPM_BUILD_ROOT%{_includedir}/luaconf-mips64.h

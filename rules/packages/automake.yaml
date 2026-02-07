@@ -2,9 +2,20 @@
 # Automake is noarch (Perl/shell scripts + m4 macros)
 package: automake
 
+smoke_test:
+  - command: "/usr/sgug/bin/automake --version"
+    expect: "1.16.5"
+
 rules:
   skip_find_lang: true
   # NOTE: skip_check is inherited from generic.yaml
+
+  # Automake's configure tries to run perl/autoconf from staging PATH, but
+  # those are cross-compiled MIPS binaries. Force host versions.
+  export_vars:
+    PERL: "/usr/bin/perl"
+    AUTOCONF: "/usr/bin/autoconf"
+    AUTOM4TE: "/usr/bin/autom4te"
 
   install_cleanup:
     # Fix perl shebang: /usr/bin/perl is ancient IRIX system perl 5.004

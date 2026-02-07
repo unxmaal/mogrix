@@ -64,8 +64,7 @@ r AI) starts informed.
 
 **Mogrix invocation:**
 ```bash
-source .venv/bin/activate
-mogrix <command>
+uv run mogrix <command>
 ```
 
 **IRIX connection:** `ssh root@192.168.0.81` (chroot: `/opt/chroot`)

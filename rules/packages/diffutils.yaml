@@ -1,0 +1,51 @@
+# diffutils - GNU diff utilities (diff, cmp, diff3, sdiff)
+# FC40: diffutils-3.10-5.fc40
+# Analysis: 3 errors (%zu in gnulib-tests), 6 warnings, 30 infos
+# Uses gnulib heavily — similar patterns to sed/grep
+
+package: diffutils
+classes: [nls-disabled]
+
+smoke_test:
+  - command: "/usr/sgug/bin/diff --version"
+    expect: "3.10"
+
+rules:
+  # Compat functions needed for IRIX
+  # strdup: dlmalloc/libc allocator mismatch
+  # getopt_long: option parsing
+  # reallocarray: gnulib xmalloc
+  # strerror_r: error reporting
+  inject_compat_functions:
+    - strdup
+    - strndup
+    - getopt_long
+    - reallocarray
+    - strerror_r
+
+  # Drop test-only build deps
+  drop_buildrequires:
+    - perl-Getopt-Long
+
+  # Use included regex (IRIX lacks GNU regex extensions)
+  configure_flags:
+    remove:
+      - --without-included-regex
+
+  # Tell gnulib that IRIX's select() works fine — prevents gnulib from
+  # building a replacement select.c that can't find the real select() declaration
+  ac_cv_overrides:
+    gl_cv_func_select_detects_ebadf: "yes"
+    gl_cv_func_select_supports0: "yes"
+
+  # Remove gnulib-tests from SUBDIRS (built during 'make all' but not needed)
+  # Also modify Makefile.am in case autoreconf regenerates Makefile.in
+  # Fix pI format: IRIX libc doesn't support %td (ptrdiff_t format specifier).
+  # On n32, ptrdiff_t is 32-bit (same as int), so %d works correctly.
+  # Fix unified timestamp: gnulib's nstrftime/localtime_rz crashes on second call
+  # on IRIX. Disable nanosecond timestamps to use simpler strftime code path.
+  prep_commands:
+    - "sed -i 's/gnulib-tests//' Makefile.in"
+    - "sed -i 's/gnulib-tests//' Makefile.am || true"
+    - "sed -i 's/#define pI \"t\"/#define pI \"\"/' src/system.h"
+    - "sed -i 's/STAT_TIMESPEC_NS/DISABLED_STAT_TIMESPEC_NS/' src/diff.c"

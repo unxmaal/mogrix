@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-06)
+## Current Status (2026-02-07)
 
-**Phase 3: USER-FACING PACKAGES — IN PROGRESS**
+**Phase 4c: COMPLETE — 41 source packages cross-compiled for IRIX**
 
-Phase 1 (bootstrap: 14 packages) and Phase 2 (build tools: 6 packages) are complete. Phase 3a complete: pkgconf, readline, full crypto chain (libgpg-error → libgcrypt → libassuan → libksba → npth → gnupg2) all installed and verified on IRIX. Phase 3b next: gettext, coreutils, grep, sed, gawk.
+All phases through 4c complete. 41 source packages cross-compiled, installed on clean `/opt/chroot` via bootstrap tarball + MCP (~50 RPMs including -devel subpackages). IRIX now has a full GNU userland: coreutils, findutils, tar, make, sed, gawk, grep, bash, perl, autotools, gnupg2, and the complete tdnf package management stack.
 
 ---
 
@@ -105,14 +105,14 @@ Validated: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf insta
 
 **Build order**: perl → bash → autoconf → automake → libtool
 
-### Phase 3: User-Facing Packages (IN PROGRESS)
+### Phase 3: User-Facing Packages (COMPLETE)
 
 With Phase 2 complete, IRIX has a full autotools chain.
 
 | Package | Status | Notes |
 |---------|--------|-------|
-| ncurses 6.4 | ✅ Rebuilt | Linker script fix (symlinks not INPUT()) |
-| readline 8.2 | ✅ Built | Staged in sysroot, uses system ncurses |
+| ncurses 6.4 | ✅ Verified on IRIX | Linker script fix (symlinks not INPUT()) |
+| readline 8.2 | ✅ Verified on IRIX | Staged in sysroot, uses system ncurses |
 | pkgconf 2.1.0 | ✅ Installed on IRIX | Static build, %zu→%u fix |
 | libgpg-error 1.48 | ✅ Installed on IRIX | lock-obj-pub generated on IRIX |
 | libgcrypt 1.10.3 | ✅ Installed on IRIX | FIPS removed, ASM disabled |
@@ -120,11 +120,43 @@ With Phase 2 complete, IRIX has a full autotools chain.
 | libksba 1.6.6 | ✅ Installed on IRIX | Clean build |
 | npth 1.7 | ✅ Installed on IRIX | POSIX1C pthread_atfork fix |
 | gnupg2 2.4.4 | ✅ Installed on IRIX | Key gen + sign + verify working |
-| gettext | Not started | Needed for i18n in coreutils/grep/sed |
-| coreutils | Not started | Core user tools |
-| grep | Not started | - |
-| sed | Not started | - |
-| gawk | Not started | - |
+| sed 4.9 | ✅ Installed on IRIX | GNU regex bundled, gnulib-tests removed |
+| gawk 5.3.0 | ✅ Installed on IRIX | MPFR disabled, git %prep replaced |
+| grep 3.11 | ✅ Verified on IRIX | GNU regex bundled, PCRE2 disabled |
+
+### Phase 4a: User-Facing Utilities (COMPLETE)
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| less 643 | ✅ Verified on IRIX | Skip fsync AC_TRY_RUN patch, ac_cv override |
+| which 2.21 | ✅ Verified on IRIX | getopt_long compat only |
+| gzip 1.13 | ✅ Verified on IRIX | Source renumbering, gnulib-tests removal, nls-disabled |
+| diffutils 3.10 | ✅ Verified on IRIX | gnulib select override, %td fix |
+| patch 2.7.6 | ✅ Verified on IRIX | posix_spawn compat (full impl), skip SELinux patch |
+
+### Phase 4b: Build/System Utilities (COMPLETE)
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| make 4.4.1 | ✅ Verified on IRIX | --disable-load (--export-dynamic crashes rld), --without-guile |
+| findutils 4.9.0 | ✅ Verified on IRIX | Out-of-tree build (_configure macro fix), gnulib-tests post-autoreconf |
+| tar 1.35 | ✅ Verified on IRIX | --disable-year2038, %zu fixes, brace expansion fix |
+
+### Phase 4c: Core Utilities (COMPLETE)
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| coreutils 9.4 | ✅ Verified on IRIX | Source renumbering, pthread_sigmask, strcasestr compat, seq disabled |
+
+Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX printf can't handle `%Lg` long double format).
+
+### Phase 5: Development Tools (NOT STARTED)
+
+| Package | Status | Notes |
+|---------|--------|-------|
+| binutils | Not started | Assembler, linker, objdump |
+| gcc | Not started | Native compiler for IRIX |
+| gettext | Not started | i18n (deferred — all packages use --disable-nls) |
 
 ### Long-Term: Modern Browser
 
@@ -147,8 +179,15 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | Spec validation (specfile library, integrated into convert) | Done |
 | RPM linting (rpmlint with IRIX-specific config) | Done |
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
-| 76 package rules | Done |
+| 79 package rules + 1 class rule | Done |
+| Rule auditing (`mogrix audit-rules`) | Done |
+| Rule scoring (`mogrix score-rules`) | Done |
 | 127 tests, all passing | Done |
+| Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
+| MCP-based IRIX testing (no SSH) | Done |
+| 41 source packages cross-compiled for IRIX | Done |
+| Full GNU userland (coreutils, findutils, tar, make) | Done |
+| Package manager (tdnf) functional on IRIX | Done |
 
 ---
 
@@ -167,6 +206,8 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | System libs over bundled | Full sysroot available; don't copy SGUG-RSE's bootstrap shortcuts |
 | `%u` not `%zu` for size_t | IRIX libc is pre-C99; `%zu` corrupts varargs → SIGSEGV |
 | `explicit_bzero` for wipememory | Volatile fptr static initializers crash on IRIX rld |
+| Disable `--export-dynamic` features | IRIX rld crashes with large dynamic symbol tables (468+ entries) |
+| `-lpthread` for pthread_sigmask | IRIX has it in libpthread, not libc; gnulib replacement needs it |
 
 ---
 
@@ -179,7 +220,9 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 5. **Extensible:** Adding new rules requires only YAML ✓
 6. **Reproducible:** Same input SRPM + rules = identical output SRPM ✓
 7. **Package manager on IRIX:** tdnf works ✓
-8. **Build tools on IRIX:** autoconf/automake/libtool ✓
+8. **Build tools on IRIX:** autoconf/automake/libtool/make ✓
+9. **Full GNU userland:** coreutils/findutils/tar/sed/gawk/grep ✓
+10. **Crypto stack:** gnupg2 key gen + sign + verify ✓
 
 ---
 

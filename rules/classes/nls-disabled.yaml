@@ -1,0 +1,21 @@
+# nls-disabled - Class for packages that disable NLS (gettext/i18n)
+#
+# Packages in this class disable NLS via --disable-nls and skip %find_lang.
+# They share identical spec_replacements for removing lang file references.
+#
+# To use: add `classes: [nls-disabled]` to your package yaml's top level.
+
+class: nls-disabled
+
+rules:
+  configure_flags:
+    add:
+      - --disable-nls
+
+  skip_find_lang: true
+
+  spec_replacements:
+    - pattern: "%find_lang %{name}"
+      replacement: "# %find_lang disabled (--disable-nls)"
+    - pattern: "%files -f %{name}.lang"
+      replacement: "%files"

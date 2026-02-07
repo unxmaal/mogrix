@@ -5,6 +5,10 @@
 
 package: gnupg2
 
+smoke_test:
+  - command: "/usr/sgug/bin/gpg2 --version"
+    expect: "2.4.4"
+
 # IRIX-specific patches from SGUG-RSE (fixes for 2.2.20, applies to 2.4.4 with offsets)
 add_patch:
   - gnupg2.sgifixes.patch

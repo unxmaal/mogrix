@@ -1,12 +1,23 @@
 # autoconf package rules for IRIX cross-compilation
 package: autoconf
 
+smoke_test:
+  - command: "/usr/sgug/bin/autoconf --version"
+    expect: "2.71"
+
 # Autoconf is noarch (Perl scripts + m4 macros).
 # No compilation needed, just packaging fixes.
 
 rules:
   # No NLS in cross-compilation
   skip_find_lang: true
+
+  # Autoconf's configure checks for perl by running it. The PATH includes
+  # staging (/opt/sgug-staging/usr/sgug/bin) which has our cross-compiled MIPS
+  # perl that can't execute on x86_64. Force configure to use host perl.
+  export_vars:
+    PERL: "/usr/bin/perl"
+    M4: "/usr/bin/m4"
 
   # Disable emacs support (not needed on IRIX)
   spec_replacements:

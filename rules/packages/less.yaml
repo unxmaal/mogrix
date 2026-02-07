@@ -1,0 +1,31 @@
+# less - Terminal pager
+# FC40: less-643-4.fc40
+# Analysis: 0 issues — cleanest package in batch
+# Uses ncurses from SGUG-RSE sysroot
+# less-475-fsync.patch replaces AC_CHECK_FUNCS(fsync) with AC_TRY_RUN
+# that has no cross-compile fallback. Skip it and use ac_cv override instead.
+
+package: less
+
+smoke_test:
+  - command: "/usr/sgug/bin/less --version"
+    expect: "less 643"
+
+rules:
+  # No compat functions needed — less doesn't use gnulib
+
+  # Drop test-only build deps
+  drop_buildrequires:
+    - groff-base  # man page formatting
+
+  # IRIX has fsync, sigset_t, etc. Override for cross-compile checks.
+  ac_cv_overrides:
+    ac_cv_type_sigset_t: "yes"
+    ac_cv_func_fsync: "yes"
+
+  # Skip the fsync patch — it replaces AC_CHECK_FUNCS(fsync) with an
+  # AC_TRY_RUN test that hard-errors during cross-compilation.
+  # IRIX fsync works fine; the override above handles detection.
+  spec_replacements:
+    - pattern: "%patch5 -p1 -b .fsync"
+      replacement: "# %patch5 skipped - fsync AC_TRY_RUN incompatible with cross-compile"
