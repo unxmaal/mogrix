@@ -1,0 +1,12 @@
+# non_fedora_packages.yaml
+#
+# Packages sourced from outside Fedora. The roadmap resolver checks this
+# before querying FC40 repo metadata, so these won't be marked UNRESOLVABLE.
+
+packages:
+  tdnf:
+    source: "photon5"
+    description: "Package manager CLI"
+  sgugrse-release:
+    source: "custom"
+    description: "Distribution release package"
