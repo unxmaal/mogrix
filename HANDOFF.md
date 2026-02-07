@@ -112,7 +112,7 @@ All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/
 |---------|---------|--------|-----------|
 | coreutils | 9.4 | INSTALLED | Source renumbering, pthread_sigmask, strcasestr compat, seq disabled (long double printf) |
 
-**Total: 45 packages built, installed and verified on IRIX (50 RPMs including -devel subpackages).**
+**Total: 41 source packages cross-compiled, installed and verified on IRIX (~50 RPMs including -devel subpackages).**
 
 ---
 
@@ -278,7 +278,7 @@ All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | IRIX host | `192.168.0.81` (use MCP, not SSH) |
-| IRIX chroot (active) | `/opt/chroot` (bootstrapped, 50 RPMs / 45 packages) |
+| IRIX chroot (active) | `/opt/chroot` (bootstrapped, ~50 RPMs / 41 source packages) |
 | IRIX chroot (backup) | `/opt/chroot_0206` (old SGUG-RSE base) |
 | Original FC40 SRPMs | `~/mogrix_inputs/SRPMS/` |
 | Converted SRPMs | `~/mogrix_outputs/SRPMS/` |
