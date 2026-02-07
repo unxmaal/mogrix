@@ -4,9 +4,9 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-02-07)
 
-**Phase 4c: COMPLETE — 41 source packages cross-compiled for IRIX**
+**Phase 4c: COMPLETE — 41 source packages cross-compiled for IRIX. Phase 5 planned.**
 
-All phases through 4c complete. 41 source packages cross-compiled, installed on clean `/opt/chroot` via bootstrap tarball + MCP (~50 RPMs including -devel subpackages). IRIX now has a full GNU userland: coreutils, findutils, tar, make, sed, gawk, grep, bash, perl, autotools, gnupg2, and the complete tdnf package management stack.
+All phases through 4c complete. 41 source packages cross-compiled, installed on clean `/opt/chroot` via bootstrap tarball + MCP (~50 RPMs including -devel subpackages). IRIX now has a full GNU userland: coreutils, findutils, tar, make, sed, gawk, grep, bash, perl, autotools, gnupg2, and the complete tdnf package management stack. Phase 5 (library foundation) planned via `mogrix roadmap` dependency analysis — 6 packages ready to build, 3 leaf blockers, then gettext/zstd/fontconfig/libX11/texinfo chains.
 
 ---
 
@@ -150,17 +150,79 @@ With Phase 2 complete, IRIX has a full autotools chain.
 
 Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX printf can't handle `%Lg` long double format).
 
-### Phase 5: Development Tools (NOT STARTED)
+### Phase 5: Library Foundation (NOT STARTED)
+
+Derived from `mogrix roadmap aterm` analysis. 40 packages already have rules; the goal is to unblock them by building their missing dependencies in tiers.
+
+**Method:** `mogrix roadmap <target>` generates the full transitive dependency graph. Manual analysis then groups packages into tiers by readiness. This manual triage (identifying which packages are ready, which are blockers, and which have the highest unblock impact) should eventually be automated into the roadmap command itself — see "Roadmap Enhancements" below.
+
+#### Tier 0: Ready to Build (have rules, all deps satisfied)
+
+| Package | Complexity | Notes |
+|---------|-----------|-------|
+| libffi | LOW | Already has rules |
+| oniguruma | LOW | Already has rules |
+| pcre2 | LOW | Already has rules |
+| symlinks | LOW | Already has rules |
+| tcl | LOW | Already has rules |
+| tree-pkg | LOW | Already has rules |
+
+#### Tier 1: Leaf Packages (no new deps, write rules + build)
+
+| Package | Complexity | Unblocks |
+|---------|-----------|----------|
+| chrpath | LOW | expect, jq, gpgme, libdb |
+| libpng | LOW | freetype, cairo, emacs, gd |
+| bison | MED | flex, elfutils, gobject-introspection, binutils, groff, jq, libarchive, libtasn1 (circular with flex) |
+
+#### Tier 2: Small Chains (high impact, manageable dep count)
+
+| Package | New Deps | Unblocks | Notes |
+|---------|----------|----------|-------|
+| gettext | 6 | 12 packages | Biggest single blocker (glib2, flex, elfutils, gnutls, ...) |
+| zstd | 4 | elfutils, gnutls, libarchive, git | |
+| fontconfig | 5 | emacs, cairo, pango, gd | |
+| libX11 | 8 | emacs, freetype, tk, gd | X11 chain (xorgproto, libXau, libxcb, ...) |
+| texinfo | 9 | emacs, gnutls, dejagnu, binutils, groff, elfutils | |
+
+#### Tier 3: Heavy but Critical (future)
+
+| Package | Complexity | Unblocks | Notes |
+|---------|-----------|----------|-------|
+| meson + python3.12 | HIGH | glib2, cairo, harfbuzz, gobject-introspection, pango | Entire GNOME library stack; python3.12 is HIGH complexity |
+| binutils | HIGH | gcc, many dev tools | 9 unsatisfied deps |
+| emacs | HIGH | many packages use it for build | 31 unsatisfied deps |
+
+### Phase 6: Development Tools (future)
 
 | Package | Status | Notes |
 |---------|--------|-------|
-| binutils | Not started | Assembler, linker, objdump |
-| gcc | Not started | Native compiler for IRIX |
-| gettext | Not started | i18n (deferred — all packages use --disable-nls) |
+| binutils | Blocked on tier 2 | Assembler, linker, objdump |
+| gcc | Blocked on binutils | Native compiler for IRIX |
 
 ### Long-Term: Modern Browser
 
 Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
+
+---
+
+## Roadmap Enhancements (TODO)
+
+The `mogrix roadmap` command generates dependency graphs but currently requires manual analysis to produce actionable build plans. The following analysis was done by hand for Phase 5 and should be automated:
+
+1. **Ready-to-build detection**: For each HAVE_RULES package, check if all its BuildRequires are satisfied (built or have rules). These are immediately buildable.
+
+2. **Blocker impact scoring**: Count how many HAVE_RULES (or NEED_RULES) packages each unsatisfied dependency blocks. Rank by impact — `gettext` blocks 12, `meson` blocks 9, `bison` blocks 8, etc.
+
+3. **Tier classification**: Automatically group packages into tiers:
+   - Tier 0: Have rules + all deps satisfied → build now
+   - Tier 1: Leaf packages (only need themselves, no new transitive deps)
+   - Tier 2: Small chains (1-9 new deps) ranked by unblock impact
+   - Tier 3: Heavy chains (10+ new deps)
+
+4. **Glob pattern drops for impossible ecosystems**: Already implemented (rust-*, golang-*, ghc-*). Will need periodic refinement as we encounter more impossible-on-IRIX packages during real porting.
+
+5. **Build plan export**: `mogrix roadmap <target> --plan` could emit a structured plan file with tiers, ready-to-build lists, and fetch commands, instead of the flat numbered list.
 
 ---
 
@@ -179,10 +241,12 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | Spec validation (specfile library, integrated into convert) | Done |
 | RPM linting (rpmlint with IRIX-specific config) | Done |
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
+| Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
+| Roadmap: glob pattern drops for impossible ecosystems | Done |
 | 79 package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
-| 127 tests, all passing | Done |
+| 153 tests, all passing | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
 | 41 source packages cross-compiled for IRIX | Done |

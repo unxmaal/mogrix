@@ -37,6 +37,18 @@ generic:
     # libdicl replaced by mogrix compat injection
     - libdicl
     - libdicl-devel
+    # Language ecosystems that have never been ported to IRIX (glob patterns)
+    - "rust-*"
+    - "golang-*"
+    - "ghc-*"
+    # Supporting packages for impossible ecosystems
+    - rust
+    - rust-packaging
+    - rust-srpm-macros
+    - cargo
+    - go-rpm-macros
+    - ghc-compiler
+    - ghc-rpm-macros
 
   drop_requires:
     - libdicl

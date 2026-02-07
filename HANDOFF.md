@@ -299,13 +299,51 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 
 ---
 
+## `mogrix roadmap` Command (NEW)
+
+Computes the full transitive build-dependency graph for any FC40 package, diffs it against mogrix state (rules, built RPMs, sysroot), and outputs a topologically sorted build plan.
+
+```bash
+# Basic usage — full graph for popt
+uv run mogrix roadmap popt
+
+# Limit depth, JSON output, tree view, diff against previous run
+uv run mogrix roadmap popt --depth 2
+uv run mogrix roadmap gdb --depth 3 --json > /tmp/gdb-roadmap.json
+uv run mogrix roadmap popt --tree
+uv run mogrix roadmap popt --diff /tmp/prev.json
+```
+
+### Implementation files
+| File | Purpose |
+|------|---------|
+| `mogrix/repometa.py` | Downloads FC40 repodata (pre-built sqlite DBs), builds unified index |
+| `mogrix/roadmap.py` | BFS graph resolver, SCC-based topo sort, output formatters |
+| `rules/sysroot_provides.yaml` | IRIX sysroot capabilities (libraries, files, capabilities) |
+| `rules/non_fedora_packages.yaml` | Non-Fedora packages (tdnf, sgugrse-release) |
+| `tests/test_roadmap.py` | 26 unit tests |
+
+### Key features
+- 8-level provider resolution: drops → sysroot → already-built → has-rules → non-fedora → binary-provides → file-provides → unresolvable
+- SCC condensation for correct build ordering within dependency cycles
+- RPM rich dependency expression parsing
+- Complexity scoring (LOW/MED/HIGH) for NEED_RULES packages
+- Output formats: text (default), JSON, Rich tree, diff
+
+### Cache
+- Repo metadata cached at `~/.cache/mogrix/repometa/fc40/` (~700MB)
+- Use `--refresh` to re-download
+
+---
+
 ## Next Steps
 
 1. **Phase 4c: COMPLETE** — coreutils installed and working (most utilities verified; seq disabled due to long double printf)
-2. **Phase 5: Development tools**: binutils, gcc (if cross-compiling GCC is feasible)
-3. **Clean up stale files**: `-.o`, `m4.lang`, `perl.spec`, `HANDOFF.020426.md`, `docs/`
-4. **tdnf ldconfig warning**: Add `remove_lines: ["/sbin/ldconfig"]` to tdnf.yaml or generic.yaml
-5. **Rebuild pkgconf** with new `drop_requires: libpkgconf` rule (currently installed with `--nodeps`)
+2. **Use `mogrix roadmap` to plan next phases** — e.g. `uv run mogrix roadmap gettext --depth 2`
+3. **Phase 5: Development tools**: binutils, gcc (if cross-compiling GCC is feasible)
+4. **Clean up stale files**: `-.o`, `m4.lang`, `perl.spec`, `HANDOFF.020426.md`, `docs/`
+5. **tdnf ldconfig warning**: Add `remove_lines: ["/sbin/ldconfig"]` to tdnf.yaml or generic.yaml
+6. **Rebuild pkgconf** with new `drop_requires: libpkgconf` rule (currently installed with `--nodeps`)
 
 ---
 

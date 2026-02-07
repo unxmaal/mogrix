@@ -12,6 +12,7 @@ import re
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from enum import Enum
 from pathlib import Path
 
@@ -275,9 +276,12 @@ class RoadmapResolver:
             cached = self._provider_cache[cache_key]
             return cached[0], cached[1], ""
 
-        # 1. Drop rules
+        # 1. Drop rules (exact match or glob pattern)
         if req_name in drops:
             return None, Classification.DROPPED, "rule"
+        for pattern in drops:
+            if ("*" in pattern or "?" in pattern) and fnmatch(req_name, pattern):
+                return None, Classification.DROPPED, f"rule ({pattern})"
 
         # Also check common Linux-only patterns
         linux_only_patterns = [
@@ -301,6 +305,9 @@ class RoadmapResolver:
         # 3. Already built — check by provides name from sqlite
         src_pkg = self._find_source_package(req_name)
         if src_pkg:
+            # Also check if the resolved source package matches a drop pattern
+            if self._matches_drop_pattern(src_pkg, drops):
+                return None, Classification.DROPPED, f"rule (source: {src_pkg})"
             return self._classify_found_package(src_pkg, cache_key)
 
         # Try extracting names from rich dependency expressions
@@ -310,10 +317,20 @@ class RoadmapResolver:
                 continue  # Already tried
             src_pkg = self._find_source_package(simple_name)
             if src_pkg:
+                if self._matches_drop_pattern(src_pkg, drops):
+                    return None, Classification.DROPPED, f"rule (source: {src_pkg})"
                 return self._classify_found_package(src_pkg, cache_key)
 
         # 8. Unresolvable
         return None, Classification.UNRESOLVABLE, req_name
+
+    @staticmethod
+    def _matches_drop_pattern(name: str, drops: set[str]) -> bool:
+        """Check if a name matches any glob pattern in the drop set."""
+        for pattern in drops:
+            if ("*" in pattern or "?" in pattern) and fnmatch(name, pattern):
+                return True
+        return False
 
     def _classify_found_package(
         self, src_pkg: str, cache_key: str
@@ -506,59 +523,128 @@ class RoadmapResolver:
     def _topological_sort(
         self, edges: list[tuple[str, str]], all_nodes: set[str]
     ) -> tuple[list[str], list[list[str]]]:
-        """Kahn's algorithm for topological sort with Tarjan's SCC for cycles.
+        """Topological sort with SCC condensation for proper cycle ordering.
 
-        Args:
-            edges: List of (dependency, dependent) pairs.
-            all_nodes: All nodes in the graph.
+        1. Find all SCCs using Tarjan's algorithm
+        2. Condense SCCs into super-nodes, creating an acyclic condensed graph
+        3. Topologically sort the condensed graph (Kahn's algorithm)
+        4. Expand super-nodes back, ordering nodes within each SCC by
+           "fewest unsatisfied deps" (greedy heuristic for best build order)
 
         Returns:
             (sorted_order, cycles) where cycles is a list of SCCs with >1 node.
         """
-        in_degree: dict[str, int] = defaultdict(int)
         adjacency: dict[str, list[str]] = defaultdict(list)
-
+        reverse_adj: dict[str, list[str]] = defaultdict(list)
         for dep, dependent in edges:
             adjacency[dep].append(dependent)
-            in_degree[dependent] += 1
-            if dep not in in_degree:
-                in_degree[dep] = 0
+            reverse_adj[dependent].append(dep)
 
-        # Add nodes with no edges
-        for node in all_nodes:
-            if node not in in_degree:
-                in_degree[node] = 0
+        # Step 1: Find all SCCs (including singletons for completeness)
+        all_sccs = self._find_all_sccs(all_nodes, adjacency)
+        cycles = [scc for scc in all_sccs if len(scc) > 1]
 
-        # Start with nodes that have no incoming edges
-        queue = [n for n in sorted(in_degree) if in_degree[n] == 0]
-        order: list[str] = []
+        # Build node -> SCC id mapping
+        node_to_scc: dict[str, int] = {}
+        for i, scc in enumerate(all_sccs):
+            for node in scc:
+                node_to_scc[node] = i
 
+        # Step 2: Build condensed DAG (edges between SCCs)
+        condensed_adj: dict[int, set[int]] = defaultdict(set)
+        condensed_in_degree: dict[int, int] = {i: 0 for i in range(len(all_sccs))}
+        for dep, dependent in edges:
+            scc_dep = node_to_scc.get(dep)
+            scc_dependent = node_to_scc.get(dependent)
+            if scc_dep is not None and scc_dependent is not None and scc_dep != scc_dependent:
+                if scc_dependent not in condensed_adj[scc_dep]:
+                    condensed_adj[scc_dep].add(scc_dependent)
+                    condensed_in_degree[scc_dependent] += 1
+
+        # Step 3: Topologically sort the condensed DAG
+        queue = sorted([i for i, d in condensed_in_degree.items() if d == 0])
+        scc_order: list[int] = []
         while queue:
-            queue.sort()  # Deterministic order
-            node = queue.pop(0)
-            order.append(node)
-            for neighbor in adjacency.get(node, []):
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
+            scc_id = queue.pop(0)
+            scc_order.append(scc_id)
+            for neighbor in sorted(condensed_adj.get(scc_id, set())):
+                condensed_in_degree[neighbor] -= 1
+                if condensed_in_degree[neighbor] == 0:
                     queue.append(neighbor)
+                    queue.sort()
 
-        # Find SCCs among remaining nodes using iterative Tarjan's
-        remaining = {n for n in in_degree if n not in set(order)}
-        cycles = self._find_sccs(remaining, adjacency) if remaining else []
+        # Add any remaining SCCs (shouldn't happen in condensed DAG, but safety)
+        for i in range(len(all_sccs)):
+            if i not in set(scc_order):
+                scc_order.append(i)
 
-        # Append remaining nodes to order (they're in cycles but still need ordering)
-        for node in sorted(remaining):
-            if node not in set(order):
+        # Step 4: Expand back to node order
+        order: list[str] = []
+        for scc_id in scc_order:
+            scc = all_sccs[scc_id]
+            if len(scc) == 1:
+                order.append(scc[0])
+            else:
+                # Order SCC nodes by greedy "fewest unsatisfied deps"
+                ordered_scc = self._order_scc_greedy(scc, adjacency, reverse_adj)
+                order.extend(ordered_scc)
+
+        # Add any isolated nodes not in any SCC
+        order_set = set(order)
+        for node in sorted(all_nodes):
+            if node not in order_set:
                 order.append(node)
 
         return order, cycles
 
-    def _find_sccs(
+    def _order_scc_greedy(
+        self,
+        scc: list[str],
+        adjacency: dict[str, list[str]],
+        reverse_adj: dict[str, list[str]],
+    ) -> list[str]:
+        """Order nodes within an SCC using a greedy heuristic.
+
+        Picks the node with the fewest unresolved deps (within the SCC) first.
+        This gives a reasonable build order for bootstrapping cycles:
+        the first package is the one to build with minimal deps, then its
+        dependents become unblocked, etc.
+        """
+        scc_set = set(scc)
+        remaining = set(scc)
+        resolved: set[str] = set()
+        result: list[str] = []
+
+        while remaining:
+            # Count how many SCC-internal deps each remaining node has unresolved
+            best = None
+            best_count = float("inf")
+            for node in sorted(remaining):
+                # Count deps within SCC that haven't been "resolved" yet
+                unresolved = sum(
+                    1
+                    for dep in reverse_adj.get(node, [])
+                    if dep in scc_set and dep in remaining
+                )
+                if unresolved < best_count:
+                    best_count = unresolved
+                    best = node
+
+            if best is None:
+                break
+            result.append(best)
+            remaining.discard(best)
+            resolved.add(best)
+
+        return result
+
+    def _find_all_sccs(
         self, nodes: set[str], adjacency: dict[str, list[str]]
     ) -> list[list[str]]:
-        """Find strongly connected components using iterative Tarjan's algorithm.
+        """Find ALL strongly connected components (including singletons).
 
-        Only returns SCCs with >1 node (actual cycles).
+        Uses iterative Tarjan's algorithm to avoid recursion depth issues
+        on large graphs (Fedora has 2800+ nodes).
         """
         index_counter = [0]
         stack: list[str] = []
@@ -568,8 +654,7 @@ class RoadmapResolver:
         sccs: list[list[str]] = []
 
         def strongconnect(v: str):
-            # Iterative DFS to avoid recursion depth issues
-            call_stack = [(v, 0)]  # (node, neighbor_index)
+            call_stack = [(v, 0)]
             index[v] = lowlink[v] = index_counter[0]
             index_counter[0] += 1
             stack.append(v)
@@ -591,7 +676,6 @@ class RoadmapResolver:
                     elif w in on_stack:
                         lowlink[node] = min(lowlink[node], index[w])
                 else:
-                    # All neighbors processed
                     if lowlink[node] == index[node]:
                         scc: list[str] = []
                         while True:
@@ -600,8 +684,7 @@ class RoadmapResolver:
                             scc.append(w)
                             if w == node:
                                 break
-                        if len(scc) > 1:
-                            sccs.append(sorted(scc))
+                        sccs.append(sorted(scc))
 
                     call_stack.pop()
                     if call_stack:
