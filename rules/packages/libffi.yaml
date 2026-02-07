@@ -1,7 +1,28 @@
 # libffi package rules for IRIX cross-compilation
 package: libffi
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - libffi.sgifixes.patch
+# NOTE: Old sgifixes.patch was for libffi 3.2.1 + MIPSpro compiler.
+# With clang (__GNUC__ defined), the #pragma pack guards don't apply.
+# Test suite changes are irrelevant (skip_check). No patch needed.
+
+rules:
+  # configure.host matches mips-sgi-irix6.* but we're mips-unknown-irix6.5.
+  # Widen the pattern to accept any vendor for IRIX.
+  prep_commands:
+    - "sed -i 's/mips-sgi-irix5\\.\\* | mips-sgi-irix6\\.\\*/mips*-*-irix5.* | mips*-*-irix6.*/' configure.host"
+
+  # LLVM/Clang 16 integrated assembler bug (fixed in LLVM 18, issue #52785):
+  # .cpsetup on N32 incorrectly expands to __gnu_local_gp absolute references
+  # (R_MIPS_HI16/LO16) instead of GP-relative relocations (R_MIPS_GPREL16).
+  # GNU ld rejects __gnu_local_gp in shared objects.
+  # Fix: use external GNU assembler (mips-sgi-irix6.5-as) for .S files.
+  export_vars:
+    CCASFLAGS: "-fno-integrated-as -B/opt/cross/bin/mips-sgi-irix6.5-"
+
+  # Our rpmbuild doesn't run brp-compress, and we lack makeinfo for info pages
+  spec_replacements:
+    - pattern: "%{_mandir}/man3/*.gz"
+      replacement: "%{_mandir}/man3/*"
+    - pattern: "%{_infodir}/libffi.info.*"
+      replacement: "%{_infodir}/libffi.info"
 

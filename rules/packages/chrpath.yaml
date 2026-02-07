@@ -1,0 +1,9 @@
+# chrpath package rules for IRIX cross-compilation
+package: chrpath
+
+rules:
+  # make install puts docs in $(prefix)/doc/chrpath-0.16/ which differs from
+  # rpmbuild's %doc handling. The spec's cleanup targets /usr/doc but our
+  # prefix is /usr/sgug, so docs end up as unpackaged files.
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_prefix}/doc"

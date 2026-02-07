@@ -1,0 +1,21 @@
+# libpng package rules for IRIX cross-compilation
+package: libpng
+
+rules:
+  # Contrib tools have conflicts with IRIX headers and missing zlib features.
+  # pngcp.c redefines struct option (conflicts with SGUG getopt.h).
+  # pngfix uses inflateReset2 which our zlib-ng may not provide.
+  # Neither tool is installed. Stub them out.
+  prep_commands:
+    - "echo 'int main(void){return 0;}' > contrib/tools/pngcp.c"
+    - "echo 'int main(void){return 0;}' > contrib/tools/pngfix.c"
+
+  # autoreconf needs AUTOPOINT=true (no gettext/autopoint available)
+  spec_replacements:
+    - pattern: "autoreconf -vif"
+      replacement: "AUTOPOINT=true autoreconf -vif"
+    # Man pages not compressed by our rpmbuild
+    - pattern: "%{_mandir}/man3/*.gz"
+      replacement: "%{_mandir}/man3/*"
+    - pattern: "%{_mandir}/man5/*.gz"
+      replacement: "%{_mandir}/man5/*"

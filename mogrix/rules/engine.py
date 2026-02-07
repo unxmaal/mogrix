@@ -388,14 +388,16 @@ class RuleEngine:
             )
 
         # Patches to add from mogrix patches directory
-        if "add_patch" in rules:
+        # Only process here if rules is a separate subsection (not the same as pkg_rules,
+        # which is already handled at the top level in _apply_package_rules)
+        if "add_patch" in rules and rules is not pkg_rules:
             result.add_patches.extend(rules["add_patch"])
             result.applied_rules.append(
                 f"add_patch: {len(rules['add_patch'])} patches"
             )
 
         # Extra source files to add
-        if "add_source" in rules:
+        if "add_source" in rules and rules is not pkg_rules:
             result.add_sources.extend(rules["add_source"])
             result.applied_rules.append(
                 f"add_source: {len(rules['add_source'])} sources"

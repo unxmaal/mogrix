@@ -218,8 +218,10 @@ class SpecWriter:
                 # Remove the flag and any argument (e.g., --with-foo=bar)
                 escaped = re.escape(flag)
                 # Handle flag with = argument
+                # Use lookahead to ensure we match the WHOLE flag, not a prefix
+                # e.g., --enable-jit must not match inside --enable-jit-sealloc
                 content = re.sub(
-                    rf"\s*{escaped}(=[^\s]+)?",
+                    rf"\s*{escaped}(?=[=\s\\]|$)(=[^\s]+)?",
                     "",
                     content,
                 )

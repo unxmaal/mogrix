@@ -16,6 +16,10 @@
 /* Include the real inttypes.h */
 #include_next <inttypes.h>
 
+/* C99 requires <inttypes.h> to include <stdint.h>, but IRIX's doesn't.
+ * Pull it in explicitly to get SIZE_MAX, UINT64_MAX, etc. */
+#include <stdint.h>
+
 /* Provide fallback definitions if the format macros are still missing */
 
 #ifndef PRId8
