@@ -1,12 +1,8 @@
-# nettle - Low-level crypto library
+# nettle - Low-level crypto library (FC40: 3.9.1)
 # Used by GnuTLS
-
 package: nettle
 
 rules:
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
-
-  # Configure flags
   configure_flags:
     add:
       - --disable-assembler
@@ -15,5 +11,25 @@ rules:
       - --disable-x86-aesni
       - --disable-x86-sha-ni
       - --disable-x86-pclmul
-    remove:
       - --enable-mini-gmp
+    remove:
+      - --enable-fat
+
+  # Nettle Makefile calls ld directly; use our wrapper to filter non-linker flags
+  export_vars:
+    LD: "/opt/sgug-staging/share/mogrix/irix-ld"
+
+  spec_replacements:
+    # Disable FIPS support (fipshmac not available, not needed on IRIX)
+    - pattern: "%bcond_without fips"
+      replacement: "%bcond_with fips"
+    # Fix pushd/popd bash-ism in bootstrap_ver section
+    - pattern: "pushd bootstrap_ver"
+      replacement: "cd bootstrap_ver"
+    # Man pages / info not compressed
+    - pattern: "%{_infodir}/nettle.info.*"
+      replacement: "%{_infodir}/nettle.info"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+    - "rm -f %{buildroot}%{_infodir}/dir"

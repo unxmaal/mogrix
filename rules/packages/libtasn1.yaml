@@ -21,10 +21,33 @@ rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
     gl_cv_func_working_getdelim: "yes"
+    gl_cv_header_working_stdint_h: "yes"
 
-  # Configure flags
   configure_flags:
     add:
       - --disable-doc
       - --disable-gtk-doc
       - --disable-gcc-warnings
+
+  # Remove GPG signature verification (gpgv2 not available during cross-compilation)
+  remove_lines:
+    - "gpgv2"
+
+  spec_replacements:
+    # Skip gtkdocize during autoreconf (not available for cross-compilation)
+    - pattern: "autoreconf -v -f --install"
+      replacement: "GTKDOCIZE=true autoreconf -v -f --install"
+    # No man pages or info files installed (docs disabled)
+    - pattern: "%{_mandir}/man1/asn1*"
+      replacement: ""
+    - pattern: "%{_mandir}/man3/*asn1*"
+      replacement: ""
+    - pattern: "%{_infodir}/*.info.*"
+      replacement: ""
+    # Fix bash-ism brace expansion in original cleanup
+    - pattern: "rm -f $RPM_BUILD_ROOT{%_libdir/*.la,%_infodir/dir}"
+      replacement: "rm -f $RPM_BUILD_ROOT%{_libdir}/*.la $RPM_BUILD_ROOT%{_infodir}/dir"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+    - "rm -f %{buildroot}%{_infodir}/dir"

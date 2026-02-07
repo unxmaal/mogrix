@@ -44,6 +44,15 @@ CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_EXTERN_C="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_EXTERN_C="
 
+# Handle --version and -v (compiler identification for build systems like meson)
+for arg in "$@"; do
+    case "$arg" in
+        --version|-v|--help|-dumpversion|-dumpmachine)
+            exec $CLANG $CLANG_FLAGS "$@"
+            ;;
+    esac
+done
+
 # Check if this is preprocess-only (-E flag present)
 preprocess_only=false
 if echo " $* " | grep -q " -E "; then
@@ -100,7 +109,7 @@ elif [ "$link_only" = "true" ]; then
                 link_args="$link_args $ld_flag"
                 ;;
             # Skip compile-only flags (but not -Wl which is handled above)
-            -D*|-I*|-W*|-O*|-g|-g[0-9]|-std=*|-c|-Q*|-f*|-m*)
+            -D*|-I*|-W*|-O*|-g|-g[0-9]|-ggdb*|-gdwarf*|-gz*|-std=*|-c|-Q*|-f*|-m*)
                 ;;
             # Skip compiler flags that LLD doesn't understand
             -static|-dynamic|-Bdynamic|-Bstatic|-pedantic|-pedantic-errors)

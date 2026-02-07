@@ -1,5 +1,5 @@
-# fribidi - Unicode Bidirectional Algorithm library
-# Needs compat functions
+# fribidi - Unicode Bidirectional Algorithm library (FC40: 1.0.13)
+# FC40 uses meson; we force the autotools path via RHEL conditional
 
 package: fribidi
 
@@ -8,11 +8,28 @@ rules:
   inject_compat_functions:
     - strdup
     - strndup
+    - getopt_long
 
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
 
-  # Configure flags
+  # Configure flags (used when autotools path is active)
   configure_flags:
     add:
       - --disable-silent-rules
       - --disable-docs
+
+  # Fix utime() name clash: fribidi-benchmark.c defines local utime() which
+  # conflicts with IRIX's utime(2) from <utime.h>
+  prep_commands:
+    - "sed -i 's/^utime (/fribidi_bench_utime (/' bin/fribidi-benchmark.c"
+    - "sed -i 's/utime ()/fribidi_bench_utime ()/' bin/fribidi-benchmark.c"
+
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_mandir}/man3"
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+
+  spec_replacements:
+    # Force autotools build path (meson not available for cross-compilation)
+    # The spec has %if 0%{?rhel} && 0%{?rhel} <= 8 guards around autotools code
+    - pattern: "%if 0%{?rhel} && 0%{?rhel} <= 8"
+      replacement: "%if 1"

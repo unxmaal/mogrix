@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-07
-**Status**: Full phased rebuild COMPLETE. All packages built, installed and verified on clean `/opt/chroot` via bootstrap tarball + MCP.
+**Last Updated**: 2026-02-07 (session 2)
+**Status**: Phase 5 (Library Foundation) IN PROGRESS. Tier 0 + Tier 1 + 8 Tier 2 packages complete (18 new packages, 59 total). Moving to Tier 2 chains.
 
 ---
 
@@ -21,7 +21,75 @@ On 2026-01-27, installing directly to /usr/sgug replaced libz.so with zlib-ng, b
 
 ## Goal
 
-Cross-compile Fedora 40 packages for IRIX using mogrix, a deterministic SRPM conversion engine. Phases 1-3 are complete. Next: coreutils, gettext, and other user-facing packages.
+Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Now building Phase 5: library foundation packages toward aterm (X11 terminal emulator). 59 total packages built.
+
+---
+
+## IMMEDIATE NEXT: Tier 2 Packages
+
+Tier 0 and Tier 1 are complete. Next targets from the aterm roadmap:
+
+### Tier 2: Small Chains (high impact)
+- **gettext** (6 new deps) → unblocks 12 packages (biggest single blocker)
+- **zstd** (4 new deps) → unblocks elfutils, gnutls, libarchive, git
+- **fontconfig** (5 new deps) → unblocks emacs, cairo, pango, gd
+- **libX11** (8 new deps) → unblocks emacs, freetype, tk, gd — CRITICAL for aterm
+- **texinfo** (9 new deps) → unblocks emacs, gnutls, dejagnu, binutils
+
+Start with packages that have the fewest new dependencies.
+
+---
+
+## Phase 5 Progress
+
+### Tier 0: Ready to Build ✅ COMPLETE
+| Package | Version | Status | Key Fixes |
+|---------|---------|--------|-----------|
+| pcre2 | 10.42 | INSTALLED | JIT/sealloc blocks, `--disable-percent-zt`, inttypes.h C99 fix |
+| symlinks | 1.7 | INSTALLED | CC override for raw Makefile |
+| tree-pkg | 2.1.0 | INSTALLED | Clean build |
+| oniguruma | 6.9.9 | INSTALLED | fix-libtool-irix.sh |
+| libffi | 3.4.4 | INSTALLED | CCASFLAGS `-fno-integrated-as` (LLVM #52785), sgidefs.h overlay |
+| tcl | 8.6.13 | INSTALLED | `tcl_cv_sys_version=IRIX64-6.5`, SHLIB_LD=`$CC -shared`, symlink fixes |
+
+### Tier 1: Leaf Blockers ✅ COMPLETE
+| Package | Version | Status | Key Fixes |
+|---------|---------|--------|-----------|
+| flex | 2.6.4 | INSTALLED | nls-disabled, inline basename (bootstrap HOST binary issue) |
+| chrpath | 0.16 | INSTALLED | byteswap.h compat, doc cleanup |
+| libpng | 1.6.40 | INSTALLED | pngcp/pngfix stubs (header conflicts + missing zlib features) |
+| bison | 3.8.2 | INSTALLED | gl_cv_header_working_stdint_h override, doc cleanup |
+
+---
+
+## What Was Fixed This Session
+
+### 1. configure_flags:remove regex bug
+`spec.py:222` now uses `(?=[=\s\\]|$)` lookahead to prevent `--enable-jit` matching inside `--enable-jit-sealloc`.
+
+### 2. Duplicate add_patch/add_source engine bug
+Fixed in `engine.py` — when yaml has no `rules:` subsection, `rules = pkg_rules.get("rules", pkg_rules)` made `rules` the SAME dict, causing double processing.
+
+### 3. C99 inttypes.h compliance
+IRIX `inttypes.h` doesn't include `stdint.h` (violating C99). Fixed by adding `#include <stdint.h>` to `mogrix-compat/generic/inttypes.h`.
+
+### 4. LLVM/Clang 16 assembler bug (MIPS .cpsetup)
+Clang 16 integrated assembler generates wrong relocations for MIPS N32 `.cpsetup` (R_MIPS_HI16 against `__gnu_local_gp` instead of GP-relative). Fix: `-fno-integrated-as` to use GNU as. Tracked as LLVM #52785.
+
+### 5. __ASSEMBLER__ guards for IRIX headers
+IRIX `sgidefs.h` has C typedefs under `_LANGUAGE_C` guard but clang defines this even in assembler-with-cpp mode. Fixed with `dicl-clang-compat/sgidefs.h` overlay.
+
+### 6. byteswap.h compat header
+Created `dicl-clang-compat/byteswap.h` using `__builtin_bswap{16,32,64}`.
+
+### 7. basename compat function
+IRIX has `basename()` in `libgen.so`, not libc. Created `compat/string/basename.c` and added to catalog.
+
+### 8. gnulib stdint.h conflict
+gnulib generates its own `int_fast32_t` (as `long`) conflicting with our `dicl-clang-compat/stdint.h` (as `int`). Fix: `gl_cv_header_working_stdint_h: "yes"` override.
+
+### 9. tcl cross-compilation detection
+`tcl.m4` uses `uname -s` to detect platform — returns `Linux` during cross-compilation. Fix: `tcl_cv_sys_version: "IRIX64-6.5"` override.
 
 ---
 
@@ -29,7 +97,7 @@ Cross-compile Fedora 40 packages for IRIX using mogrix, a deterministic SRPM con
 
 ### Full Phased Rebuild (COMPLETE - 2026-02-07)
 
-All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/chroot`, all packages installed via MCP (no SSH), verified working. 41 packages in rpm database.
+All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/chroot`, all packages installed via MCP (no SSH), verified working. 51 packages in rpm database (41 from phases 1-4c + 10 from phase 5).
 
 ### Phase 1: Bootstrap (14 packages)
 
@@ -59,14 +127,14 @@ All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/
 
 ### Phase 2: Build Tools (6 packages)
 
-| Package | Version | Status | Notes |
-|---------|---------|--------|-------|
-| m4 | 1.4.19 | INSTALLED | - |
-| perl | 5.38.2 | INSTALLED | Monolithic build, explicit Provides |
-| bash | 5.2.26 | INSTALLED | System readline, libtinfo for termcap |
-| autoconf | 2.71 | INSTALLED | PERL=/usr/bin/perl for host execution |
-| automake | 1.16.5 | INSTALLED | shebang + FindBin + AUTOCONF/PERL exports |
-| libtool | 2.4.7 | INSTALLED | Touch timestamps to prevent regeneration |
+| Package | Version | Status |
+|---------|---------|--------|
+| m4 | 1.4.19 | INSTALLED |
+| perl | 5.38.2 | INSTALLED |
+| bash | 5.2.26 | INSTALLED |
+| autoconf | 2.71 | INSTALLED |
+| automake | 1.16.5 | INSTALLED |
+| libtool | 2.4.7 | INSTALLED |
 
 ### Phase 3a: Crypto Stack (7 packages)
 
@@ -88,184 +156,44 @@ All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/
 | gawk | 5.3.0 | INSTALLED |
 | grep | 3.11 | INSTALLED |
 
-### Phase 4a: User-Facing Utilities (5 packages)
+### Phase 4a-c: Utilities (9 packages)
 
-| Package | Version | Status | Key Fixes |
-|---------|---------|--------|-----------|
-| less | 643 | INSTALLED | Skip fsync AC_TRY_RUN patch, ac_cv override |
-| which | 2.21 | INSTALLED | getopt_long compat only |
-| gzip | 1.13 | INSTALLED | Source renumbering, gnulib-tests removal, nls-disabled |
-| diffutils | 3.10 | INSTALLED | gnulib select override, %td fix, nstrftime crash workaround |
-| patch | 2.7.6 | INSTALLED | posix_spawn compat (full impl), skip SELinux patch |
+| Package | Version | Status |
+|---------|---------|--------|
+| less | 643 | INSTALLED |
+| which | 2.21 | INSTALLED |
+| gzip | 1.13 | INSTALLED |
+| diffutils | 3.10 | INSTALLED |
+| patch | 2.7.6 | INSTALLED |
+| make | 4.4.1 | INSTALLED |
+| findutils | 4.9.0 | INSTALLED |
+| tar | 1.35 | INSTALLED |
+| coreutils | 9.4 | INSTALLED |
 
-### Phase 4b: Build/System Utilities (3 packages)
+### Phase 5: Library Foundation (10 packages so far)
 
-| Package | Version | Status | Key Fixes |
-|---------|---------|--------|-----------|
-| make | 4.4.1 | INSTALLED | --disable-load (--export-dynamic crashes rld), --without-guile |
-| findutils | 4.9.0 | INSTALLED | Out-of-tree build (_configure macro fix), gnulib-tests post-autoreconf |
-| tar | 1.35 | INSTALLED | --disable-year2038, %zu fixes, brace expansion fix |
+| Package | Version | Status | Tier |
+|---------|---------|--------|------|
+| pcre2 | 10.42 | INSTALLED | 0 |
+| symlinks | 1.7 | INSTALLED | 0 |
+| tree-pkg | 2.1.0 | INSTALLED | 0 |
+| oniguruma | 6.9.9 | INSTALLED | 0 |
+| libffi | 3.4.4 | INSTALLED | 0 |
+| tcl | 8.6.13 | INSTALLED | 0 |
+| flex | 2.6.4 | INSTALLED | 1 |
+| chrpath | 0.16 | INSTALLED | 1 |
+| libpng | 1.6.40 | INSTALLED | 1 |
+| bison | 3.8.2 | INSTALLED | 1 |
+| expat | 2.6.0 | STAGED | 2 |
+| freetype | 2.13.2 | STAGED | 2 |
+| nettle | 3.9.1 | STAGED | 2 |
+| libtasn1 | 4.19.0 | STAGED | 2 |
+| fribidi | 1.0.13 | STAGED | 2 |
+| libjpeg-turbo | 3.0.2 | STAGED | 2 |
+| pixman | 0.43.0 | STAGED | 2 |
+| uuid | 1.6.2 | STAGED | 2 |
 
-### Phase 4c: Core Utilities (1 package)
-
-| Package | Version | Status | Key Fixes |
-|---------|---------|--------|-----------|
-| coreutils | 9.4 | INSTALLED | Source renumbering, pthread_sigmask, strcasestr compat, seq disabled (long double printf) |
-
-**Total: 41 source packages cross-compiled, installed and verified on IRIX (~50 RPMs including -devel subpackages).**
-
----
-
-## Fixes Made This Session (Phase 4c — coreutils)
-
-### 1. Source numbering conflicts with compat injection
-- Coreutils spec uses Source105/106, conflicts with compat sources starting at Source100
-- Fix: spec_replacements renumber Source105→51, Source106→52
-
-### 2. Indented %configure not matched by configure_flags:add
-- Coreutils runs `%configure` inside a `for` loop (indented)
-- The emitter regex `^(%configure\s+)` requires `%configure` at start of line
-- Fix: Use spec_replacements to inject flags directly into the `%configure` line
-
-### 3. posix_memalign declaration for gnulib
-- gnulib builds replacement posix_memalign.c that calls the "real" function via #undef
-- IRIX has no posix_memalign; dlmalloc provides the symbol via `dlposix_memalign`
-- Fix: Declaration in `compat/include/mogrix-compat/generic/stdlib.h`
-
-### 4. strcasestr missing on IRIX
-- `expand-common.c` calls `strcasestr` directly; IRIX lacks it
-- Already had compat implementation in `compat/string/strcasestr.c`
-- Initially added static inline in stdlib.h — conflicted with extern decl in string.h
-- Fix: Removed static inline, added `strcasestr` to inject_compat_functions
-
-### 5. LIBS override clobbered compat library
-- `LIBS="-lpthread" %configure` on the configure line **replaced** the exported `LIBS="-L... -lmogrix-compat"`
-- Fix: Changed to `LIBS="$LIBS -lpthread"` to append rather than replace
-
-### 6. pthread_sigmask in libpthread
-- gnulib's rpl_pthread_sigmask calls real `pthread_sigmask` which is in libpthread, not libc
-- Cross-compilation can't detect it; linker fails with undefined symbol
-- Fix: ac_cv_overrides + `LIBS="$LIBS -lpthread"` to link against libpthread
-
-### 7. seq infinite loop (long double printf)
-- `seq` uses `%Lg` format (long double) for number output
-- IRIX printf doesn't handle long double correctly — counter prints `1` forever, never increments
-- Fix: Added `seq` to `--enable-no-install-program` skip list (runtime limitation, not build issue)
-
-### 8. Multicall/single build remnants in %files
-- Dropped the "single" multicall build but %files still had `%exclude *.single`, `%dir libexec/coreutils`, etc.
-- Fix: spec_replacements to comment out multicall %files entries
-
-### 9. Skipped binaries in supported_utils
-- `--enable-no-install-program` skips pinky/stdbuf/who/users/seq but they're still listed in Source50
-- Fix: spec_replacement on `cp %SOURCE50 .` to also sed-remove skipped entries
-
----
-
-## Fixes Made Previous Session (Phase 4b)
-
-### 1. --export-dynamic crashes IRIX rld
-- GNU make uses `--export-dynamic` for its `load` directive (dlopen support)
-- With `--export-dynamic`, LLD exports ALL symbols to the dynamic symbol table (468 vs 127)
-- IRIX rld SIGSEGV during initialization when processing the large dynamic symbol table
-- Fix: `--disable-load` configure flag removes the need for `--export-dynamic`
-- **Any package using `-Wl,--export-dynamic` may crash on IRIX rld**
-
-### 2. Out-of-tree builds and %_configure_script
-- findutils uses `mkdir build; cd build; ../configure` (out-of-tree build)
-- Spec sets `%global _configure ../configure` to override configure path
-- Our `rpmmacros.irix` hardcoded `%_configure_script ./configure`
-- Fix: `%_configure_script %{?_configure}%{!?_configure:./configure}` — respects spec overrides
-- Updated both `cross/rpmmacros.irix` and `/opt/sgug-staging/rpmmacros.irix`
-
-### 3. origfedora copy with git repos
-- `cp -a` fails on git object files (mode 0444) when spec uses `%autosetup -S git`
-- The `&&` chain causes `cd` back to fail, leaving pwd in parent dir → subsequent `git rm` fails
-- Fix: Use subshell `(cd .. && cp -a ... 2>/dev/null || true)` — non-fatal, preserves pwd
-- Changed in `mogrix/emitter/spec.py`
-
-### 4. AUTOPOINT=true for NLS-disabled packages
-- Packages with `autoreconf` in spec need `AUTOPOINT=true` prefix when NLS is disabled
-- Without it, autoreconf tries to call `autopoint` which doesn't exist
-- Applied to make, findutils, tar via spec_replacements
-
-### 5. gnulib-tests removal timing with git-patched specs
-- findutils uses `%autosetup -S git` with patches modifying Makefile.am SUBDIRS
-- `prep_commands` run BEFORE patches → our sed conflicts with patch context
-- Fix: Use `spec_replacements` to inject sed AFTER `autoreconf -fiv` instead
-
-### 6. tar brace expansion and Y2038
-- `mv ChangeLog{,~}` uses bash brace expansion but rpmbuild uses /bin/sh
-- Fix: `spec_replacement` to `mv ChangeLog ChangeLog~`
-- configure requires `--disable-year2038` for 32-bit time_t cross-compilation
-
----
-
-## Fixes Made Previous Session (Phase 4a)
-
-### 1. posix_spawn compat implementation completed
-- `compat/include/mogrix-compat/generic/spawn.h` — added posix_spawnattr_* functions, file_actions_addopen
-- `compat/runtime/spawn.c` — full posix_spawn with attr support (flags, sigmask, sigdefault, pgroup)
-- Required by patch-2.7.6's gnulib `execute.c` which unconditionally uses posix_spawn
-
-### 2. less fsync AC_TRY_RUN cross-compile fix
-- Fedora's `less-475-fsync.patch` replaces AC_CHECK_FUNCS(fsync) with AC_TRY_RUN that hard-errors on cross-compile
-- Fix: skip the patch, use `ac_cv_func_fsync: "yes"` override instead
-
-### 3. diffutils gnulib select() override
-- gnulib detects IRIX select() as "guessing no" for EBADF detection, builds a replacement
-- Replacement select.c can't find the real select() declaration
-- Fix: `gl_cv_func_select_detects_ebadf: "yes"` + `gl_cv_func_select_supports0: "yes"`
-
-### 4. gzip Source100 renumbering
-- gzip.spec already uses Source100/101 (colorzgrep), conflicts with compat source injection
-- Fix: spec_replacements renumber Source100→50, Source101→51
-
-### 5. patch SELinux patch skipped
-- Fedora adds unconditional `#include <selinux/selinux.h>` and `-lselinux` via patch-selinux.patch
-- IRIX has no SELinux; skip the patch via spec_replacement
-
----
-
-## Previous Fixes
-
-### 1. `cut -d: -f1` Colon Bug in generic.yaml (FIXED)
-- **Problem**: install_cleanup's shebang-fixing pipeline used `cut -d: -f1` to parse `file` output, but Perl man pages have `::` in filenames (e.g., `TAP::Parser.3pm`), causing `cut` to split the filename
-- **Fix**: Replaced `cut -d: -f1` with `sed 's/^\(.*\): .*/\1/'` — greedy match finds the LAST `: ` separator
-
-### 2. `re.sub` Lambda Fix for install_cleanup (spec.py)
-- **Problem**: Same `re.sub` f-string backreference bug we fixed for prep_commands also affected install_cleanup injection (lines 492 and 505)
-- **Fix**: Changed both to use `lambda m: f"{m.group(1)}..."` pattern
-- All 3 injection sites now use lambdas: patch injection, prep_commands, install_cleanup
-
-### 3. Staging PATH Removed from rpmmacros.irix
-- **Problem**: `%configure` macro added `/opt/sgug-staging/usr/sgug/bin` to PATH, exposing cross-compiled MIPS binaries (sed, perl, m4, etc.) that can't execute on the build host
-- **Fix**: Removed `PATH=` export, added explicit tool overrides: `SED=/usr/bin/sed`, `AWK=/usr/bin/gawk`, `PERL=/usr/bin/perl`, `M4=/usr/bin/m4`
-- GREP intentionally NOT set — GNU grep's configure rejects pre-set `$GREP`
-
-### 4. Host Tool Exports for Build Tool Packages
-- autoconf.yaml: `PERL=/usr/bin/perl`, `M4=/usr/bin/m4`
-- automake.yaml: `PERL=/usr/bin/perl`, `AUTOCONF=/usr/bin/autoconf`, `AUTOM4TE=/usr/bin/autom4te`
-- libtool.yaml: All autotools + `prep_commands` to touch timestamps
-
-### 5. `drop_requires` for Linux-specific Runtime Deps
-- openssl.yaml: `ca-certificates`, `crypto-policies`
-- curl.yaml: `libnghttp2`, `libpsl`, `libssh`
-
-### 6. libassuan Header Symlink
-- libassuan installs to `include/libassuan2/assuan.h` (Fedora subdirectory convention)
-- `libassuan-config --cflags` returns `-I/usr/sgug/include/libassuan2` which doesn't work through sysroot
-- Fix: install_cleanup creates `assuan.h → libassuan2/assuan.h` symlink
-
-### 7. Multiarch Header Fixes (from previous session, applied this rebuild)
-- OpenSSL: `configuration-mips64.h → configuration-mips.h` (clang defines `__mips64` for n32)
-- Lua: `luaconf-mips64.h → luaconf-mips.h` (same issue)
-
-### 8. Bootstrap Tarball + Clean Chroot
-- `scripts/bootstrap-tarball.sh` updated: RPM paths → `~/mogrix_outputs/RPMS/`, added `sgugrse-release-common` to manifest
-- Bootstrap tarball (40MB compressed) deployed to bare `/opt/chroot`
-- All Phase 1.5-3b packages installed via MCP `irix_copy_to` + `irix_exec`
-- `pkgconf.yaml`: added `drop_requires: libpkgconf` (static build, no shared lib subpackage)
+**Total: 59 source packages cross-compiled (51 installed+verified on IRIX, 8 staged for next install batch).**
 
 ---
 
@@ -278,7 +206,7 @@ All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | IRIX host | `192.168.0.81` (use MCP, not SSH) |
-| IRIX chroot (active) | `/opt/chroot` (bootstrapped, ~50 RPMs / 41 source packages) |
+| IRIX chroot (active) | `/opt/chroot` (bootstrapped, ~51 source packages) |
 | IRIX chroot (backup) | `/opt/chroot_0206` (old SGUG-RSE base) |
 | Original FC40 SRPMs | `~/mogrix_inputs/SRPMS/` |
 | Converted SRPMs | `~/mogrix_outputs/SRPMS/` |
@@ -299,81 +227,70 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 
 ---
 
-## `mogrix roadmap` Command (NEW)
+## `mogrix roadmap` Command
 
-Computes the full transitive build-dependency graph for any FC40 package, diffs it against mogrix state (rules, built RPMs, sysroot), and outputs a topologically sorted build plan.
-
+Computes the full transitive build-dependency graph for any FC40 package. Usage:
 ```bash
-# Basic usage — full graph for popt
-uv run mogrix roadmap popt
-
-# Limit depth, JSON output, tree view, diff against previous run
-uv run mogrix roadmap popt --depth 2
-uv run mogrix roadmap gdb --depth 3 --json > /tmp/gdb-roadmap.json
-uv run mogrix roadmap popt --tree
-uv run mogrix roadmap popt --diff /tmp/prev.json
+uv run mogrix roadmap aterm           # full graph
+uv run mogrix roadmap aterm --json    # JSON for programmatic use
+uv run mogrix roadmap aterm --tree    # Rich tree widget
 ```
-
-### Implementation files
-| File | Purpose |
-|------|---------|
-| `mogrix/repometa.py` | Downloads FC40 repodata (pre-built sqlite DBs), builds unified index |
-| `mogrix/roadmap.py` | BFS graph resolver, SCC-based topo sort, output formatters |
-| `rules/sysroot_provides.yaml` | IRIX sysroot capabilities (libraries, files, capabilities) |
-| `rules/non_fedora_packages.yaml` | Non-Fedora packages (tdnf, sgugrse-release) |
-| `tests/test_roadmap.py` | 26 unit tests |
-
-### Key features
-- 8-level provider resolution: drops → sysroot → already-built → has-rules → non-fedora → binary-provides → file-provides → unresolvable
-- SCC condensation for correct build ordering within dependency cycles
-- RPM rich dependency expression parsing
-- Complexity scoring (LOW/MED/HIGH) for NEED_RULES packages
-- Output formats: text (default), JSON, Rich tree, diff
-
-### Cache
-- Repo metadata cached at `~/.cache/mogrix/repometa/fc40/` (~700MB)
-- Use `--refresh` to re-download
 
 ---
 
-## Next Steps
+## Key Lessons Learned This Session (Session 2)
 
-1. **Phase 4c: COMPLETE** — coreutils installed and working (most utilities verified; seq disabled due to long double printf)
-2. **Use `mogrix roadmap` to plan next phases** — e.g. `uv run mogrix roadmap gettext --depth 2`
-3. **Phase 5: Development tools**: binutils, gcc (if cross-compiling GCC is feasible)
-4. **Clean up stale files**: `-.o`, `m4.lang`, `perl.spec`, `HANDOFF.020426.md`, `docs/`
-5. **tdnf ldconfig warning**: Add `remove_lines: ["/sbin/ldconfig"]` to tdnf.yaml or generic.yaml
-6. **Rebuild pkgconf** with new `drop_requires: libpkgconf` rule (currently installed with `--nodeps`)
+### Meson cross-compilation support
+Installed meson 1.10.1 via `uv tool install meson`. Created `cross/meson-irix-cross.ini` cross file. Enables building meson-based packages (pixman, fribidi future use). Key issue: meson runs `--version` on compiler for detection — irix-cc wrapper was forwarding to linker. Fixed by adding `--version`/`-v`/`--help` handling to irix-cc.
+
+### cmake cross-compilation (libjpeg-turbo)
+Replace `%{cmake}`, `%cmake_build`, `%cmake_install` macros with raw cmake commands. Key: use `-DCMAKE_INSTALL_LIBDIR=lib32` (hardcoded, not `%{_lib}` which resolves to `lib64` on host). Pass compat library via `-DCMAKE_EXE_LINKER_FLAGS` and `-DCMAKE_SHARED_LINKER_FLAGS` (cmake doesn't use `LIBS`).
+
+### irix-cc wrapper improvements
+- Added `--version`/`-v`/`--help`/`-dumpversion`/`-dumpmachine` handling (forward to clang) for build system detection
+- Added `-ggdb*`/`-gdwarf*`/`-gz*` to link-only filter (fixes nettle `-ggdb3` passed to linker)
+
+### irix-ld --no-undefined fix
+`--no-undefined` with shared libraries causes failures because IRIX libc has `__tls_get_addr` references. Fixed by filtering `--no-undefined` in irix-ld for shared library links. Shared libraries resolve symbols at load time via rld.
+
+### FC31→FC40 patch staleness
+SGUG-RSE sgifixes patches from FC31 often don't apply to FC40 sources. For expat, freetype — removed stale patches and applied fixes via mogrix rules instead.
+
+### Meson packages with autotools fallback (fribidi)
+Fribidi has `%if 0%{?rhel} && 0%{?rhel} <= 8` guards around autotools code. Replaced with `%if 1` to force autotools path. Also fixed `utime()` name clash (IRIX has `utime(2)` which conflicts with fribidi's `utime()` function).
+
+### OSSP uuid cross-compilation
+Old configure script has `va_copy()` test that tries to execute. Fix: `ac_cv_va_copy: "C99"`. Perl module build commands must be individually commented out (pushd/popd replacement only handles one line).
+
+## Key Lessons Learned (Session 1)
+
+### Bootstrap HOST binaries in cross-compilation
+Packages like flex build HOST tools (stage1flex) before cross-compiling. `inject_compat_functions` and `LIBS` affect the HOST link too. Fix: inject compat code directly into cross-only source files via prep_commands.
+
+### IRIX libgen.so
+`basename()` and `dirname()` are in `/usr/lib32/libgen.so`, not libc. Copied to staging for cross-linker access. Also added `compat/string/basename.c` for packages where `-lgen` is problematic.
+
+### tcl.m4 platform detection
+Many packages with custom platform detection use `uname` directly instead of autoconf's `--host`. These always detect "Linux" during cross-compilation. Fix: override `tcl_cv_sys_version` or similar variables.
+
+### gnulib stdint.h conflicts
+gnulib's `gl_STDINT_H` generates replacement headers with different integer types. Fix: `gl_cv_header_working_stdint_h: "yes"` tells gnulib not to generate its own.
+
+### Unpackaged doc files pattern
+`make install` puts docs in `$(pkgdocdir)` but rpmbuild's `%doc` macro handles them separately. When both install docs, you get "unpackaged files" errors. Fix: `install_cleanup` to remove the make install copies.
 
 ---
 
 ## Known Issues
 
 - **`%zu` format specifier crashes IRIX libc** — use `%u` for size_t
-- **Volatile function pointer static initializers crash** — provide `explicit_bzero` for `wipememory`-style patterns
-- **GNU grep rejects pre-set $GREP** — don't export GREP in rpmmacros.irix
+- **Volatile function pointer static initializers crash** — provide `explicit_bzero`
 - **IRIX chroot doesn't fully isolate** — processes see base system paths
 - fopencookie crashes on IRIX — use funopen instead
-- sqlite3 CLI crashes when writing to files (rpm database writes work fine)
-- odump/elfdump crash on LLD-produced binaries (rld loads them fine)
-- pkgconf installed with `--nodeps` (needs rebuild with `drop_requires: libpkgconf` rule)
-- coreutils `seq` disabled — IRIX printf doesn't handle `%Lg` (long double) correctly
+- sqlite3 CLI crashes when writing to files
+- pkgconf installed with `--nodeps` (needs rebuild with `drop_requires: libpkgconf`)
+- coreutils `seq` disabled — IRIX printf doesn't handle `%Lg`
 - **`--export-dynamic` crashes IRIX rld** — large dynamic symbol tables cause SIGSEGV
-
----
-
-## Key Architectural Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| LLD 18 for executables, GNU ld + `-z separate-code` for shared libs | LLD for correct relocations; GNU ld with forced 3-segment layout for rld |
-| `--image-base=0x1000000` for all executables | Default 0x10000 gives only 1.8MB brk heap |
-| dlmalloc via mmap (auto-injected) | IRIX brk() heap limited; mmap accesses 1.2GB |
-| No staging PATH in %configure | Cross-compiled MIPS binaries can't execute on build host |
-| Explicit tool overrides (SED, AWK, PERL, M4) | Replace PATH-based tool discovery for cross-compilation |
-| `sed` greedy match for `file` output parsing | `cut -d:` breaks on filenames with colons (Perl modules) |
-| Lambda in re.sub replacements | f-string replacement interprets `\1` as backreference |
-| System libs over bundled | Full sysroot available; don't copy SGUG-RSE bootstrap shortcuts |
 
 ---
 
@@ -386,5 +303,4 @@ uv run mogrix roadmap popt --diff /tmp/prev.json
 | `rules/generic.yaml` | Universal rules for all packages |
 | `compat/catalog.yaml` | Compat function registry |
 | `plan.md` | Project plan and architecture |
-| `rules/methods/mogrix-workflow.md` | How to run mogrix |
-| `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging |
+| `aterm_roadmap.md` | Phase 5 roadmap toward aterm |

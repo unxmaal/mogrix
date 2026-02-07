@@ -1,7 +1,45 @@
-# freetype package rules for IRIX cross-compilation
+# freetype package rules for IRIX cross-compilation (FC40: 2.13.2)
+# Font rendering library, needed by fontconfig, cairo, harfbuzz, pango
 package: freetype
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - freetype.sgifixes.patch
+rules:
+  # Drop demos subpackage — no X11, demos not needed for cross-compilation
+  drop_subpackages:
+    - demos
 
+  configure_flags:
+    add:
+      - --with-zlib=yes
+      - --with-bzip2=yes
+      - --with-png=yes
+      - --without-harfbuzz
+      - --without-brotli
+      - --enable-freetype-config
+
+  spec_replacements:
+    # Fix pushd/popd bash-isms
+    - pattern: "pushd ft2demos-%{version}"
+      replacement: "cd ft2demos-%{version}"
+    - pattern: "pushd docs"
+      replacement: "cd docs"
+    - pattern: "popd"
+      replacement: "cd .."
+    # Override harfbuzz — our --without-harfbuzz must win over Fedora conditional
+    - pattern: "           --with-harfbuzz=yes \\"
+      replacement: "           --with-harfbuzz=no \\"
+    # Override brotli — we don't have brotli
+    - pattern: "           --with-brotli=yes"
+      replacement: "           --without-brotli"
+    # Skip demo binary install (demos not built)
+    - pattern: "  for ftdemo in ftbench ftchkwd ftmemchk ftpatchk fttimer ftdump ftlint ftvalid ; do"
+      replacement: "  for ftdemo in ; do"
+    # Skip demo man page install
+    - pattern: "  for ftdemo in ftbench ftdump ftlint ftvalid ; do"
+      replacement: "  for ftdemo in ; do"
+    # Fix ftconfig.h multilib: __isa_bits not defined for IRIX cross
+    - pattern: "%define wordsize %{__isa_bits}"
+      replacement: "%define wordsize 32"
+    # Replace broken brace expansion (bash-ism) with comprehensive cleanup.
+    # Must be in %install body BEFORE %triggerpostun (install_cleanup lands after trigger).
+    - pattern: "rm -f $RPM_BUILD_ROOT%{_libdir}/*.{a,la}"
+      replacement: "rm -f $RPM_BUILD_ROOT%{_libdir}/*.a $RPM_BUILD_ROOT%{_libdir}/*.la\nrm -f $RPM_BUILD_ROOT%{_bindir}/ft*\nrm -rf $RPM_BUILD_ROOT%{_docdir}/freetype-demos*\nrm -f $RPM_BUILD_ROOT%{_mandir}/man1/ft*.1*"

@@ -45,6 +45,11 @@ for arg in "$@"; do
         -static-libgcc)
             # Skip GCC-specific flag - not meaningful for clang/lld
             ;;
+        --no-undefined|-z,no-undefined|--no-undefined-version)
+            # Skip --no-undefined for cross builds: IRIX libc has TLS
+            # references (__tls_get_addr) that can't be resolved at link time.
+            # Shared libraries resolve symbols at load time via rld.
+            ;;
         -soname,*)
             # Convert -soname,name to -soname name (GNU ld format)
             soname_val="${arg#-soname,}"

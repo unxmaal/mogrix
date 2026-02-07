@@ -361,7 +361,7 @@ _mogrix_origdir=$(pwd)
 (cd .. && cp -a "$(basename "$_mogrix_origdir")" "$(basename "$_mogrix_origdir").origfedora" 2>/dev/null || true)
 """
         content = re.sub(
-            r"^(%(auto)?setup\s+.*)$",
+            r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
             f"\\1\n{origfedora_cmd}",
             content,
             count=1,
@@ -371,7 +371,7 @@ _mogrix_origdir=$(pwd)
         # Inject compat prep commands (after %setup or %autosetup)
         if compat_prep:
             content = re.sub(
-                r"^(%(auto)?setup\s+.*)$",
+                r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
                 f"\\1\n\n{compat_prep}",
                 content,
                 count=1,
@@ -385,7 +385,7 @@ _mogrix_origdir=$(pwd)
             if not uses_autosetup:
                 patch_comment = "# Apply mogrix patches"
                 content = re.sub(
-                    r"^(%setup\s+.*)$",
+                    r"^(%setup(?:[ \t]+.*)?)$",
                     lambda m: f"{m.group(0)}\n\n{patch_comment}\n{patch_prep}",
                     content,
                     count=1,
@@ -397,7 +397,7 @@ _mogrix_origdir=$(pwd)
             prep_cmds = "\n".join(result.prep_commands)
             prep_comment = "# Cross-compilation prep fixes (injected by mogrix)"
             content = re.sub(
-                r"^(%(auto)?setup\s+.*)$",
+                r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
                 lambda m: f"{m.group(0)}\n\n{prep_comment}\n{prep_cmds}",
                 content,
                 count=1,
@@ -449,12 +449,13 @@ _mogrix_origdir=$(pwd)
                     flags=re.MULTILINE,
                 )
 
-        # Inject compat build commands (after %build and CPPFLAGS)
+        # Inject compat build commands (after %build and all exports/comments)
         if compat_build:
             if "%build" in content:
                 # Find %build section and insert after initial setup
+                # Match export lines AND comment lines (injected by CPPFLAGS/ac_cv/export_vars)
                 content = re.sub(
-                    r"^(%build\s*\n(?:export [^\n]+\n)*)",
+                    r"^(%build\s*\n(?:(?:export |# )[^\n]*\n)*)",
                     f"\\1{compat_build}\n",
                     content,
                     count=1,

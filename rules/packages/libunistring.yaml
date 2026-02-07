@@ -1,0 +1,27 @@
+# libunistring - GNU Unicode string library (FC40: 1.1)
+# Needed by gettext, p11-kit, gnutls
+package: libunistring
+
+rules:
+  inject_compat_functions:
+    - strdup
+    - strndup
+
+  configure_flags:
+    add:
+      - --disable-static
+      - --disable-rpath
+
+  ac_cv_overrides:
+    gl_cv_header_working_stdint_h: "yes"
+    gl_cv_func_select_supports0: "yes"
+    gl_cv_func_select_detects_ebadf: "yes"
+
+  # Info file not compressed
+  spec_replacements:
+    - pattern: "%{_infodir}/%{name}.info*"
+      replacement: "%{_infodir}/%{name}.info"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+    - "rm -f %{buildroot}%{_infodir}/dir"
