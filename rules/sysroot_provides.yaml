@@ -1,0 +1,56 @@
+# sysroot_provides.yaml
+#
+# Capabilities provided by the IRIX base system (sysroot + system tools).
+# These don't need to be cross-compiled — they exist on the target.
+#
+# Used by `mogrix roadmap` to classify dependencies as SYSROOT-satisfied.
+# See also: rules/packages/sgugrse-release.yaml for RPM-level Provides.
+
+libraries:
+  # IRIX system libraries (in /usr/lib32, /lib32)
+  - "libc.so"
+  - "libm.so"
+  - "libpthread.so"
+  - "libcurses.so"
+  - "libgen.so"
+  - "libdl.so"
+  - "libmalloc.so"
+  - "libnsl.so"
+  - "libcrypt.so"
+
+files:
+  # System tools (exist on IRIX but not RPM-tracked)
+  - "/bin/sh"
+  - "/bin/csh"
+  - "/usr/bin/awk"
+  - "/usr/bin/sed"
+  - "/usr/bin/find"
+  - "/usr/bin/grep"
+  - "/usr/bin/make"
+  - "/usr/bin/tar"
+  - "/usr/bin/env"
+  - "/usr/bin/test"
+  - "/usr/bin/expr"
+  - "/usr/bin/install"
+  - "/usr/bin/mkdir"
+
+capabilities:
+  # Virtual provides from the cross-compilation sysroot
+  - "glibc-devel"
+  - "glibc-headers"
+  - "gcc"
+  - "gcc-c++"
+  - "cpp"
+  - "binutils"
+  - "libgcc"
+  - "libstdc++"
+  - "libstdc++-devel"
+  - "libatomic"
+  - "coreutils"
+  - "filesystem"
+  - "setup"
+  - "basesystem"
+  - "fedora-release"
+  - "system-release"
+  - "redhat-rpm-config"
+  - "rpm-build"

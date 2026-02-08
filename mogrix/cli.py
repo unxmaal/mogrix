@@ -1060,7 +1060,7 @@ def build(
                     _fetch_and_convert_deps(fetchable, input_path.parent)
             else:
                 # Some other error
-                console.print(combined_output)
+                console.print(combined_output, markup=False)
                 console.print(f"\n[bold red]✗ Build failed (exit code {result.returncode})[/bold red]")
             raise SystemExit(result.returncode)
 
@@ -2076,6 +2076,213 @@ def sync_headers(staging_dir: str):
         raise SystemExit(1)
 
     console.print("[bold green]Headers synced successfully![/bold green]")
+
+
+@main.command()
+@click.argument("package_name")
+@click.option("--refresh", is_flag=True, help="Re-download repo metadata and rebuild index")
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+@click.option("--tree", "output_tree", is_flag=True, help="Show dependency tree")
+@click.option(
+    "--diff",
+    "diff_file",
+    type=click.Path(exists=True),
+    default=None,
+    help="Compare against previous JSON output",
+)
+@click.option("--depth", type=int, default=0, help="Max recursion depth (0=unlimited)")
+@click.option("--stop-at-rules", is_flag=True, help="Stop recursion at packages with existing rules")
+@click.option("--show-satisfied", is_flag=True, help="Include built packages in build order")
+@click.option("--list-drops", is_flag=True, help="Show all auto-dropped deps with reasons")
+@click.option("--release", default="40", help="Fedora release (default: 40)")
+@click.option("--base-url", default=None, help="Override base URL for repo metadata")
+def roadmap(
+    package_name: str,
+    refresh: bool,
+    output_json: bool,
+    output_tree: bool,
+    diff_file: str | None,
+    depth: int,
+    stop_at_rules: bool,
+    show_satisfied: bool,
+    list_drops: bool,
+    release: str,
+    base_url: str | None,
+):
+    """Show the build roadmap for a target package.
+
+    Computes the full transitive build dependency graph for PACKAGE_NAME
+    against FC40 repo metadata, then diffs it against mogrix state (rules,
+    built RPMs, sysroot) and outputs a topologically sorted build plan.
+
+    \b
+    Examples:
+      mogrix roadmap gdb             # What's needed to build gdb?
+      mogrix roadmap webkit2gtk3     # Full WebKit dependency chain
+      mogrix roadmap popt            # Should show fully built
+      mogrix roadmap gdb --json      # Machine-readable output
+      mogrix roadmap gdb --tree      # Visual dependency tree
+    """
+    from mogrix.repometa import RepoMetaCache
+    from mogrix.roadmap import (
+        RoadmapResolver,
+        format_diff,
+        format_json,
+        format_text,
+        format_tree,
+    )
+
+    # Build or load the repo metadata index
+    cache = RepoMetaCache(release=release, base_url=base_url)
+    try:
+        db = cache.ensure_index(refresh=refresh)
+    except Exception as e:
+        console.print(f"[red]Error building repo index: {e}[/red]")
+        raise SystemExit(1)
+
+    # Verify the target package exists in the index
+    row = db.execute(
+        "SELECT COUNT(*) FROM source_buildrequires WHERE source_package = ?",
+        (package_name,),
+    ).fetchone()
+    if row[0] == 0:
+        # Try as a binary package name -> find source
+        src_row = db.execute(
+            "SELECT DISTINCT source_package FROM binary_provides WHERE binary_package = ? LIMIT 1",
+            (package_name,),
+        ).fetchone()
+        if src_row:
+            real_name = src_row[0]
+            console.print(
+                f"[yellow]'{package_name}' is a binary package. "
+                f"Using source package: {real_name}[/yellow]\n"
+            )
+            package_name = real_name
+        else:
+            console.print(
+                f"[red]Package '{package_name}' not found in FC{release} repo metadata.[/red]\n"
+                f"[dim]Try --refresh to re-download metadata, or check the package name.[/dim]"
+            )
+            raise SystemExit(1)
+
+    # Resolve the graph
+    rule_loader = RuleLoader(RULES_DIR)
+    resolver = RoadmapResolver(
+        db=db,
+        rule_loader=rule_loader,
+        rules_dir=RULES_DIR,
+        rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+        stop_at_rules=stop_at_rules,
+        max_depth=depth,
+    )
+
+    result = resolver.resolve(package_name)
+
+    # Output
+    if diff_file:
+        console.print(format_diff(result, diff_file))
+    elif output_json:
+        # Print JSON to stdout (not via Rich, to allow piping)
+        print(format_json(result))
+    elif output_tree:
+        format_tree(result, console)
+    else:
+        console.print(format_text(result, list_drops=list_drops, show_satisfied=show_satisfied))
+
+
+@main.command("roadmap-check")
+@click.argument("package_name", required=False)
+@click.option("--all", "check_all", is_flag=True, help="Check all built packages")
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+@click.option(
+    "--suggest",
+    is_flag=True,
+    help="Generate roadmap_config.yaml addition suggestions",
+)
+@click.option(
+    "--min-freq",
+    default=3,
+    type=int,
+    help="Minimum frequency for suggestions (default: 3)",
+)
+@click.option("--refresh", is_flag=True, help="Re-download repo metadata")
+@click.option("--release", default="40", help="Fedora release (default: 40)")
+def roadmap_check(
+    package_name: str | None,
+    check_all: bool,
+    output_json: bool,
+    suggest: bool,
+    min_freq: int,
+    refresh: bool,
+    release: str,
+):
+    """Validate roadmap predictions against build reality.
+
+    For a built package, identifies false positives in its roadmap
+    (packages predicted as needed but not actually required for the build).
+
+    \b
+    Examples:
+      mogrix roadmap-check popt             # Check single package
+      mogrix roadmap-check --all            # Check all 63 built packages
+      mogrix roadmap-check --all --suggest  # Generate config suggestions
+      mogrix roadmap-check --all --json     # Machine-readable output
+    """
+    from mogrix.repometa import RepoMetaCache
+    from mogrix.roadmap_check import RoadmapChecker
+
+    if not package_name and not check_all:
+        console.print("[red]Error: specify a package name or use --all[/red]")
+        raise SystemExit(1)
+
+    cache = RepoMetaCache(release=release)
+    db = cache.ensure_index(refresh=refresh)
+    rule_loader = RuleLoader(RULES_DIR)
+
+    checker = RoadmapChecker(
+        db=db,
+        rule_loader=rule_loader,
+        rules_dir=RULES_DIR,
+        rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+    )
+
+    if check_all:
+        with console.status("[bold cyan]Running roadmap checks..."):
+            results = checker.check_all_built()
+        aggregated = checker.aggregate_false_positives(results)
+
+        if output_json:
+            print(checker.format_json_report(results, aggregated))
+        else:
+            console.print(checker.format_aggregate_report(results, aggregated))
+
+        if suggest:
+            suggestions = checker.generate_suggestions(aggregated, min_freq=min_freq)
+            console.print("")
+            console.print(checker.format_suggestions(suggestions, min_freq=min_freq))
+    else:
+        with console.status(f"[bold cyan]Checking {package_name}..."):
+            result = checker.check_package(package_name)
+
+        if output_json:
+            import json as json_mod
+
+            data = {
+                "target": result.target,
+                "need_rules": result.total_need_rules,
+                "false_positives": [
+                    {
+                        "name": fp.name,
+                        "category": fp.suggested_category,
+                        "confidence": fp.confidence,
+                        "reason": fp.reason,
+                    }
+                    for fp in result.false_positives
+                ],
+            }
+            print(json_mod.dumps(data, indent=2))
+        else:
+            console.print(checker.format_check_result(result))
 
 
 if __name__ == "__main__":

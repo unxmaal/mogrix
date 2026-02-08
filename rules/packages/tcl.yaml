@@ -1,9 +1,29 @@
 # tcl package rules for IRIX cross-compilation
 package: tcl
 
-# IRIX-specific patches from SGUG-RSE
+# IRIX shared lib linker fix (ld -shared instead of ld -n32 -shared -rdata_shared)
 add_patch:
   - tcl.sgifixes.patch
 
 # NOTE: systemtap-sdt-devel drop_buildrequires handled by generic.yaml
+
+rules:
+  # tcl.m4 uses `uname -s`-`uname -r` to detect platform — returns Linux during
+  # cross-compilation, missing all IRIX-specific settings. Override to IRIX64-6.5.
+  ac_cv_overrides:
+    tcl_cv_sys_version: "IRIX64-6.5"
+
+  # rpmbuild uses /bin/sh — pushd and brace expansion are bash-isms
+  spec_replacements:
+    - pattern: "pushd unix"
+      replacement: "cd unix"
+    - pattern: "mkdir -p %{buildroot}/%{_includedir}/%{name}-private/{generic,unix}"
+      replacement: "mkdir -p %{buildroot}/%{_includedir}/%{name}-private/generic %{buildroot}/%{_includedir}/%{name}-private/unix"
+    # make install already creates these symlinks
+    - pattern: "ln -s tclsh%{majorver} %{buildroot}%{_bindir}/tclsh"
+      replacement: "ln -sf tclsh%{majorver} %{buildroot}%{_bindir}/tclsh"
+    - pattern: "ln -s lib%{name}%{majorver}.so %{buildroot}%{_libdir}/lib%{name}.so"
+      replacement: "ln -sf lib%{name}%{majorver}.so %{buildroot}%{_libdir}/lib%{name}.so"
+    - pattern: "ln -s %{_libdir}/%{name}Config.sh %{buildroot}/%{_libdir}/%{name}%{majorver}/%{name}Config.sh"
+      replacement: "ln -sf %{_libdir}/%{name}Config.sh %{buildroot}/%{_libdir}/%{name}%{majorver}/%{name}Config.sh"
 

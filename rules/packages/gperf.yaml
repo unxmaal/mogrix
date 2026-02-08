@@ -1,0 +1,24 @@
+# gperf - perfect hash function generator (FC40: 3.1)
+# Needed by fontconfig, glib2
+package: gperf
+
+rules:
+  inject_compat_functions:
+    - strdup
+    - strndup
+
+  # gperf uses 'register' keyword, deprecated in C++17
+  spec_replacements:
+    - pattern: "%configure"
+      replacement: "export CXXFLAGS=\"$CXXFLAGS -Wno-register\"\n%configure"
+    - pattern: "rm -rf $RPM_BUILD_ROOT{%{_mandir}/{dvi,html},%{_datadir}/doc}"
+      replacement: "rm -rf $RPM_BUILD_ROOT%{_mandir}/dvi $RPM_BUILD_ROOT%{_mandir}/html $RPM_BUILD_ROOT%{_datadir}/doc"
+    # Fix bash-ism brace expansion in doc glob
+    - pattern: "doc/*.{html,pdf}"
+      replacement: "doc/*.html doc/*.pdf"
+    # Info file may not be compressed
+    - pattern: "%{_infodir}/gperf.info*"
+      replacement: "%{_infodir}/gperf.info"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_infodir}/dir"

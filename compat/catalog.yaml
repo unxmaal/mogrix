@@ -4,7 +4,7 @@
 # ---index---
 # Categories and key functions for quick reference:
 #
-# string/     : strdup, strndup, strcasestr, strsep
+# string/     : strdup, strndup, strcasestr, strsep, basename
 # stdio/      : getline, asprintf, funopen (BSD cookie I/O - USE THIS, not fopencookie)
 # stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r
 # runtime/    : stpcpy, spawn (posix_spawn/posix_spawnp/file_actions)
@@ -47,6 +47,11 @@ functions:
     file: runtime/stpcpy.c
     header: string.h
     description: Copy string and return pointer to end (POSIX.1-2008)
+
+  basename:
+    file: string/basename.c
+    header: libgen.h
+    description: Extract filename from path (IRIX has this in libgen.so, not libc)
 
   explicit_bzero:
     file: string/explicit_bzero.c

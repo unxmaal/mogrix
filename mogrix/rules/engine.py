@@ -1,9 +1,24 @@
 """Rule application engine for mogrix."""
 
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 
 from mogrix.parser.spec import SpecFile
 from mogrix.rules.loader import RuleLoader
+
+
+def _matches_any_drop(name: str, drops: set[str]) -> bool:
+    """Check if name matches any drop entry, supporting glob patterns.
+
+    Entries without wildcards are checked with exact set membership (O(1)).
+    Entries containing ``*`` or ``?`` are checked with fnmatch.
+    """
+    if name in drops:
+        return True
+    for pattern in drops:
+        if ("*" in pattern or "?" in pattern) and fnmatch(name, pattern):
+            return True
+    return False
 
 
 @dataclass
@@ -92,10 +107,10 @@ class RuleEngine:
             drops = set(rules["drop_buildrequires"])
             original = result.spec.buildrequires[:]
             result.spec.buildrequires = [
-                br for br in result.spec.buildrequires if br not in drops
+                br for br in result.spec.buildrequires if not _matches_any_drop(br, drops)
             ]
             for br in original:
-                if br in drops:
+                if _matches_any_drop(br, drops):
                     result.applied_rules.append(f"drop_buildrequires: removed {br}")
 
         # Add BuildRequires
@@ -248,10 +263,10 @@ class RuleEngine:
             drops = set(rules["drop_buildrequires"])
             original = result.spec.buildrequires[:]
             result.spec.buildrequires = [
-                br for br in result.spec.buildrequires if br not in drops
+                br for br in result.spec.buildrequires if not _matches_any_drop(br, drops)
             ]
             for br in original:
-                if br in drops:
+                if _matches_any_drop(br, drops):
                     result.applied_rules.append(
                         f"package drop_buildrequires: removed {br}"
                     )
@@ -373,14 +388,16 @@ class RuleEngine:
             )
 
         # Patches to add from mogrix patches directory
-        if "add_patch" in rules:
+        # Only process here if rules is a separate subsection (not the same as pkg_rules,
+        # which is already handled at the top level in _apply_package_rules)
+        if "add_patch" in rules and rules is not pkg_rules:
             result.add_patches.extend(rules["add_patch"])
             result.applied_rules.append(
                 f"add_patch: {len(rules['add_patch'])} patches"
             )
 
         # Extra source files to add
-        if "add_source" in rules:
+        if "add_source" in rules and rules is not pkg_rules:
             result.add_sources.extend(rules["add_source"])
             result.applied_rules.append(
                 f"add_source: {len(rules['add_source'])} sources"

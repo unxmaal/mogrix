@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-07)
+## Current Status (2026-02-08)
 
-**Phase 4c: COMPLETE — 41 source packages cross-compiled for IRIX**
+**Phase 5: IN PROGRESS — 63 source packages cross-compiled for IRIX. Tier 0-2 building.**
 
-All phases through 4c complete. 41 source packages cross-compiled, installed on clean `/opt/chroot` via bootstrap tarball + MCP (~50 RPMs including -devel subpackages). IRIX now has a full GNU userland: coreutils, findutils, tar, make, sed, gawk, grep, bash, perl, autotools, gnupg2, and the complete tdnf package management stack.
+All phases through 4c complete (41 packages). Phase 5 (library foundation toward aterm) is underway with 22 additional packages: 15 installed, 7 staged. New this session: gettext, zstd, fontconfig installed and verified on IRIX. Key systemic fix: PKG_CONFIG_SYSROOT_DIR added to rpmmacros.irix. Cairo 1.18.0 blocked (uses meson). aterm's direct deps identified: libAfterImage-devel, X11 libs (likely in sysroot), make, chrpath.
 
 ---
 
@@ -150,17 +150,58 @@ With Phase 2 complete, IRIX has a full autotools chain.
 
 Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX printf can't handle `%Lg` long double format).
 
-### Phase 5: Development Tools (NOT STARTED)
+### Phase 5: Library Foundation (IN PROGRESS — 22 packages)
+
+Derived from `mogrix roadmap aterm` analysis. Building in tiers of increasing complexity. Tier 0 + Tier 1 complete. Tier 2 in progress.
+
+**Completed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype (15 installed/built).
+**Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman, uuid (7 staged).
+
+#### Current blockers
+- **FC40 GNOME stack uses meson**: cairo 1.18, harfbuzz, pango, glib2, p11-kit all need `%meson`. We have `cross/meson-irix-cross.ini` but no `%meson` RPM macro. Options: set up meson macros, find autotools versions, or skip.
+- **libAfterImage**: aterm's key dep. Not in Fedora repos. Need to find source.
+
+#### Remaining Tier 2-3 targets (autotools)
+| Package | Build System | Unblocks |
+|---------|-------------|----------|
+| gd | autotools | graphics, emacs |
+| pcre | autotools | glib2, grep (already have pcre2) |
+| gnutls | autotools | libarchive, git, p11-kit |
+| elfutils | autotools | binutils, debuginfo |
+| groff | autotools | man pages |
+| libarchive | autotools | cmake, rpm |
+| gtk2 | autotools | GUI apps |
+
+### Phase 6: Development Tools (future)
 
 | Package | Status | Notes |
 |---------|--------|-------|
-| binutils | Not started | Assembler, linker, objdump |
-| gcc | Not started | Native compiler for IRIX |
-| gettext | Not started | i18n (deferred — all packages use --disable-nls) |
+| binutils | Blocked on tier 2 | Assembler, linker, objdump |
+| gcc | Blocked on binutils | Native compiler for IRIX |
 
 ### Long-Term: Modern Browser
 
 Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
+
+---
+
+## Roadmap Enhancements (TODO)
+
+The `mogrix roadmap` command generates dependency graphs but currently requires manual analysis to produce actionable build plans. The following analysis was done by hand for Phase 5 and should be automated:
+
+1. **Ready-to-build detection**: For each HAVE_RULES package, check if all its BuildRequires are satisfied (built or have rules). These are immediately buildable.
+
+2. **Blocker impact scoring**: Count how many HAVE_RULES (or NEED_RULES) packages each unsatisfied dependency blocks. Rank by impact — `gettext` blocks 12, `meson` blocks 9, `bison` blocks 8, etc.
+
+3. **Tier classification**: Automatically group packages into tiers:
+   - Tier 0: Have rules + all deps satisfied → build now
+   - Tier 1: Leaf packages (only need themselves, no new transitive deps)
+   - Tier 2: Small chains (1-9 new deps) ranked by unblock impact
+   - Tier 3: Heavy chains (10+ new deps)
+
+4. **Glob pattern drops for impossible ecosystems**: Already implemented (rust-*, golang-*, ghc-*). Will need periodic refinement as we encounter more impossible-on-IRIX packages during real porting.
+
+5. **Build plan export**: `mogrix roadmap <target> --plan` could emit a structured plan file with tiers, ready-to-build lists, and fetch commands, instead of the flat numbered list.
 
 ---
 
@@ -179,13 +220,15 @@ Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
 | Spec validation (specfile library, integrated into convert) | Done |
 | RPM linting (rpmlint with IRIX-specific config) | Done |
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
-| 79 package rules + 1 class rule | Done |
+| Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
+| Roadmap: glob pattern drops for impossible ecosystems | Done |
+| 80+ package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
-| 127 tests, all passing | Done |
+| 153 tests, all passing | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
-| 41 source packages cross-compiled for IRIX | Done |
+| 63 source packages cross-compiled for IRIX | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
 

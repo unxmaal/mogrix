@@ -1,0 +1,39 @@
+# zstd - Zstandard compression library (FC40: 1.5.5)
+# Unblocks elfutils, gnutls, libarchive, git
+package: zstd
+
+rules:
+  inject_compat_functions:
+    - strdup
+    - strndup
+
+  spec_replacements:
+    # Disable asm (x86-only), pzstd (C++), lz4 (not built), gtest
+    - pattern: "%bcond_without asm"
+      replacement: "%bcond_with asm"
+    - pattern: "%bcond_without lz4"
+      replacement: "%bcond_with lz4"
+    - pattern: "%bcond_without pzstd"
+      replacement: "%bcond_with pzstd"
+    - pattern: "%bcond gtest %[ !0%{?rhel} ]"
+      replacement: "%bcond_with gtest"
+    # Set cross-compiler for Makefile build (no %configure to set it)
+    - pattern: "export CFLAGS=\"$RPM_OPT_FLAGS\""
+      replacement: "export CC=\"%{__cc}\"\nexport AR=\"%{__ar}\"\nexport RANLIB=\"%{__ranlib}\"\nexport CFLAGS=\"$RPM_OPT_FLAGS\""
+    # Preserve mogrix LDFLAGS (spec overwrites them) and add -lpthread
+    - pattern: "export LDFLAGS=\"$RPM_LD_FLAGS\""
+      replacement: "export LDFLAGS=\"$LDFLAGS $RPM_LD_FLAGS -lpthread\""
+    # Force pthread detection (cross-compile can't run test binary)
+    # Must pass all THREAD vars since SET_CACHE_DIRECTORY doesn't propagate HAVE_PTHREAD
+    - pattern: "%make_build -C programs"
+      replacement: "%make_build -C programs HAVE_PTHREAD=1 HAVE_THREAD=1"
+    # execstack not available for IRIX
+    - pattern: "BuildRequires:  execstack"
+      replacement: "# execstack not available for IRIX"
+    - pattern: "execstack lib/libzstd.so.1"
+      replacement: "# execstack check disabled for IRIX"
+
+  skip_check: true
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.la"

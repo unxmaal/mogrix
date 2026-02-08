@@ -1,35 +1,27 @@
-# expat - XML parser library
-# Foundation library for many packages
-# Successfully cross-compiled for IRIX N32
-
+# expat - XML parser library (FC40: 2.6.0)
+# Foundation library for fontconfig, libX11, and many other packages
 package: expat
 
 rules:
-  # Compat functions needed (C99 functions missing from IRIX)
   inject_compat_functions:
     - strtof
 
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
-
-  # Configure flags
   configure_flags:
     add:
-      - --disable-silent-rules
       - --without-docbook
       - --without-examples
       - --without-tests
 
-  # Skip man pages (no docbook for cross-compilation)
-  skip_manpages: true
-
-  # Skip find_lang (no translations)
-  skip_find_lang: true
-
-  # Make options to skip doc directory (no xmlto for cross-compilation)
-  make_env:
-    SUBDIRS: "lib xmlwf"
+  # xmlto not available for cross-compilation; touch man page to prevent rebuild
+  prep_commands:
+    - "touch doc/xmlwf.1"
 
   # Remove duplicate docs and .la files
   install_cleanup:
     - "rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/expat"
     - "find $RPM_BUILD_ROOT -name '*.la' -delete"
+
+  # Man pages not compressed by our rpmbuild
+  spec_replacements:
+    - pattern: "%{_mandir}/man1/xmlwf.1*"
+      replacement: "%{_mandir}/man1/*"

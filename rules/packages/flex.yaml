@@ -1,7 +1,28 @@
 # flex package rules for IRIX cross-compilation
 package: flex
 
-# IRIX-specific patches from SGUG-RSE
+classes:
+  - nls-disabled
+
+# IRIX-specific patches from SGUG-RSE (SIZE_MAX include)
 add_patch:
   - flex.sgifixes.patch
 
+rules:
+  # IRIX basename() is in libgen.so, not libc. flex bootstraps a HOST binary
+  # (stage1flex) before cross-compiling, so we can't use inject_compat_functions
+  # or LIBS (both affect the HOST link). Instead, add a compat basename.c
+  # to the cross-compiled flex sources only (not stage1flex).
+  prep_commands:
+    - 'printf "#include <string.h>\nchar *basename(const char *p) { const char *b = strrchr(p, 47); return (char*)(b ? b+1 : p); }\n" > src/irix_basename.c'
+    - "echo 'flex_SOURCES += irix_basename.c' >> src/Makefile.am"
+
+  # make install puts extra docs (AUTHORS, COPYING, ONEWS) in pkgdocdir
+  # that aren't listed in %files. Remove only those, keep NEWS and README.md.
+  install_cleanup:
+    - "rm -f %{buildroot}%{_pkgdocdir}/AUTHORS %{buildroot}%{_pkgdocdir}/COPYING %{buildroot}%{_pkgdocdir}/ONEWS"
+
+  # autoreconf needs AUTOPOINT=true since autopoint (gettext) isn't available
+  spec_replacements:
+    - pattern: "autoreconf -i"
+      replacement: "AUTOPOINT=true autoreconf -i && touch doc/flex.1"

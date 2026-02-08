@@ -1,7 +1,53 @@
-# uuid package rules for IRIX cross-compilation
+# uuid - OSSP UUID library (FC40: 1.6.2)
+# Universally Unique Identifier generation library
 package: uuid
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - libuuid.sgifixes.patch
+rules:
+  inject_compat_functions:
+    - strdup
+    - strndup
 
+  # Drop C++, perl, and DCE subpackages for cross-compilation
+  drop_subpackages:
+    - "c++"
+    - "c++-devel"
+    - perl
+    - dce
+    - dce-devel
+
+  ac_cv_overrides:
+    ac_cv_va_copy: "C99"
+
+  configure_flags:
+    add:
+      - --disable-static
+      - --without-perl
+      - --without-php
+      - --without-pgsql
+      - --without-cxx
+      - --without-dce
+
+  spec_replacements:
+    # Override Fedora's --with-dce --with-cxx (we disable these)
+    - pattern: "    --with-dce \\\n    --with-cxx \\"
+      replacement: "    --without-dce \\\n    --without-cxx \\"
+    # Remove LIBTOOL override - let configure generate its own libtool
+    - pattern: "make LIBTOOL=/usr/bin/libtool"
+      replacement: "make"
+    # Comment out perl build commands
+    - pattern: "%{__perl} Makefile.PL INSTALLDIRS=vendor"
+      replacement: "# %{__perl} Makefile.PL INSTALLDIRS=vendor"
+    - pattern: "%{__perl} -pi -e"
+      replacement: "# %{__perl} -pi -e"
+    # Comment out perl install commands
+    - pattern: "make pure_install PERL_INSTALL_ROOT"
+      replacement: "# make pure_install PERL_INSTALL_ROOT"
+    # Fix pushd/popd bash-isms
+    - pattern: "pushd perl"
+      replacement: "# pushd perl (disabled)"
+    - pattern: "popd"
+      replacement: "# popd (disabled)"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+    - "rm -f %{buildroot}%{_libdir}/*.a"

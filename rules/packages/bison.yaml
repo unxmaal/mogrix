@@ -1,0 +1,22 @@
+# bison package rules for IRIX cross-compilation
+package: bison
+
+classes:
+  - nls-disabled
+
+rules:
+  # gnulib generates its own stdint.h replacement with different fast-int types
+  # (long vs int) that conflict with dicl-clang-compat/stdint.h. Tell gnulib
+  # our stdint.h works to prevent it from generating a replacement.
+  ac_cv_overrides:
+    gl_cv_header_working_stdint_h: "yes"
+  # make install puts extra docs not listed in %files
+  install_cleanup:
+    - "rm -f %{buildroot}%{_pkgdocdir}/AUTHORS %{buildroot}%{_pkgdocdir}/COPYING %{buildroot}%{_pkgdocdir}/NEWS %{buildroot}%{_pkgdocdir}/README %{buildroot}%{_pkgdocdir}/THANKS %{buildroot}%{_pkgdocdir}/TODO"
+
+  # Man pages not compressed by our rpmbuild
+  spec_replacements:
+    - pattern: "%{_mandir}/man1/*.1*"
+      replacement: "%{_mandir}/man1/*"
+    - pattern: "%{_infodir}/*"
+      replacement: "%{_infodir}/bison.info"

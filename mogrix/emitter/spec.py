@@ -1,6 +1,7 @@
 """Spec file writer for mogrix."""
 
 import re
+from fnmatch import fnmatch, translate as fnmatch_translate
 from pathlib import Path
 
 from mogrix.rules.engine import TransformResult
@@ -64,7 +65,12 @@ class SpecWriter:
                     content = content.replace(pattern, repl)
 
         # Remove dropped BuildRequires
-        for dep in drops:
+        # Separate exact names from glob patterns
+        exact_drops = [d for d in drops if "*" not in d and "?" not in d]
+        glob_drops = [d for d in drops if "*" in d or "?" in d]
+
+        # Handle exact drops with targeted regex
+        for dep in exact_drops:
             escaped_dep = re.escape(dep)
             # Pattern 1: Single-package BuildRequires line
             # Matches: BuildRequires: pkg, BuildRequires: pkg >= 1.0, BuildRequires: pkg%{_isa}
@@ -72,13 +78,10 @@ class SpecWriter:
             content = re.sub(pattern, "", content, flags=re.MULTILINE)
 
             # Pattern 2: Package in a multi-package BuildRequires line
-            def remove_from_multi_buildrequires(match):
-                full_line = match.group(0)
+            def remove_from_multi_buildrequires(match, escaped=escaped_dep):
                 prefix = match.group(1)  # "BuildRequires:"
                 packages = match.group(2)
-                # Remove the specific package (with optional version constraint)
-                # Use word boundary (?![a-zA-Z0-9_-]) to avoid matching pkg in pkg-devel
-                pkg_pattern = rf"(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
+                pkg_pattern = rf"(?:^|\s){escaped}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
                 new_packages = re.sub(pkg_pattern, " ", packages).strip()
                 new_packages = re.sub(r"\s+", " ", new_packages)
                 if not new_packages:
@@ -87,6 +90,39 @@ class SpecWriter:
 
             pattern_multi = rf"^(BuildRequires:)\s+(.+(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-]).*)$"
             content = re.sub(pattern_multi, remove_from_multi_buildrequires, content, flags=re.MULTILINE)
+
+        # Handle glob drops — match BuildRequires lines where the package name matches the glob
+        for glob_pat in glob_drops:
+            # Convert glob to regex (e.g., "rust-*" -> "rust\\-.*")
+            glob_re = fnmatch_translate(glob_pat).rstrip("\\Z$").rstrip(")")
+            # fnmatch_translate returns "(?s:rust\\-.*)\\Z" — extract the inner pattern
+            inner = re.match(r"\(\?s:(.*)\)", fnmatch_translate(glob_pat))
+            if inner:
+                dep_re = inner.group(1).rstrip("\\Z")
+            else:
+                dep_re = re.escape(glob_pat).replace(r"\*", ".*").replace(r"\?", ".")
+            # Single-package line
+            pattern = rf"^BuildRequires:\s*{dep_re}(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
+            content = re.sub(pattern, "", content, flags=re.MULTILINE)
+
+            # Multi-package line: remove matching package from the line
+            def remove_glob_from_multi(match, dep_regex=dep_re):
+                prefix = match.group(1)
+                packages = match.group(2)
+                pkg_pattern = rf"(?:^|\s)({dep_regex})(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
+                new_packages = re.sub(pkg_pattern, " ", packages).strip()
+                new_packages = re.sub(r"\s+", " ", new_packages)
+                if not new_packages:
+                    return ""
+                return f"{prefix} {new_packages}"
+
+            # Match any BuildRequires line containing text that could match our glob
+            content = re.sub(
+                r"^(BuildRequires:)\s+(.+)$",
+                lambda m: remove_glob_from_multi(m) if fnmatch(m.group(2).split()[0].split("%")[0], glob_pat) else m.group(0),
+                content,
+                flags=re.MULTILINE,
+            )
 
         # Remove dropped Requires
         if drop_requires:
@@ -182,8 +218,10 @@ class SpecWriter:
                 # Remove the flag and any argument (e.g., --with-foo=bar)
                 escaped = re.escape(flag)
                 # Handle flag with = argument
+                # Use lookahead to ensure we match the WHOLE flag, not a prefix
+                # e.g., --enable-jit must not match inside --enable-jit-sealloc
                 content = re.sub(
-                    rf"\s*{escaped}(=[^\s]+)?",
+                    rf"\s*{escaped}(?=[=\s\\]|$)(=[^\s]+)?",
                     "",
                     content,
                 )
@@ -323,7 +361,7 @@ _mogrix_origdir=$(pwd)
 (cd .. && cp -a "$(basename "$_mogrix_origdir")" "$(basename "$_mogrix_origdir").origfedora" 2>/dev/null || true)
 """
         content = re.sub(
-            r"^(%(auto)?setup\s+.*)$",
+            r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
             f"\\1\n{origfedora_cmd}",
             content,
             count=1,
@@ -333,7 +371,7 @@ _mogrix_origdir=$(pwd)
         # Inject compat prep commands (after %setup or %autosetup)
         if compat_prep:
             content = re.sub(
-                r"^(%(auto)?setup\s+.*)$",
+                r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
                 f"\\1\n\n{compat_prep}",
                 content,
                 count=1,
@@ -347,7 +385,7 @@ _mogrix_origdir=$(pwd)
             if not uses_autosetup:
                 patch_comment = "# Apply mogrix patches"
                 content = re.sub(
-                    r"^(%setup\s+.*)$",
+                    r"^(%setup(?:[ \t]+.*)?)$",
                     lambda m: f"{m.group(0)}\n\n{patch_comment}\n{patch_prep}",
                     content,
                     count=1,
@@ -359,7 +397,7 @@ _mogrix_origdir=$(pwd)
             prep_cmds = "\n".join(result.prep_commands)
             prep_comment = "# Cross-compilation prep fixes (injected by mogrix)"
             content = re.sub(
-                r"^(%(auto)?setup\s+.*)$",
+                r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
                 lambda m: f"{m.group(0)}\n\n{prep_comment}\n{prep_cmds}",
                 content,
                 count=1,
@@ -411,12 +449,13 @@ _mogrix_origdir=$(pwd)
                     flags=re.MULTILINE,
                 )
 
-        # Inject compat build commands (after %build and CPPFLAGS)
+        # Inject compat build commands (after %build and all exports/comments)
         if compat_build:
             if "%build" in content:
                 # Find %build section and insert after initial setup
+                # Match export lines AND comment lines (injected by CPPFLAGS/ac_cv/export_vars)
                 content = re.sub(
-                    r"^(%build\s*\n(?:export [^\n]+\n)*)",
+                    r"^(%build\s*\n(?:(?:export |# )[^\n]*\n)*)",
                     f"\\1{compat_build}\n",
                     content,
                     count=1,

@@ -12,6 +12,12 @@
 #undef offsetof
 #define offsetof(type, member) __builtin_offsetof(type, member)
 
+#ifdef __cplusplus
+/* In C++, wchar_t is a built-in type. Prevent IRIX stddef_core.h from
+   trying to typedef it (causes 'long wchar_t is invalid' error). */
+#define _WCHAR_T
+#endif
+
 /* Include the real IRIX stddef.h for other definitions */
 #include_next <stddef.h>
 

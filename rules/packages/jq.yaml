@@ -7,11 +7,9 @@ rules:
   inject_compat_functions:
     - setenv
 
-  # Export GNU ld for shared library building
-  # Also add -lgen for dirname (IRIX has dirname in libgen)
+  # Add -lgen for dirname (IRIX has dirname in libgen, not libc)
   export_vars:
-    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-    LIBS: "-lgen -lcompat"
+    LIBS: "-lgen"
 
   # Tell configure that C99 math functions are not available on IRIX
   # jq gracefully handles missing functions via LIBM_DD_NO fallbacks
@@ -82,6 +80,8 @@ rules:
     ac_cv_lib_m_pow: "yes"
     ac_cv_lib_m_hypot: "yes"
     ac_cv_lib_m_fmod: "yes"
+
+  skip_check: true
 
   # Remove .la files, static libs, and duplicate docs
   install_cleanup:

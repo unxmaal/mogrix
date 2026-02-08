@@ -1,15 +1,12 @@
 # pcre2 - Perl Compatible Regular Expressions v2
-# May need compat functions
-
+# Used by grep, git, and many other packages
 package: pcre2
 
 rules:
-  # Compat functions that may be needed
+  # Compat functions needed for IRIX
   inject_compat_functions:
     - strdup
     - strndup
-
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
 
   # Configure flags
   configure_flags:
@@ -18,6 +15,38 @@ rules:
       - --enable-pcre2-32
       - --enable-unicode
       - --disable-silent-rules
-    remove:
-      - --enable-jit
-      - --enable-pcre2grep-jit
+    # NOTE: NOT using configure_flags:remove for --enable-jit because the
+    # removal regex orphans backslash continuations in multiline %ifarch blocks.
+    # Using spec_replacements instead for precise control.
+
+  spec_replacements:
+    # Remove the problematic %bcond_with sealloc (causes rpmbuild parse error
+    # when the macro is undefined)
+    - pattern: "%bcond_with pcre2_enables_sealloc"
+      replacement: "# bcond_with pcre2_enables_sealloc removed - no JIT on IRIX"
+
+    # Replace the entire %ifarch s390 JIT block + sealloc block with flat flags.
+    # Original has: %ifarch s390 ... --disable-jit \ %else --enable-jit \ %endif
+    # then %if sealloc ... We're on MIPS — just disable everything.
+    - pattern: |-
+        %ifarch s390 sparc64 sparcv9
+            --disable-jit \
+            --disable-pcre2grep-jit \
+        %else
+            --enable-jit \
+            --enable-pcre2grep-jit \
+        %endif
+            --disable-bsr-anycrlf \
+            --disable-coverage \
+            --disable-ebcdic \
+            --disable-fuzz-support \
+        %if %{with pcre2_enables_sealloc}
+            --enable-jit-sealloc \
+        %else
+            --disable-jit-sealloc \
+        %endif
+      replacement: "    --disable-jit \\\n    --disable-pcre2grep-jit \\\n    --disable-bsr-anycrlf \\\n    --disable-coverage \\\n    --disable-ebcdic \\\n    --disable-fuzz-support \\\n    --disable-jit-sealloc \\"
+
+    # Disable percent-zt — IRIX printf can't handle %zu
+    - pattern: "    --enable-percent-zt \\"
+      replacement: "    --disable-percent-zt \\"

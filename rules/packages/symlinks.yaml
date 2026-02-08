@@ -5,3 +5,9 @@ package: symlinks
 add_patch:
   - symlinks.sgifixes.patch
 
+rules:
+  # symlinks uses a raw Makefile, not autoconf. Must override CC in make.
+  spec_replacements:
+    - pattern: 'make CFLAGS="$RPM_OPT_FLAGS $(getconf LFS_CFLAGS) %{build_ldflags}" %{?_smp_mflags}'
+      replacement: 'make CC="%{__cc}" CFLAGS="%{optflags}" LDFLAGS="%{build_ldflags}" %{?_smp_mflags}'
+
