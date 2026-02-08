@@ -1,0 +1,117 @@
+# gettext - GNU internationalization library and tools (FC40: 0.22.5)
+# Biggest single blocker — unblocks 12+ downstream packages
+package: gettext
+
+rules:
+  inject_compat_functions:
+    - strdup
+    - strndup
+    - stpcpy
+
+  # Drop subpackages we don't need for IRIX
+  # Note: emacs-gettext and msghack use %package -n which drop_subpackages can't handle
+  drop_subpackages:
+    - "common-devel"
+    - "libtextstyle"
+    - "libtextstyle-devel"
+
+  ac_cv_overrides:
+    gl_cv_header_working_stdint_h: "yes"
+    gl_cv_func_select_supports0: "yes"
+    gl_cv_func_select_detects_ebadf: "yes"
+    ac_cv_func_stpcpy: "yes"
+    ac_cv_func_getdelim: "yes"
+    ac_cv_have_decl_getdelim: "yes"
+    gl_cv_onwards_func_getdelim: "yes"
+    ac_cv_func_getline: "yes"
+    ac_cv_have_decl_getline: "yes"
+    gl_cv_onwards_func_getline: "yes"
+
+  spec_replacements:
+    # Replace entire configure block — original is multi-line with conditionals
+    # Keep --enable-nls (gettext IS the NLS system), disable C++ and glib2
+    - pattern: "%configure --enable-nls --disable-static \\\n    --enable-shared --disable-csharp --disable-rpath \\\n%if %{with java}\n    --enable-java \\\n%else\n    --disable-java --disable-native-java \\\n%endif\n    --with-xz"
+      replacement: "%configure --enable-nls --disable-static \\\n    --enable-shared --disable-csharp --disable-rpath \\\n    --disable-java --disable-native-java \\\n    --disable-libasprintf --disable-openmp \\\n    --without-emacs --without-git --without-cvs --without-bzip2 \\\n    --with-included-libxml --with-included-libunistring \\\n    --with-xz"
+    # Remove glib2 CPPFLAGS and LIBS
+    - pattern: "export CPPFLAGS=\"-I%{_includedir}/libxml2\""
+      replacement: "# glib2 disabled (circular dep)\nexport CPPFLAGS=\"$CPPFLAGS\""
+    - pattern: "export LIBS=\"-lxml2\""
+      replacement: "# bundled libxml2 used\nexport LIBS=\"$LIBS\""
+    # Remove Requires on dropped common-devel subpackage (files merged into devel)
+    - pattern: "Requires: %{name}-common-devel = %{version}-%{release}\n"
+      replacement: ""
+    # Remove emacs-related install commands
+    - pattern: "install -d ${RPM_BUILD_ROOT}%{_emacs_sitestartdir}"
+      replacement: "# emacs disabled"
+    - pattern: "mv ${RPM_BUILD_ROOT}%{_emacs_sitelispdir}/%{name}/start-po.el ${RPM_BUILD_ROOT}%{_emacs_sitestartdir}"
+      replacement: "# emacs disabled"
+    - pattern: "rm ${RPM_BUILD_ROOT}%{_emacs_sitelispdir}/%{name}/start-po.elc"
+      replacement: "# emacs disabled"
+    # Remove msghack install
+    - pattern: "install -pm 755 %SOURCE2 ${RPM_BUILD_ROOT}%{_bindir}/msghack"
+      replacement: "# msghack disabled"
+    - pattern: "install -pm 644 %SOURCE3 ${RPM_BUILD_ROOT}%{_mandir}/man1/msghack.1"
+      replacement: "# msghack disabled"
+    # Remove preloadable_libintl (uses glibc LD_PRELOAD, not available on IRIX)
+    - pattern: "chmod 755 ${RPM_BUILD_ROOT}%{_libdir}/preloadable_libintl.so"
+      replacement: "# preloadable_libintl disabled for IRIX"
+    - pattern: "%{_libdir}/preloadable_libintl.so"
+      replacement: ""
+    # Remove libasprintf — process .so.0* BEFORE .so to avoid partial match
+    - pattern: "%{_libdir}/libasprintf.so.0*"
+      replacement: ""
+    - pattern: "%{_libdir}/libasprintf.so"
+      replacement: ""
+    - pattern: "%{_includedir}/autosprintf.h"
+      replacement: "# autosprintf disabled (C++)"
+    - pattern: "%{_infodir}/autosprintf*"
+      replacement: ""
+    # Remove internal .so removal that may fail — fix bash-ism brace expansion
+    - pattern: "rm ${RPM_BUILD_ROOT}%{_libdir}/libgettext{src,lib}.so"
+      replacement: "rm -f ${RPM_BUILD_ROOT}%{_libdir}/libgettextsrc.so ${RPM_BUILD_ROOT}%{_libdir}/libgettextlib.so"
+    # Fix rm to use -f
+    - pattern: "rm ${RPM_BUILD_ROOT}%{_libdir}/lib*.la"
+      replacement: "rm -f ${RPM_BUILD_ROOT}%{_libdir}/lib*.la"
+    # Remove doc relocations that reference javadoc (java disabled) and libasprintf (C++ disabled)
+    - pattern: "rm -r ${RPM_BUILD_ROOT}%{_datadir}/doc/gettext/javadoc*"
+      replacement: "rm -rf ${RPM_BUILD_ROOT}%{_datadir}/doc/gettext/javadoc* 2>/dev/null || true"
+    - pattern: "mv ${RPM_BUILD_ROOT}%{_datadir}/doc/gettext/* ${RPM_BUILD_ROOT}%{_datadir}/doc/libasprintf/* htmldoc"
+      replacement: "mv ${RPM_BUILD_ROOT}%{_datadir}/doc/gettext/* htmldoc 2>/dev/null || true"
+    - pattern: "rm -r ${RPM_BUILD_ROOT}%{_datadir}/doc/libasprintf"
+      replacement: "rm -rf ${RPM_BUILD_ROOT}%{_datadir}/doc/libasprintf 2>/dev/null || true"
+    # Blank out emacs and msghack %files sections (%package -n not handled by drop_subpackages)
+    - pattern: "%dir %{_emacs_sitelispdir}/%{name}"
+      replacement: ""
+    - pattern: "%{_emacs_sitelispdir}/%{name}/*.elc"
+      replacement: ""
+    - pattern: "%{_emacs_sitelispdir}/%{name}/*.el"
+      replacement: ""
+    - pattern: "%{_emacs_sitestartdir}/*.el"
+      replacement: ""
+    # Add libintl files (IRIX needs bundled libintl, unlike glibc-based Linux)
+    # Use unique anchors to avoid substring collision between .so and .so.0*
+    - pattern: "%{_includedir}/gettext-po.h"
+      replacement: "%{_includedir}/gettext-po.h\n%{_includedir}/libintl.h\n%{_libdir}/libintl.so"
+    - pattern: "%{_libdir}/libgettextlib-0.*.so"
+      replacement: "%{_libdir}/libintl.so.8*\n%{_libdir}/libgettextlib-0.*.so"
+    # Add archive.dir.tar.xz (was in dropped common-devel)
+    - pattern: "%{_datadir}/%{name}/config.rpath"
+      replacement: "%{_datadir}/%{name}/config.rpath\n%{_datadir}/%{name}/archive.*.tar.xz"
+    # Add locale.alias
+    - pattern: "%{_bindir}/gettext.sh"
+      replacement: "%{_bindir}/gettext.sh\n%{_datadir}/locale/locale.alias"
+    # Blank out msghack %files entries
+    - pattern: "%{_bindir}/msghack"
+      replacement: ""
+    - pattern: "%{_mandir}/man1/msghack.1*"
+      replacement: ""
+    # autoreconf in prep — don't re-run, use shipped configure
+    - pattern: "autoreconf"
+      replacement: "# autoreconf disabled for cross-compilation — use shipped configure"
+    # sed on libtool may fail in cross builds
+    - pattern: "sed -e 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=\"\"|g' \\\n    -e 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' \\\n    -e 's|CC=.g..|& -Wl,--as-needed|' \\\n    -i $(find . -name libtool)"
+      replacement: "# rpath elimination handled by mogrix"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_infodir}/dir"
+    - "rm -f %{buildroot}%{_libdir}/*.la"

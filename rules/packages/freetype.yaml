@@ -17,6 +17,9 @@ rules:
       - --enable-freetype-config
 
   spec_replacements:
+    # Add explicit Provides (AutoProv disabled for cross-compilation)
+    - pattern: "Source3: ftconfig.h"
+      replacement: "Provides: freetype(mips-32) = %{version}-%{release}\nProvides: libfreetype.so.6\nSource3: ftconfig.h"
     # Fix pushd/popd bash-isms
     - pattern: "pushd ft2demos-%{version}"
       replacement: "cd ft2demos-%{version}"

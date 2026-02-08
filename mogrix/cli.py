@@ -1060,7 +1060,7 @@ def build(
                     _fetch_and_convert_deps(fetchable, input_path.parent)
             else:
                 # Some other error
-                console.print(combined_output)
+                console.print(combined_output, markup=False)
                 console.print(f"\n[bold red]✗ Build failed (exit code {result.returncode})[/bold red]")
             raise SystemExit(result.returncode)
 

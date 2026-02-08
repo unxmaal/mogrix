@@ -4,9 +4,8 @@
 package: cairo
 
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - cairo.sgifixes.patch
+# SGUG-RSE patch (cairo.sgifixes.patch) for RTLD_NEXT in util/cairo-sphinx/fdr.c
+# dropped — only applies to 1.16.0, utility code not part of main library
 
 rules:
   # Compat functions needed
@@ -34,5 +33,7 @@ rules:
     remove:
       - --enable-tee
       - --enable-gl
+
+  skip_check: true
 
   # NOTE: libdicl remove_lines handled by generic.yaml

@@ -45,6 +45,9 @@ static inline float ldexpf(float x, int exp) { return (float)ldexp((double)x, ex
 static inline float frexpf(float x, int *exp) { return (float)frexp((double)x, exp); }
 #endif
 
+/* C99 math functions — skip in C++ mode where these are builtins */
+#ifndef __cplusplus
+
 /* log2 - base-2 logarithm (C99) */
 #ifndef log2
 double log2(double x);
@@ -84,6 +87,8 @@ double trunc(double x);
 #ifndef truncf
 float truncf(float x);
 #endif
+
+#endif /* !__cplusplus */
 
 /*
  * C99 comparison macros for floating point (may be missing from IRIX)

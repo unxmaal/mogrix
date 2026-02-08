@@ -44,7 +44,7 @@ long double strtold(const char *nptr, char **endptr);
  * IRIX may not have mkdtemp. We provide our own implementation.
  */
 #ifndef mkdtemp
-char *mkdtemp(char *template);
+char *mkdtemp(char *tmpl);
 #endif
 
 /*
