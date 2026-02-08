@@ -95,6 +95,7 @@ class RoadmapResolver:
         self._non_fedora = self._load_non_fedora_packages()
         self._built_packages = self._scan_built_packages()
         self._rule_packages = self._scan_rule_packages()
+        self._roadmap_drops = self._load_roadmap_config()
 
         # Cache for computed drops per package
         self._drops_cache: dict[str, set[str]] = {}
@@ -191,6 +192,30 @@ class RoadmapResolver:
         if not packages_dir.exists():
             return set()
         return {p.stem for p in packages_dir.glob("*.yaml")}
+
+    def _load_roadmap_config(self) -> dict[str, list[str]]:
+        """Load roadmap_config.yaml for roadmap-only filtering.
+
+        Returns dict of category_name -> list of glob patterns.
+        Returns empty dict if file doesn't exist (backward compatible).
+        """
+        path = self.rules_dir / "roadmap_config.yaml"
+        if not path.exists():
+            return {}
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        return data.get("roadmap_drops", {})
+
+    def _check_roadmap_drop(self, source_pkg: str) -> str | None:
+        """Check if a source package matches any roadmap_config.yaml pattern.
+
+        Returns the category name if matched, None otherwise.
+        """
+        for category, patterns in self._roadmap_drops.items():
+            for pattern in patterns:
+                if fnmatch(source_pkg, pattern) or source_pkg == pattern:
+                    return category
+        return None
 
     def _compute_effective_drops(self, pkg: str) -> set[str]:
         """Compute the full set of dropped BuildRequires for a package.
@@ -302,12 +327,16 @@ class RoadmapResolver:
             if req_name == lib or req_name.startswith(lib + "("):
                 return None, Classification.SYSROOT, f"library ({lib})"
 
-        # 3. Already built — check by provides name from sqlite
+        # 4. Already built — check by provides name from sqlite
         src_pkg = self._find_source_package(req_name)
         if src_pkg:
             # Also check if the resolved source package matches a drop pattern
             if self._matches_drop_pattern(src_pkg, drops):
                 return None, Classification.DROPPED, f"rule (source: {src_pkg})"
+            # Check roadmap-only drops (against resolved source package name)
+            roadmap_cat = self._check_roadmap_drop(src_pkg)
+            if roadmap_cat:
+                return None, Classification.DROPPED, f"roadmap ({roadmap_cat}: {src_pkg})"
             return self._classify_found_package(src_pkg, cache_key)
 
         # Try extracting names from rich dependency expressions
@@ -319,6 +348,9 @@ class RoadmapResolver:
             if src_pkg:
                 if self._matches_drop_pattern(src_pkg, drops):
                     return None, Classification.DROPPED, f"rule (source: {src_pkg})"
+                roadmap_cat = self._check_roadmap_drop(src_pkg)
+                if roadmap_cat:
+                    return None, Classification.DROPPED, f"roadmap ({roadmap_cat}: {src_pkg})"
                 return self._classify_found_package(src_pkg, cache_key)
 
         # 8. Unresolvable
@@ -800,12 +832,22 @@ def format_text(
             )
         lines.append("")
 
-    # Dropped deps
+    # Dropped deps — split rule drops from roadmap config drops
     if list_drops and result.dropped_deps:
-        lines.append(f"DROPPED (rule hierarchy):    {len(result.dropped_deps)} deps")
-        for dep, reason in sorted(result.dropped_deps.items()):
-            lines.append(f"  {dep} ({reason})")
-        lines.append("")
+        rule_drops = {k: v for k, v in result.dropped_deps.items()
+                      if not v.startswith("roadmap")}
+        roadmap_drops = {k: v for k, v in result.dropped_deps.items()
+                         if v.startswith("roadmap")}
+        if rule_drops:
+            lines.append(f"DROPPED (rule hierarchy):    {len(rule_drops)} deps")
+            for dep, reason in sorted(rule_drops.items()):
+                lines.append(f"  {dep} ({reason})")
+            lines.append("")
+        if roadmap_drops:
+            lines.append(f"DROPPED (roadmap config):    {len(roadmap_drops)} deps")
+            for dep, reason in sorted(roadmap_drops.items()):
+                lines.append(f"  {dep} ({reason})")
+            lines.append("")
 
     # Sysroot deps
     if result.sysroot_deps:

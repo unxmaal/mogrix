@@ -1,0 +1,125 @@
+# roadmap_config.yaml — Packages to suppress in roadmap analysis ONLY.
+#
+# These patterns are checked against RESOLVED SOURCE PACKAGE names.
+# They NEVER affect actual builds (mogrix convert/build).
+# They reduce false positives in roadmap dependency graphs.
+#
+# Each category maps to a list of patterns (fnmatch-style globs or exact names).
+# Use `mogrix roadmap-check --all --suggest` to discover new patterns.
+
+roadmap_drops:
+
+  # RPM macro packages, generators, filesystem packages
+  # These provide RPM macros for the Fedora build system, not actual build deps
+  build_infra:
+    - "*-rpm-macros"
+    - "*-rpm-generators"
+    - "*-filesystem"
+    - "multilib-rpm-config"
+    - "rpm-mpi-hooks"
+    - "rpm-local-generator-support"
+    - "web-assets"
+    - "nodejs-packaging"
+    - "AMF"
+    - "nv-codec-headers"
+    - "opencl-headers"
+    - "checksec"
+    - "annobin"
+    - "gcc-annobin-plugin-gcc"
+    # GCC language frontends we don't have (we use clang C/C++ only)
+    - "gcc-gfortran"
+    - "gcc-gdc"
+    - "gcc-gnat"
+    - "gcc-go"
+    - "gcc-gm2"
+    - "gcc-objc"
+    - "gcc-objc++"
+    - "gcc-plugin-devel"
+
+  # Documentation toolchains — not needed for cross-compilation
+  doc_only:
+    - "docbook*"
+    - "openjade"
+    - "texlive*"
+    - "texinfo*"
+    - "sgml-common"
+    - "xml-common"
+    - "xmlto"
+    - "asciidoc*"
+    - "doxygen"
+    - "gtk-doc"
+    - "help2man"
+    - "rubygem-asciidoctor*"
+    - "python-sphinx*"
+
+  # Testing frameworks — cross-compiled tests can't run anyway (skip_check: true)
+  test_only:
+    - "dejagnu"
+    - "expect"
+    - "cmocka*"
+    - "valgrind*"
+    - "check"
+    - "cunit"
+    - "libcheck*"
+    - "gtest"
+    - "gmock"
+    - "cpputest"
+
+  # Font, icon, and data packages — purely assets, irrelevant for compilation
+  asset_packages:
+    - "*-fonts"
+    - "*-icon-theme"
+    - "unicode-emoji"
+    - "unicode-ucd"
+    - "natural-earth-map-data"
+    - "publicsuffix-list*"
+
+  # Language ecosystems that can't run on IRIX
+  impossible_ecosystems:
+    - "rust-*"
+    - "golang-*"
+    - "ghc-*"
+    - "nodejs*"
+    - "java-*"
+    - "maven-*"
+    - "ant*"
+    - "gradle*"
+    - "erlang*"
+    - "ruby*"
+    - "rubygem-*"
+    - "R-*"
+    - "ocaml*"
+    - "php"
+    - "php-*"
+    - "lua-*"
+    - "mono-*"
+    - "dotnet*"
+
+  # Desktop frameworks far beyond IRIX capabilities
+  desktop_frameworks:
+    - "qt5*"
+    - "qt6*"
+    - "kf5*"
+    - "kf6*"
+    - "gnome-*"
+    - "gtk3*"
+    - "gtk4*"
+    - "wayland*"
+    - "pipewire*"
+    - "pulseaudio*"
+    - "mutter*"
+
+  # Linux-specific packages
+  linux_kernel:
+    - "kernel-*"
+    - "systemd*"
+    - "libseccomp*"
+    - "liburing*"
+    - "libaio*"
+    - "dbus*"
+    - "polkit*"
+    - "selinux-*"
+    - "libselinux*"
+    - "libsemanage*"
+    - "libsepol*"
+    - "audit*"

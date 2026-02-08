@@ -444,3 +444,182 @@ class TestOutputFormatting:
 
 # Import for the test above
 from mogrix.roadmap import PackageInfo
+
+
+# --- Roadmap config drops ---
+
+
+class TestRoadmapConfigDrops:
+    @pytest.fixture
+    def setup_with_config(self, tmp_path):
+        """Set up rules dir with roadmap_config.yaml."""
+        generic = {"generic": {"drop_buildrequires": ["systemd"]}}
+        (tmp_path / "generic.yaml").write_text(yaml.dump(generic))
+        (tmp_path / "classes").mkdir()
+        (tmp_path / "packages").mkdir()
+
+        sysroot = {
+            "libraries": ["libc.so"],
+            "files": ["/bin/sh"],
+            "capabilities": ["gcc"],
+        }
+        (tmp_path / "sysroot_provides.yaml").write_text(yaml.dump(sysroot))
+        (tmp_path / "non_fedora_packages.yaml").write_text(
+            yaml.dump({"packages": {}})
+        )
+
+        # Roadmap config with glob patterns
+        roadmap_config = {
+            "roadmap_drops": {
+                "build_infra": ["*-rpm-macros", "multilib-rpm-config"],
+                "doc_only": ["docbook*"],
+                "test_only": ["dejagnu"],
+                "asset_packages": ["*-fonts"],
+            }
+        }
+        (tmp_path / "roadmap_config.yaml").write_text(yaml.dump(roadmap_config))
+
+        # Mock db with source package data
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE binary_provides (
+                provides_name TEXT, provides_flags TEXT,
+                provides_version TEXT, binary_package TEXT,
+                source_package TEXT, repo TEXT
+            );
+            CREATE TABLE source_buildrequires (
+                source_package TEXT, requires_name TEXT,
+                requires_flags TEXT, requires_version TEXT,
+                repo TEXT
+            );
+            CREATE TABLE file_provides (
+                file_path TEXT, binary_package TEXT,
+                source_package TEXT, repo TEXT
+            );
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            CREATE INDEX idx_bp_name ON binary_provides(provides_name);
+            CREATE INDEX idx_sbr_pkg ON source_buildrequires(source_package);
+            CREATE INDEX idx_fp_path ON file_provides(file_path);
+        """)
+
+        # Insert test packages
+        conn.executemany(
+            "INSERT INTO binary_provides VALUES (?,?,?,?,?,?)",
+            [
+                ("fonts-rpm-macros", "", "", "fonts-rpm-macros", "fonts-rpm-macros", "releases"),
+                ("dejagnu", "", "", "dejagnu", "dejagnu", "releases"),
+                ("docbook-dtds", "", "", "docbook-dtds", "docbook-dtds", "releases"),
+                ("adobe-source-code-pro-fonts", "", "", "adobe-source-code-pro-fonts", "adobe-source-code-pro-fonts", "releases"),
+                ("zlib-devel", "", "", "zlib-devel", "zlib-ng", "releases"),
+            ],
+        )
+        # Add BuildRequires chain: testpkg -> fonts-rpm-macros, dejagnu, zlib-devel
+        conn.executemany(
+            "INSERT INTO source_buildrequires VALUES (?,?,?,?,?)",
+            [
+                ("testpkg", "fonts-rpm-macros", "", "", "releases"),
+                ("testpkg", "dejagnu", "", "", "releases"),
+                ("testpkg", "zlib-devel", "", "", "releases"),
+                ("testpkg", "adobe-source-code-pro-fonts", "", "", "releases"),
+                # fonts-rpm-macros depends on docbook-dtds (should NOT be recursed)
+                ("fonts-rpm-macros", "docbook-dtds", "", "", "releases"),
+            ],
+        )
+        conn.commit()
+
+        loader = RuleLoader(tmp_path)
+        resolver = RoadmapResolver(
+            db=conn,
+            rule_loader=loader,
+            rules_dir=tmp_path,
+            rpms_dir=Path("/nonexistent"),
+        )
+        return resolver
+
+    def test_roadmap_drop_by_glob(self, setup_with_config):
+        resolver = setup_with_config
+        drops = resolver._compute_effective_drops("testpkg")
+        pkg, cls, detail = resolver._resolve_provider("fonts-rpm-macros", drops, "testpkg")
+        assert cls == Classification.DROPPED
+        assert "roadmap" in detail
+        assert "build_infra" in detail
+
+    def test_roadmap_drop_by_exact_name(self, setup_with_config):
+        resolver = setup_with_config
+        drops = resolver._compute_effective_drops("testpkg")
+        pkg, cls, detail = resolver._resolve_provider("dejagnu", drops, "testpkg")
+        assert cls == Classification.DROPPED
+        assert "roadmap" in detail
+        assert "test_only" in detail
+
+    def test_roadmap_drop_font_glob(self, setup_with_config):
+        resolver = setup_with_config
+        drops = resolver._compute_effective_drops("testpkg")
+        pkg, cls, detail = resolver._resolve_provider(
+            "adobe-source-code-pro-fonts", drops, "testpkg"
+        )
+        assert cls == Classification.DROPPED
+        assert "asset_packages" in detail
+
+    def test_roadmap_drop_prevents_recursion(self, setup_with_config):
+        """Dropped source packages should NOT be recursed into."""
+        resolver = setup_with_config
+        result = resolver.resolve("testpkg")
+        # fonts-rpm-macros is dropped, so docbook-dtds (its dep) should NOT appear
+        assert "docbook-dtds" not in result.packages
+        # fonts-rpm-macros should be in dropped_deps, not in packages
+        assert "fonts-rpm-macros" not in result.packages
+
+    def test_non_dropped_package_still_resolves(self, setup_with_config):
+        resolver = setup_with_config
+        drops = resolver._compute_effective_drops("testpkg")
+        pkg, cls, detail = resolver._resolve_provider("zlib-devel", drops, "testpkg")
+        assert pkg == "zlib-ng"
+        assert cls == Classification.NEED_RULES
+
+    def test_no_roadmap_config_file(self, tmp_path):
+        """Missing roadmap_config.yaml is handled gracefully."""
+        generic = {"generic": {"drop_buildrequires": []}}
+        (tmp_path / "generic.yaml").write_text(yaml.dump(generic))
+        (tmp_path / "classes").mkdir()
+        (tmp_path / "packages").mkdir()
+        (tmp_path / "sysroot_provides.yaml").write_text(
+            yaml.dump({"libraries": [], "files": [], "capabilities": []})
+        )
+        (tmp_path / "non_fedora_packages.yaml").write_text(
+            yaml.dump({"packages": {}})
+        )
+        # No roadmap_config.yaml
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE binary_provides (provides_name TEXT, provides_flags TEXT,
+                provides_version TEXT, binary_package TEXT, source_package TEXT, repo TEXT);
+            CREATE TABLE source_buildrequires (source_package TEXT, requires_name TEXT,
+                requires_flags TEXT, requires_version TEXT, repo TEXT);
+            CREATE TABLE file_provides (file_path TEXT, binary_package TEXT,
+                source_package TEXT, repo TEXT);
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+            CREATE INDEX idx_bp_name ON binary_provides(provides_name);
+            CREATE INDEX idx_sbr_pkg ON source_buildrequires(source_package);
+            CREATE INDEX idx_fp_path ON file_provides(file_path);
+        """)
+
+        loader = RuleLoader(tmp_path)
+        resolver = RoadmapResolver(
+            db=conn,
+            rule_loader=loader,
+            rules_dir=tmp_path,
+            rpms_dir=Path("/nonexistent"),
+        )
+        # Should have empty roadmap drops
+        assert resolver._roadmap_drops == {}
+
+    def test_roadmap_drops_in_format_text(self, setup_with_config):
+        """Roadmap drops should show category in --list-drops output."""
+        resolver = setup_with_config
+        result = resolver.resolve("testpkg")
+        text = format_text(result, list_drops=True)
+        assert "roadmap config" in text.lower() or "DROPPED" in text

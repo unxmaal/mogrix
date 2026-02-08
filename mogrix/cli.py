@@ -2190,5 +2190,100 @@ def roadmap(
         console.print(format_text(result, list_drops=list_drops, show_satisfied=show_satisfied))
 
 
+@main.command("roadmap-check")
+@click.argument("package_name", required=False)
+@click.option("--all", "check_all", is_flag=True, help="Check all built packages")
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+@click.option(
+    "--suggest",
+    is_flag=True,
+    help="Generate roadmap_config.yaml addition suggestions",
+)
+@click.option(
+    "--min-freq",
+    default=3,
+    type=int,
+    help="Minimum frequency for suggestions (default: 3)",
+)
+@click.option("--refresh", is_flag=True, help="Re-download repo metadata")
+@click.option("--release", default="40", help="Fedora release (default: 40)")
+def roadmap_check(
+    package_name: str | None,
+    check_all: bool,
+    output_json: bool,
+    suggest: bool,
+    min_freq: int,
+    refresh: bool,
+    release: str,
+):
+    """Validate roadmap predictions against build reality.
+
+    For a built package, identifies false positives in its roadmap
+    (packages predicted as needed but not actually required for the build).
+
+    \b
+    Examples:
+      mogrix roadmap-check popt             # Check single package
+      mogrix roadmap-check --all            # Check all 63 built packages
+      mogrix roadmap-check --all --suggest  # Generate config suggestions
+      mogrix roadmap-check --all --json     # Machine-readable output
+    """
+    from mogrix.repometa import RepoMetaCache
+    from mogrix.roadmap_check import RoadmapChecker
+
+    if not package_name and not check_all:
+        console.print("[red]Error: specify a package name or use --all[/red]")
+        raise SystemExit(1)
+
+    cache = RepoMetaCache(release=release)
+    db = cache.ensure_index(refresh=refresh)
+    rule_loader = RuleLoader(RULES_DIR)
+
+    checker = RoadmapChecker(
+        db=db,
+        rule_loader=rule_loader,
+        rules_dir=RULES_DIR,
+        rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+    )
+
+    if check_all:
+        with console.status("[bold cyan]Running roadmap checks..."):
+            results = checker.check_all_built()
+        aggregated = checker.aggregate_false_positives(results)
+
+        if output_json:
+            print(checker.format_json_report(results, aggregated))
+        else:
+            console.print(checker.format_aggregate_report(results, aggregated))
+
+        if suggest:
+            suggestions = checker.generate_suggestions(aggregated, min_freq=min_freq)
+            console.print("")
+            console.print(checker.format_suggestions(suggestions, min_freq=min_freq))
+    else:
+        with console.status(f"[bold cyan]Checking {package_name}..."):
+            result = checker.check_package(package_name)
+
+        if output_json:
+            import json as json_mod
+
+            data = {
+                "target": result.target,
+                "need_rules": result.total_need_rules,
+                "false_positives": [
+                    {
+                        "name": fp.name,
+                        "category": fp.suggested_category,
+                        "confidence": fp.confidence,
+                        "reason": fp.reason,
+                    }
+                    for fp in result.false_positives
+                ],
+            }
+            print(json_mod.dumps(data, indent=2))
+        else:
+            console.print(checker.format_check_result(result))
+
+
 if __name__ == "__main__":
     main()

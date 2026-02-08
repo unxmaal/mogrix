@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-08 (session 3)
-**Status**: Phase 5 (Library Foundation) IN PROGRESS. Tier 0-2 building. 63 source packages cross-compiled. gettext, zstd, fontconfig INSTALLED on IRIX.
+**Last Updated**: 2026-02-08 (session 4)
+**Status**: Phase 5 COMPLETE. aterm (X11 terminal emulator) INSTALLED and WORKING on IRIX. 64 source packages cross-compiled.
 
 ---
 
@@ -21,23 +21,15 @@ On 2026-01-27, installing directly to /usr/sgug replaced libz.so with zlib-ng, b
 
 ## Goal
 
-Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Now building Phase 5: library foundation packages toward aterm (X11 terminal emulator). 63 total source packages cross-compiled.
+Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Phase 5 complete: library foundation + aterm (first X11 app). 64 total source packages cross-compiled.
 
 ---
 
-## IMMEDIATE NEXT: aterm Path
+## IMMEDIATE NEXT: Choose Next Target
 
-aterm is a simple Xlib terminal emulator (FC39: 1.0.1). Direct BuildRequires:
-- `libAfterImage-devel >= 1.07` — NOT in Fedora, need separate source
-- `libXt-devel` — X11 toolkit, likely in SGUG-RSE sysroot
-- `libXext-devel` — X11 extensions, likely in SGUG-RSE sysroot
-- `mesa-libGL-devel` — OpenGL, may skip
-- `make` ✅, `chrpath` ✅, `gcc` (cross-compiler)
-
-**Key question: Is libAfterImage already in the SGUG-RSE sysroot, or does it need building?**
+aterm is COMPLETE (installed and working on IRIX). Possible next targets:
 
 ### Autotools Packages Ready to Build
-These use `%configure`/`%make_build` and have rules or are straightforward:
 - **gd** — graphics library, autotools
 - **jq** — JSON processor, autotools (needs select() declaration fix)
 - **pcre** — older regex library, autotools
@@ -47,7 +39,7 @@ These use `%configure`/`%make_build` and have rules or are straightforward:
 - **elfutils** — ELF handling, autotools
 - **gtk2** — GTK toolkit, autotools
 
-### Meson Packages (BLOCKED — need meson cross-compilation)
+### Meson Packages (require meson cross-compilation)
 FC40 GNOME stack has migrated to meson:
 - **cairo** 1.18.0 — `%meson` (1.16.x was autotools)
 - **harfbuzz** — `%meson`
@@ -55,7 +47,7 @@ FC40 GNOME stack has migrated to meson:
 - **glib2** — `%meson`
 - **p11-kit** — `%meson`
 
-**Options**: (1) Set up meson cross-compilation with `cross/meson-irix-cross.ini`, (2) Find older autotools-based versions, (3) Skip if not needed for aterm.
+We have `cross/meson-irix-cross.ini` and pixman was successfully built with meson.
 
 ---
 
@@ -94,10 +86,33 @@ FC40 GNOME stack has migrated to meson:
 | libjpeg-turbo | 3.0.2 | STAGED | raw cmake, SIMD off, setenv compat, lib32 hardcode |
 | pixman | 0.43.0 | STAGED | meson cross file, tests/demos disabled |
 | uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99, perl disabled, libtool override removed |
+| aterm | 1.0.1 | INSTALLED | X11 sysroot autodetect, drop libAfterImage/chrpath/desktop, -rdynamic filter |
 
 ---
 
-## What Was Fixed This Session (Session 3)
+## What Was Fixed This Session (Session 4)
+
+### 1. aterm cross-compilation (first X11 app!)
+FC39 package, simple autotools. Key fixes:
+- Remove `--x-includes`/`--x-libraries` flags — sysroot autodetects X11
+- Drop libAfterImage (optional, configure skips gracefully), chrpath, desktop-file-utils
+- Drop `xorg-x11-fonts-misc` Requires (IRIX has native X11 fonts)
+- Man page `.gz` suffix removal (brp scripts disabled in rpmmacros.irix)
+
+### 2. `-rdynamic`/`--export-dynamic` filter in irix-ld
+LLD doesn't support `-rdynamic`. Also dangerous for IRIX rld (SIGSEGV on large dynamic symbol tables). Added to filter in both `cross/bin/irix-ld` and staging copy.
+
+### 3. Roadmap performance fix
+`_build_exclusion_index()` scanned all binary_provides rows (millions) in the 1GB Fedora sqlite DB, pegging CPU and crashing. Removed entirely — lazy `_check_roadmap_drop()` after sqlite lookups achieves the same filtering.
+
+### 4. Expanded roadmap_config.yaml and sysroot_provides.yaml
+- Added gcc subpackage provides (cpp, libgcc, libstdc++, etc.)
+- Added ~50 more drop patterns (impossible ecosystems, desktop frameworks, linux-specific)
+- Reduced NEED_RULES from 2804 to 2137 (24% reduction)
+
+---
+
+## What Was Fixed in Session 3
 
 ### 1. PKG_CONFIG_SYSROOT_DIR (systemic fix)
 pkg-config returns paths like `/usr/sgug/include/freetype2` but that doesn't exist on the build host. Added `export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"` to `%configure` in `cross/rpmmacros.irix`. Affects ALL packages using pkg-config.
@@ -151,12 +166,12 @@ Replace `%{cmake}` macros with raw cmake commands. Use `-DCMAKE_INSTALL_LIBDIR=l
 
 ## Current Status
 
-**Total: 63 source packages cross-compiled.**
+**Total: 64 source packages cross-compiled.**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
 
-### Phase 5: Library Foundation (22 packages)
+### Phase 5: Library Foundation + aterm (23 packages)
 | Package | Version | Status | Key Fixes |
 |---------|---------|--------|-----------|
 | pcre2 | 10.42 | INSTALLED | JIT/sealloc blocks, inttypes.h C99 |
