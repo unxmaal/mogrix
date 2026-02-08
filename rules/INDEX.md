@@ -58,6 +58,10 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Make environment | Need env vars for make | make_env | rules/packages/* | Exported before make commands |
 | Skip man pages | Man pages cause install errors | skip_manpages | rules/packages/* | Removes man install from spec |
 | Skip lang files | %files -f lang.txt fails | files_no_lang | rules/packages/* | Removes -f lang from %files |
+| X11 path detection | configure AC_PATH_XTRA fails cross | spec_replacements | rules/packages/* | Remove --x-includes/--x-libraries, sysroot autodetects |
+| CJK font dependencies | k14, taipei16 fonts not on IRIX | configure_disable or spec_replacements | rules/packages/* | --disable-kanji --disable-big5 --disable-greek |
+| Unpackaged doc files | make install + %doc both install docs | install_cleanup | rules/packages/* | Remove from %{buildroot}%{_pkgdocdir} |
+| AUTOPOINT=true | autoreconf fails without autopoint | spec_replacements | rules/packages/* | `AUTOPOINT=true autoreconf -vfi` |
 
 ## Invariants (Settled Facts)
 
@@ -78,6 +82,10 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | mmap-based malloc bypasses limit | dlmalloc in compat uses mmap, 1.2GB available | compat/malloc/dlmalloc.c |
 | Volatile fptr initializers crash | `static volatile fptr = memset;` relocation fails on rld | compat/string/explicit_bzero.c |
 | Source analysis is rules-driven | Patterns in source_checks.yaml + catalog.yaml source_patterns | rules/source_checks.yaml |
+| `-rdynamic` filtered in irix-ld | LLD doesn't support it; IRIX rld crashes on large dynamic symbol tables | cross/bin/irix-ld |
+| X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 | rules/packages/aterm.yaml |
+| Man pages not compressed | rpmmacros.irix disables brp scripts; use `*.1*` not `*.1.gz` in %files | rpmmacros.irix |
+| AUTOPOINT=true for NLS-disabled | Packages with autoreconf + nls-disabled class need `AUTOPOINT=true` | rules/packages/*.yaml |
 
 ## File Locations
 
@@ -85,7 +93,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 |----------|------|----------|
 | Generic rules | rules/generic.yaml | Applied to ALL packages |
 | Class rules | rules/classes/*.yaml | Shared rules for package groups |
-| Package rules | rules/packages/*.yaml | Per-package overrides (79 packages) |
+| Package rules | rules/packages/*.yaml | Per-package overrides (96 packages) |
 | Source checks | rules/source_checks.yaml | IRIX source pattern definitions |
 | Compat functions | compat/catalog.yaml | Function registry + source patterns |
 | Compat sources | compat/string/, compat/stdio/, compat/stdlib/, compat/dicl/, compat/malloc/ | Implementation files |
@@ -111,7 +119,7 @@ Rules are applied in order: **generic → class → package**. Each layer adds t
 
 | Class | Purpose | Packages |
 |-------|---------|----------|
-| `nls-disabled` | Disables NLS, skips %find_lang, removes lang file refs | gawk, grep, sed |
+| `nls-disabled` | Disables NLS, skips %find_lang, removes lang file refs | gawk, grep, sed, flex, libpng, make, findutils, tar, fontconfig |
 
 **Auditing for elevation:** Run `mogrix audit-rules` to detect duplicated rules across packages and flag candidates for promotion to class or generic level.
 

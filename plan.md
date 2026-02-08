@@ -4,9 +4,9 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-02-08)
 
-**Phase 5: IN PROGRESS — 63 source packages cross-compiled for IRIX. Tier 0-2 building.**
+**Phase 5: COMPLETE — 64 source packages cross-compiled for IRIX. aterm (first X11 app) running on IRIX GUI.**
 
-All phases through 4c complete (41 packages). Phase 5 (library foundation toward aterm) is underway with 22 additional packages: 15 installed, 7 staged. New this session: gettext, zstd, fontconfig installed and verified on IRIX. Key systemic fix: PKG_CONFIG_SYSROOT_DIR added to rpmmacros.irix. Cairo 1.18.0 blocked (uses meson). aterm's direct deps identified: libAfterImage-devel, X11 libs (likely in sysroot), make, chrpath.
+All phases through 4c complete (41 packages). Phase 5 complete with 23 additional packages: 16 installed, 7 staged. aterm (VT102 terminal emulator) is the first graphical X11 application — links against IRIX native X11 libraries via sysroot autodetection. Cairo 1.18.0 blocked (uses meson).
 
 ---
 
@@ -150,17 +150,15 @@ With Phase 2 complete, IRIX has a full autotools chain.
 
 Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX printf can't handle `%Lg` long double format).
 
-### Phase 5: Library Foundation (IN PROGRESS — 22 packages)
+### Phase 5: Library Foundation + aterm (COMPLETE — 23 packages)
 
-Derived from `mogrix roadmap aterm` analysis. Building in tiers of increasing complexity. Tier 0 + Tier 1 complete. Tier 2 in progress.
+Derived from `mogrix roadmap aterm` analysis. Built in tiers of increasing complexity. All tiers complete. aterm is the first X11 graphical application running on IRIX.
 
-**Completed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype (15 installed/built).
+**Installed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype, aterm (16 installed).
 **Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman, uuid (7 staged).
 
 #### Current blockers
 - **FC40 GNOME stack uses meson**: cairo 1.18, harfbuzz, pango, glib2, p11-kit all need `%meson`. We have `cross/meson-irix-cross.ini` but no `%meson` RPM macro. Options: set up meson macros, find autotools versions, or skip.
-- **libAfterImage**: aterm's key dep. Not in Fedora repos. Need to find source.
-
 #### Remaining Tier 2-3 targets (autotools)
 | Package | Build System | Unblocks |
 |---------|-------------|----------|
@@ -222,13 +220,13 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
 | Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
 | Roadmap: glob pattern drops for impossible ecosystems | Done |
-| 80+ package rules + 1 class rule | Done |
+| 96 package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
-| 153 tests, all passing | Done |
+| 170 tests, all passing | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
-| 63 source packages cross-compiled for IRIX | Done |
+| 64 source packages cross-compiled for IRIX | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
 
@@ -251,6 +249,8 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | `explicit_bzero` for wipememory | Volatile fptr static initializers crash on IRIX rld |
 | Disable `--export-dynamic` features | IRIX rld crashes with large dynamic symbol tables (468+ entries) |
 | `-lpthread` for pthread_sigmask | IRIX has it in libpthread, not libc; gnulib replacement needs it |
+| X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 automatically |
+| Filter `-rdynamic` in irix-ld | LLD doesn't support it; IRIX rld crashes on large dynamic symbol tables |
 
 ---
 
@@ -266,6 +266,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 8. **Build tools on IRIX:** autoconf/automake/libtool/make ✓
 9. **Full GNU userland:** coreutils/findutils/tar/sed/gawk/grep ✓
 10. **Crypto stack:** gnupg2 key gen + sign + verify ✓
+11. **X11 graphical app:** aterm terminal emulator running on IRIX GUI ✓
 
 ---
 

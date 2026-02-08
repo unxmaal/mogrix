@@ -93,19 +93,40 @@ We have `cross/meson-irix-cross.ini` and pixman was successfully built with meso
 ## What Was Fixed This Session (Session 4)
 
 ### 1. aterm cross-compilation (first X11 app!)
-FC39 package, simple autotools. Key fixes:
-- Remove `--x-includes`/`--x-libraries` flags — sysroot autodetects X11
+FC39 package, simple autotools VT102 terminal emulator. Key fixes:
+- Remove `--x-includes`/`--x-libraries` flags — sysroot autodetects X11 headers/libs
 - Drop libAfterImage (optional, configure skips gracefully), chrpath, desktop-file-utils
 - Drop `xorg-x11-fonts-misc` Requires (IRIX has native X11 fonts)
+- Disable CJK font support (`--disable-kanji --disable-big5 --disable-greek`) — k14/taipei16 fonts not available on IRIX
 - Man page `.gz` suffix removal (brp scripts disabled in rpmmacros.irix)
+- Links: libXt.so, libX11.so.1, libXext.so, libc.so.1 (all IRIX native)
 
-### 2. `-rdynamic`/`--export-dynamic` filter in irix-ld
+### 2. X11 testing from chroot
+- UNIX sockets (`/tmp/.X11-unix/X0`) don't cross chroot boundaries — `DISPLAY=:0` won't work
+- SSH X forwarding auth cookies not available in chroot — `DISPLAY=localhost:13.0` won't work
+- **TCP display works**: `DISPLAY=192.168.0.81:0` (machine's own IP) bypasses socket/chroot issues
+- Must run `xhost +` from a **local GUI terminal** first (not from SSH — `xhost` needs DISPLAY set)
+- Launch pattern: `DISPLAY=:0 chroot /opt/chroot /bin/sh -c 'DISPLAY=192.168.0.81:0 /usr/sgug/bin/sgug-exec /usr/sgug/bin/aterm'`
+
+### 3. `-rdynamic`/`--export-dynamic` filter in irix-ld
 LLD doesn't support `-rdynamic`. Also dangerous for IRIX rld (SIGSEGV on large dynamic symbol tables). Added to filter in both `cross/bin/irix-ld` and staging copy.
 
-### 3. Roadmap performance fix
+### 4. tdnf repo setup (BLOCKED)
+- `createrepo_c --simple-md-filenames` creates repo metadata on Linux
+- Tar and copy to chroot, extract to `/tmp/mogrix-repo`
+- tdnf fails with Error(1609) "Bad file number" — SQLite WAL locking at offset `0x40000002` fails on IRIX `fcntl(F_SETLK)`
+- This is an IRIX libc/kernel limitation — `fcntl` lock at large offsets returns EBADF
+- **Workaround**: Continue using `rpm -Uvh` directly until SQLite WAL fix found
+
+### 5. sgugshell shebang fix (live system)
+- Mogrix bash links libtinfo.so, SGUG-RSE's original bash didn't
+- `#!/usr/sgug/bin/bash` in sgugshell loads bash before `LD_LIBRARYN32_PATH` is set → rld can't find libtinfo.so
+- Fix: changed shebang to `#!/bin/ksh` (native IRIX shell, like sgug-exec uses)
+
+### 6. Roadmap performance fix
 `_build_exclusion_index()` scanned all binary_provides rows (millions) in the 1GB Fedora sqlite DB, pegging CPU and crashing. Removed entirely — lazy `_check_roadmap_drop()` after sqlite lookups achieves the same filtering.
 
-### 4. Expanded roadmap_config.yaml and sysroot_provides.yaml
+### 7. Expanded roadmap_config.yaml and sysroot_provides.yaml
 - Added gcc subpackage provides (cpp, libgcc, libstdc++, etc.)
 - Added ~50 more drop patterns (impossible ecosystems, desktop frameworks, linux-specific)
 - Reduced NEED_RULES from 2804 to 2137 (24% reduction)
@@ -196,6 +217,7 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | libjpeg-turbo | 3.0.2 | STAGED | raw cmake, SIMD off |
 | pixman | 0.43.0 | STAGED | meson cross file |
 | uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99 |
+| aterm | 1.0.1 | INSTALLED | X11 sysroot autodetect, CJK disabled, -rdynamic filter, first X11 app |
 
 ---
 
@@ -208,7 +230,7 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | IRIX host | `192.168.0.81` (use MCP, not SSH) |
-| IRIX chroot (active) | `/opt/chroot` (bootstrapped, ~51 source packages) |
+| IRIX chroot (active) | `/opt/chroot` (bootstrapped, ~58 source packages installed) |
 | IRIX chroot (backup) | `/opt/chroot_0206` (old SGUG-RSE base) |
 | Original FC40 SRPMs | `~/mogrix_inputs/SRPMS/` |
 | Converted SRPMs | `~/mogrix_outputs/SRPMS/` |
@@ -293,6 +315,9 @@ gnulib's `gl_STDINT_H` generates replacement headers with different integer type
 - pkgconf installed with `--nodeps` (needs rebuild with `drop_requires: libpkgconf`)
 - coreutils `seq` disabled — IRIX printf doesn't handle `%Lg`
 - **`--export-dynamic` crashes IRIX rld** — large dynamic symbol tables cause SIGSEGV
+- **tdnf install blocked** — SQLite WAL locking at offset 0x40000002 fails on IRIX fcntl → Error(1609)
+- **Man page .gz in %files** — brp scripts disabled, man pages stay uncompressed. Fix: `%{name}.1.gz` → `%{name}.1*`
+- **CJK fonts not on IRIX** — aterm's k14/taipei16/greek fonts don't exist. Disable with `--disable-kanji --disable-big5 --disable-greek`
 
 ---
 

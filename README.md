@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms Fedora 40 SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
 
-**Current Status:** 63 source packages cross-compiled for IRIX, including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), and library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more). Working toward aterm (X11 terminal emulator).
+**Current Status:** 64 source packages cross-compiled for IRIX, including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), and **aterm** — the first X11 graphical application running on the IRIX GUI.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -503,7 +503,7 @@ mogrix/
 ├── rules/              # Rule definitions
 │   ├── generic.yaml    # Universal rules (applied to ALL packages)
 │   ├── classes/        # Class rules (nls-disabled, etc.)
-│   ├── packages/       # Package-specific rules (79 packages)
+│   ├── packages/       # Package-specific rules (96 packages)
 │   └── source_checks.yaml  # IRIX source pattern definitions
 ├── headers/            # Header overlay files
 │   └── generic/        # Clang/IRIX compat headers
@@ -515,7 +515,7 @@ mogrix/
 │   └── (source dirs)   # string/, stdio/, stdlib/, dicl/, malloc/, etc.
 ├── rpmlint.toml        # IRIX-specific rpmlint configuration
 ├── scripts/            # Helper scripts
-├── tests/              # Test suite (127 tests)
+├── tests/              # Test suite (170 tests)
 ├── plan.md             # Architecture documentation
 └── HANDOFF.md          # Session handoff notes
 ```
@@ -541,7 +541,7 @@ make clean
 
 ## Package Rules Status
 
-41 source packages built, installed, and verified on IRIX across 8 phases:
+64 source packages cross-compiled for IRIX across 9 phases:
 
 ### Phase 1: Bootstrap (14 packages)
 
@@ -624,7 +624,35 @@ make clean
 |---|---------|---------|-------------|
 | 41 | coreutils | 9.4 | GNU core utilities (ls, cp, mv, cat, head, sort, etc.) |
 
-79 additional package rule files exist for future phases.
+### Phase 5: Library Foundation + aterm (23 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 42 | pcre2 | 10.42 | Perl-compatible regex library |
+| 43 | symlinks | 1.7 | Symlink maintenance utility |
+| 44 | tree-pkg | 2.1.0 | Directory listing tree |
+| 45 | oniguruma | 6.9.9 | Regular expression library |
+| 46 | libffi | 3.4.4 | Foreign function interface |
+| 47 | tcl | 8.6.13 | Tool Command Language |
+| 48 | flex | 2.6.4 | Lexical analyzer generator |
+| 49 | chrpath | 0.16 | Rpath editor |
+| 50 | libpng | 1.6.40 | PNG image library |
+| 51 | bison | 3.8.2 | Parser generator |
+| 52 | libunistring | 1.1 | Unicode string library |
+| 53 | gettext | 0.22.5 | Internationalization framework |
+| 54 | zstd | 1.5.5 | Zstandard compression |
+| 55 | fontconfig | 2.15.0 | Font configuration library |
+| 56 | freetype | 2.13.2 | Font rendering engine |
+| 57 | expat | 2.6.0 | XML parser (staged) |
+| 58 | nettle | 3.9.1 | Crypto library (staged) |
+| 59 | libtasn1 | 4.19.0 | ASN.1 library (staged) |
+| 60 | fribidi | 1.0.13 | Bidi algorithm (staged) |
+| 61 | libjpeg-turbo | 3.0.2 | JPEG library (staged) |
+| 62 | pixman | 0.43.0 | Pixel manipulation (staged) |
+| 63 | uuid | 1.6.2 | UUID library (staged) |
+| 64 | aterm | 1.0.1 | X11 terminal emulator (first GUI app!) |
+
+55 additional package rule files exist for future phases.
 
 ## Known Limitations
 
