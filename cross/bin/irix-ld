@@ -74,9 +74,9 @@ if [ "$is_shared" = "1" ]; then
     # SGUG-RSE avoided this via patched binutils; we use the linker flag instead.
     exec $GNULD \
       -z separate-code \
+      -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
-      -L$STAGING/lib32 \
       $filtered_args
 else
     # Executable: use LLD with CRT files and soft float stubs
@@ -93,9 +93,9 @@ else
       -dynamic-linker /lib32/rld \
       $CRT1 \
       $filtered_args \
+      -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
-      -L$STAGING/lib32 \
       -lsoft_float_stubs \
       -lc \
       $CRTN

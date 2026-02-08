@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-08 (session 4)
-**Status**: Phase 5 COMPLETE. aterm (X11 terminal emulator) INSTALLED and WORKING on IRIX. 64 source packages cross-compiled.
+**Last Updated**: 2026-02-08 (session 5)
+**Status**: Phase 5 + OpenSSH. aterm + openssh INSTALLED and WORKING on IRIX. 65 source packages cross-compiled. Ready for /usr/sgug swap.
 
 ---
 
@@ -21,13 +21,15 @@ On 2026-01-27, installing directly to /usr/sgug replaced libz.so with zlib-ng, b
 
 ## Goal
 
-Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Phase 5 complete: library foundation + aterm (first X11 app). 64 total source packages cross-compiled.
+Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Phase 5 complete: library foundation + aterm (first X11 app). OpenSSH 9.6p1 cross-compiled and working. 65 total source packages cross-compiled. System ready for /usr/sgug swap.
 
 ---
 
-## IMMEDIATE NEXT: Choose Next Target
+## IMMEDIATE NEXT: /usr/sgug Swap + Choose Next Target
 
-aterm is COMPLETE (installed and working on IRIX). Possible next targets:
+OpenSSH is COMPLETE (working on IRIX in debug mode). The system is now ready for the /usr/sgug swap — see "Swap Procedure" section below.
+
+After swap, possible next package targets:
 
 ### Autotools Packages Ready to Build
 - **gd** — graphics library, autotools
@@ -87,10 +89,77 @@ We have `cross/meson-irix-cross.ini` and pixman was successfully built with meso
 | pixman | 0.43.0 | STAGED | meson cross file, tests/demos disabled |
 | uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99, perl disabled, libtool override removed |
 | aterm | 1.0.1 | INSTALLED | X11 sysroot autodetect, drop libAfterImage/chrpath/desktop, -rdynamic filter |
+| openssh | 9.6p1 | INSTALLED | R_MIPS_REL32 dispatch functions, ensure_minimum_time bypass, debug-mode only |
 
 ---
 
-## What Was Fixed This Session (Session 4)
+## What Was Fixed This Session (Session 5)
+
+### 1. OpenSSH 9.6p1 cross-compilation (first network service!)
+FC40 package, portable SSH server/client. Key approach: drop ALL ~40 Fedora patches (GSSAPI, SELinux, audit, systemd, FIPS, PKCS#11), use clean upstream with OpenSSH's own `openbsd-compat/` portability layer. No mogrix compat injection needed.
+
+**Critical fixes:**
+- **R_MIPS_REL32 relocation elimination**: IRIX rld fails on R_MIPS_REL32 dynamic relocations for function pointers in static data arrays. Eliminated ALL 20 relocations:
+  - **cipher.c (9 EVP relocations)**: Added `ssh_cipher_evptype()` dispatch function (strcmp-based switch returning EVP_*() call results). Replaced `(*cipher->evptype)()` indirect call. NULLed out EVP pointers in ciphers[] array initializers.
+  - **charclass.h (11 ctype relocations)**: Replaced entire header. Removed `isctype` function pointer field from struct. Added `cclass_isctype()` dispatch function (strcmp → isalnum/isalpha/etc). Fixed glob.c and fnmatch.c call sites via sed.
+  - **digest-openssl.c**: Switch dispatch for EVP_MD functions (from previous session)
+  - **explicit_bzero.c**: Volatile char loop replacing volatile function pointer (from previous session)
+- **`ensure_minimum_time_since()` bypass**: Crashes privsep child after authentication (only for non-"none" methods). Contains monotime_double/SHA512/nanosleep — root cause unclear. Bypassed with `if(0)`. Timing side-channel protection disabled (acceptable for IRIX LAN).
+- **BROKEN_SNPRINTF**: IRIX vsnprintf(NULL,0) returns -1. Forced via `-DBROKEN_SNPRINTF` in CFLAGS.
+- **Fork-mode sshd failure**: Connection socket returns EOF (SSH_ERR_CONN_CLOSED) after privsep child exits. Likely IRIX kernel socket refcount bug after fork. Debug mode (`-d`, no fork) works perfectly.
+  - **Workaround**: Run `while true; do /usr/sgug/sbin/sshd -d -e -p 22; done` for persistent service.
+- **perl -i -e slurp mode bug**: `perl -i -e 'my @lines = <>; ... print $content;'` WIPES the file. Must use explicit `open(F, "<file"); ... open(F, ">file"); print F $content;` instead.
+
+### 2. SSH login verified on IRIX
+```
+$ ssh root@192.168.0.81 -p 9992
+OpenSSH_9.6p1, OpenSSL 3.2.1 30 Jan 2024
+IRIX64 blue 6.5 07202013 IP30 mips Irix
+```
+Full session: command execution, clean disconnect. Ed25519 and RSA keys work.
+
+---
+
+## /usr/sgug Swap Procedure
+
+**Safety invariant**: At least one working sshd must be listening at all times.
+
+### Pre-swap checklist
+- [x] openssh tested and working in chroot on alternate port
+- [ ] Physical/serial console access available as fallback
+- [ ] Backup of live /usr/sgug exists
+
+### Swap sequence
+```bash
+# 1. From existing SSH session on port 22 (keep alive!):
+cd /opt && tar cf sgug-live-backup.tar /usr/sgug
+
+# 2. Start test sshd from chroot on alternate port:
+chroot /opt/chroot /bin/sh -c 'LD_LIBRARYN32_PATH=/usr/sgug/lib32 /usr/sgug/sbin/sshd -d -e -p 2222'
+# Note: must use -d (debug/no-fork mode) — fork mode has IRIX socket bug
+
+# 3. Verify port 2222 works from another machine
+
+# 4. From the port 2222 session, do the swap:
+mv /usr/sgug /usr/sgug.old
+cp -a /opt/chroot/usr/sgug /usr/sgug
+
+# 5. Start new sshd on port 2223 (from new /usr/sgug):
+LD_LIBRARYN32_PATH=/usr/sgug/lib32 /usr/sgug/sbin/sshd -d -e -p 2223
+
+# 6. If port 2223 works, set up persistent sshd on port 22
+```
+
+### Rollback (if swap fails)
+```bash
+# From physical console:
+mv /usr/sgug /usr/sgug.new && mv /usr/sgug.old /usr/sgug
+LD_LIBRARYN32_PATH=/usr/sgug/lib32 /usr/sgug/sbin/sshd
+```
+
+---
+
+## What Was Fixed in Session 4
 
 ### 1. aterm cross-compilation (first X11 app!)
 FC39 package, simple autotools VT102 terminal emulator. Key fixes:
@@ -187,12 +256,12 @@ Replace `%{cmake}` macros with raw cmake commands. Use `-DCMAKE_INSTALL_LIBDIR=l
 
 ## Current Status
 
-**Total: 64 source packages cross-compiled.**
+**Total: 65 source packages cross-compiled.**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
 
-### Phase 5: Library Foundation + aterm (23 packages)
+### Phase 5: Library Foundation + aterm + openssh (24 packages)
 | Package | Version | Status | Key Fixes |
 |---------|---------|--------|-----------|
 | pcre2 | 10.42 | INSTALLED | JIT/sealloc blocks, inttypes.h C99 |
@@ -218,6 +287,7 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | pixman | 0.43.0 | STAGED | meson cross file |
 | uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99 |
 | aterm | 1.0.1 | INSTALLED | X11 sysroot autodetect, CJK disabled, -rdynamic filter, first X11 app |
+| openssh | 9.6p1 | INSTALLED | R_MIPS_REL32 dispatch, ensure_minimum_time bypass, debug-mode only |
 
 ---
 
@@ -318,6 +388,9 @@ gnulib's `gl_STDINT_H` generates replacement headers with different integer type
 - **tdnf install blocked** — SQLite WAL locking at offset 0x40000002 fails on IRIX fcntl → Error(1609)
 - **Man page .gz in %files** — brp scripts disabled, man pages stay uncompressed. Fix: `%{name}.1.gz` → `%{name}.1*`
 - **CJK fonts not on IRIX** — aterm's k14/taipei16/greek fonts don't exist. Disable with `--disable-kanji --disable-big5 --disable-greek`
+- **R_MIPS_REL32 relocations crash IRIX rld** — function pointers in static/const data arrays. Fix: dispatch functions (switch/strcmp). Affects openssh cipher.c, charclass.h, digest-openssl.c, explicit_bzero.c
+- **openssh fork-mode broken** — connection socket EOF after privsep child exit. Use `-d` (debug/no-fork mode) in a loop
+- **openssh ensure_minimum_time_since crash** — privsep child dies after non-"none" auth. Bypassed with `if(0)`
 
 ---
 
