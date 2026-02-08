@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-07 (session 2)
-**Status**: Phase 5 (Library Foundation) IN PROGRESS. Tier 0 + Tier 1 + 8 Tier 2 packages complete (18 new packages, 59 total). Moving to Tier 2 chains.
+**Last Updated**: 2026-02-08 (session 3)
+**Status**: Phase 5 (Library Foundation) IN PROGRESS. Tier 0-2 building. 63 source packages cross-compiled. gettext, zstd, fontconfig INSTALLED on IRIX.
 
 ---
 
@@ -21,22 +21,41 @@ On 2026-01-27, installing directly to /usr/sgug replaced libz.so with zlib-ng, b
 
 ## Goal
 
-Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Now building Phase 5: library foundation packages toward aterm (X11 terminal emulator). 59 total packages built.
+Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Now building Phase 5: library foundation packages toward aterm (X11 terminal emulator). 63 total source packages cross-compiled.
 
 ---
 
-## IMMEDIATE NEXT: Tier 2 Packages
+## IMMEDIATE NEXT: aterm Path
 
-Tier 0 and Tier 1 are complete. Next targets from the aterm roadmap:
+aterm is a simple Xlib terminal emulator (FC39: 1.0.1). Direct BuildRequires:
+- `libAfterImage-devel >= 1.07` — NOT in Fedora, need separate source
+- `libXt-devel` — X11 toolkit, likely in SGUG-RSE sysroot
+- `libXext-devel` — X11 extensions, likely in SGUG-RSE sysroot
+- `mesa-libGL-devel` — OpenGL, may skip
+- `make` ✅, `chrpath` ✅, `gcc` (cross-compiler)
 
-### Tier 2: Small Chains (high impact)
-- **gettext** (6 new deps) → unblocks 12 packages (biggest single blocker)
-- **zstd** (4 new deps) → unblocks elfutils, gnutls, libarchive, git
-- **fontconfig** (5 new deps) → unblocks emacs, cairo, pango, gd
-- **libX11** (8 new deps) → unblocks emacs, freetype, tk, gd — CRITICAL for aterm
-- **texinfo** (9 new deps) → unblocks emacs, gnutls, dejagnu, binutils
+**Key question: Is libAfterImage already in the SGUG-RSE sysroot, or does it need building?**
 
-Start with packages that have the fewest new dependencies.
+### Autotools Packages Ready to Build
+These use `%configure`/`%make_build` and have rules or are straightforward:
+- **gd** — graphics library, autotools
+- **jq** — JSON processor, autotools (needs select() declaration fix)
+- **pcre** — older regex library, autotools
+- **gnutls** — TLS library, autotools
+- **groff** — text formatting, autotools
+- **libarchive** — archive library, autotools
+- **elfutils** — ELF handling, autotools
+- **gtk2** — GTK toolkit, autotools
+
+### Meson Packages (BLOCKED — need meson cross-compilation)
+FC40 GNOME stack has migrated to meson:
+- **cairo** 1.18.0 — `%meson` (1.16.x was autotools)
+- **harfbuzz** — `%meson`
+- **pango** — `%meson`
+- **glib2** — `%meson`
+- **p11-kit** — `%meson`
+
+**Options**: (1) Set up meson cross-compilation with `cross/meson-irix-cross.ini`, (2) Find older autotools-based versions, (3) Skip if not needed for aterm.
 
 ---
 
@@ -60,140 +79,108 @@ Start with packages that have the fewest new dependencies.
 | libpng | 1.6.40 | INSTALLED | pngcp/pngfix stubs (header conflicts + missing zlib features) |
 | bison | 3.8.2 | INSTALLED | gl_cv_header_working_stdint_h override, doc cleanup |
 
+### Tier 2: Small Chains (IN PROGRESS)
+| Package | Version | Status | Key Fixes |
+|---------|---------|--------|-----------|
+| libunistring | 1.1 | BUILT | Clean build |
+| gettext | 0.22.5 | INSTALLED | %files substring collision fix, common-devel dep drop |
+| zstd | 1.5.5 | INSTALLED | Makefile CC/AR/RANLIB exports, pthread detection, LDFLAGS preservation |
+| fontconfig | 2.15.0 | INSTALLED | Host gperf pre-generation, expat backend, __sync atomics, test dir removal |
+| freetype | 2.13.2 | INSTALLED | Rebuilt with explicit Provides (mips-32, libfreetype.so.6) |
+| expat | 2.6.0 | STAGED | prep_commands touch for man page, --without-docbook |
+| nettle | 3.9.1 | STAGED | --enable-mini-gmp, FIPS disabled, LD export |
+| libtasn1 | 4.19.0 | STAGED | GTKDOCIZE=true, gl_cv_header_working_stdint_h, docs disabled |
+| fribidi | 1.0.13 | STAGED | autotools path via %if 1, utime rename, getopt_long compat |
+| libjpeg-turbo | 3.0.2 | STAGED | raw cmake, SIMD off, setenv compat, lib32 hardcode |
+| pixman | 0.43.0 | STAGED | meson cross file, tests/demos disabled |
+| uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99, perl disabled, libtool override removed |
+
 ---
 
-## What Was Fixed This Session
+## What Was Fixed This Session (Session 3)
 
-### 1. configure_flags:remove regex bug
-`spec.py:222` now uses `(?=[=\s\\]|$)` lookahead to prevent `--enable-jit` matching inside `--enable-jit-sealloc`.
+### 1. PKG_CONFIG_SYSROOT_DIR (systemic fix)
+pkg-config returns paths like `/usr/sgug/include/freetype2` but that doesn't exist on the build host. Added `export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"` to `%configure` in `cross/rpmmacros.irix`. Affects ALL packages using pkg-config.
 
-### 2. Duplicate add_patch/add_source engine bug
-Fixed in `engine.py` — when yaml has no `rules:` subsection, `rules = pkg_rules.get("rules", pkg_rules)` made `rules` the SAME dict, causing double processing.
+### 2. dicl-clang-compat/limits.h overlay
+IRIX `limits.h` guards C99 long long limits (LLONG_MIN, LLONG_MAX, ULLONG_MAX) behind `__c99` (MIPSpro flag). Created overlay with `#include_next` + explicit defines.
 
-### 3. C99 inttypes.h compliance
-IRIX `inttypes.h` doesn't include `stdint.h` (violating C99). Fixed by adding `#include <stdint.h>` to `mogrix-compat/generic/inttypes.h`.
+### 3. Fontconfig gperf CPP regeneration
+Cross-compiler CPP injects `typedef __builtin_va_list va_list;` into gperf input, corrupting it. Fix: pre-generate `fcobjshash.gperf` and `fcobjshash.h` using HOST cpp+gperf before make runs. The tarball does NOT ship these files — they MUST be generated during build.
 
-### 4. LLVM/Clang 16 assembler bug (MIPS .cpsetup)
-Clang 16 integrated assembler generates wrong relocations for MIPS N32 `.cpsetup` (R_MIPS_HI16 against `__gnu_local_gp` instead of GP-relative). Fix: `-fno-integrated-as` to use GNU as. Tracked as LLVM #52785.
+### 4. Fontconfig test compilation during make all
+Test programs use `setenv()` (not on IRIX) and compile during `make all` not just `make check`. Fix: `sed -i 's/ test$//' Makefile.am` before autoreconf.
 
-### 5. __ASSEMBLER__ guards for IRIX headers
-IRIX `sgidefs.h` has C typedefs under `_LANGUAGE_C` guard but clang defines this even in assembler-with-cpp mode. Fixed with `dicl-clang-compat/sgidefs.h` overlay.
+### 5. Explicit Provides for cross-compiled packages
+AutoProv is disabled in rpmmacros.irix. Packages need explicit `Provides:` for shared libraries and ISA-specific capabilities. Added to freetype (`libfreetype.so.6`, `freetype(mips-32)`) and fontconfig (`libfontconfig.so.1`, `fontconfig(mips-32)`).
 
-### 6. byteswap.h compat header
-Created `dicl-clang-compat/byteswap.h` using `__builtin_bswap{16,32,64}`.
+### 6. drop_requires multi-package line bug
+`drop_requires` in `emitter/spec.py` has a regex bug: Pattern 2 (multi-package Requires line) uses `.+(?:^|\s)dep` which fails when the dep is the FIRST package on the line (`.+` requires at least one char before `(?:^|\s)`). Workaround: use `spec_replacements` to replace the entire multi-package line.
 
-### 7. basename compat function
-IRIX has `basename()` in `libgen.so`, not libc. Created `compat/string/basename.c` and added to catalog.
+### 7. Makefile-based cross-compilation (zstd)
+Packages using plain Makefiles (not autotools) don't get CC from `%configure`. Must explicitly `export CC="%{__cc}"`, `export AR="%{__ar}"`, `export RANLIB="%{__ranlib}"`. Also: `LDFLAGS="$LDFLAGS $RPM_LD_FLAGS"` to APPEND (not overwrite mogrix LDFLAGS).
 
-### 8. gnulib stdint.h conflict
-gnulib generates its own `int_fast32_t` (as `long`) conflicting with our `dicl-clang-compat/stdint.h` (as `int`). Fix: `gl_cv_header_working_stdint_h: "yes"` override.
+### 8. Gettext %files substring collision
+Pattern `%{_libdir}/libgettextpo.so` matched inside `%{_libdir}/libgettextpo.so.0*`, corrupting filenames. Fix: use unique, non-overlapping anchor strings for each spec_replacement.
 
-### 9. tcl cross-compilation detection
-`tcl.m4` uses `uname -s` to detect platform — returns `Linux` during cross-compilation. Fix: `tcl_cv_sys_version: "IRIX64-6.5"` override.
+### 9. Cairo 1.18.0 uses meson (BLOCKED)
+FC40 cairo uses `%meson` build system. SGUG-RSE patch for 1.16.0 doesn't apply. Options: meson cross-compilation, older autotools version, or skip.
+
+---
+
+## What Was Fixed in Session 2
+
+### Meson cross-compilation support
+Installed meson 1.10.1 via `uv tool install meson`. Created `cross/meson-irix-cross.ini` cross file. Key issue: irix-cc wrapper was forwarding `--version` to linker instead of compiler.
+
+### cmake cross-compilation (libjpeg-turbo)
+Replace `%{cmake}` macros with raw cmake commands. Use `-DCMAKE_INSTALL_LIBDIR=lib32` (hardcoded). Pass compat via `-DCMAKE_EXE_LINKER_FLAGS`.
+
+### irix-cc/irix-ld wrapper improvements
+- Added `--version`/`-v`/`--help`/`-dumpversion`/`-dumpmachine` handling
+- Added `-ggdb*`/`-gdwarf*`/`-gz*` to link-only filter
+- `--no-undefined` filtered for shared library links (IRIX libc has `__tls_get_addr` refs)
+
+### Other session 2 fixes
+- configure_flags:remove regex bug (lookahead for `--enable-jit` vs `--enable-jit-sealloc`)
+- Duplicate add_patch/add_source engine bug
+- C99 inttypes.h compliance, LLVM #52785, __ASSEMBLER__ guards, byteswap.h, basename compat
+- gnulib stdint.h conflict, tcl cross-compilation detection
 
 ---
 
 ## Current Status
 
-### Full Phased Rebuild (COMPLETE - 2026-02-07)
+**Total: 63 source packages cross-compiled.**
 
-All packages rebuilt from clean state. Bootstrap tarball deployed to bare `/opt/chroot`, all packages installed via MCP (no SSH), verified working. 51 packages in rpm database (41 from phases 1-4c + 10 from phase 5).
+### Phases 1-4c: 41 packages (ALL INSTALLED)
+Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
 
-### Phase 1: Bootstrap (14 packages)
-
-| # | Package | Version | Status |
-|---|---------|---------|--------|
-| 1 | zlib-ng | 2.1.6 | INSTALLED |
-| 2 | bzip2 | 1.0.8 | INSTALLED |
-| 3 | popt | 1.19 | INSTALLED |
-| 4 | xz | 5.4.6 | INSTALLED |
-| 5 | openssl | 3.2.1 | INSTALLED |
-| 6 | libxml2 | 2.12.5 | INSTALLED |
-| 7 | curl | 8.6.0 | INSTALLED |
-| 8 | lua | 5.4.6 | INSTALLED |
-| 9 | file | 5.45 | INSTALLED |
-| 10 | sqlite | 3.45.1 | INSTALLED |
-| 11 | rpm | 4.19.1.1 | INSTALLED |
-| 12 | libsolv | 0.7.28 | INSTALLED |
-| 13 | tdnf | 3.5.14 | INSTALLED |
-| 14 | sgugrse-release | 0.0.7beta | INSTALLED |
-
-### Phase 1.5: System Libraries
-
-| Package | Version | Status |
-|---------|---------|--------|
-| ncurses | 6.4 | INSTALLED |
-| readline | 8.2 | INSTALLED |
-
-### Phase 2: Build Tools (6 packages)
-
-| Package | Version | Status |
-|---------|---------|--------|
-| m4 | 1.4.19 | INSTALLED |
-| perl | 5.38.2 | INSTALLED |
-| bash | 5.2.26 | INSTALLED |
-| autoconf | 2.71 | INSTALLED |
-| automake | 1.16.5 | INSTALLED |
-| libtool | 2.4.7 | INSTALLED |
-
-### Phase 3a: Crypto Stack (7 packages)
-
-| Package | Version | Status |
-|---------|---------|--------|
-| pkgconf | 2.1.0 | INSTALLED |
-| libgpg-error | 1.48 | INSTALLED |
-| libgcrypt | 1.10.3 | INSTALLED |
-| libassuan | 2.5.7 | INSTALLED |
-| libksba | 1.6.6 | INSTALLED |
-| npth | 1.7 | INSTALLED |
-| gnupg2 | 2.4.4 | INSTALLED |
-
-### Phase 3b: GNU Text Tools (3 packages)
-
-| Package | Version | Status |
-|---------|---------|--------|
-| sed | 4.9 | INSTALLED |
-| gawk | 5.3.0 | INSTALLED |
-| grep | 3.11 | INSTALLED |
-
-### Phase 4a-c: Utilities (9 packages)
-
-| Package | Version | Status |
-|---------|---------|--------|
-| less | 643 | INSTALLED |
-| which | 2.21 | INSTALLED |
-| gzip | 1.13 | INSTALLED |
-| diffutils | 3.10 | INSTALLED |
-| patch | 2.7.6 | INSTALLED |
-| make | 4.4.1 | INSTALLED |
-| findutils | 4.9.0 | INSTALLED |
-| tar | 1.35 | INSTALLED |
-| coreutils | 9.4 | INSTALLED |
-
-### Phase 5: Library Foundation (10 packages so far)
-
-| Package | Version | Status | Tier |
-|---------|---------|--------|------|
-| pcre2 | 10.42 | INSTALLED | 0 |
-| symlinks | 1.7 | INSTALLED | 0 |
-| tree-pkg | 2.1.0 | INSTALLED | 0 |
-| oniguruma | 6.9.9 | INSTALLED | 0 |
-| libffi | 3.4.4 | INSTALLED | 0 |
-| tcl | 8.6.13 | INSTALLED | 0 |
-| flex | 2.6.4 | INSTALLED | 1 |
-| chrpath | 0.16 | INSTALLED | 1 |
-| libpng | 1.6.40 | INSTALLED | 1 |
-| bison | 3.8.2 | INSTALLED | 1 |
-| expat | 2.6.0 | STAGED | 2 |
-| freetype | 2.13.2 | STAGED | 2 |
-| nettle | 3.9.1 | STAGED | 2 |
-| libtasn1 | 4.19.0 | STAGED | 2 |
-| fribidi | 1.0.13 | STAGED | 2 |
-| libjpeg-turbo | 3.0.2 | STAGED | 2 |
-| pixman | 0.43.0 | STAGED | 2 |
-| uuid | 1.6.2 | STAGED | 2 |
-
-**Total: 59 source packages cross-compiled (51 installed+verified on IRIX, 8 staged for next install batch).**
+### Phase 5: Library Foundation (22 packages)
+| Package | Version | Status | Key Fixes |
+|---------|---------|--------|-----------|
+| pcre2 | 10.42 | INSTALLED | JIT/sealloc blocks, inttypes.h C99 |
+| symlinks | 1.7 | INSTALLED | CC override for raw Makefile |
+| tree-pkg | 2.1.0 | INSTALLED | Clean build |
+| oniguruma | 6.9.9 | INSTALLED | fix-libtool-irix.sh |
+| libffi | 3.4.4 | INSTALLED | -fno-integrated-as (LLVM #52785) |
+| tcl | 8.6.13 | INSTALLED | tcl_cv_sys_version=IRIX64-6.5 |
+| flex | 2.6.4 | INSTALLED | nls-disabled, inline basename |
+| chrpath | 0.16 | INSTALLED | byteswap.h compat |
+| libpng | 1.6.40 | INSTALLED | pngcp/pngfix stubs |
+| bison | 3.8.2 | INSTALLED | gl_cv_header_working_stdint_h |
+| libunistring | 1.1 | BUILT | Clean build |
+| gettext | 0.22.5 | INSTALLED | %files substring collision, dep fixes |
+| zstd | 1.5.5 | INSTALLED | Makefile CC/AR/RANLIB, pthread, LDFLAGS |
+| fontconfig | 2.15.0 | INSTALLED | Host gperf, expat, __sync atomics |
+| freetype | 2.13.2 | INSTALLED | Explicit Provides for ISA + .so |
+| expat | 2.6.0 | STAGED | man page touch, --without-docbook |
+| nettle | 3.9.1 | STAGED | --enable-mini-gmp |
+| libtasn1 | 4.19.0 | STAGED | GTKDOCIZE=true |
+| fribidi | 1.0.13 | STAGED | autotools path, utime rename |
+| libjpeg-turbo | 3.0.2 | STAGED | raw cmake, SIMD off |
+| pixman | 0.43.0 | STAGED | meson cross file |
+| uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99 |
 
 ---
 

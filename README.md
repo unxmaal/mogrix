@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms Fedora 40 SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
 
-**Current Status:** 41 source packages cross-compiled and installed on IRIX, including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), and a complete package management system (rpm + tdnf).
+**Current Status:** 63 source packages cross-compiled for IRIX, including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), and library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more). Working toward aterm (X11 terminal emulator).
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 

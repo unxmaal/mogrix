@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-07)
+## Current Status (2026-02-08)
 
-**Phase 4c: COMPLETE — 41 source packages cross-compiled for IRIX. Phase 5 planned.**
+**Phase 5: IN PROGRESS — 63 source packages cross-compiled for IRIX. Tier 0-2 building.**
 
-All phases through 4c complete. 41 source packages cross-compiled, installed on clean `/opt/chroot` via bootstrap tarball + MCP (~50 RPMs including -devel subpackages). IRIX now has a full GNU userland: coreutils, findutils, tar, make, sed, gawk, grep, bash, perl, autotools, gnupg2, and the complete tdnf package management stack. Phase 5 (library foundation) planned via `mogrix roadmap` dependency analysis — 6 packages ready to build, 3 leaf blockers, then gettext/zstd/fontconfig/libX11/texinfo chains.
+All phases through 4c complete (41 packages). Phase 5 (library foundation toward aterm) is underway with 22 additional packages: 15 installed, 7 staged. New this session: gettext, zstd, fontconfig installed and verified on IRIX. Key systemic fix: PKG_CONFIG_SYSROOT_DIR added to rpmmacros.irix. Cairo 1.18.0 blocked (uses meson). aterm's direct deps identified: libAfterImage-devel, X11 libs (likely in sysroot), make, chrpath.
 
 ---
 
@@ -150,48 +150,27 @@ With Phase 2 complete, IRIX has a full autotools chain.
 
 Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX printf can't handle `%Lg` long double format).
 
-### Phase 5: Library Foundation (NOT STARTED)
+### Phase 5: Library Foundation (IN PROGRESS — 22 packages)
 
-Derived from `mogrix roadmap aterm` analysis. 40 packages already have rules; the goal is to unblock them by building their missing dependencies in tiers.
+Derived from `mogrix roadmap aterm` analysis. Building in tiers of increasing complexity. Tier 0 + Tier 1 complete. Tier 2 in progress.
 
-**Method:** `mogrix roadmap <target>` generates the full transitive dependency graph. Manual analysis then groups packages into tiers by readiness. This manual triage (identifying which packages are ready, which are blockers, and which have the highest unblock impact) should eventually be automated into the roadmap command itself — see "Roadmap Enhancements" below.
+**Completed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype (15 installed/built).
+**Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman, uuid (7 staged).
 
-#### Tier 0: Ready to Build (have rules, all deps satisfied)
+#### Current blockers
+- **FC40 GNOME stack uses meson**: cairo 1.18, harfbuzz, pango, glib2, p11-kit all need `%meson`. We have `cross/meson-irix-cross.ini` but no `%meson` RPM macro. Options: set up meson macros, find autotools versions, or skip.
+- **libAfterImage**: aterm's key dep. Not in Fedora repos. Need to find source.
 
-| Package | Complexity | Notes |
-|---------|-----------|-------|
-| libffi | LOW | Already has rules |
-| oniguruma | LOW | Already has rules |
-| pcre2 | LOW | Already has rules |
-| symlinks | LOW | Already has rules |
-| tcl | LOW | Already has rules |
-| tree-pkg | LOW | Already has rules |
-
-#### Tier 1: Leaf Packages (no new deps, write rules + build)
-
-| Package | Complexity | Unblocks |
-|---------|-----------|----------|
-| chrpath | LOW | expect, jq, gpgme, libdb |
-| libpng | LOW | freetype, cairo, emacs, gd |
-| bison | MED | flex, elfutils, gobject-introspection, binutils, groff, jq, libarchive, libtasn1 (circular with flex) |
-
-#### Tier 2: Small Chains (high impact, manageable dep count)
-
-| Package | New Deps | Unblocks | Notes |
-|---------|----------|----------|-------|
-| gettext | 6 | 12 packages | Biggest single blocker (glib2, flex, elfutils, gnutls, ...) |
-| zstd | 4 | elfutils, gnutls, libarchive, git | |
-| fontconfig | 5 | emacs, cairo, pango, gd | |
-| libX11 | 8 | emacs, freetype, tk, gd | X11 chain (xorgproto, libXau, libxcb, ...) |
-| texinfo | 9 | emacs, gnutls, dejagnu, binutils, groff, elfutils | |
-
-#### Tier 3: Heavy but Critical (future)
-
-| Package | Complexity | Unblocks | Notes |
-|---------|-----------|----------|-------|
-| meson + python3.12 | HIGH | glib2, cairo, harfbuzz, gobject-introspection, pango | Entire GNOME library stack; python3.12 is HIGH complexity |
-| binutils | HIGH | gcc, many dev tools | 9 unsatisfied deps |
-| emacs | HIGH | many packages use it for build | 31 unsatisfied deps |
+#### Remaining Tier 2-3 targets (autotools)
+| Package | Build System | Unblocks |
+|---------|-------------|----------|
+| gd | autotools | graphics, emacs |
+| pcre | autotools | glib2, grep (already have pcre2) |
+| gnutls | autotools | libarchive, git, p11-kit |
+| elfutils | autotools | binutils, debuginfo |
+| groff | autotools | man pages |
+| libarchive | autotools | cmake, rpm |
+| gtk2 | autotools | GUI apps |
 
 ### Phase 6: Development Tools (future)
 
@@ -243,13 +222,13 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
 | Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
 | Roadmap: glob pattern drops for impossible ecosystems | Done |
-| 79 package rules + 1 class rule | Done |
+| 80+ package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
 | 153 tests, all passing | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
-| 41 source packages cross-compiled for IRIX | Done |
+| 63 source packages cross-compiled for IRIX | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
 
