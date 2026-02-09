@@ -55,6 +55,14 @@ for arg in "$@"; do
             # references (__tls_get_addr) that can't be resolved at link time.
             # Shared libraries resolve symbols at load time via rld.
             ;;
+        -melf32bsmip|-melf32bmip|-melf64bmip|-melf*)
+            # Skip GNU ld emulation flags — LLD uses target triple instead.
+            # libtool/autoconf probes the linker with -melf32bsmip.
+            ;;
+        --print-search-dirs|-print-search-dirs)
+            # Skip linker search path query — not supported by LLD.
+            # autoconf probes this to find library directories.
+            ;;
         -soname,*)
             # Convert -soname,name to -soname name (GNU ld format)
             soname_val="${arg#-soname,}"

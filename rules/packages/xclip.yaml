@@ -1,0 +1,13 @@
+# xclip - X11 clipboard command-line tool (FC40: 0.13)
+# Uses X11 from IRIX native sysroot (like aterm)
+package: xclip
+
+rules:
+  inject_compat_functions:
+    - strdup
+
+  spec_replacements:
+    # rpmbuild uses /bin/sh — ${c:0:7} is a bash substring expansion
+    # Hardcode the shortcommit value from the spec's commit hash
+    - pattern: "%global shortcommit %(c=%{commit}; echo ${c:0:7})"
+      replacement: "%global shortcommit 11cba61"

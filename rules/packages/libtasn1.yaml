@@ -21,7 +21,6 @@ rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
     gl_cv_func_working_getdelim: "yes"
-    gl_cv_header_working_stdint_h: "yes"
 
   configure_flags:
     add:

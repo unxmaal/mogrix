@@ -1,0 +1,7 @@
+# libstrophe - XMPP client library (FC40)
+package: libstrophe
+
+rules:
+  inject_compat_functions:
+    - explicit_bzero
+    - strdup

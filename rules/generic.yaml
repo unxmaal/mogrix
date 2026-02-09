@@ -92,6 +92,10 @@ generic:
     # getrandom(). Many packages conflict with this header. Since IRIX
     # has no sys/random.h or getrandom(), tell configure it doesn't exist.
     ac_cv_header_sys_random_h: "no"
+    # Gnulib generates its own stdint.h replacement with different fast-int
+    # types (long vs int) that conflict with dicl-clang-compat/stdint.h.
+    # On MIPS n32 both int and long are 32-bit so our stdint.h is correct.
+    gl_cv_header_working_stdint_h: "yes"
 
   # RPM macros injected directly (replaces sgug-rpm-config)
   rpm_macros:

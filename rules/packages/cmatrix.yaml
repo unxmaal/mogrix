@@ -1,0 +1,35 @@
+# cmatrix - Matrix-style terminal animation (FC40: 2.0)
+package: cmatrix
+
+rules:
+  drop_buildrequires:
+    - help2man
+    - console-setup
+    - xorg-x11-fonts-misc
+
+  drop_subpackages:
+    - "x11-fonts"
+
+  spec_replacements:
+    # Remove help2man call (not available for cross-build)
+    - pattern: "help2man -N -o %{name}.1 ./%{name}"
+      replacement: "# help2man disabled for cross-build"
+
+    # Remove X11 font install (x11-fonts subpackage dropped)
+    - pattern: "install -Dpm0644 mtx.pcf %{buildroot}%{_x11fontdir}/misc/mtx.pcf"
+      replacement: "# X11 font install disabled for IRIX"
+
+    # Remove console font install (console-setup not available)
+    - pattern: "install -dm0755 %{buildroot}%{_exec_prefix}/lib/kbd/consolefonts"
+      replacement: "# console font dir disabled"
+
+    # Remove console font from %files
+    - pattern: "%{_exec_prefix}/lib/kbd/consolefonts/matrix.*"
+      replacement: ""
+
+    # Remove man page install (help2man disabled, no .1 file generated)
+    - pattern: "install -Dpm0644 %{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1"
+      replacement: "# man page install disabled (help2man not available)"
+
+    - pattern: "%{_mandir}/man1/%{name}.1*"
+      replacement: ""

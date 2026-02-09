@@ -1,0 +1,8 @@
+# figlet - large letter text generator (FC40: 2.2.5)
+package: figlet
+
+rules:
+  spec_replacements:
+    # Inject cross-compiler CC into Makefile build (no %configure to set it)
+    - pattern: 'make %{?_smp_mflags} CFLAGS="%{optflags}"'
+      replacement: 'make %{?_smp_mflags} CC="%{__cc}" CFLAGS="%{optflags}" LDFLAGS="%{__global_ldflags}"'

@@ -1,0 +1,6 @@
+# libxslt - XSLT processing library (FC40)
+package: libxslt
+
+rules:
+  inject_compat_functions:
+    - strdup

@@ -1,0 +1,19 @@
+# bc - GNU arbitrary precision calculator (FC40: 1.07.1)
+# Links against readline (available in staging via SGUG-RSE)
+package: bc
+
+rules:
+  inject_compat_functions:
+    - getopt_long
+    - strdup
+
+  drop_buildrequires:
+    - texinfo
+
+  spec_replacements:
+    # Remove info dir and files (texinfo dropped)
+    - pattern: "rm -f $RPM_BUILD_ROOT/%{_infodir}/dir"
+      replacement: "rm -rf $RPM_BUILD_ROOT/%{_infodir}"
+
+    - pattern: "%{_infodir}/*"
+      replacement: ""

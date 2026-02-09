@@ -47,7 +47,7 @@ CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_EXTERN_C="
 # Handle --version and -v (compiler identification for build systems like meson)
 for arg in "$@"; do
     case "$arg" in
-        --version|-v|--help|-dumpversion|-dumpmachine)
+        --version|-v|-V|--help|-dumpversion|-dumpmachine)
             exec $CLANG $CLANG_FLAGS "$@"
             ;;
     esac

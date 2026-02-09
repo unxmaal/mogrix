@@ -2285,5 +2285,190 @@ def roadmap_check(
             console.print(checker.format_check_result(result))
 
 
+@main.command("batch-build")
+@click.option(
+    "--from-list",
+    "list_file",
+    type=click.Path(exists=True),
+    default=None,
+    help="File with package names, one per line",
+)
+@click.option(
+    "--target",
+    type=str,
+    default=None,
+    help="Target package for roadmap-driven build",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be built without building",
+)
+@click.option(
+    "--no-generate-rules",
+    is_flag=True,
+    help="Skip candidate rule generation for packages without rules",
+)
+@click.option(
+    "--stop-on-error",
+    is_flag=True,
+    help="Stop on first build failure",
+)
+@click.option(
+    "--output-report",
+    type=click.Path(),
+    default=None,
+    help="Write JSON report to file",
+)
+@click.option(
+    "--skip-fetch",
+    is_flag=True,
+    help="Only build packages with already-fetched SRPMs",
+)
+@click.option(
+    "--no-skip-built",
+    is_flag=True,
+    help="Rebuild packages even if RPMs already exist",
+)
+@click.option(
+    "--build-timeout",
+    type=int,
+    default=600,
+    help="Kill build after N seconds (default: 600)",
+)
+@click.option("--release", default="40", help="Fedora release (default: 40)")
+@click.option("--base-url", default=None, help="Override base URL for SRPM fetching")
+def batch_build(
+    list_file: str | None,
+    target: str | None,
+    dry_run: bool,
+    no_generate_rules: bool,
+    stop_on_error: bool,
+    output_report: str | None,
+    skip_fetch: bool,
+    no_skip_built: bool,
+    build_timeout: int,
+    release: str,
+    base_url: str | None,
+):
+    """Batch fetch, convert, and build packages for IRIX.
+
+    Supports two modes:
+
+    \b
+    List mode: Process packages from a file, one name per line.
+      mogrix batch-build --from-list packages.txt
+
+    \b
+    Roadmap mode: Resolve dependencies for a target and build them all.
+      mogrix batch-build --target gdb
+
+    \b
+    Pipeline per package:
+      1. Fetch SRPM from Fedora (if not already downloaded)
+      2. Generate candidate rules (if no rules/packages/<pkg>.yaml exists)
+      3. Convert SRPM with mogrix rules
+      4. Build with rpmbuild --cross
+
+    Packages without rules get candidate YAML in rules/candidates/ for
+    human review. Packages that fail are classified and reported.
+    The batch always moves on — it never blocks on a single failure.
+
+    \b
+    Workflow:
+      mogrix batch-build --from-list tier1.txt --output-report report.json
+      # Review rules/candidates/*.yaml, promote to rules/packages/
+      mogrix batch-build --from-list tier1.txt   # rebuilds only what's new
+    """
+    from mogrix.batch_build import (
+        BatchBuilder,
+        BatchOptions,
+        BatchReport,
+        print_report,
+        write_json_report,
+    )
+
+    # Validate: exactly one mode required
+    if list_file and target:
+        console.print("[red]Error: Use --from-list OR --target, not both[/red]")
+        raise SystemExit(1)
+    if not list_file and not target:
+        console.print("[red]Error: Specify --from-list <file> or --target <package>[/red]")
+        raise SystemExit(1)
+
+    options = BatchOptions(
+        dry_run=dry_run,
+        generate_rules=not no_generate_rules,
+        stop_on_error=stop_on_error,
+        skip_fetch=skip_fetch,
+        skip_built=not no_skip_built,
+        build_timeout=build_timeout,
+        release=release,
+        base_url=base_url,
+    )
+
+    builder = BatchBuilder(
+        rules_dir=RULES_DIR,
+        compat_dir=COMPAT_DIR,
+        headers_dir=HEADERS_DIR,
+        inputs_dir=MOGRIX_INPUTS,
+        outputs_dir=MOGRIX_OUTPUTS,
+    )
+
+    # Resolve tasks based on mode
+    if list_file:
+        mode = "list"
+        input_source = list_file
+        console.print(f"[bold]Batch build from list:[/bold] {list_file}\n")
+        tasks = builder.resolve_tasks_from_list(Path(list_file), options)
+    else:
+        mode = "roadmap"
+        input_source = target
+        console.print(f"[bold]Batch build for target:[/bold] {target}\n")
+        tasks = builder.resolve_tasks_from_roadmap(target, options)
+
+    if not tasks:
+        console.print("[yellow]No packages to build[/yellow]")
+        return
+
+    # Show task summary
+    has_rules = sum(1 for t in tasks if t.has_rules)
+    need_rules = sum(1 for t in tasks if not t.has_rules)
+    has_rpms = sum(1 for t in tasks if t.has_rpms)
+    need_fetch = sum(1 for t in tasks if t.srpm_path is None)
+
+    console.print(f"[bold]Packages:[/bold] {len(tasks)} total")
+    console.print(f"  {has_rules} with rules, {need_rules} without rules")
+    console.print(f"  {has_rpms} already built, {need_fetch} need fetch")
+    if options.skip_built and has_rpms:
+        console.print(f"  [dim]({has_rpms} will be skipped)[/dim]")
+    console.print()
+
+    if dry_run:
+        console.print("[bold yellow]DRY RUN — no builds will be executed[/bold yellow]\n")
+
+    # Validate cross env unless dry-run
+    if not dry_run:
+        staging_status = ensure_staging_ready(verbose=False)
+        if not staging_status.is_ready:
+            console.print("[red]Staging environment is not ready for cross-compilation[/red]")
+            for err in staging_status.errors:
+                console.print(f"  [red]![/red] {err}")
+            console.print("\n[bold]Try running:[/bold] mogrix setup-cross")
+            raise SystemExit(1)
+
+    # Run the batch
+    report = BatchReport(mode=mode, input_source=input_source)
+    builder.run(tasks, options, report)
+
+    # Display results
+    console.print()
+    print_report(report)
+
+    # Write JSON report if requested
+    if output_report:
+        write_json_report(report, Path(output_report))
+
+
 if __name__ == "__main__":
     main()

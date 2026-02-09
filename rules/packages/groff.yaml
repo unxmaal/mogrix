@@ -1,7 +1,27 @@
-# groff package rules for IRIX cross-compilation
+# groff - document formatting system (FC40: 1.23.0)
+# NOTE: The stale SGUG-RSE sgifixes patch (for older groff) has been removed.
+# BLOCKER: groff is C++ — needs irix-cxx to use clang++ instead of clang.
+# Configure fails with "header files do not support C++".
 package: groff
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - groff.sgifixes.patch
+rules:
+  inject_compat_functions:
+    - strdup
+    - getopt_long
 
+  drop_buildrequires:
+    - gcc-c++
+    - texinfo
+    - git
+    - netpbm-progs
+    - perl-generators
+    - psutils
+    - ghostscript
+
+  spec_replacements:
+    # Switch from git-based autosetup to simple patch application
+    - pattern: "%autosetup -S git"
+      replacement: "%autosetup -p1"
+    # Expand brace expansion — rpmbuild uses /bin/sh which doesn't support {a,b,c}
+    - pattern: "contrib/mom/examples/{README.txt,*.mom,mom.vim}"
+      replacement: "contrib/mom/examples/README.txt contrib/mom/examples/*.mom contrib/mom/examples/mom.vim"

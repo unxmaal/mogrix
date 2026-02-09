@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-08 (session 6)
-**Status**: Phase 5 + OpenSSH + tdnf WORKING. `tdnf repolist`, `makecache`, `list`, `reinstall` all verified on IRIX. 65 source packages cross-compiled.
+**Last Updated**: 2026-02-09 (session 9)
+**Status**: Phase 5 + OpenSSH + tdnf WORKING. 77 source packages cross-compiled (207 RPMs). Batch-build + rule promotion workflow operational.
 
 ---
 
@@ -22,6 +22,105 @@ On 2026-01-27, installing directly to /usr/sgug replaced libz.so with zlib-ng, b
 ## Goal
 
 Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Phase 5 complete: library foundation + aterm (first X11 app). OpenSSH 9.6p1 cross-compiled and working. 65 total source packages cross-compiled. System ready for /usr/sgug swap.
+
+---
+
+## What Was Done This Session (Session 7)
+
+### `mogrix batch-build` command — IMPLEMENTED
+
+New command that automates the fetch → convert → build pipeline for multiple packages:
+
+```bash
+mogrix batch-build --from-list packages.txt          # List mode
+mogrix batch-build --target gdb                       # Roadmap mode (dep-ordered)
+mogrix batch-build --from-list t.txt --dry-run        # Preview without building
+mogrix batch-build --from-list t.txt --output-report r.json  # JSON report
+```
+
+**New files:**
+- `mogrix/batch_build.py` — BatchBuilder orchestrator, failure classifier, Rich report
+- `mogrix/rule_generator.py` — Generates candidate YAML rule files from source analysis
+
+**Features:**
+- Auto-fetches SRPMs from Fedora archives
+- For packages without rules: scans source with SourceAnalyzer, generates candidate rules in `rules/candidates/`
+- Conservative auto-detection (>90% confidence): `inject_compat_functions`, `drop_buildrequires` (known Linux deps), `classes: [nls-disabled]`
+- Build timeout (default 600s) prevents hangs
+- Always moves on — never blocks on failures
+- Rich table output + JSON report
+- Skips already-built packages by default
+
+**Bug fix:** `batch.py` was missing `get_extra_files()` for compat injection — `dlmalloc-src.inc` wasn't being copied into SRPMs. Fixed.
+
+**Test results:**
+- dry-run: correctly identifies built/rules/no-rules packages
+- candidate generation: detected strdup, getopt_long, texinfo in gmp/bc/time
+- full pipeline: pcre2 convert+build → 7 RPMs in 63s
+- failure classification: gperf build failure correctly tagged as spec_error
+- JSON report: clean output with per-package status, duration, findings
+
+---
+
+## What Was Done This Session (Session 8)
+
+### nano 7.2 — COMPLETE
+- **gnulib stdint.h conflict**: Elevated `gl_cv_header_working_stdint_h: "yes"` to `generic.yaml` (was duplicated across 5 packages)
+- **IRIX libgen.so**: `dirname()`/`basename()` in `/usr/lib32/libgen.so`, not libc. Fixed with `LIBS="$LIBS -lgen"` before `%configure`
+- **spec_replacements ordering**: Replacements run BEFORE configure_flags — must match original `%configure`, not `%configure --disable-nls`
+- **%files fixes**: Brace expansions (`{,r}nano`), texinfo removal, `%files -f build/` path, doc cleanup
+- Verified: `nano --version` (7.2, UTF-8), `nano --help` — working on IRIX
+
+### rsync 3.2.7 — COMPLETE
+- **Conditional %prep bug**: Emitter injected compat copies into dead `%if %isprerelease` branch. Fixed by collapsing to `%if 0` and re-injecting after `%patch 2`
+- **daemon subpackage**: Dropped systemd units, scriptlets via spec_replacements
+- **Long double crash (`__extenddftf2`)**: rsync's bundled snprintf uses `LDOUBLE long double` for `%f` formatting. IRIX MIPS doesn't support 128-bit long double. Fix: `ac_cv_type_long_double_wider: "no"` → `LDOUBLE` falls back to `double`
+- Verified: `rsync --version`, `rsync -v`, `rsync --stats`, `rsync --info=progress2` — all working
+
+### unzip 6.0, zip 3.0 — COMPLETE (previous session continuation)
+- Simple builds with minimal rules
+
+### Pattern: IRIX long double crash
+Same class as coreutils `seq` issue. IRIX MIPS n32 doesn't have 128-bit long double support. `__extenddftf2` (double→long double conversion) crashes with SIGSEGV. Fix: disable `HAVE_LONG_DOUBLE` via `ac_cv_type_long_double_wider: "no"` or equivalent configure cache variable.
+
+---
+
+## What Was Done This Session (Session 9)
+
+### Batch-build 68 packages + rule promotion
+- Ran `mogrix batch-build` on 68 packages from roadmap. 53 candidates generated, 6 build failures identified.
+- Promoted 14 candidates to `rules/packages/`: figlet, lolcat, sl, time, bc, hyphen, xclip, cmatrix, gmp, mpfr, libevent, libxslt, libstrophe, giflib
+- Cleaned up 4 stale candidate files (nano, rsync, unzip, zip already had rules)
+
+### 8 new packages built successfully
+- **figlet** — Makefile build with CC injection
+- **sl** — Makefile build with ncurses
+- **time** — autotools, drop texinfo/gnupg2, gpgverify removal
+- **cmatrix** — autotools, drop help2man/console-setup/x11-fonts
+- **gmp** — autotools, strdup compat, git autosetup → p1
+- **mpfr** — autotools, `--disable-thread-safe` (no __thread TLS on IRIX)
+- **hyphen** — autotools, pushd/popd → cd fix
+- **libevent** — autotools, strsep compat, test dir removal, doxygen disabled, doc mv fix
+
+### Failure investigation: groff and git
+- **groff**: Fixed brace expansion in %prep. BLOCKED by C++ — irix-cxx uses `clang` not `clang++`, configure fails "header files do not support C++"
+- **git**: Fixed 3 brace expansions in spec. Needs pcre2 headers staged, doc build disabled (no asciidoc), extensive rules work for full build
+- Both had stale `add_patch` directives (from SGUG-RSE era patches for older versions) that were removed
+
+### Packages that need more work
+- **lolcat** — needs `err.h` header + wide char I/O (wprintf/fwprintf) support
+- **bc** — bootstrap problem: `./fbc` is MIPS binary needed at build time
+- **xclip** — XA_UTF8_STRING not in IRIX Xmu headers (too old)
+- **giflib** — needs `%cmake` macro for cross-build
+- **libxslt** — python-3.12 pkg-config dependency
+- **libstrophe** — res_query() configure test failure
+
+### Patterns discovered
+- **Brace expansion in specs**: `{a,b,c}` is bash-only, rpmbuild uses /bin/sh. Expand manually via spec_replacements. Found in groff, git.
+- **pushd/popd**: Also bash-only. Replace with `cd`/`cd -`.
+- **`%{__python3}` in %prep**: python3 pathfix.py not available, remove for cross-build
+- **`%(c=%{commit}; echo ${c:0:7})`**: Bash substring in RPM macro, hardcode value
+- **Compat header conflicts**: Our mogrix-compat headers declare functions (strsep, setenv, etc.) but configure says "no" → package provides its own static version → "static follows non-static" error. Fix: ac_cv override to say "yes" + inject compat if needed.
 
 ---
 
@@ -287,7 +386,7 @@ Replace `%{cmake}` macros with raw cmake commands. Use `-DCMAKE_INSTALL_LIBDIR=l
 
 ## Current Status
 
-**Total: 65 source packages cross-compiled.**
+**Total: 77 source packages cross-compiled (207 RPMs).**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
@@ -319,6 +418,18 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99 |
 | aterm | 1.0.1 | INSTALLED | X11 sysroot autodetect, CJK disabled, -rdynamic filter, first X11 app |
 | openssh | 9.6p1 | INSTALLED | R_MIPS_REL32 dispatch, ensure_minimum_time bypass, debug-mode only |
+| unzip | 6.0 | INSTALLED | Simple build |
+| zip | 3.0 | INSTALLED | Simple build |
+| nano | 7.2 | INSTALLED | -lgen for dirname/basename, gnulib stdint.h, brace expansion %files |
+| rsync | 3.2.7 | INSTALLED | Long double crash fix, conditional %prep compat injection, daemon dropped |
+| figlet | 2.2.5 | BUILT | Makefile CC injection |
+| sl | 5.02 | BUILT | Makefile CC injection with ncurses |
+| time | 1.9 | BUILT | Drop texinfo/gnupg2, gpgverify removal |
+| cmatrix | 2.0 | BUILT | Drop help2man/console-setup/x11-fonts |
+| gmp | 6.2.1 | BUILT | strdup compat, git autosetup → p1 |
+| mpfr | 4.2.1 | BUILT | --disable-thread-safe (no __thread TLS) |
+| hyphen | 2.8.8 | BUILT | pushd/popd → cd, drop valgrind |
+| libevent | 2.1.12 | BUILT | strsep compat, test removal, doxygen disabled |
 
 ---
 

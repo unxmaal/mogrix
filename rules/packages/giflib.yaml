@@ -1,0 +1,25 @@
+# giflib - GIF image library (FC40: 5.2.2)
+# NOTE: FC40 giflib uses cmake. Needs drop of mingw subpackages.
+package: giflib
+
+rules:
+  inject_compat_functions:
+    - reallocarray
+    - strdup
+
+  drop_subpackages:
+    - "mingw32-giflib"
+    - "mingw32-giflib-tools"
+    - "mingw64-giflib"
+    - "mingw64-giflib-tools"
+    - "-n mingw32-giflib"
+    - "-n mingw32-giflib-tools"
+    - "-n mingw64-giflib"
+    - "-n mingw64-giflib-tools"
+
+  drop_buildrequires:
+    - xmlto
+    - mingw32-filesystem
+    - mingw32-gcc
+    - mingw64-filesystem
+    - mingw64-gcc
