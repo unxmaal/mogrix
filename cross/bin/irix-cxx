@@ -1,12 +1,20 @@
 #!/bin/sh
 #
-# IRIX cross-compiler wrapper using clang + vvuk's LLD
+# IRIX C++ cross-compiler wrapper using clang++ + GCC 9 libstdc++
 #
 # This wrapper handles:
-# - Preprocess only (-E): uses clang directly
-# - Compile only (-c): uses clang directly
-# - Link only (.o files, no .c): uses LLD linker wrapper
-# - Compile+link (has .c and no -c): compiles with clang, links with LLD
+# - Preprocess only (-E): uses clang++ directly
+# - Compile only (-c): uses clang++ directly
+# - Link only (.o files, no source): uses LLD linker wrapper
+# - Compile+link (has source and no -c): compiles with clang++, links with LLD
+#
+# Key differences from irix-cc:
+# - Uses clang++ instead of clang
+# - Uses -nostdlibinc -nostdinc++ to control header search paths
+# - Adds GCC 9 libstdc++ headers (from SGUG-RSE)
+# - Uses -D_LANGUAGE_C_PLUS_PLUS=1 instead of -D_LANGUAGE_C=1
+# - Does NOT override __SGI_LIBC_BEGIN_EXTERN_C (needs extern "C" in C++ mode)
+# - Links against libstdc++ and libgcc_s
 #
 # Deployed by: mogrix setup-cross
 #
@@ -14,46 +22,45 @@
 # Configurable paths - set by mogrix setup-cross
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
 STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
-CLANG="${IRIX_CLANG:-/opt/cross/bin/clang}"
+CLANG="${IRIX_CLANG:-/opt/cross/bin/clang++}"
 LD="${STAGING}/bin/irix-ld"
 
 # Header search order:
-# 1. SGUG clang compat headers (fix IRIX headers for clang)
-# 2. SGUG staging headers (cross-built packages)
-# 3. IRIX sysroot headers (pristine IRIX)
-#
-# Define IRIX C++ namespace macros as empty for C code
-CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3"
+# 1. GCC 9 libstdc++ headers (C++ standard library)
+# 2. GCC 9 target-specific headers (mips-sgi-irix6.5/bits)
+# 3. SGUG mogrix compat headers (fix IRIX headers for cross-build)
+# 4. SGUG clang compat headers (fix IRIX headers for clang)
+# 5. SGUG staging headers (cross-built packages)
+# 6. IRIX sysroot headers (pristine IRIX)
+CLANG_FLAGS="--target=mips-sgi-irix6.5 -mabi=n32 -march=mips3"
+# Disable default C/C++ header search — we provide explicit -isystem paths
+CLANG_FLAGS="$CLANG_FLAGS -nostdlibinc -nostdinc++"
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
-# IRIX's stdio_core.h defines va_list as char* which conflicts with clang builtins
+# In C++ mode, va_list = char* to match IRIX declarations
 CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
+CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/c++/9"
+CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/c++/9/mips-sgi-irix6.5"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $SYSROOT/usr/include"
 CLANG_FLAGS="$CLANG_FLAGS -D_SGI_SOURCE -D_SGI_MP_SOURCE -D_SGI_REENTRANT_FUNCTIONS"
-CLANG_FLAGS="$CLANG_FLAGS -Dsgi=1 -D__sgi=1 -D_COMPILER_VERSION=730 -D_LANGUAGE_C=1 -D_LONGLONG=1"
-# Define __mips for multiarch headers (OpenSSL configuration.h needs this)
-CLANG_FLAGS="$CLANG_FLAGS -D__mips=1"
-# Override _MIPS_ISA - clang sets _MIPS_ISA_MIPS64 which IRIX headers don't recognize
-# IRIX 6.5 N32 uses MIPS3 ISA (R4000 and later)
-CLANG_FLAGS="$CLANG_FLAGS -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS3"
+CLANG_FLAGS="$CLANG_FLAGS -D__sgi=1 -D_LANGUAGE_C_PLUS_PLUS=1 -D_LONGLONG=1"
+# IRIX bool/wchar_t type support flags
+CLANG_FLAGS="$CLANG_FLAGS -D_BOOL -D_WCHAR_T_IS_KEYWORD"
+# Prevent IRIX headers from typedef-ing wchar_t (it's a C++ keyword)
+CLANG_FLAGS="$CLANG_FLAGS -D_WCHAR_T"
+# IRIX C++ namespace macros: keep NAMESPACE_QUALIFIER empty so libstdc++ handles namespaces,
+# but let sgimacros.h define EXTERN_C properly for extern "C" linkage
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_NAMESPACE_QUALIFIER="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_NAMESPACE_STD="
-CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_EXTERN_C="
-CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_EXTERN_C="
-# Use .ctors/.dtors instead of .init_array — IRIX rld doesn't support init_array
+CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_USING_FROM_STD(x)="
+# IRIX libc doesn't have __cxa_atexit (Itanium C++ ABI) — use atexit() instead
+CLANG_FLAGS="$CLANG_FLAGS -fno-use-cxa-atexit"
+# Use .ctors/.dtors instead of .init_array/.fini_array — IRIX rld doesn't support init_array
+# Our crtbeginT.o/crtendT.o (linked by irix-ld) process .ctors at startup
 CLANG_FLAGS="$CLANG_FLAGS -fno-use-init-array"
-
-# Handle --version and -v (compiler identification for build systems like meson)
-for arg in "$@"; do
-    case "$arg" in
-        --version|-v|-V|--help|-dumpversion|-dumpmachine)
-            exec $CLANG $CLANG_FLAGS "$@"
-            ;;
-    esac
-done
 
 # Check if this is preprocess-only (-E flag present)
 preprocess_only=false
@@ -67,11 +74,11 @@ if echo " $* " | grep -q " -c "; then
     compile_only=true
 fi
 
-# Check if there are any .c or .S source files in the arguments
+# Check if there are any C++ or C source files in the arguments
 has_source=false
 for arg in "$@"; do
     case "$arg" in
-        *.c|*.S|*.s)
+        *.cpp|*.cxx|*.cc|*.C|*.c|*.S|*.s)
             has_source=true
             break
             ;;
@@ -85,10 +92,10 @@ if [ "$has_source" = "false" ]; then
 fi
 
 if [ "$preprocess_only" = "true" ]; then
-    # Preprocess only - use clang directly
+    # Preprocess only - use clang++ directly
     exec $CLANG $CLANG_FLAGS "$@"
 elif [ "$compile_only" = "true" ]; then
-    # Compile only - use clang directly
+    # Compile only - use clang++ directly
     exec $CLANG $CLANG_FLAGS "$@"
 elif [ "$link_only" = "true" ]; then
     # Link only - filter out compile-only flags and pass to LLD wrapper
@@ -106,12 +113,11 @@ elif [ "$link_only" = "true" ]; then
                 ;;
             # Translate -Wl,xxx,yyy to xxx yyy (linker passthrough flags)
             -Wl,*)
-                # Strip -Wl, prefix and split remaining commas into spaces
                 ld_flag=$(echo "$arg" | sed 's/^-Wl,//' | tr ',' ' ')
                 link_args="$link_args $ld_flag"
                 ;;
             # Skip compile-only flags (but not -Wl which is handled above)
-            -D*|-I*|-W*|-O*|-g|-g[0-9]|-ggdb*|-gdwarf*|-gz*|-std=*|-c|-Q*|-f*|-m*)
+            -D*|-I*|-W*|-O*|-g|-g[0-9]|-std=*|-c|-Q*|-f*|-m*)
                 ;;
             # Skip compiler flags that LLD doesn't understand
             -static|-dynamic|-Bdynamic|-Bstatic|-pedantic|-pedantic-errors)
@@ -123,7 +129,8 @@ elif [ "$link_only" = "true" ]; then
                 ;;
         esac
     done
-    exec $LD $link_args
+    # Add C++ standard library for linking
+    exec $LD $link_args -lstdc++ -lgcc_s
 else
     # Compile + link in one step
     # We need to compile sources to objects, then link
@@ -147,7 +154,7 @@ else
             -o)
                 next_is_output=true
                 ;;
-            *.c|*.S|*.s)
+            *.cpp|*.cxx|*.cc|*.C|*.c|*.S|*.s)
                 sources="$sources $arg"
                 ;;
             *.o|*.a)
@@ -193,12 +200,12 @@ else
 
     compiled_objs=""
     for src in $sources; do
-        base=$(basename "$src" | sed 's/\.[cSs]$//')
+        base=$(basename "$src" | sed 's/\.[cCsS].*$//')
         obj="$tmpdir/${base}.o"
         $CLANG $CLANG_FLAGS $other_args -c -o "$obj" "$src" || exit $?
         compiled_objs="$compiled_objs $obj"
     done
 
-    # Link everything
-    exec $LD $link_args -o "$output" $compiled_objs $objects $libs
+    # Link everything — add C++ standard library
+    exec $LD $link_args -o "$output" $compiled_objs $objects $libs -lstdc++ -lgcc_s
 fi

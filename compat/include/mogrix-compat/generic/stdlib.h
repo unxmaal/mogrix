@@ -95,6 +95,15 @@ void qsort_r(void *base, size_t nmemb, size_t size,
              int (*compar)(const void *, const void *, void *),
              void *arg);
 
+/*
+ * _Exit - immediate program termination (C99 7.20.4.4)
+ *
+ * IRIX has _Exit in libc but the declaration is gated behind __c99.
+ */
+#ifndef _Exit
+void _Exit(int) __attribute__((__noreturn__));
+#endif
+
 #ifdef __cplusplus
 }
 #endif

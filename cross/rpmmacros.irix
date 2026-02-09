@@ -98,7 +98,7 @@
   export AWK="/usr/bin/gawk"; \
   export PERL="/usr/bin/perl"; \
   export M4="/usr/bin/m4"; \
-  %{_configure_script} %{_configure_args}
+  %{_configure_script} %{_configure_args} %{?*}
 
 # Cross-compilation aware make_build macro
 %make_build \

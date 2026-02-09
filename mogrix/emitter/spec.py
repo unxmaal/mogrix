@@ -244,6 +244,19 @@ class SpecWriter:
                 flags=re.MULTILINE,
             )
 
+        # Escape commented-out %configure lines to prevent RPM macro expansion.
+        # RPM expands macros BEFORE shell processing, so #%configure still
+        # expands the multi-line %configure macro. The \ continuations mean
+        # only the first line is commented — the rest executes, causing the
+        # "commented" configure to actually run (and fail/conflict).
+        # %%configure is a literal % in RPM specs, preventing expansion.
+        content = re.sub(
+            r"^#(%configure\b)",
+            r"#%\1",
+            content,
+            flags=re.MULTILINE,
+        )
+
         # Rewrite paths
         for old_path, new_path in result.path_rewrites.items():
             content = content.replace(old_path, new_path)
@@ -614,6 +627,7 @@ _mogrix_origdir=$(pwd)
 
         for pattern in result.drop_subpackages:
             content = self._comment_subpackage(content, pattern)
+        content = self._comment_orphaned_conditionals(content)
 
         return content
 
@@ -631,7 +645,8 @@ _mogrix_origdir=$(pwd)
             stripped = line.strip()
 
             # Check for %package directive
-            pkg_match = re.match(r"^%package\s+(\S+)", stripped)
+            # Handle both "%package foo" (suffix) and "%package -n foo" (full name)
+            pkg_match = re.match(r"^%package\s+(?:-n\s+)?(\S+)", stripped)
             if pkg_match:
                 subpkg_name = pkg_match.group(1)
                 # Check if this subpackage matches the pattern
@@ -658,7 +673,7 @@ _mogrix_origdir=$(pwd)
                     continue
 
             # Check for %description of a dropped subpackage
-            desc_match = re.match(r"^%description\s+(\S+)", stripped)
+            desc_match = re.match(r"^%description\s+(?:-n\s+)?(\S+)", stripped)
             if desc_match and current_subpackage:
                 subpkg_name = desc_match.group(1)
                 if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
@@ -677,7 +692,7 @@ _mogrix_origdir=$(pwd)
                     continue
 
             # Check for %files of a dropped subpackage
-            files_match = re.match(r"^%files\s+(\S+)", stripped)
+            files_match = re.match(r"^%files\s+(?:-n\s+)?(\S+)", stripped)
             if files_match:
                 subpkg_name = files_match.group(1)
                 if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
@@ -709,3 +724,50 @@ _mogrix_origdir=$(pwd)
             i += 1
 
         return "\n".join(result_lines)
+
+    def _comment_orphaned_conditionals(self, content: str) -> str:
+        """Comment out %if/%endif blocks whose content is all commented or empty.
+
+        When subpackage sections are wrapped in %if 1 / %endif, commenting
+        the inner sections can leave orphaned %if (the %endif may already be
+        commented by the %files handler, or left uncommented by the %description
+        handler). This post-pass finds %if blocks where all non-empty content
+        lines are already commented, and comments both %if and %endif.
+        """
+        lines = content.splitlines()
+        result = list(lines)
+
+        i = 0
+        while i < len(lines):
+            stripped = lines[i].strip()
+            if re.match(r"^%if\b", stripped):
+                # Find matching %endif, tracking nesting.
+                # %endif may already be commented (#%endif) by inner handlers.
+                depth = 1
+                j = i + 1
+                all_commented = True
+                endif_idx = None
+                while j < len(lines) and depth > 0:
+                    s = lines[j].strip()
+                    # Check for %if/%endif (both commented and uncommented)
+                    bare = s.lstrip("#").strip()
+                    if re.match(r"^%if\b", bare) and not s.startswith("#"):
+                        # Only count uncommented %if as nesting
+                        depth += 1
+                    elif bare == "%endif":
+                        depth -= 1
+                        if depth == 0:
+                            endif_idx = j
+                            break
+                    elif s and not s.startswith("#"):
+                        all_commented = False
+                    j += 1
+
+                if endif_idx is not None and all_commented:
+                    result[i] = "#" + lines[i]
+                    # %endif may already be commented
+                    if not lines[endif_idx].strip().startswith("#"):
+                        result[endif_idx] = "#" + lines[endif_idx]
+            i += 1
+
+        return "\n".join(result)

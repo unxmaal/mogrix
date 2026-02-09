@@ -34,6 +34,28 @@
 /* Include IRIX socket.h */
 #include_next <sys/socket.h>
 
+/*
+ * sockaddr_storage is hidden by _XOPEN_SOURCE=500 above
+ * (_NO_XOPEN4 && _NO_XOPEN5 can't both be true with _XOPEN_SOURCE set).
+ * The _SS_PAD macros are also gated, so define everything from scratch.
+ * Values match IRIX sys/socket.h: _SS_MAXSIZE=128, sa_family_t=2, int64_t=8.
+ */
+#ifndef _DICL_SOCKADDR_STORAGE_DEFINED
+#define _DICL_SOCKADDR_STORAGE_DEFINED
+#ifndef _SS_PAD1SIZE
+#define _SS_PAD1SIZE 6   /* _SS_ALIGNSIZE(8) - sizeof(sa_family_t)(2) */
+#endif
+#ifndef _SS_PAD2SIZE
+#define _SS_PAD2SIZE 112 /* _SS_MAXSIZE(128) - (2 + 6 + 8) */
+#endif
+struct sockaddr_storage {
+    sa_family_t  ss_family;
+    char         _ss_pad1[_SS_PAD1SIZE];
+    int64_t      _ss_align;
+    char         _ss_pad2[_SS_PAD2SIZE];
+};
+#endif
+
 /* Restore original defines */
 #ifdef _DICL_RESTORE_SGI_SOURCE
 #define _SGI_SOURCE 1

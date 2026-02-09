@@ -36,6 +36,15 @@ extern wchar_t  *wmemmove(wchar_t *, const wchar_t *, size_t);
 extern int       wmemcmp(const wchar_t *, const wchar_t *, size_t);
 extern wchar_t  *wmemset(wchar_t *, wchar_t, size_t);
 
+/* C99 7.24.2.7-9 wide character formatted I/O (gated by __c99 on IRIX) */
+extern int      vfwscanf(FILE * __restrict, const wchar_t * __restrict, va_list);
+extern int      vswscanf(const wchar_t * __restrict, const wchar_t * __restrict, va_list);
+extern int      vwscanf(const wchar_t * __restrict, va_list);
+
+/* C99 7.24.4.1 wide string to number conversion (gated by __c99 on IRIX) */
+extern float       wcstof(const wchar_t * __restrict, wchar_t ** __restrict);
+extern long double wcstold(const wchar_t * __restrict, wchar_t ** __restrict);
+
 #ifdef __cplusplus
 }
 #endif

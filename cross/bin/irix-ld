@@ -91,6 +91,10 @@ else
     # Use fixed CRT files (with .MIPS.events sections stripped)
     CRT1=$SYSROOT/usr/lib32/mips3/fixed/crt1.o
     CRTN=$SYSROOT/usr/lib32/mips3/fixed/crtn.o
+    # C++ constructor/destructor support — processes .ctors/.dtors arrays
+    # IRIX crt1/crtn don't process .ctors; these objects add that capability
+    CRTBEGIN=$STAGING/lib32/crtbeginT.o
+    CRTEND=$STAGING/lib32/crtendT.o
 
     # --image-base=0x1000000: Move binary above rld quickstart table (0x200000)
     # Default base 0x10000 gives only 1.8MB of brk heap; 0x1000000 gives 176MB
@@ -100,11 +104,13 @@ else
       --image-base=0x1000000 \
       -dynamic-linker /lib32/rld \
       $CRT1 \
+      $CRTBEGIN \
       $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
       -lsoft_float_stubs \
       -lc \
+      $CRTEND \
       $CRTN
 fi

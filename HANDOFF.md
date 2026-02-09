@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-09 (session 9)
-**Status**: Phase 5 + OpenSSH + tdnf WORKING. 77 source packages cross-compiled (207 RPMs). Batch-build + rule promotion workflow operational.
+**Last Updated**: 2026-02-09 (session 11)
+**Status**: Phase 5 + OpenSSH + tdnf WORKING. C++ CROSS-COMPILATION WORKING. groff BUILT (first C++ package!). 78 source packages cross-compiled (210 RPMs). Batch-build + rule promotion workflow operational.
 
 ---
 
@@ -82,6 +82,54 @@ mogrix batch-build --from-list t.txt --output-report r.json  # JSON report
 
 ### Pattern: IRIX long double crash
 Same class as coreutils `seq` issue. IRIX MIPS n32 doesn't have 128-bit long double support. `__extenddftf2` (double→long double conversion) crashes with SIGSEGV. Fix: disable `HAVE_LONG_DOUBLE` via `ac_cv_type_long_double_wider: "no"` or equivalent configure cache variable.
+
+---
+
+## What Was Done This Session (Session 11)
+
+### groff 1.23.0 — COMPLETE (first C++ package!)
+First package built using the C++ cross-compilation infrastructure (irix-cxx + GCC 9 libstdc++).
+
+**Issues solved:**
+1. **C++ cmath/specfun errors**: GCC 9 c++config.h enables `_GLIBCXX_USE_C99_MATH_TR1` and `_GLIBCXX_USE_STD_SPEC_FUNCS` but IRIX libm lacks C99 math functions. Fix: commented out both defines in staging c++config.h.
+2. **wchar_t C++ keyword conflict**: IRIX stdlib.h tries to typedef wchar_t. Fix: `-D_WCHAR_T` in irix-cxx wrapper prevents the typedef.
+3. **Cross-build doc generation**: Build tries to run MIPS groff binary. Fix: override all PROCESSED*/GENERATED* make variables to empty, sed out doc targets from Makefile `all:` prerequisites.
+4. **Brace expansion bashisms**: `g{nroff,troff,...}` in for loops and `{README.txt,*.mom,...}` in %install. Fix: expand manually.
+5. **pushd/popd bashism**: Fix: replace with no-op (docs not generated).
+6. **update-alternatives dependency**: IRIX doesn't have update-alternatives. Fix: drop `Requires(post/preun/postun)` via spec_replacements. Scriptlets still call it but with `|| :` error suppression.
+7. **Unpackaged X11/doc files**: Dropped doc and x11 subpackages + install_cleanup to remove files make install still produces.
+8. **pdf/man page symlink issues**: `ln -s` → `ln -sf`, `.1.gz` → `.1` (no brp compression).
+
+**sockaddr_storage fix** (from libstrophe): Added `struct sockaddr_storage` definition to `dicl-clang-compat/sys/socket.h`. IRIX hides it when `_XOPEN_SOURCE=500` is set (which our compat header needs for modern msghdr).
+
+**Packages also completed:** libxslt (drop python bindings), giflib (cmake cross-build), libstrophe (res_query configure fix, autoreconf overwrites prep_commands pattern).
+
+---
+
+## What Was Done This Session (Session 10)
+
+### C++ Cross-Compilation — WORKING
+Full C++ cross-compilation with GCC 9 libstdc++ from SGUG-RSE. Tested with iostream, string, vector, map, algorithm, std::to_string — all working on IRIX.
+
+**Key components:**
+- `cross/bin/irix-cxx` — C++ compiler wrapper (clang++ with controlled header search)
+- `cross/crt/crtbeginT.S` / `cross/crt/crtendT.S` — .ctors/.dtors processing for IRIX
+- `compat/include/dicl-clang-compat/stdarg.h` — va_list = char* in C++ mode (matches IRIX declarations)
+- `cross/include/c++/9/ext/string_conversions.h` — va_list fix for __to_xstring
+- `cross/include/c++/9/mips-sgi-irix6.5/bits/c++config.h` — IRIX-specific libstdc++ config
+
+**Problems solved:**
+1. **va_list type mismatch**: IRIX uses `char*`, clang uses `void*`. C++ forbids implicit conversion. Fix: `typedef char *va_list;` in C++ mode with type-punning macros.
+2. **`__cxa_atexit` missing**: IRIX predates Itanium C++ ABI. Fix: `-fno-use-cxa-atexit` (uses `atexit()` instead).
+3. **`.init_array` not supported**: IRIX rld doesn't process `.init_array`. Fix: `-fno-use-init-array` (generates `.ctors` instead) + custom `crtbeginT.o`/`crtendT.o` that iterate `.ctors` array from `.init` section code.
+4. **Missing C99 declarations**: `vfwscanf`, `vswscanf`, `vwscanf`, `wcstof`, `wcstold`, `_Exit`, `iswblank` — gated behind `__c99` on IRIX. Added to mogrix-compat overlay headers.
+5. **extern "C" linkage**: `__SGI_LIBC_BEGIN_EXTERN_C` must NOT be overridden in C++ mode (unlike C mode).
+6. **Namespace macros**: `__SGI_LIBC_NAMESPACE_QUALIFIER` etc. set to empty so libstdc++ handles namespaces.
+
+**What's needed to build C++ packages:**
+- libstdc++.so.6 and libgcc_s.so.1 must be in staging lib32/ (copied from IRIX base system)
+- C++ headers from GCC 9 must be in staging include/c++/9/ (copied from IRIX base system)
+- Groff is the first real C++ package to attempt
 
 ---
 
@@ -386,7 +434,7 @@ Replace `%{cmake}` macros with raw cmake commands. Use `-DCMAKE_INSTALL_LIBDIR=l
 
 ## Current Status
 
-**Total: 77 source packages cross-compiled (207 RPMs).**
+**Total: 82 source packages cross-compiled (216 RPMs).**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
@@ -430,6 +478,10 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | mpfr | 4.2.1 | BUILT | --disable-thread-safe (no __thread TLS) |
 | hyphen | 2.8.8 | BUILT | pushd/popd → cd, drop valgrind |
 | libevent | 2.1.12 | BUILT | strsep compat, test removal, doxygen disabled |
+| libxslt | 1.1.39 | BUILT | Drop python bindings |
+| giflib | 5.2.2 | INSTALLED | cmake cross-build |
+| libstrophe | 0.13.1 | INSTALLED | res_query compat, autoreconf pattern |
+| groff | 1.23.0 | INSTALLED | First C++ package! cmath/specfun, wchar_t, doc generation skip |
 
 ---
 
@@ -526,6 +578,7 @@ gnulib's `gl_STDINT_H` generates replacement headers with different integer type
 - sqlite3 CLI crashes when writing to files
 - pkgconf installed with `--nodeps` (needs rebuild with `drop_requires: libpkgconf`)
 - coreutils `seq` disabled — IRIX printf doesn't handle `%Lg`
+- **C++ cross-compilation WORKING** — uses GCC 9 libstdc++ from SGUG-RSE, custom CRT objects for .ctors processing
 - **`--export-dynamic` crashes IRIX rld** — large dynamic symbol tables cause SIGSEGV
 - **tdnf install dependency resolution** — some packages have unresolvable deps due to missing `Provides:` in cross-compiled packages (need explicit Provides for all .so files)
 - **Man page .gz in %files** — brp scripts disabled, man pages stay uncompressed. Fix: `%{name}.1.gz` → `%{name}.1*`
