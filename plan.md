@@ -4,9 +4,9 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-02-09)
 
-**81 source packages cross-compiled for IRIX (217 RPMs). C++ cross-compilation WORKING. groff (first C++ package), openssh (first network service), aterm (first X11 app) all running on IRIX.**
+**81 source packages cross-compiled for IRIX (217 RPMs). C++ cross-compilation WORKING. App bundles WORKING (Flatpak-style install). groff (first C++ package), openssh (first network service), aterm (first X11 app) all running on IRIX.**
 
-All phases through 4c complete (41 packages). Phase 5 complete with 23 library/app packages. Sessions 5-11 added 17 more packages including openssh (SSH server), nano, rsync, groff (first C++ package), libstrophe, giflib, libxslt, and various utilities. `mogrix batch-build` command automates multi-package build pipelines. 115 package rule files covering current and future packages.
+All phases through 4c complete (41 packages). Phase 5 complete with 23 library/app packages. Sessions 5-13 added 17 more packages including openssh (SSH server), nano, rsync, groff (first C++ package), libstrophe, giflib, libxslt, and various utilities. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX that coexist with SGUG-RSE. 115 package rule files covering current and future packages.
 
 ---
 
@@ -259,6 +259,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | 170 tests, all passing | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
+| App bundles (`mogrix bundle`) | Done |
 | 81 source packages cross-compiled for IRIX | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
@@ -311,6 +312,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 12. **Network service:** openssh server accepting connections on IRIX ✓
 13. **C++ packages:** groff cross-compiled using clang++ + GCC 9 libstdc++ ✓
 14. **Batch automation:** `mogrix batch-build` automates multi-package pipelines ✓
+15. **App bundles:** `mogrix bundle` creates optimized tarballs that coexist with SGUG-RSE ✓
 
 ---
 

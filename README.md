@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms Fedora 40 SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
 
-**Current Status:** 81 source packages cross-compiled for IRIX (217 RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **openssh** (SSH server), **groff** (first C++ package — document formatting system), **nano** (text editor), **rsync** (file sync), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++.
+**Current Status:** 81 source packages cross-compiled for IRIX (217 RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **openssh** (SSH server), **groff** (first C++ package — document formatting system), **nano** (text editor), **rsync** (file sync), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **App bundles** (`mogrix bundle`) create optimized, self-contained tarballs that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -25,6 +25,8 @@ Mogrix is a complete IRIX cross-compilation system that transforms Fedora 40 SRP
 - **Staging System** - Cross-compiled packages are staged to provide headers and libraries for dependent builds, enabling complex dependency chains like the 13-package tdnf stack.
 
 - **Bootstrap Tarball** - Self-contained tarball generator for deploying the complete tdnf package manager to IRIX without requiring any tools on the target system.
+
+- **App Bundles** - `mogrix bundle` creates optimized, self-contained app tarballs for IRIX that coexist with SGUG-RSE. Resolves dependencies via ELF scanning, prunes unused libraries, trims terminfo, and generates Flatpak-style install scripts. Extract anywhere, run `./install`, add one directory to PATH.
 
 ## Installation
 
@@ -101,6 +103,42 @@ uv run mogrix batch-build --from-list packages.txt --output-report report.json
 ```
 
 Packages without rules get candidate YAML generated in `rules/candidates/` for human review. The batch always moves on — never blocks on failures.
+
+### App Bundles
+
+Create self-contained app tarballs for IRIX that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+
+```bash
+# Create a bundle
+uv run mogrix bundle nano
+
+# Include extra subpackages
+uv run mogrix bundle groff --include groff-perl
+
+# Just build directory, no tarball
+uv run mogrix bundle nano --no-tarball
+```
+
+Bundles resolve dependencies via ELF `readelf -d` NEEDED scanning, include only the shared libraries actually needed, trim terminfo to common terminals, and strip docs. The nano bundle is under 1MB compressed.
+
+Install on IRIX:
+
+```sh
+# Extract anywhere
+tar xzf nano-7.2-6-irix-bundle.tar.gz -C /opt/mogrix-apps/
+
+# Run the install script (creates trampolines in ../bin/)
+cd /opt/mogrix-apps/nano-7.2-6-irix-bundle
+./install
+
+# Add to PATH once (put in ~/.profile for permanent)
+PATH=/opt/mogrix-apps/bin:$PATH; export PATH
+
+# Run like any other command
+nano
+```
+
+Multiple bundles share the same `bin/` directory — one PATH entry covers all bundles. Each bundle includes `./uninstall` for clean removal.
 
 ### Dependency Roadmap
 
@@ -353,6 +391,7 @@ All commands use `uv run mogrix` (or activate the venv first with `source .venv/
 | `mogrix validate-rules` | Validate all rule files |
 | `mogrix audit-rules` | Scan package rules for duplicates and class candidates |
 | `mogrix score-rules` | Score package rules by complexity |
+| `mogrix bundle <package>` | Create self-contained IRIX app bundle |
 
 ## Dependency Handling
 
@@ -530,6 +569,7 @@ mogrix/
 │   ├── emitter/        # Spec and SRPM output
 │   ├── headers/        # Header overlay management
 │   ├── compat/         # Compat source injection
+│   ├── bundle.py       # Self-contained IRIX app bundle generator
 │   ├── analyzers/      # Source-level static analysis
 │   ├── validators/     # Spec file validation
 │   └── patches/        # Patch catalog
@@ -729,6 +769,7 @@ make clean
 - **sockaddr_storage** - Hidden when `_XOPEN_SOURCE` is set in compat headers. Define explicitly in socket.h overlay.
 - **autoreconf overwrites prep_commands** - Patches to `configure` in `%prep` are undone by `autoreconf` in `%build`. Use spec_replacements to inject fixes after autoreconf.
 - **update-alternatives** - Doesn't exist on IRIX. Drop `Requires(post/preun/postun)` for packages that use it.
+- **ncurses ext-colors terminfo corruption** - ABI 6 auto-enables `--enable-ext-colors`, causing terminfo reader to interpret 16-bit numbers as 32-bit. Fix: `--disable-ext-colors`.
 
 **Build Environment:**
 - Cross-compiled binaries cannot be tested on the Linux host (use IRIX chroot for testing).

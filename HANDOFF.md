@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-09 (session 11)
-**Status**: 81 source packages cross-compiled (217 RPMs). C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
+**Last Updated**: 2026-02-09 (session 13)
+**Status**: 81 source packages cross-compiled (217 RPMs). App bundles WORKING with Flatpak-style install (`mogrix bundle`). C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
 
 ---
 
@@ -17,19 +17,60 @@
 
 ---
 
-## IMMEDIATE NEXT: Choose Next Targets
+## IMMEDIATE NEXT: Build gnutls → weechat → bundle
 
-34 packages have rules but no RPMs yet. Priorities:
+**Top priority**: gnutls (rules exist, deps staged) → weechat (write rules) → `mogrix bundle weechat` → ship tarball to forum user.
 
-**Autotools (ready to build):** gperf, jq, pcre, gd, gnutls (needs nettle+libtasn1 staged), libarchive, elfutils, expect, tk, gtk2
+weechat deps: ncurses (done), zlib (done), curl (done), openssl (done), libgcrypt (done), zstd (done). Only blocker: **gnutls** (mandatory since weechat 2.9, no OpenSSL fallback). Disable: NLS, all scripting langs, spell, doc, man, tests, headless, cjson.
 
-**Meson (need `%meson` macro):** cairo 1.18, harfbuzz, pango, glib2, p11-kit. Pixman was already built with meson.
-
-**Still blocked:** lolcat (wchar I/O), bc (host binary bootstrap), xclip (IRIX Xmu too old)
+34 packages have rules but no RPMs yet. Other priorities:
+- **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils, expect, tk, gtk2
+- **Meson (need `%meson` macro):** cairo 1.18, harfbuzz, pango, glib2, p11-kit
+- **Still blocked:** lolcat (wchar I/O), bc (host binary bootstrap), xclip (IRIX Xmu too old)
+- **Bundle candidates (already built):** nano, groff, openssh, aterm, vim (needs build), htop (needs /proc investigation)
 
 ---
 
-## Recent Session (11): groff + C++ Milestone
+## Recent Session (13): ncurses Fix + Bundle Restructure
+
+### ncurses ext-colors terminfo corruption (CRITICAL FIX)
+- **Symptom**: `nano` (interactive) → Bus error on IRIX. `nano --version` works.
+- **Root cause**: ncurses 6.4 ABI 6 auto-enables `--enable-ext-colors` → `NCURSES_INT2=int` (32-bit). Terminfo reader interprets legacy 16-bit number fields as 32-bit: `cols=80` becomes `(80<<16)|8 = 5242888`. SIGBUS on MIPS from absurd buffer allocation.
+- **Fix**: `--disable-ext-colors` spec_replacement in `rules/packages/ncurses.yaml`. Rebuilt + installed.
+- **Verified**: `infocmp -C vt100` shows `co#80`, nano interactive works.
+
+### Bundle restructure — Flatpak-inspired install model
+User feedback: per-bundle PATH entries are unacceptable for multiple bundles.
+- **New model**: One `bin/` directory with trampoline scripts pointing into bundles
+- **Trampoline**: 4-line shell script that resolves own location via `dirname "$0"` and uses relative path (`../<bundle>/<cmd>`)
+- **Why not absolute paths**: Baked-in absolute paths break across chroot boundaries
+- **Why not symlinks**: `dirname "$0"` resolves to symlink location, breaking wrapper's relative paths
+- **Bundle internal layout**: `_bin/`, `_lib32/` (prefixed to avoid PATH collision), wrappers at root named after real commands
+- **Install/uninstall scripts**: `./install` creates trampolines in `../bin/`, `./uninstall` removes them
+- **Tested on IRIX**: nano + groff bundles coexist, 62 trampolines in one `bin/`, install/uninstall both work
+- **Usage**: `PATH=/opt/mogrix-apps/bin:$PATH; export PATH` (one-time, covers all bundles)
+
+### Bundle optimization — 92% size reduction
+- **Lib pruning**: Scan all ELFs for transitive NEEDED sonames, remove everything else from `_lib32/`
+- **Terminfo trim**: Keep ~30 common terminals (iris-ansi, xterm, vt100, screen), remove ~2800 others
+- **Strip docs**: Remove `share/doc/`, `share/man/`, `share/info/`, `share/licenses/`
+- **Staging dedup**: Copy real file + symlink soname, not two full copies
+- **Result**: nano bundle 48MB → 3.9MB (tarball 13MB → 0.9MB)
+
+### Session (12): App Bundles (initial implementation)
+- Resolves deps via ELF `readelf -d` NEEDED scanning (RPM Requires useless with AutoReq: no)
+- Scans IRIX sysroot (313 native .so files) to skip system libs
+- SOURCERPM sibling grouping (groff auto-includes groff-base + groff-perl)
+- Staging fallback for non-mogrix libs (libstdc++.so.6) with WARNING
+
+### Distribution strategy in `packages_plan.md`
+- **Phase A (now)**: App bundles for individual apps alongside SGUG-RSE
+- **Phase B (later)**: Full /usr/sgug replacement when parity reached
+- **Phase C (endgame)**: tdnf repo for ongoing updates
+
+---
+
+## Session (11): groff + C++ Milestone
 
 ### groff 1.23.0 — First C++ package!
 Built with `irix-cxx` (clang++ + GCC 9 libstdc++). Key fixes:
@@ -168,6 +209,30 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **C++ c++config.h patches** — staging only, not in mogrix source. Must disable `_GLIBCXX_USE_C99_MATH_TR1` and `_GLIBCXX_USE_STD_SPEC_FUNCS`
 - **autoreconf undoes prep_commands** — patches to configure in %prep get overwritten. Use spec_replacements after autoreconf
 - **sockaddr_storage** hidden by `_XOPEN_SOURCE=500` in dicl-clang-compat — defined explicitly in overlay
+- **ncurses ext-colors terminfo corruption** — ABI 6 auto-enables ext-colors, reads 16-bit terminfo numbers as 32-bit. Fix: `--disable-ext-colors`
+
+---
+
+## What Worked (Session 13)
+
+- **Relative-path trampolines**: Resolve own location via `dirname "$0"`, use `../<bundle>/<cmd>`. No absolute paths — works in chroot and outside.
+- **Flatpak-inspired `bin/` model**: Single shared `bin/` with install/uninstall scripts. Multiple bundles coexist cleanly.
+- **ncurses `--disable-ext-colors`**: Fixes terminfo number corruption on IRIX. `infocmp` confirms correct values.
+- **Bundle lib pruning**: Scanning NEEDED transitively and removing unused .so files saves ~33MB on nano bundle alone.
+- **Terminfo trimming**: ~30 common terminals vs full ~2800 entries saves ~12MB per bundle with terminfo.
+
+## What Worked (Session 12)
+
+- **ELF scanning for deps**: `readelf -d` on MIPS binaries from x86 host works perfectly. RPM Requires are useless (AutoReq: no → only rpmlib() entries).
+- **IRIX sysroot glob for native libs**: 313 sonames in `/opt/irix-sysroot/{usr/,}lib32/`. Dynamic, not hardcoded.
+- **SOURCERPM sibling grouping**: `rpm -qp --queryformat '%{SOURCERPM}'` correctly groups groff + groff-base + groff-perl.
+- **Staging fallback**: libstdc++.so.6 and libgcc_s.so.1 correctly detected as non-mogrix and copied from staging.
+
+## What Failed / Gotchas (Sessions 12-13)
+
+- **`$(...)` syntax in launcher scripts**: IRIX `/bin/sh` is the original Bourne shell. Must use backticks, `case` for path detection, `if`/`then` for conditionals. No `${var:+word}`.
+- **MCP sgug-exec uses csh**: Running launcher scripts directly via `irix_exec` fails because the outer csh chokes on backticks. Must invoke as `/bin/sh /path/to/run` or the `#!/bin/sh` shebang handles it in a real terminal.
+- **Symlinks break dirname resolution**: `ln -s ../bundle/nano bin/nano` → `dirname "$0"` returns `bin/`, not `../bundle/`. IRIX has no `readlink -f`. Trampolines solve this.
 
 ---
 
@@ -180,3 +245,5 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 | `rules/generic.yaml` | Universal rules for all packages |
 | `compat/catalog.yaml` | Compat function registry |
 | `plan.md` | Project plan and architecture |
+| `packages_plan.md` | Distribution strategy, killer app targets, build tiers |
+| `mogrix/bundle.py` | App bundle generator (new in session 12) |

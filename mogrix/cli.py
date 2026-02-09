@@ -2470,5 +2470,69 @@ def batch_build(
         write_json_report(report, Path(output_report))
 
 
+@main.command()
+@click.argument("package")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Output directory (default: ~/mogrix_outputs/bundles/)",
+)
+@click.option(
+    "--no-tarball",
+    is_flag=True,
+    help="Don't create tarball, just build the bundle directory",
+)
+@click.option(
+    "--include",
+    "-i",
+    multiple=True,
+    help="Extra packages to include in the bundle",
+)
+@click.option(
+    "--sysroot",
+    type=click.Path(exists=True),
+    default="/opt/irix-sysroot",
+    help="IRIX sysroot path for native lib detection",
+)
+def bundle(
+    package: str,
+    output: str | None,
+    no_tarball: bool,
+    include: tuple[str, ...],
+    sysroot: str,
+):
+    """Create a self-contained app bundle for IRIX.
+
+    Bundles PACKAGE with all its mogrix-built shared library dependencies
+    into a self-contained directory with launcher scripts. Extract on an
+    IRIX system alongside SGUG-RSE without conflicts.
+
+    \b
+    Examples:
+        mogrix bundle nano
+        mogrix bundle groff
+        mogrix bundle nano --no-tarball
+        mogrix bundle openssh --include openssh-clients
+    """
+    from mogrix.bundle import BundleBuilder
+
+    rpms_dir = MOGRIX_OUTPUTS / "RPMS"
+    if not rpms_dir.is_dir():
+        console.print(f"[red]RPMs directory not found: {rpms_dir}[/red]")
+        raise SystemExit(1)
+
+    output_dir = Path(output) if output else MOGRIX_OUTPUTS / "bundles"
+
+    builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
+    builder.create_bundle(
+        target_package=package,
+        output_dir=output_dir,
+        extra_packages=list(include),
+        create_tarball=not no_tarball,
+    )
+
+
 if __name__ == "__main__":
     main()
