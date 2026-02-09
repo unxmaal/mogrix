@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-09 (session 15)
-**Status**: 83 source packages cross-compiled (225+ RPMs). **weechat connected to Libera.Chat IRC from IRIX!** App bundles with Flatpak-style install, CA certs, plugin autoconfig. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
+**Last Updated**: 2026-02-09 (session 16)
+**Status**: 83 source packages cross-compiled (225+ RPMs). **weechat connected to Libera.Chat IRC from IRIX!** App bundles with Flatpak-style install, CA certs, plugin autoconfig, alphabetic revision suffixes. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
 
 ---
 
@@ -19,11 +19,10 @@
 
 ## IMMEDIATE NEXT
 
-**weechat bundle is SHIPPING** — connected to Libera.Chat IRC from SGI IRIX! Tarball at `~/mogrix_outputs/bundles/weechat-4.2.1-2-irix-bundle.tar.gz` (21.7 MB). Includes CA certs, auto-configures gnutls trust store, plugin autoloading.
+**weechat bundle is SHIPPING** — connected to Libera.Chat IRC from SGI IRIX! Tarball at `~/mogrix_outputs/bundles/weechat-4.2.1-2a-irix-bundle.tar.gz` (21.7 MB). Includes CA certs, auto-configures gnutls trust store, plugin autoloading, alphabetic revision suffix.
 
 Priorities:
 - **Ship weechat tarball** to forum user (community request) — READY NOW
-- **Add bundle versioning** — alphabetic suffix (e.g., `2a`, `2b`) to distinguish rebuilds
 - **More bundle candidates (already built):** nano, groff, openssh, aterm
 - **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils, expect, tk, gtk2
 - **Meson (need `%meson` macro):** cairo 1.18, harfbuzz, pango, glib2, p11-kit
@@ -33,7 +32,20 @@ Priorities:
 
 ---
 
-## Recent Session (15): TLS fixes + bundle polish
+## Recent Session (16): Bundle versioning + documentation
+
+### Bundle alphabetic revision suffixes
+Bundle names now include an auto-incrementing letter suffix: `weechat-4.2.1-2a-irix-bundle`. When rebuilding, the suffix advances (a → b → c). Old bundle directories and tarballs for the same version are cleaned up automatically. Implemented in `bundle.py` `create_bundle()`.
+
+### Bundle architecture documentation
+Created `rules/methods/bundles.md` — explains the three-layer script architecture (trampolines → wrappers → binaries), dependency resolution via ELF NEEDED scanning, bundle optimization, app-specific customization points, and user installation.
+
+### Rebuilt weechat bundle
+Rebuilt with all accumulated fixes. Bundle `weechat-4.2.1-2a-irix-bundle.tar.gz` (21.7 MB) includes: plugin autoload via WEECHAT_EXTRA_LIBDIR, CA cert auto-config via `-r`, SSL_CERT_FILE for OpenSSL apps, uninstall `rm -rf` hint, alphabetic revision suffix.
+
+---
+
+## Session (15): TLS fixes + bundle polish
 
 ### gnutls _Thread_local crash (CRITICAL FIX)
 `__tls_get_addr` is an unresolvable symbol on IRIX (rld has no TLS support). gnutls `lib/gthreads.h` maps `_Thread_local` to `__thread`, creating TLS variables in `random.c` and `fips.c`.
@@ -283,3 +295,4 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 | `plan.md` | Project plan and architecture |
 | `packages_plan.md` | Distribution strategy, killer app targets, build tiers |
 | `mogrix/bundle.py` | App bundle generator |
+| `rules/methods/bundles.md` | Bundle architecture documentation |
