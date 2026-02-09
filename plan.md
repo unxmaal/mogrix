@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-08)
+## Current Status (2026-02-09)
 
-**Phase 5: COMPLETE — 64 source packages cross-compiled for IRIX. aterm (first X11 app) running on IRIX GUI.**
+**81 source packages cross-compiled for IRIX (217 RPMs). C++ cross-compilation WORKING. groff (first C++ package), openssh (first network service), aterm (first X11 app) all running on IRIX.**
 
-All phases through 4c complete (41 packages). Phase 5 complete with 23 additional packages: 16 installed, 7 staged. aterm (VT102 terminal emulator) is the first graphical X11 application — links against IRIX native X11 libraries via sysroot autodetection. Cairo 1.18.0 blocked (uses meson).
+All phases through 4c complete (41 packages). Phase 5 complete with 23 library/app packages. Sessions 5-11 added 17 more packages including openssh (SSH server), nano, rsync, groff (first C++ package), libstrophe, giflib, libxslt, and various utilities. `mogrix batch-build` command automates multi-package build pipelines. 115 package rule files covering current and future packages.
 
 ---
 
@@ -150,23 +150,54 @@ With Phase 2 complete, IRIX has a full autotools chain.
 
 Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX printf can't handle `%Lg` long double format).
 
-### Phase 5: Library Foundation + aterm (COMPLETE — 23 packages)
+### Phase 5: Library Foundation + Apps (COMPLETE — 23 packages)
 
-Derived from `mogrix roadmap aterm` analysis. Built in tiers of increasing complexity. All tiers complete. aterm is the first X11 graphical application running on IRIX.
+Derived from `mogrix roadmap aterm` analysis. Built in tiers of increasing complexity. All tiers complete. aterm is the first X11 graphical application, openssh is the first network service.
 
-**Installed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype, aterm (16 installed).
+**Installed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype, aterm, openssh, unzip, zip, nano, rsync (21 installed).
 **Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman, uuid (7 staged).
 
+### Sessions 7-11: Batch Build + New Packages (18 packages)
+
+| Package | Version | Status | Notes |
+|---------|---------|--------|-------|
+| figlet | 2.2.5 | BUILT | Makefile CC injection |
+| sl | 5.02 | BUILT | Makefile CC injection with ncurses |
+| time | 1.9 | BUILT | Drop texinfo/gnupg2, gpgverify removal |
+| cmatrix | 2.0 | BUILT | Drop help2man/console-setup/x11-fonts |
+| gmp | 6.2.1 | BUILT | strdup compat, git autosetup → p1 |
+| mpfr | 4.2.1 | BUILT | --disable-thread-safe (no __thread TLS) |
+| hyphen | 2.8.8 | BUILT | pushd/popd → cd, drop valgrind |
+| libevent | 2.1.12 | BUILT | strsep compat, test removal, doxygen disabled |
+| libxslt | 1.1.39 | BUILT | Drop python bindings |
+| giflib | 5.2.2 | INSTALLED | cmake cross-build |
+| libstrophe | 0.13.1 | INSTALLED | XMPP client library, res_query compat |
+| groff | 1.23.0 | INSTALLED | First C++ package! cmath/specfun, wchar_t, doc gen skip |
+| openssh | 9.6p1 | INSTALLED | R_MIPS_REL32 dispatch, debug-mode only |
+| unzip | 6.0 | INSTALLED | Simple build |
+| zip | 3.0 | INSTALLED | Simple build |
+| nano | 7.2 | INSTALLED | -lgen for dirname/basename |
+| rsync | 3.2.7 | INSTALLED | Long double crash fix |
+| tdnf | 3.5.14 | INSTALLED | vsnprintf-irix patch, cmake cross fixes |
+
+### C++ Cross-Compilation (Session 10)
+
+Full C++ cross-compilation using clang++ with GCC 9 libstdc++ from SGUG-RSE. Key components:
+- `cross/bin/irix-cxx` — C++ compiler wrapper
+- `cross/crt/crtbeginT.S` / `cross/crt/crtendT.S` — .ctors/.dtors CRT objects
+- Staging c++config.h patches: disabled `_GLIBCXX_USE_C99_MATH_TR1` and `_GLIBCXX_USE_STD_SPEC_FUNCS`
+- `-D_WCHAR_T` prevents IRIX wchar_t typedef conflict in C++ mode
+
 #### Current blockers
-- **FC40 GNOME stack uses meson**: cairo 1.18, harfbuzz, pango, glib2, p11-kit all need `%meson`. We have `cross/meson-irix-cross.ini` but no `%meson` RPM macro. Options: set up meson macros, find autotools versions, or skip.
-#### Remaining Tier 2-3 targets (autotools)
+- **FC40 GNOME stack uses meson**: cairo 1.18, harfbuzz, pango, glib2, p11-kit all need `%meson`. We have `cross/meson-irix-cross.ini` and pixman built with meson, but no `%meson` RPM macro.
+
+#### Remaining targets (autotools)
 | Package | Build System | Unblocks |
 |---------|-------------|----------|
 | gd | autotools | graphics, emacs |
 | pcre | autotools | glib2, grep (already have pcre2) |
 | gnutls | autotools | libarchive, git, p11-kit |
 | elfutils | autotools | binutils, debuginfo |
-| groff | autotools | man pages |
 | libarchive | autotools | cmake, rpm |
 | gtk2 | autotools | GUI apps |
 
@@ -220,15 +251,19 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
 | Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
 | Roadmap: glob pattern drops for impossible ecosystems | Done |
-| 96 package rules + 1 class rule | Done |
+| 115 package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
+| Batch build (`mogrix batch-build`) | Done |
+| Dependency roadmap (`mogrix roadmap`) | Done |
 | 170 tests, all passing | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
-| 64 source packages cross-compiled for IRIX | Done |
+| 81 source packages cross-compiled for IRIX | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
+| C++ cross-compilation (clang++ + GCC 9 libstdc++) | Done |
+| SSH server (openssh) on IRIX | Done |
 
 ---
 
@@ -251,6 +286,12 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | `-lpthread` for pthread_sigmask | IRIX has it in libpthread, not libc; gnulib replacement needs it |
 | X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 automatically |
 | Filter `-rdynamic` in irix-ld | LLD doesn't support it; IRIX rld crashes on large dynamic symbol tables |
+| clang++ with GCC 9 libstdc++ | IRIX GCC 9 headers + libs in staging; custom CRT for .ctors/.dtors |
+| `-fno-use-cxa-atexit` | IRIX lacks __cxa_atexit; use atexit() for static destructors |
+| `-fno-use-init-array` | IRIX rld doesn't process .init_array; use .ctors with custom CRT |
+| `-D_WCHAR_T` in C++ mode | Prevents IRIX stdlib.h from typedef-ing wchar_t (C++ keyword) |
+| Disable C99 math TR1 in c++config.h | IRIX libm lacks exp2l, cbrt, fdim, etc. |
+| R_MIPS_REL32 dispatch pattern | IRIX rld fails on function pointers in static data; use switch/strcmp dispatch |
 
 ---
 
@@ -267,6 +308,9 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 9. **Full GNU userland:** coreutils/findutils/tar/sed/gawk/grep ✓
 10. **Crypto stack:** gnupg2 key gen + sign + verify ✓
 11. **X11 graphical app:** aterm terminal emulator running on IRIX GUI ✓
+12. **Network service:** openssh server accepting connections on IRIX ✓
+13. **C++ packages:** groff cross-compiled using clang++ + GCC 9 libstdc++ ✓
+14. **Batch automation:** `mogrix batch-build` automates multi-package pipelines ✓
 
 ---
 

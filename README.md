@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms Fedora 40 SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
 
-**Current Status:** 64 source packages cross-compiled for IRIX, including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), and **aterm** — the first X11 graphical application running on the IRIX GUI.
+**Current Status:** 81 source packages cross-compiled for IRIX (217 RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **openssh** (SSH server), **groff** (first C++ package — document formatting system), **nano** (text editor), **rsync** (file sync), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -82,6 +82,37 @@ cp ~/rpmbuild/RPMS/mips/popt*.rpm ~/mogrix_outputs/RPMS/
 ```bash
 # See what rules would apply to a package
 uv run mogrix analyze package-1.0-1.fc40.src.rpm
+```
+
+### Batch Build
+
+```bash
+# Build multiple packages from a list (user controls order)
+uv run mogrix batch-build --from-list packages.txt
+
+# Build all dependencies for a target package (topological order)
+uv run mogrix batch-build --target gdb
+
+# Preview what would be built
+uv run mogrix batch-build --from-list packages.txt --dry-run
+
+# Generate JSON report
+uv run mogrix batch-build --from-list packages.txt --output-report report.json
+```
+
+Packages without rules get candidate YAML generated in `rules/candidates/` for human review. The batch always moves on — never blocks on failures.
+
+### Dependency Roadmap
+
+```bash
+# Show full transitive build-dependency graph
+uv run mogrix roadmap aterm
+
+# JSON output for programmatic use
+uv run mogrix roadmap aterm --json
+
+# Rich tree widget
+uv run mogrix roadmap aterm --tree
 ```
 
 ### Batch Conversion
@@ -314,6 +345,8 @@ All commands use `uv run mogrix` (or activate the venv first with `source .venv/
 | `mogrix analyze <srpm>` | Analyze rules + scan source for IRIX issues |
 | `mogrix sync-headers` | Sync compat headers to staging after edits |
 | `mogrix batch <dir> <out>` | Convert multiple SRPMs in batch |
+| `mogrix batch-build` | Automated multi-package build pipeline |
+| `mogrix roadmap <package>` | Show transitive build-dependency graph |
 | `mogrix lint <rpms...>` | Lint RPMs/specs with IRIX-specific rpmlint config |
 | `mogrix validate-spec <spec>` | Validate spec file structure |
 | `mogrix list-rules` | List available package rules |
@@ -503,7 +536,7 @@ mogrix/
 ├── rules/              # Rule definitions
 │   ├── generic.yaml    # Universal rules (applied to ALL packages)
 │   ├── classes/        # Class rules (nls-disabled, etc.)
-│   ├── packages/       # Package-specific rules (96 packages)
+│   ├── packages/       # Package-specific rules (115 packages)
 │   └── source_checks.yaml  # IRIX source pattern definitions
 ├── headers/            # Header overlay files
 │   └── generic/        # Clang/IRIX compat headers
@@ -541,7 +574,7 @@ make clean
 
 ## Package Rules Status
 
-64 source packages cross-compiled for IRIX across 9 phases:
+81 source packages cross-compiled for IRIX across multiple phases:
 
 ### Phase 1: Bootstrap (14 packages)
 
@@ -624,7 +657,7 @@ make clean
 |---|---------|---------|-------------|
 | 41 | coreutils | 9.4 | GNU core utilities (ls, cp, mv, cat, head, sort, etc.) |
 
-### Phase 5: Library Foundation + aterm (23 packages)
+### Phase 5: Library Foundation + Apps (23 packages)
 
 | # | Package | Version | Description |
 |---|---------|---------|-------------|
@@ -652,7 +685,29 @@ make clean
 | 63 | uuid | 1.6.2 | UUID library (staged) |
 | 64 | aterm | 1.0.1 | X11 terminal emulator (first GUI app!) |
 
-55 additional package rule files exist for future phases.
+### Sessions 5-11: Additional Packages (17 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 65 | openssh | 9.6p1 | SSH server/client (first network service!) |
+| 66 | unzip | 6.0 | ZIP decompression |
+| 67 | zip | 3.0 | ZIP compression |
+| 68 | nano | 7.2 | Text editor |
+| 69 | rsync | 3.2.7 | File synchronization |
+| 70 | figlet | 2.2.5 | ASCII art text |
+| 71 | sl | 5.02 | Steam locomotive animation |
+| 72 | time | 1.9 | Command timing |
+| 73 | cmatrix | 2.0 | Matrix screen effect |
+| 74 | gmp | 6.2.1 | GNU multiprecision arithmetic |
+| 75 | mpfr | 4.2.1 | Multiple-precision floating-point |
+| 76 | hyphen | 2.8.8 | Hyphenation library |
+| 77 | libevent | 2.1.12 | Event notification library |
+| 78 | libxslt | 1.1.39 | XSLT processing library |
+| 79 | giflib | 5.2.2 | GIF image library |
+| 80 | libstrophe | 0.13.1 | XMPP client library |
+| 81 | groff | 1.23.0 | Document formatting system (first C++ package!) |
+
+34 additional package rule files exist for future phases.
 
 ## Known Limitations
 
@@ -668,6 +723,12 @@ make clean
 - **`--export-dynamic`** - Causes IRIX rld to SIGSEGV when dynamic symbol table is very large (468+ entries). Disable features that require it.
 - **Long tar filenames** - IRIX tar corrupts GNU long filenames. Use `createrepo_c --simple-md-filenames`.
 - **pthread_sigmask** - In libpthread, not libc. Must explicitly link `-lpthread` when gnulib provides a replacement.
+- **C++ cmath/specfun** - GCC 9 c++config.h enables C99 math TR1 and specfun, but IRIX libm lacks these. Must disable in c++config.h.
+- **wchar_t in C++ mode** - IRIX stdlib.h tries to typedef wchar_t, but it's a C++ keyword. Fix: `-D_WCHAR_T`.
+- **R_MIPS_REL32 relocations** - Function pointers in static data crash IRIX rld. Replace with dispatch functions (switch/strcmp).
+- **sockaddr_storage** - Hidden when `_XOPEN_SOURCE` is set in compat headers. Define explicitly in socket.h overlay.
+- **autoreconf overwrites prep_commands** - Patches to `configure` in `%prep` are undone by `autoreconf` in `%build`. Use spec_replacements to inject fixes after autoreconf.
+- **update-alternatives** - Doesn't exist on IRIX. Drop `Requires(post/preun/postun)` for packages that use it.
 
 **Build Environment:**
 - Cross-compiled binaries cannot be tested on the Linux host (use IRIX chroot for testing).

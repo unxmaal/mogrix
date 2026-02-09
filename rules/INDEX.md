@@ -62,6 +62,17 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | CJK font dependencies | k14, taipei16 fonts not on IRIX | configure_disable or spec_replacements | rules/packages/* | --disable-kanji --disable-big5 --disable-greek |
 | Unpackaged doc files | make install + %doc both install docs | install_cleanup | rules/packages/* | Remove from %{buildroot}%{_pkgdocdir} |
 | AUTOPOINT=true | autoreconf fails without autopoint | spec_replacements | rules/packages/* | `AUTOPOINT=true autoreconf -vfi` |
+| autoreconf overwrites prep | prep_commands modify configure, autoreconf regenerates it | spec_replacements | rules/packages/* | Inject sed AFTER autoreconf line, not in prep_commands |
+| sockaddr_storage hidden | dicl-clang-compat sets _XOPEN_SOURCE=500, hides sockaddr_storage | header overlay | cross/include/dicl-clang-compat/sys/socket.h | Define struct + pad macros in overlay |
+| C++ cmath errors | GCC 9 c++config.h enables C99 math TR1 | staging c++config.h patch | /opt/sgug-staging/.../bits/c++config.h | Comment out _GLIBCXX_USE_C99_MATH_TR1 |
+| wchar_t C++ keyword | IRIX stdlib.h typedef clashes with C++ keyword | irix-cxx wrapper | cross/bin/irix-cxx | `-D_WCHAR_T` prevents typedef |
+| Bashisms in specs | pushd/popd, brace expansion, substring | spec_replacements | rules/packages/* | pushd→cd, {a,b}→expand, ${c:0:7}→hardcode |
+| update-alternatives | Doesn't exist on IRIX, blocks rpm install | spec_replacements | rules/packages/* | Drop Requires(post/preun/postun) |
+| Compat header conflicts | Unconditional decls clash with static versions | ac_cv_overrides + inject_compat | rules/packages/* | Override ac_cv_func_X="yes" |
+| R_MIPS_REL32 crashes rld | Function pointers in static data | add_patch | patches/packages/* | Dispatch functions (switch/strcmp) |
+| Long double crash | IRIX MIPS n32 has no 128-bit long double | ac_cv_overrides | rules/packages/* | `ac_cv_type_long_double_wider: "no"` |
+| IRIX libgen.so | dirname/basename in libgen.so, not libc | spec_replacements | rules/packages/* | `LIBS="$LIBS -lgen"` before %configure |
+| Cross-build doc generation | Build tries to run MIPS binary for docs | spec_replacements | rules/packages/* | Override make vars to empty, remove doc from `all:` target |
 
 ## Invariants (Settled Facts)
 
@@ -86,6 +97,13 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 | rules/packages/aterm.yaml |
 | Man pages not compressed | rpmmacros.irix disables brp scripts; use `*.1*` not `*.1.gz` in %files | rpmmacros.irix |
 | AUTOPOINT=true for NLS-disabled | Packages with autoreconf + nls-disabled class need `AUTOPOINT=true` | rules/packages/*.yaml |
+| C++ uses GCC 9 libstdc++ | clang++ with SGUG-RSE libstdc++ headers + custom CRT (.ctors) | cross/bin/irix-cxx |
+| IRIX libm lacks C99 math | Must disable _GLIBCXX_USE_C99_MATH_TR1 in c++config.h | staging c++config.h |
+| autoreconf regenerates configure | prep_commands on configure get overwritten; use spec_replacements post-autoreconf | rules/packages/*.yaml |
+| sockaddr_storage hidden by _XOPEN_SOURCE | dicl-clang-compat sys/socket.h needs explicit struct definition | cross/include/dicl-clang-compat/sys/socket.h |
+| R_MIPS_REL32 crashes rld | Function pointers in static data arrays cause rld SIGSEGV | patches/packages/openssh/ |
+| IRIX long double = double (n32) | 128-bit long double not supported; __extenddftf2 crashes | rules/packages/*.yaml |
+| dirname/basename in libgen.so | Not in libc; must link -lgen explicitly | rules/packages/nano.yaml |
 
 ## File Locations
 
@@ -93,7 +111,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 |----------|------|----------|
 | Generic rules | rules/generic.yaml | Applied to ALL packages |
 | Class rules | rules/classes/*.yaml | Shared rules for package groups |
-| Package rules | rules/packages/*.yaml | Per-package overrides (96 packages) |
+| Package rules | rules/packages/*.yaml | Per-package overrides (115 packages) |
 | Source checks | rules/source_checks.yaml | IRIX source pattern definitions |
 | Compat functions | compat/catalog.yaml | Function registry + source patterns |
 | Compat sources | compat/string/, compat/stdio/, compat/stdlib/, compat/dicl/, compat/malloc/ | Implementation files |
