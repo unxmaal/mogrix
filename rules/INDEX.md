@@ -38,7 +38,10 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Libtool cross-detect | libtool says "unknown platform" | spec_replacements | rules/packages/* | Use fix-libtool-irix.sh after configure |
 | CMake cross-compile | find_package fails, wrong paths | spec_replacements | rules/packages/* | Set CMAKE_FIND_ROOT_PATH, disable tests |
 | RPM macro pollution | %configure clobbers cross flags | configure_flags: remove | rules/packages/* | Or use spec_replacements to fix |
-| TLS not supported | __thread keyword, rld link failure | add_patch | patches/packages/* | Remove __thread, accept single-thread |
+| TLS not supported | __thread / _Thread_local, rld Fatal Error `__tls_get_addr` | prep_commands | rules/packages/* | Sed `#define _Thread_local __thread` → `#define _Thread_local` in headers. `-D` from CFLAGS WON'T WORK (source `#define` overrides). See gnutls.yaml |
+| Plugin dlopen path | App has plugins in non-standard path, commands missing | bundle wrapper env | mogrix/bundle.py | Set `WEECHAT_EXTRA_LIBDIR` etc. via `{extra_env_block}` in wrapper |
+| gnutls CA certs | "certificate issuer unknown", TLS handshake fails | bundle `-r` flag | mogrix/bundle.py | Bundle auto-includes CA certs; weechat wrapper passes `-r "/set weechat.network.gnutls_ca_user ..."` |
+| extra_cflags dead code | Rule validated but never applied | use prep_commands or export_vars | rules/packages/* | `extra_cflags` in validator.py but NOT in engine.py. Workaround: `prep_commands` sed or `export_vars: CFLAGS` |
 | vsnprintf pre-C99 | garbled output, truncation | inject_compat_functions: vasprintf | rules/packages/* | IRIX vsnprintf(NULL,0) returns -1 |
 | Linker selection | .so crashes rld, bad relocations | export_vars: LD | rules/packages/* | GNU ld for -shared, LLD 18 for exe |
 | Path conventions | /etc vs /usr/sgug/etc | spec_replacements | rules/packages/* | SGUG uses /usr/sgug prefix |
@@ -73,6 +76,13 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Long double crash | IRIX MIPS n32 has no 128-bit long double | ac_cv_overrides | rules/packages/* | `ac_cv_type_long_double_wider: "no"` |
 | IRIX libgen.so | dirname/basename in libgen.so, not libc | spec_replacements | rules/packages/* | `LIBS="$LIBS -lgen"` before %configure |
 | Cross-build doc generation | Build tries to run MIPS binary for docs | spec_replacements | rules/packages/* | Override make vars to empty, remove doc from `all:` target |
+| bcond flipping | Spec has inline %if/%else/%endif inside %configure continuation | spec_replacements | rules/packages/* | `%bcond_without X` → `%bcond_with X`; RPM resolves conditionals to %else branches. configure_flags:remove can't handle these. See gnutls.yaml |
+| PRIdMAX/SCNd64 macros | Compile error: implicit/undeclared PRIdMAX, SCNd64, etc. | compat header | compat/include/mogrix-compat/generic/inttypes.h | 18 macros: PRId/PRIu/PRIx/PRIX/PRIoMAX, PRId/PRIu/PRIx/PRIXPTR, SCNd/SCNu/SCNx64, SCNd/SCNu/SCNxMAX |
+| cmake %cmake3 macro | FC40 spec uses %cmake3/%cmake3_build/%cmake3_install | spec_replacements | rules/packages/* | Replace with raw cmake + make. Set CMAKE_SYSTEM_NAME=IRIX, cross tools, staging paths. See weechat.yaml, tdnf.yaml |
+| select() duplicate symbol | dicl-clang-compat `extern select()` vs IRIX `static select()` | header guard | cross/include/dicl-clang-compat/sys/select.h | Guard with `#ifndef _SYS_TIME_H` to prevent conflict when _XOPEN_SOURCE set |
+| rld symbol resolution debug | Binary crashes silently or ldd SIGSEGV | `_RLD_ARGS="-log /tmp/rld.log"` | methods/irix-testing.md | Shows unresolvable symbols, soname mismatches. Check NEEDED sonames match installed .so files |
+| ncurses ext-colors terminfo | SIGBUS on MIPS, garbage cols/lines values | spec_replacements | rules/packages/ncurses.yaml | `--disable-ext-colors`; ext-colors reads 16-bit terminfo fields as 32-bit |
+| Explicit Provides required | rpm -Uvh fails with unresolved deps | spec_replacements | rules/packages/* | rpmmacros.irix sets AutoProv:no; add `Provides: libfoo.so.N` for each .so |
 
 ## Invariants (Settled Facts)
 
@@ -104,6 +114,15 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | R_MIPS_REL32 crashes rld | Function pointers in static data arrays cause rld SIGSEGV | patches/packages/openssh/ |
 | IRIX long double = double (n32) | 128-bit long double not supported; __extenddftf2 crashes | rules/packages/*.yaml |
 | dirname/basename in libgen.so | Not in libc; must link -lgen explicitly | rules/packages/nano.yaml |
+| bcond flipping is safe | Changing `%bcond_without` to `%bcond_with` only affects the macro default; all `%if %{with X}` blocks evaluate to FALSE, keeping `%else` branches | rules/packages/gnutls.yaml |
+| AutoProv: no in rpmmacros.irix | Cannot be overridden from spec; every .so-producing package needs explicit `Provides:` | rpmmacros.irix |
+| ncurses ext-colors breaks terminfo | ABI 6 auto-enables ext-colors → 32-bit number fields → garbage cols/lines → SIGBUS | rules/packages/ncurses.yaml |
+| _RLD_ARGS="-log" for debugging | IRIX rld logging shows unresolvable symbols, wrong sonames, load order | methods/irix-testing.md |
+| IRIX inttypes.h lacks MAX/PTR macros | PRIdMAX, SCNd64, etc. not defined; mogrix-compat inttypes.h provides them | compat/include/mogrix-compat/generic/inttypes.h |
+| Source `#define` overrides `-D` | CFLAGS `-D_Thread_local=` won't work if source has `#define _Thread_local __thread` | rules/packages/gnutls.yaml |
+| `extra_cflags` rule is dead code | Validated in validator.py but never applied by engine.py; use prep_commands or export_vars | mogrix/rules/validator.py |
+| SSL_CERT_FILE is OpenSSL-only | gnutls ignores it; use app-specific CA config (weechat: gnutls_ca_user) | mogrix/bundle.py |
+| weechat 4.x renamed gnutls settings | `gnutls_ca_file` → `gnutls_ca_system` + `gnutls_ca_user` | rules/packages/weechat.yaml |
 
 ## File Locations
 

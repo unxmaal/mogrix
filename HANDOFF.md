@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-09 (session 13)
-**Status**: 81 source packages cross-compiled (217 RPMs). App bundles WORKING with Flatpak-style install (`mogrix bundle`). C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
+**Last Updated**: 2026-02-09 (session 15)
+**Status**: 83 source packages cross-compiled (225+ RPMs). **weechat connected to Libera.Chat IRC from IRIX!** App bundles with Flatpak-style install, CA certs, plugin autoconfig. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
 
 ---
 
@@ -17,21 +17,74 @@
 
 ---
 
-## IMMEDIATE NEXT: Build gnutls → weechat → bundle
+## IMMEDIATE NEXT
 
-**Top priority**: gnutls (rules exist, deps staged) → weechat (write rules) → `mogrix bundle weechat` → ship tarball to forum user.
+**weechat bundle is SHIPPING** — connected to Libera.Chat IRC from SGI IRIX! Tarball at `~/mogrix_outputs/bundles/weechat-4.2.1-2-irix-bundle.tar.gz` (21.7 MB). Includes CA certs, auto-configures gnutls trust store, plugin autoloading.
 
-weechat deps: ncurses (done), zlib (done), curl (done), openssl (done), libgcrypt (done), zstd (done). Only blocker: **gnutls** (mandatory since weechat 2.9, no OpenSSL fallback). Disable: NLS, all scripting langs, spell, doc, man, tests, headless, cjson.
-
-34 packages have rules but no RPMs yet. Other priorities:
+Priorities:
+- **Ship weechat tarball** to forum user (community request) — READY NOW
+- **Add bundle versioning** — alphabetic suffix (e.g., `2a`, `2b`) to distinguish rebuilds
+- **More bundle candidates (already built):** nano, groff, openssh, aterm
 - **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils, expect, tk, gtk2
 - **Meson (need `%meson` macro):** cairo 1.18, harfbuzz, pango, glib2, p11-kit
 - **Still blocked:** lolcat (wchar I/O), bc (host binary bootstrap), xclip (IRIX Xmu too old)
-- **Bundle candidates (already built):** nano, groff, openssh, aterm, vim (needs build), htop (needs /proc investigation)
+- **gnutls-utils installs libtool wrapper scripts** instead of real binaries (certtool, gnutls-cli etc). Needs fix-libtool-irix.sh or similar.
+- **Implement `extra_cflags`** in rules engine (currently validated but dead code)
 
 ---
 
-## Recent Session (13): ncurses Fix + Bundle Restructure
+## Recent Session (15): TLS fixes + bundle polish
+
+### gnutls _Thread_local crash (CRITICAL FIX)
+`__tls_get_addr` is an unresolvable symbol on IRIX (rld has no TLS support). gnutls `lib/gthreads.h` maps `_Thread_local` to `__thread`, creating TLS variables in `random.c` and `fips.c`.
+
+**Fix**: `prep_commands` sed to redefine `_Thread_local` to empty in `gthreads.h` — thread-local becomes plain static. Safe: IRIX is single-threaded for our purposes.
+
+**Gotcha**: `-D_Thread_local=` in CFLAGS does NOT work — `#define` in source headers overrides `-D` from command line. Must patch the header directly.
+
+**Gotcha**: `extra_cflags` rule is validated but NOT implemented in the engine — dead code. Used `prep_commands` instead.
+
+### weechat plugin loading (WEECHAT_EXTRA_LIBDIR)
+Weechat has `/usr/sgug/lib32/weechat` hardcoded as plugin search path. Bundle plugins are at `_lib32/weechat/plugins/`. Without `WEECHAT_EXTRA_LIBDIR`, the IRC plugin doesn't load — only core commands available (no `/server`).
+
+**Fix**: Bundle wrappers set `WEECHAT_EXTRA_LIBDIR="$dir/_lib32/weechat"`.
+
+### CA certificate auto-configuration
+gnutls ignores `SSL_CERT_FILE` (that's OpenSSL). Weechat uses `weechat.network.gnutls_ca_user` setting.
+
+**Fix**:
+1. `mogrix bundle` auto-includes build host CA certs (`_include_ca_bundle()`)
+2. Weechat wrapper passes `-r "/set weechat.network.gnutls_ca_user $dir/etc/pki/tls/certs/ca-bundle.crt"`
+3. `-r` is ephemeral (not saved), acts as default without overriding user config
+
+### Bundle infrastructure improvements (`bundle.py`)
+- `{extra_env_block}` in wrapper templates — per-bundle env vars (WEECHAT_EXTRA_LIBDIR, SSL_CERT_FILE)
+- `{extra_args}` in wrapper templates — per-binary CLI args (weechat's `-r` for CA setup)
+- `_include_ca_bundle()` — auto-detects and copies build host CA bundle
+- Detection is data-driven: weechat plugins dir → WEECHAT_EXTRA_LIBDIR; ca-bundle.crt → SSL_CERT_FILE + gnutls_ca_user
+
+### weechat VERIFIED on Libera.Chat IRC
+- TLS connection to irc.libera.chat:6697 — **working**
+- Certificate verification via bundled CA certs — **working**
+- IRC plugin autoloading via WEECHAT_EXTRA_LIBDIR — **working**
+- All 54 trampolines functional
+
+## Session (14): gnutls + weechat + bundle
+
+### gnutls 3.8.3 — bcond flipping pattern
+Complex spec with inline `%if/%else/%endif` inside `%configure` line continuations. The `configure_flags: remove` engine can't handle these (leaves orphaned `\` on `%endif` lines → `%else with no %if` error).
+
+**Solution: bcond flipping** — Replace `%bcond_without X` with `%bcond_with X` via spec_replacements. RPM evaluates `%if %{with X}` to FALSE, keeping only `%else` branches. Much cleaner than trying to strip individual flags.
+
+### weechat 4.2.1 — cmake cross-compilation
+Replaced entire `%cmake3` block with raw cmake invocation. Disabled ALL scripting languages, spell, docs, headless, NLS, cJSON. Key: `ICONV_INCLUDE_PATH`/`ICONV_FOUND` for FindIconv.cmake, select() duplicate symbol fix.
+
+### libcurl OpenSSL soname fix
+Rebuilt curl → NEEDED now correctly shows `libssl.so.3` (not `libssl.so.0.9.7`). Root cause: old build predated irix-ld staging `-L` ordering fix.
+
+---
+
+## Session (13): ncurses Fix + Bundle Restructure
 
 ### ncurses ext-colors terminfo corruption (CRITICAL FIX)
 - **Symptom**: `nano` (interactive) → Bus error on IRIX. `nano --version` works.
@@ -40,70 +93,44 @@ weechat deps: ncurses (done), zlib (done), curl (done), openssl (done), libgcryp
 - **Verified**: `infocmp -C vt100` shows `co#80`, nano interactive works.
 
 ### Bundle restructure — Flatpak-inspired install model
-User feedback: per-bundle PATH entries are unacceptable for multiple bundles.
-- **New model**: One `bin/` directory with trampoline scripts pointing into bundles
-- **Trampoline**: 4-line shell script that resolves own location via `dirname "$0"` and uses relative path (`../<bundle>/<cmd>`)
-- **Why not absolute paths**: Baked-in absolute paths break across chroot boundaries
-- **Why not symlinks**: `dirname "$0"` resolves to symlink location, breaking wrapper's relative paths
-- **Bundle internal layout**: `_bin/`, `_lib32/` (prefixed to avoid PATH collision), wrappers at root named after real commands
-- **Install/uninstall scripts**: `./install` creates trampolines in `../bin/`, `./uninstall` removes them
-- **Tested on IRIX**: nano + groff bundles coexist, 62 trampolines in one `bin/`, install/uninstall both work
-- **Usage**: `PATH=/opt/mogrix-apps/bin:$PATH; export PATH` (one-time, covers all bundles)
+- One `bin/` directory with trampoline scripts pointing into bundles
+- Trampoline: 4-line shell script that resolves own location via `dirname "$0"` and uses relative path
+- Install/uninstall scripts; tested on IRIX with nano + groff coexisting
 
 ### Bundle optimization — 92% size reduction
-- **Lib pruning**: Scan all ELFs for transitive NEEDED sonames, remove everything else from `_lib32/`
-- **Terminfo trim**: Keep ~30 common terminals (iris-ansi, xterm, vt100, screen), remove ~2800 others
-- **Strip docs**: Remove `share/doc/`, `share/man/`, `share/info/`, `share/licenses/`
-- **Staging dedup**: Copy real file + symlink soname, not two full copies
-- **Result**: nano bundle 48MB → 3.9MB (tarball 13MB → 0.9MB)
-
-### Session (12): App Bundles (initial implementation)
-- Resolves deps via ELF `readelf -d` NEEDED scanning (RPM Requires useless with AutoReq: no)
-- Scans IRIX sysroot (313 native .so files) to skip system libs
-- SOURCERPM sibling grouping (groff auto-includes groff-base + groff-perl)
-- Staging fallback for non-mogrix libs (libstdc++.so.6) with WARNING
-
-### Distribution strategy in `packages_plan.md`
-- **Phase A (now)**: App bundles for individual apps alongside SGUG-RSE
-- **Phase B (later)**: Full /usr/sgug replacement when parity reached
-- **Phase C (endgame)**: tdnf repo for ongoing updates
+- Lib pruning, terminfo trim, doc strip, staging dedup
+- nano bundle 48MB → 3.9MB (tarball 13MB → 0.9MB)
 
 ---
 
 ## Session (11): groff + C++ Milestone
 
 ### groff 1.23.0 — First C++ package!
-Built with `irix-cxx` (clang++ + GCC 9 libstdc++). Key fixes:
-1. **c++config.h**: Disabled `_GLIBCXX_USE_C99_MATH_TR1` and `_GLIBCXX_USE_STD_SPEC_FUNCS` (IRIX libm lacks C99 math)
-2. **wchar_t keyword**: `-D_WCHAR_T` in irix-cxx prevents IRIX typedef
-3. **Doc generation**: Override all PROCESSED*/GENERATED* make vars (can't run MIPS groff on build host)
-4. **Bashisms**: Brace expansion, pushd/popd expanded manually
-5. **update-alternatives**: Drop `Requires(post/preun/postun)` — doesn't exist on IRIX
-6. **Dropped subpackages**: doc, x11 + install_cleanup for leftover files
+Built with `irix-cxx` (clang++ + GCC 9 libstdc++). Key fixes: c++config.h, wchar_t keyword, doc generation override, bashisms, update-alternatives drop, subpackage drops.
 
-Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix in dicl-clang-compat/sys/socket.h).
+Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix).
 
 ### Sessions 7-10 Summary
-- **Session 10**: C++ cross-compilation infrastructure (irix-cxx, CRT objects, c++config.h patches)
-- **Session 9**: batch-build of 68 packages, 8 new packages built (figlet, sl, time, cmatrix, gmp, mpfr, hyphen, libevent)
-- **Session 8**: nano, rsync, unzip, zip. Long double crash pattern (`ac_cv_type_long_double_wider: "no"`)
+- **Session 10**: C++ cross-compilation infrastructure
+- **Session 9**: batch-build of 68 packages, 8 new packages built
+- **Session 8**: nano, rsync, unzip, zip. Long double crash pattern
 - **Session 7**: `mogrix batch-build` command implemented
 
 ### Sessions 4-6 Summary
-- **Session 6**: tdnf Error(1602) root cause (IRIX pre-C99 vsnprintf). cmake cross-compilation regression fixes.
-- **Session 5**: OpenSSH 9.6p1 (R_MIPS_REL32 dispatch pattern, fork-mode broken, debug-mode works)
-- **Session 4**: aterm (first X11 app), `-rdynamic` filter, tdnf repo setup, roadmap performance fix
+- **Session 6**: tdnf Error(1602) root cause (IRIX pre-C99 vsnprintf)
+- **Session 5**: OpenSSH 9.6p1 (R_MIPS_REL32 dispatch pattern)
+- **Session 4**: aterm (first X11 app), `-rdynamic` filter, tdnf repo setup
 
 ---
 
 ## Package Status
 
-**Total: 81 source packages (217 RPMs)**
+**Total: 83 source packages (225+ RPMs)**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
 
-### Phase 5+: 40 packages
+### Phase 5+: 42 packages
 
 | Package | Version | Status | Key Fixes |
 |---------|---------|--------|-----------|
@@ -123,8 +150,8 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | fontconfig | 2.15.0 | INSTALLED | Host gperf, expat, __sync atomics |
 | freetype | 2.13.2 | INSTALLED | Explicit Provides for ISA + .so |
 | expat | 2.6.0 | STAGED | man page touch, --without-docbook |
-| nettle | 3.9.1 | STAGED | --enable-mini-gmp |
-| libtasn1 | 4.19.0 | STAGED | GTKDOCIZE=true |
+| nettle | 3.9.1 | INSTALLED | --enable-mini-gmp |
+| libtasn1 | 4.19.0 | INSTALLED | GTKDOCIZE=true |
 | fribidi | 1.0.13 | STAGED | autotools path, utime rename |
 | libjpeg-turbo | 3.0.2 | STAGED | raw cmake, SIMD off |
 | pixman | 0.43.0 | STAGED | meson cross file |
@@ -147,6 +174,8 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | giflib | 5.2.2 | INSTALLED | cmake cross-build |
 | libstrophe | 0.13.1 | INSTALLED | res_query, sockaddr_storage |
 | groff | 1.23.0 | INSTALLED | First C++ package! |
+| **gnutls** | **3.8.3** | **INSTALLED** | **bcond flipping, PRIdMAX compat, _Thread_local fix, drop crypto-policies** |
+| **weechat** | **4.2.1** | **BUNDLED+VERIFIED** | **Connected to Libera.Chat! cmake cross-build, plugin autoload, CA certs** |
 
 ---
 
@@ -183,6 +212,7 @@ mv /usr/sgug /usr/sgug.new && mv /usr/sgug.old /usr/sgug
 | Original SRPMs | `~/mogrix_inputs/SRPMS/` |
 | Converted SRPMs | `~/mogrix_outputs/SRPMS/` |
 | Built RPMs | `~/mogrix_outputs/RPMS/` |
+| Bundles | `~/mogrix_outputs/bundles/` |
 
 ### Workflow
 ```bash
@@ -191,6 +221,7 @@ uv run mogrix convert ~/mogrix_inputs/SRPMS/<pkg>-*.src.rpm
 uv run mogrix build ~/mogrix_outputs/SRPMS/<pkg>-*-converted/<pkg>-*.src.rpm --cross
 uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 # Install on IRIX via MCP: irix_copy_to + irix_exec "rpm -Uvh"
+# Bundle: uv run mogrix bundle <package>
 ```
 
 ---
@@ -210,29 +241,34 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **autoreconf undoes prep_commands** — patches to configure in %prep get overwritten. Use spec_replacements after autoreconf
 - **sockaddr_storage** hidden by `_XOPEN_SOURCE=500` in dicl-clang-compat — defined explicitly in overlay
 - **ncurses ext-colors terminfo corruption** — ABI 6 auto-enables ext-colors, reads 16-bit terminfo numbers as 32-bit. Fix: `--disable-ext-colors`
+- **configure_flags: remove vs inline conditionals** — Engine can't handle `%if/%else/%endif` inside `%configure` continuations. Use bcond flipping instead.
+- **select() duplicate symbol** — dicl-clang-compat `extern select()` vs IRIX `static select()` when `_XOPEN_SOURCE` set. Fixed in `cross/include/dicl-clang-compat/sys/select.h`
+- **__tls_get_addr / _Thread_local** — IRIX rld has no TLS. Any `__thread` or `_Thread_local` variables cause rld Fatal Error. Fix: patch source headers to remove TLS keywords. `-D` from CFLAGS won't work (source `#define` overrides). See gnutls.yaml `prep_commands`.
+- **gnutls-utils libtool wrappers** — `make install` installs libtool wrapper scripts instead of real binaries. Needs fix-libtool-irix.sh or chrpath.
 
 ---
 
-## What Worked (Session 13)
+## What Worked (Sessions 14-15)
 
-- **Relative-path trampolines**: Resolve own location via `dirname "$0"`, use `../<bundle>/<cmd>`. No absolute paths — works in chroot and outside.
-- **Flatpak-inspired `bin/` model**: Single shared `bin/` with install/uninstall scripts. Multiple bundles coexist cleanly.
-- **ncurses `--disable-ext-colors`**: Fixes terminfo number corruption on IRIX. `infocmp` confirms correct values.
-- **Bundle lib pruning**: Scanning NEEDED transitively and removing unused .so files saves ~33MB on nano bundle alone.
-- **Terminfo trimming**: ~30 common terminals vs full ~2800 entries saves ~12MB per bundle with terminfo.
+- **bcond flipping**: Cleanly disables features in specs with inline `%if/%else/%endif` inside `%configure`.
+- **PRIdMAX format macros**: Added to mogrix-compat/generic/inttypes.h.
+- **cmake cross-compilation for weechat**: Full raw cmake invocation replacing `%cmake3` macro.
+- **OpenSSL soname fix**: Rebuilt libcurl → correct `libssl.so.3` NEEDED.
+- **_Thread_local → empty via prep_commands sed**: Only reliable way to disable TLS keywords (CFLAGS `-D` gets overridden by `#define`).
+- **WEECHAT_EXTRA_LIBDIR**: Solved plugin dlopen path for bundle installs.
+- **Bundle CA cert auto-inclusion**: `_include_ca_bundle()` + weechat `-r` auto-config. Users get working TLS out of the box.
+- **Bundle wrapper `{extra_env_block}` + `{extra_args}`**: Generic infrastructure for per-app env vars and CLI args.
 
-## What Worked (Session 12)
+## What Failed / Gotchas (Sessions 14-15)
 
-- **ELF scanning for deps**: `readelf -d` on MIPS binaries from x86 host works perfectly. RPM Requires are useless (AutoReq: no → only rpmlib() entries).
-- **IRIX sysroot glob for native libs**: 313 sonames in `/opt/irix-sysroot/{usr/,}lib32/`. Dynamic, not hardcoded.
-- **SOURCERPM sibling grouping**: `rpm -qp --queryformat '%{SOURCERPM}'` correctly groups groff + groff-base + groff-perl.
-- **Staging fallback**: libstdc++.so.6 and libgcc_s.so.1 correctly detected as non-mogrix and copied from staging.
-
-## What Failed / Gotchas (Sessions 12-13)
-
-- **`$(...)` syntax in launcher scripts**: IRIX `/bin/sh` is the original Bourne shell. Must use backticks, `case` for path detection, `if`/`then` for conditionals. No `${var:+word}`.
-- **MCP sgug-exec uses csh**: Running launcher scripts directly via `irix_exec` fails because the outer csh chokes on backticks. Must invoke as `/bin/sh /path/to/run` or the `#!/bin/sh` shebang handles it in a real terminal.
-- **Symlinks break dirname resolution**: `ln -s ../bundle/nano bin/nano` → `dirname "$0"` returns `bin/`, not `../bundle/`. IRIX has no `readlink -f`. Trampolines solve this.
+- **configure_flags: remove on inline conditionals**: Leaves orphaned `\` on `%endif` lines. Solution: bcond flipping.
+- **Symlink hack for OpenSSL sonames**: Wrong approach — fixed root cause by rebuilding.
+- **`-D_Thread_local=` in CFLAGS**: Source `#define _Thread_local __thread` OVERRIDES `-D` from command line. Must patch the header directly.
+- **`extra_cflags` rule is dead code**: Validated in validator.py but never applied in engine.py. Use `export_vars` or `prep_commands` instead.
+- **`mogrix stage` doesn't overwrite**: cpio extraction respects timestamps, may skip files. Delete old files first or use `-u` flag.
+- **`__tls_get_addr` is NOT just lazy binding**: It crashes on any actual TLS use (e.g., connecting to IRC with TLS). Previous session incorrectly assumed it was harmless.
+- **gnutls_ca_file renamed in weechat 4.x**: Now `gnutls_ca_system` and `gnutls_ca_user` (not `gnutls_ca_file`).
+- **SSL_CERT_FILE is OpenSSL-only**: gnutls ignores it. Must use app-specific mechanisms (weechat `-r`).
 
 ---
 
@@ -246,4 +282,4 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 | `compat/catalog.yaml` | Compat function registry |
 | `plan.md` | Project plan and architecture |
 | `packages_plan.md` | Distribution strategy, killer app targets, build tiers |
-| `mogrix/bundle.py` | App bundle generator (new in session 12) |
+| `mogrix/bundle.py` | App bundle generator |

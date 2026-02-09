@@ -102,4 +102,75 @@
 #define PRIX64 "llX"
 #endif
 
+/* MAX-width format specifiers (intmax_t = long long on MIPS n32) */
+#ifndef PRIdMAX
+#define PRIdMAX "lld"
+#endif
+
+#ifndef PRIiMAX
+#define PRIiMAX "lli"
+#endif
+
+#ifndef PRIuMAX
+#define PRIuMAX "llu"
+#endif
+
+#ifndef PRIxMAX
+#define PRIxMAX "llx"
+#endif
+
+#ifndef PRIXMAX
+#define PRIXMAX "llX"
+#endif
+
+#ifndef PRIoMAX
+#define PRIoMAX "llo"
+#endif
+
+/* PTR-width format specifiers (intptr_t = int on MIPS n32, 32-bit pointers) */
+#ifndef PRIdPTR
+#define PRIdPTR "d"
+#endif
+
+#ifndef PRIiPTR
+#define PRIiPTR "i"
+#endif
+
+#ifndef PRIuPTR
+#define PRIuPTR "u"
+#endif
+
+#ifndef PRIxPTR
+#define PRIxPTR "x"
+#endif
+
+#ifndef PRIXPTR
+#define PRIXPTR "X"
+#endif
+
+/* SCN (scanf) format specifiers */
+#ifndef SCNd64
+#define SCNd64 "lld"
+#endif
+
+#ifndef SCNu64
+#define SCNu64 "llu"
+#endif
+
+#ifndef SCNx64
+#define SCNx64 "llx"
+#endif
+
+#ifndef SCNdMAX
+#define SCNdMAX "lld"
+#endif
+
+#ifndef SCNuMAX
+#define SCNuMAX "llu"
+#endif
+
+#ifndef SCNxMAX
+#define SCNxMAX "llx"
+#endif
+
 #endif /* _MOGRIX_COMPAT_INTTYPES_H */

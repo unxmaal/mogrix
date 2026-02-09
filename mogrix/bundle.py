@@ -63,7 +63,7 @@ else
     LD_LIBRARYN32_PATH="$dir/_lib32"
 fi
 export LD_LIBRARYN32_PATH
-{terminfo_block}exec "$dir/_bin/{binary}" "$@"
+{terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
 """
 
 SBIN_WRAPPER_TEMPLATE = """\
@@ -79,7 +79,7 @@ else
     LD_LIBRARYN32_PATH="$dir/_lib32"
 fi
 export LD_LIBRARYN32_PATH
-{terminfo_block}exec "$dir/_sbin/{binary}" "$@"
+{terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
 """
 
 TERMINFO_BLOCK = """\
@@ -384,6 +384,23 @@ class BundleBuilder:
         "dtterm", "sun",
     }
 
+    def _include_ca_bundle(self, bundle_dir: Path) -> None:
+        """Include system CA certificates for TLS verification.
+
+        Copies the build host's CA bundle into the bundle so gnutls/openssl
+        can verify server certificates on IRIX (which has no CA store).
+        """
+        ca_sources = [
+            Path("/etc/ssl/certs/ca-certificates.crt"),  # Debian/Ubuntu
+            Path("/etc/pki/tls/certs/ca-bundle.crt"),  # RHEL/Fedora
+        ]
+        for src in ca_sources:
+            if src.is_file():
+                dest = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                break
+
     def _trim_terminfo(self, bundle_dir: Path) -> None:
         """Trim terminfo database to common terminals only.
 
@@ -598,9 +615,40 @@ class BundleBuilder:
         # Trim terminfo to common terminals (full set is ~12MB)
         self._trim_terminfo(bundle_dir)
 
+        # Include system CA certificates for TLS-using bundles
+        self._include_ca_bundle(bundle_dir)
+
         # Detect if bundle has terminfo data (for TERMINFO env var in wrappers)
         has_terminfo = (bundle_dir / "share" / "terminfo").is_dir()
         terminfo_block = TERMINFO_BLOCK if has_terminfo else ""
+
+        # Detect app-specific env vars needed for plugin loading etc.
+        extra_env_lines = []
+        extra_args_map = {}  # binary name -> extra CLI args string
+        # weechat: WEECHAT_EXTRA_LIBDIR for dlopen-loaded plugins
+        weechat_plugins = bundle_dir / "_lib32" / "weechat" / "plugins"
+        if weechat_plugins.is_dir():
+            extra_env_lines.append(
+                'WEECHAT_EXTRA_LIBDIR="$dir/_lib32/weechat"'
+            )
+            extra_env_lines.append("export WEECHAT_EXTRA_LIBDIR")
+        # CA certificate bundle — set env var + weechat gnutls_ca_user
+        ca_bundle = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
+        if ca_bundle.is_file():
+            extra_env_lines.append(
+                'SSL_CERT_FILE="$dir/etc/pki/tls/certs/ca-bundle.crt"'
+            )
+            extra_env_lines.append("export SSL_CERT_FILE")
+            # weechat uses gnutls, not openssl — needs -r to set CA path
+            if weechat_plugins.is_dir():
+                ca_cmd = '/set weechat.network.gnutls_ca_user $dir/etc/pki/tls/certs/ca-bundle.crt'
+                for wc_bin in ("weechat", "weechat-curses"):
+                    extra_args_map[wc_bin] = (
+                        f'-r "{ca_cmd}" '
+                    )
+        extra_env_block = (
+            "\n".join(extra_env_lines) + "\n" if extra_env_lines else ""
+        )
 
         # Find all binaries (real files + symlinks in _bin/ and _sbin/)
         bin_dir = bundle_dir / "_bin"
@@ -623,7 +671,10 @@ class BundleBuilder:
             wrapper_path = bundle_dir / binary
             wrapper_path.write_text(
                 WRAPPER_TEMPLATE.format(
-                    binary=binary, terminfo_block=terminfo_block
+                    binary=binary,
+                    terminfo_block=terminfo_block,
+                    extra_env_block=extra_env_block,
+                    extra_args=extra_args_map.get(binary, ""),
                 )
             )
             wrapper_path.chmod(0o755)
@@ -632,7 +683,10 @@ class BundleBuilder:
             wrapper_path = bundle_dir / binary
             wrapper_path.write_text(
                 SBIN_WRAPPER_TEMPLATE.format(
-                    binary=binary, terminfo_block=terminfo_block
+                    binary=binary,
+                    terminfo_block=terminfo_block,
+                    extra_env_block=extra_env_block,
+                    extra_args=extra_args_map.get(binary, ""),
                 )
             )
             wrapper_path.chmod(0o755)
