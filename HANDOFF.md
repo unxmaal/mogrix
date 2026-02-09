@@ -1,177 +1,110 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-08 (session 4)
-**Status**: Phase 5 COMPLETE. aterm (X11 terminal emulator) INSTALLED and WORKING on IRIX. 64 source packages cross-compiled.
+**Last Updated**: 2026-02-09 (session 13)
+**Status**: 81 source packages cross-compiled (217 RPMs). App bundles WORKING with Flatpak-style install (`mogrix bundle`). C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
 
 ---
 
 ## CRITICAL WARNINGS
 
-**NEVER install packages directly to /usr/sgug on the live IRIX system.**
+**NEVER install packages directly to /usr/sgug on the live IRIX system.** Always use `/opt/chroot` for testing.
 
-On 2026-01-27, installing directly to /usr/sgug replaced libz.so with zlib-ng, broke sshd, and locked out SSH access. System recovered from console using backup libs.
+**NEVER CHEAT.** Don't copy from SGUG-RSE. Don't fake Provides. Every FC40 package must be properly cross-compiled. Check `rules/methods/before-you-start.md` if stuck.
 
-**Always use /opt/chroot for testing.** This is our clean chroot bootstrapped via `scripts/bootstrap-tarball.sh`. The old `/opt/chroot_0206` has the full SGUG-RSE base (backup only).
+**Question SGUG-RSE assumptions.** We cross-compile with a full sysroot — prefer system libraries over bundled copies.
 
-**NEVER CHEAT!** Work through problems converting packages. Don't copy from old SGUG-RSE. Don't fake Provides. Check the rules for how to handle being stuck.
-
-**Question SGUG-RSE assumptions.** SGUG-RSE bootstrapped ON IRIX without most deps. They bundled things and skipped system libraries out of necessity. We cross-compile with a full sysroot — prefer system libraries over bundled copies.
+**NEVER use raw SSH to IRIX.** Always use MCP tools (`irix_exec`, `irix_copy_to`, `irix_read_file`, `irix_par`).
 
 ---
 
-## Goal
+## IMMEDIATE NEXT: Build gnutls → weechat → bundle
 
-Cross-compile Fedora 40 packages for IRIX using mogrix. Phases 1-4c complete (41 packages). Phase 5 complete: library foundation + aterm (first X11 app). 64 total source packages cross-compiled.
+**Top priority**: gnutls (rules exist, deps staged) → weechat (write rules) → `mogrix bundle weechat` → ship tarball to forum user.
 
----
+weechat deps: ncurses (done), zlib (done), curl (done), openssl (done), libgcrypt (done), zstd (done). Only blocker: **gnutls** (mandatory since weechat 2.9, no OpenSSL fallback). Disable: NLS, all scripting langs, spell, doc, man, tests, headless, cjson.
 
-## IMMEDIATE NEXT: Choose Next Target
-
-aterm is COMPLETE (installed and working on IRIX). Possible next targets:
-
-### Autotools Packages Ready to Build
-- **gd** — graphics library, autotools
-- **jq** — JSON processor, autotools (needs select() declaration fix)
-- **pcre** — older regex library, autotools
-- **gnutls** — TLS library, autotools
-- **groff** — text formatting, autotools
-- **libarchive** — archive library, autotools
-- **elfutils** — ELF handling, autotools
-- **gtk2** — GTK toolkit, autotools
-
-### Meson Packages (require meson cross-compilation)
-FC40 GNOME stack has migrated to meson:
-- **cairo** 1.18.0 — `%meson` (1.16.x was autotools)
-- **harfbuzz** — `%meson`
-- **pango** — `%meson`
-- **glib2** — `%meson`
-- **p11-kit** — `%meson`
-
-We have `cross/meson-irix-cross.ini` and pixman was successfully built with meson.
+34 packages have rules but no RPMs yet. Other priorities:
+- **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils, expect, tk, gtk2
+- **Meson (need `%meson` macro):** cairo 1.18, harfbuzz, pango, glib2, p11-kit
+- **Still blocked:** lolcat (wchar I/O), bc (host binary bootstrap), xclip (IRIX Xmu too old)
+- **Bundle candidates (already built):** nano, groff, openssh, aterm, vim (needs build), htop (needs /proc investigation)
 
 ---
 
-## Phase 5 Progress
+## Recent Session (13): ncurses Fix + Bundle Restructure
 
-### Tier 0: Ready to Build ✅ COMPLETE
-| Package | Version | Status | Key Fixes |
-|---------|---------|--------|-----------|
-| pcre2 | 10.42 | INSTALLED | JIT/sealloc blocks, `--disable-percent-zt`, inttypes.h C99 fix |
-| symlinks | 1.7 | INSTALLED | CC override for raw Makefile |
-| tree-pkg | 2.1.0 | INSTALLED | Clean build |
-| oniguruma | 6.9.9 | INSTALLED | fix-libtool-irix.sh |
-| libffi | 3.4.4 | INSTALLED | CCASFLAGS `-fno-integrated-as` (LLVM #52785), sgidefs.h overlay |
-| tcl | 8.6.13 | INSTALLED | `tcl_cv_sys_version=IRIX64-6.5`, SHLIB_LD=`$CC -shared`, symlink fixes |
+### ncurses ext-colors terminfo corruption (CRITICAL FIX)
+- **Symptom**: `nano` (interactive) → Bus error on IRIX. `nano --version` works.
+- **Root cause**: ncurses 6.4 ABI 6 auto-enables `--enable-ext-colors` → `NCURSES_INT2=int` (32-bit). Terminfo reader interprets legacy 16-bit number fields as 32-bit: `cols=80` becomes `(80<<16)|8 = 5242888`. SIGBUS on MIPS from absurd buffer allocation.
+- **Fix**: `--disable-ext-colors` spec_replacement in `rules/packages/ncurses.yaml`. Rebuilt + installed.
+- **Verified**: `infocmp -C vt100` shows `co#80`, nano interactive works.
 
-### Tier 1: Leaf Blockers ✅ COMPLETE
-| Package | Version | Status | Key Fixes |
-|---------|---------|--------|-----------|
-| flex | 2.6.4 | INSTALLED | nls-disabled, inline basename (bootstrap HOST binary issue) |
-| chrpath | 0.16 | INSTALLED | byteswap.h compat, doc cleanup |
-| libpng | 1.6.40 | INSTALLED | pngcp/pngfix stubs (header conflicts + missing zlib features) |
-| bison | 3.8.2 | INSTALLED | gl_cv_header_working_stdint_h override, doc cleanup |
+### Bundle restructure — Flatpak-inspired install model
+User feedback: per-bundle PATH entries are unacceptable for multiple bundles.
+- **New model**: One `bin/` directory with trampoline scripts pointing into bundles
+- **Trampoline**: 4-line shell script that resolves own location via `dirname "$0"` and uses relative path (`../<bundle>/<cmd>`)
+- **Why not absolute paths**: Baked-in absolute paths break across chroot boundaries
+- **Why not symlinks**: `dirname "$0"` resolves to symlink location, breaking wrapper's relative paths
+- **Bundle internal layout**: `_bin/`, `_lib32/` (prefixed to avoid PATH collision), wrappers at root named after real commands
+- **Install/uninstall scripts**: `./install` creates trampolines in `../bin/`, `./uninstall` removes them
+- **Tested on IRIX**: nano + groff bundles coexist, 62 trampolines in one `bin/`, install/uninstall both work
+- **Usage**: `PATH=/opt/mogrix-apps/bin:$PATH; export PATH` (one-time, covers all bundles)
 
-### Tier 2: Small Chains (IN PROGRESS)
-| Package | Version | Status | Key Fixes |
-|---------|---------|--------|-----------|
-| libunistring | 1.1 | BUILT | Clean build |
-| gettext | 0.22.5 | INSTALLED | %files substring collision fix, common-devel dep drop |
-| zstd | 1.5.5 | INSTALLED | Makefile CC/AR/RANLIB exports, pthread detection, LDFLAGS preservation |
-| fontconfig | 2.15.0 | INSTALLED | Host gperf pre-generation, expat backend, __sync atomics, test dir removal |
-| freetype | 2.13.2 | INSTALLED | Rebuilt with explicit Provides (mips-32, libfreetype.so.6) |
-| expat | 2.6.0 | STAGED | prep_commands touch for man page, --without-docbook |
-| nettle | 3.9.1 | STAGED | --enable-mini-gmp, FIPS disabled, LD export |
-| libtasn1 | 4.19.0 | STAGED | GTKDOCIZE=true, gl_cv_header_working_stdint_h, docs disabled |
-| fribidi | 1.0.13 | STAGED | autotools path via %if 1, utime rename, getopt_long compat |
-| libjpeg-turbo | 3.0.2 | STAGED | raw cmake, SIMD off, setenv compat, lib32 hardcode |
-| pixman | 0.43.0 | STAGED | meson cross file, tests/demos disabled |
-| uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99, perl disabled, libtool override removed |
-| aterm | 1.0.1 | INSTALLED | X11 sysroot autodetect, drop libAfterImage/chrpath/desktop, -rdynamic filter |
+### Bundle optimization — 92% size reduction
+- **Lib pruning**: Scan all ELFs for transitive NEEDED sonames, remove everything else from `_lib32/`
+- **Terminfo trim**: Keep ~30 common terminals (iris-ansi, xterm, vt100, screen), remove ~2800 others
+- **Strip docs**: Remove `share/doc/`, `share/man/`, `share/info/`, `share/licenses/`
+- **Staging dedup**: Copy real file + symlink soname, not two full copies
+- **Result**: nano bundle 48MB → 3.9MB (tarball 13MB → 0.9MB)
 
----
+### Session (12): App Bundles (initial implementation)
+- Resolves deps via ELF `readelf -d` NEEDED scanning (RPM Requires useless with AutoReq: no)
+- Scans IRIX sysroot (313 native .so files) to skip system libs
+- SOURCERPM sibling grouping (groff auto-includes groff-base + groff-perl)
+- Staging fallback for non-mogrix libs (libstdc++.so.6) with WARNING
 
-## What Was Fixed This Session (Session 4)
-
-### 1. aterm cross-compilation (first X11 app!)
-FC39 package, simple autotools. Key fixes:
-- Remove `--x-includes`/`--x-libraries` flags — sysroot autodetects X11
-- Drop libAfterImage (optional, configure skips gracefully), chrpath, desktop-file-utils
-- Drop `xorg-x11-fonts-misc` Requires (IRIX has native X11 fonts)
-- Man page `.gz` suffix removal (brp scripts disabled in rpmmacros.irix)
-
-### 2. `-rdynamic`/`--export-dynamic` filter in irix-ld
-LLD doesn't support `-rdynamic`. Also dangerous for IRIX rld (SIGSEGV on large dynamic symbol tables). Added to filter in both `cross/bin/irix-ld` and staging copy.
-
-### 3. Roadmap performance fix
-`_build_exclusion_index()` scanned all binary_provides rows (millions) in the 1GB Fedora sqlite DB, pegging CPU and crashing. Removed entirely — lazy `_check_roadmap_drop()` after sqlite lookups achieves the same filtering.
-
-### 4. Expanded roadmap_config.yaml and sysroot_provides.yaml
-- Added gcc subpackage provides (cpp, libgcc, libstdc++, etc.)
-- Added ~50 more drop patterns (impossible ecosystems, desktop frameworks, linux-specific)
-- Reduced NEED_RULES from 2804 to 2137 (24% reduction)
+### Distribution strategy in `packages_plan.md`
+- **Phase A (now)**: App bundles for individual apps alongside SGUG-RSE
+- **Phase B (later)**: Full /usr/sgug replacement when parity reached
+- **Phase C (endgame)**: tdnf repo for ongoing updates
 
 ---
 
-## What Was Fixed in Session 3
+## Session (11): groff + C++ Milestone
 
-### 1. PKG_CONFIG_SYSROOT_DIR (systemic fix)
-pkg-config returns paths like `/usr/sgug/include/freetype2` but that doesn't exist on the build host. Added `export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"` to `%configure` in `cross/rpmmacros.irix`. Affects ALL packages using pkg-config.
+### groff 1.23.0 — First C++ package!
+Built with `irix-cxx` (clang++ + GCC 9 libstdc++). Key fixes:
+1. **c++config.h**: Disabled `_GLIBCXX_USE_C99_MATH_TR1` and `_GLIBCXX_USE_STD_SPEC_FUNCS` (IRIX libm lacks C99 math)
+2. **wchar_t keyword**: `-D_WCHAR_T` in irix-cxx prevents IRIX typedef
+3. **Doc generation**: Override all PROCESSED*/GENERATED* make vars (can't run MIPS groff on build host)
+4. **Bashisms**: Brace expansion, pushd/popd expanded manually
+5. **update-alternatives**: Drop `Requires(post/preun/postun)` — doesn't exist on IRIX
+6. **Dropped subpackages**: doc, x11 + install_cleanup for leftover files
 
-### 2. dicl-clang-compat/limits.h overlay
-IRIX `limits.h` guards C99 long long limits (LLONG_MIN, LLONG_MAX, ULLONG_MAX) behind `__c99` (MIPSpro flag). Created overlay with `#include_next` + explicit defines.
+Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix in dicl-clang-compat/sys/socket.h).
 
-### 3. Fontconfig gperf CPP regeneration
-Cross-compiler CPP injects `typedef __builtin_va_list va_list;` into gperf input, corrupting it. Fix: pre-generate `fcobjshash.gperf` and `fcobjshash.h` using HOST cpp+gperf before make runs. The tarball does NOT ship these files — they MUST be generated during build.
+### Sessions 7-10 Summary
+- **Session 10**: C++ cross-compilation infrastructure (irix-cxx, CRT objects, c++config.h patches)
+- **Session 9**: batch-build of 68 packages, 8 new packages built (figlet, sl, time, cmatrix, gmp, mpfr, hyphen, libevent)
+- **Session 8**: nano, rsync, unzip, zip. Long double crash pattern (`ac_cv_type_long_double_wider: "no"`)
+- **Session 7**: `mogrix batch-build` command implemented
 
-### 4. Fontconfig test compilation during make all
-Test programs use `setenv()` (not on IRIX) and compile during `make all` not just `make check`. Fix: `sed -i 's/ test$//' Makefile.am` before autoreconf.
-
-### 5. Explicit Provides for cross-compiled packages
-AutoProv is disabled in rpmmacros.irix. Packages need explicit `Provides:` for shared libraries and ISA-specific capabilities. Added to freetype (`libfreetype.so.6`, `freetype(mips-32)`) and fontconfig (`libfontconfig.so.1`, `fontconfig(mips-32)`).
-
-### 6. drop_requires multi-package line bug
-`drop_requires` in `emitter/spec.py` has a regex bug: Pattern 2 (multi-package Requires line) uses `.+(?:^|\s)dep` which fails when the dep is the FIRST package on the line (`.+` requires at least one char before `(?:^|\s)`). Workaround: use `spec_replacements` to replace the entire multi-package line.
-
-### 7. Makefile-based cross-compilation (zstd)
-Packages using plain Makefiles (not autotools) don't get CC from `%configure`. Must explicitly `export CC="%{__cc}"`, `export AR="%{__ar}"`, `export RANLIB="%{__ranlib}"`. Also: `LDFLAGS="$LDFLAGS $RPM_LD_FLAGS"` to APPEND (not overwrite mogrix LDFLAGS).
-
-### 8. Gettext %files substring collision
-Pattern `%{_libdir}/libgettextpo.so` matched inside `%{_libdir}/libgettextpo.so.0*`, corrupting filenames. Fix: use unique, non-overlapping anchor strings for each spec_replacement.
-
-### 9. Cairo 1.18.0 uses meson (BLOCKED)
-FC40 cairo uses `%meson` build system. SGUG-RSE patch for 1.16.0 doesn't apply. Options: meson cross-compilation, older autotools version, or skip.
+### Sessions 4-6 Summary
+- **Session 6**: tdnf Error(1602) root cause (IRIX pre-C99 vsnprintf). cmake cross-compilation regression fixes.
+- **Session 5**: OpenSSH 9.6p1 (R_MIPS_REL32 dispatch pattern, fork-mode broken, debug-mode works)
+- **Session 4**: aterm (first X11 app), `-rdynamic` filter, tdnf repo setup, roadmap performance fix
 
 ---
 
-## What Was Fixed in Session 2
+## Package Status
 
-### Meson cross-compilation support
-Installed meson 1.10.1 via `uv tool install meson`. Created `cross/meson-irix-cross.ini` cross file. Key issue: irix-cc wrapper was forwarding `--version` to linker instead of compiler.
-
-### cmake cross-compilation (libjpeg-turbo)
-Replace `%{cmake}` macros with raw cmake commands. Use `-DCMAKE_INSTALL_LIBDIR=lib32` (hardcoded). Pass compat via `-DCMAKE_EXE_LINKER_FLAGS`.
-
-### irix-cc/irix-ld wrapper improvements
-- Added `--version`/`-v`/`--help`/`-dumpversion`/`-dumpmachine` handling
-- Added `-ggdb*`/`-gdwarf*`/`-gz*` to link-only filter
-- `--no-undefined` filtered for shared library links (IRIX libc has `__tls_get_addr` refs)
-
-### Other session 2 fixes
-- configure_flags:remove regex bug (lookahead for `--enable-jit` vs `--enable-jit-sealloc`)
-- Duplicate add_patch/add_source engine bug
-- C99 inttypes.h compliance, LLVM #52785, __ASSEMBLER__ guards, byteswap.h, basename compat
-- gnulib stdint.h conflict, tcl cross-compilation detection
-
----
-
-## Current Status
-
-**Total: 64 source packages cross-compiled.**
+**Total: 81 source packages (217 RPMs)**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
 
-### Phase 5: Library Foundation + aterm (23 packages)
+### Phase 5+: 40 packages
+
 | Package | Version | Status | Key Fixes |
 |---------|---------|--------|-----------|
 | pcre2 | 10.42 | INSTALLED | JIT/sealloc blocks, inttypes.h C99 |
@@ -196,6 +129,44 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | libjpeg-turbo | 3.0.2 | STAGED | raw cmake, SIMD off |
 | pixman | 0.43.0 | STAGED | meson cross file |
 | uuid | 1.6.2 | STAGED | ac_cv_va_copy=C99 |
+| aterm | 1.0.1 | INSTALLED | First X11 app. Sysroot autodetect |
+| openssh | 9.6p1 | INSTALLED | R_MIPS_REL32 dispatch, debug-mode only |
+| unzip | 6.0 | INSTALLED | Simple build |
+| zip | 3.0 | INSTALLED | Simple build |
+| nano | 7.2 | INSTALLED | -lgen for dirname/basename |
+| rsync | 3.2.7 | INSTALLED | Long double crash fix |
+| figlet | 2.2.5 | BUILT | Makefile CC injection |
+| sl | 5.02 | BUILT | Makefile + ncurses |
+| time | 1.9 | BUILT | Drop texinfo/gnupg2 |
+| cmatrix | 2.0 | BUILT | Drop help2man/console-setup |
+| gmp | 6.2.1 | BUILT | strdup compat |
+| mpfr | 4.2.1 | BUILT | --disable-thread-safe |
+| hyphen | 2.8.8 | BUILT | pushd/popd → cd |
+| libevent | 2.1.12 | BUILT | strsep compat |
+| libxslt | 1.1.39 | BUILT | Drop python bindings |
+| giflib | 5.2.2 | INSTALLED | cmake cross-build |
+| libstrophe | 0.13.1 | INSTALLED | res_query, sockaddr_storage |
+| groff | 1.23.0 | INSTALLED | First C++ package! |
+
+---
+
+## /usr/sgug Swap Procedure
+
+**Safety invariant**: At least one working sshd must be listening at all times.
+
+```bash
+# 1. Backup from existing SSH session:
+cd /opt && tar cf sgug-live-backup.tar /usr/sgug
+
+# 2. Start test sshd from chroot (must use -d, fork mode broken):
+chroot /opt/chroot /bin/sh -c 'LD_LIBRARYN32_PATH=/usr/sgug/lib32 /usr/sgug/sbin/sshd -d -e -p 2222'
+
+# 3. Verify port 2222 works, then from that session:
+mv /usr/sgug /usr/sgug.old && cp -a /opt/chroot/usr/sgug /usr/sgug
+
+# 4. Rollback if needed (from console):
+mv /usr/sgug /usr/sgug.new && mv /usr/sgug.old /usr/sgug
+```
 
 ---
 
@@ -208,91 +179,60 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | Staging area | `/opt/sgug-staging/usr/sgug/` |
 | IRIX sysroot | `/opt/irix-sysroot/` |
 | IRIX host | `192.168.0.81` (use MCP, not SSH) |
-| IRIX chroot (active) | `/opt/chroot` (bootstrapped, ~51 source packages) |
-| IRIX chroot (backup) | `/opt/chroot_0206` (old SGUG-RSE base) |
-| Original FC40 SRPMs | `~/mogrix_inputs/SRPMS/` |
+| IRIX chroot | `/opt/chroot` (bootstrapped) |
+| Original SRPMs | `~/mogrix_inputs/SRPMS/` |
 | Converted SRPMs | `~/mogrix_outputs/SRPMS/` |
-| Built MIPS RPMs | `~/mogrix_outputs/RPMS/` |
-| rpmbuild workspace | `~/rpmbuild/` (ephemeral) |
+| Built RPMs | `~/mogrix_outputs/RPMS/` |
 
 ### Workflow
 ```bash
-# Build on Linux
 uv run mogrix fetch <package> -y
 uv run mogrix convert ~/mogrix_inputs/SRPMS/<pkg>-*.src.rpm
 uv run mogrix build ~/mogrix_outputs/SRPMS/<pkg>-*-converted/<pkg>-*.src.rpm --cross
 uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
-
-# Install on IRIX via MCP (do NOT ssh as root)
-# Use irix_copy_to to copy RPMs, irix_exec to run rpm -Uvh
+# Install on IRIX via MCP: irix_copy_to + irix_exec "rpm -Uvh"
 ```
-
----
-
-## `mogrix roadmap` Command
-
-Computes the full transitive build-dependency graph for any FC40 package. Usage:
-```bash
-uv run mogrix roadmap aterm           # full graph
-uv run mogrix roadmap aterm --json    # JSON for programmatic use
-uv run mogrix roadmap aterm --tree    # Rich tree widget
-```
-
----
-
-## Key Lessons Learned This Session (Session 2)
-
-### Meson cross-compilation support
-Installed meson 1.10.1 via `uv tool install meson`. Created `cross/meson-irix-cross.ini` cross file. Enables building meson-based packages (pixman, fribidi future use). Key issue: meson runs `--version` on compiler for detection — irix-cc wrapper was forwarding to linker. Fixed by adding `--version`/`-v`/`--help` handling to irix-cc.
-
-### cmake cross-compilation (libjpeg-turbo)
-Replace `%{cmake}`, `%cmake_build`, `%cmake_install` macros with raw cmake commands. Key: use `-DCMAKE_INSTALL_LIBDIR=lib32` (hardcoded, not `%{_lib}` which resolves to `lib64` on host). Pass compat library via `-DCMAKE_EXE_LINKER_FLAGS` and `-DCMAKE_SHARED_LINKER_FLAGS` (cmake doesn't use `LIBS`).
-
-### irix-cc wrapper improvements
-- Added `--version`/`-v`/`--help`/`-dumpversion`/`-dumpmachine` handling (forward to clang) for build system detection
-- Added `-ggdb*`/`-gdwarf*`/`-gz*` to link-only filter (fixes nettle `-ggdb3` passed to linker)
-
-### irix-ld --no-undefined fix
-`--no-undefined` with shared libraries causes failures because IRIX libc has `__tls_get_addr` references. Fixed by filtering `--no-undefined` in irix-ld for shared library links. Shared libraries resolve symbols at load time via rld.
-
-### FC31→FC40 patch staleness
-SGUG-RSE sgifixes patches from FC31 often don't apply to FC40 sources. For expat, freetype — removed stale patches and applied fixes via mogrix rules instead.
-
-### Meson packages with autotools fallback (fribidi)
-Fribidi has `%if 0%{?rhel} && 0%{?rhel} <= 8` guards around autotools code. Replaced with `%if 1` to force autotools path. Also fixed `utime()` name clash (IRIX has `utime(2)` which conflicts with fribidi's `utime()` function).
-
-### OSSP uuid cross-compilation
-Old configure script has `va_copy()` test that tries to execute. Fix: `ac_cv_va_copy: "C99"`. Perl module build commands must be individually commented out (pushd/popd replacement only handles one line).
-
-## Key Lessons Learned (Session 1)
-
-### Bootstrap HOST binaries in cross-compilation
-Packages like flex build HOST tools (stage1flex) before cross-compiling. `inject_compat_functions` and `LIBS` affect the HOST link too. Fix: inject compat code directly into cross-only source files via prep_commands.
-
-### IRIX libgen.so
-`basename()` and `dirname()` are in `/usr/lib32/libgen.so`, not libc. Copied to staging for cross-linker access. Also added `compat/string/basename.c` for packages where `-lgen` is problematic.
-
-### tcl.m4 platform detection
-Many packages with custom platform detection use `uname` directly instead of autoconf's `--host`. These always detect "Linux" during cross-compilation. Fix: override `tcl_cv_sys_version` or similar variables.
-
-### gnulib stdint.h conflicts
-gnulib's `gl_STDINT_H` generates replacement headers with different integer types. Fix: `gl_cv_header_working_stdint_h: "yes"` tells gnulib not to generate its own.
-
-### Unpackaged doc files pattern
-`make install` puts docs in `$(pkgdocdir)` but rpmbuild's `%doc` macro handles them separately. When both install docs, you get "unpackaged files" errors. Fix: `install_cleanup` to remove the make install copies.
 
 ---
 
 ## Known Issues
 
-- **`%zu` format specifier crashes IRIX libc** — use `%u` for size_t
-- **Volatile function pointer static initializers crash** — provide `explicit_bzero`
-- **IRIX chroot doesn't fully isolate** — processes see base system paths
-- fopencookie crashes on IRIX — use funopen instead
-- sqlite3 CLI crashes when writing to files
-- pkgconf installed with `--nodeps` (needs rebuild with `drop_requires: libpkgconf`)
-- coreutils `seq` disabled — IRIX printf doesn't handle `%Lg`
-- **`--export-dynamic` crashes IRIX rld** — large dynamic symbol tables cause SIGSEGV
+- **`%zu` format specifier** crashes IRIX libc — use `%u` for size_t
+- **Volatile function pointer static initializers** crash on IRIX rld — use dispatch functions
+- **fopencookie** crashes — use funopen instead
+- **`--export-dynamic`** crashes IRIX rld with large symbol tables
+- **R_MIPS_REL32 relocations** from function pointers in static data — use switch/strcmp dispatch
+- **Long double (128-bit)** not supported on MIPS n32 — `__extenddftf2` crashes. Fix: `ac_cv_type_long_double_wider: "no"`
+- **openssh fork-mode broken** — use `-d` (debug/no-fork) in a loop
+- **Man pages not compressed** — brp scripts disabled; use `*.1*` not `*.1.gz` in %files
+- **Explicit Provides required** — `AutoProv: no` in rpmmacros.irix; every .so needs explicit Provides
+- **C++ c++config.h patches** — staging only, not in mogrix source. Must disable `_GLIBCXX_USE_C99_MATH_TR1` and `_GLIBCXX_USE_STD_SPEC_FUNCS`
+- **autoreconf undoes prep_commands** — patches to configure in %prep get overwritten. Use spec_replacements after autoreconf
+- **sockaddr_storage** hidden by `_XOPEN_SOURCE=500` in dicl-clang-compat — defined explicitly in overlay
+- **ncurses ext-colors terminfo corruption** — ABI 6 auto-enables ext-colors, reads 16-bit terminfo numbers as 32-bit. Fix: `--disable-ext-colors`
+
+---
+
+## What Worked (Session 13)
+
+- **Relative-path trampolines**: Resolve own location via `dirname "$0"`, use `../<bundle>/<cmd>`. No absolute paths — works in chroot and outside.
+- **Flatpak-inspired `bin/` model**: Single shared `bin/` with install/uninstall scripts. Multiple bundles coexist cleanly.
+- **ncurses `--disable-ext-colors`**: Fixes terminfo number corruption on IRIX. `infocmp` confirms correct values.
+- **Bundle lib pruning**: Scanning NEEDED transitively and removing unused .so files saves ~33MB on nano bundle alone.
+- **Terminfo trimming**: ~30 common terminals vs full ~2800 entries saves ~12MB per bundle with terminfo.
+
+## What Worked (Session 12)
+
+- **ELF scanning for deps**: `readelf -d` on MIPS binaries from x86 host works perfectly. RPM Requires are useless (AutoReq: no → only rpmlib() entries).
+- **IRIX sysroot glob for native libs**: 313 sonames in `/opt/irix-sysroot/{usr/,}lib32/`. Dynamic, not hardcoded.
+- **SOURCERPM sibling grouping**: `rpm -qp --queryformat '%{SOURCERPM}'` correctly groups groff + groff-base + groff-perl.
+- **Staging fallback**: libstdc++.so.6 and libgcc_s.so.1 correctly detected as non-mogrix and copied from staging.
+
+## What Failed / Gotchas (Sessions 12-13)
+
+- **`$(...)` syntax in launcher scripts**: IRIX `/bin/sh` is the original Bourne shell. Must use backticks, `case` for path detection, `if`/`then` for conditionals. No `${var:+word}`.
+- **MCP sgug-exec uses csh**: Running launcher scripts directly via `irix_exec` fails because the outer csh chokes on backticks. Must invoke as `/bin/sh /path/to/run` or the `#!/bin/sh` shebang handles it in a real terminal.
+- **Symlinks break dirname resolution**: `ln -s ../bundle/nano bin/nano` → `dirname "$0"` returns `bin/`, not `../bundle/`. IRIX has no `readlink -f`. Trampolines solve this.
 
 ---
 
@@ -300,9 +240,10 @@ gnulib's `gl_STDINT_H` generates replacement headers with different integer type
 
 | Document | Purpose |
 |----------|---------|
-| `rules/INDEX.md` | Rules reference, per-package problem guide |
+| `rules/INDEX.md` | Rules reference, pattern catalog, invariants |
 | `rules/methods/before-you-start.md` | Checklist before debugging |
 | `rules/generic.yaml` | Universal rules for all packages |
 | `compat/catalog.yaml` | Compat function registry |
 | `plan.md` | Project plan and architecture |
-| `aterm_roadmap.md` | Phase 5 roadmap toward aterm |
+| `packages_plan.md` | Distribution strategy, killer app targets, build tiers |
+| `mogrix/bundle.py` | App bundle generator (new in session 12) |

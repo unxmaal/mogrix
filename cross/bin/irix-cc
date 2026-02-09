@@ -32,7 +32,7 @@ CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $SYSROOT/usr/include"
 CLANG_FLAGS="$CLANG_FLAGS -D_SGI_SOURCE -D_SGI_MP_SOURCE -D_SGI_REENTRANT_FUNCTIONS"
-CLANG_FLAGS="$CLANG_FLAGS -D__sgi=1 -D_COMPILER_VERSION=730 -D_LANGUAGE_C=1 -D_LONGLONG=1"
+CLANG_FLAGS="$CLANG_FLAGS -Dsgi=1 -D__sgi=1 -D_COMPILER_VERSION=730 -D_LANGUAGE_C=1 -D_LONGLONG=1"
 # Define __mips for multiarch headers (OpenSSL configuration.h needs this)
 CLANG_FLAGS="$CLANG_FLAGS -D__mips=1"
 # Override _MIPS_ISA - clang sets _MIPS_ISA_MIPS64 which IRIX headers don't recognize
@@ -43,11 +43,13 @@ CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_EXTERN_C="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_EXTERN_C="
+# Use .ctors/.dtors instead of .init_array — IRIX rld doesn't support init_array
+CLANG_FLAGS="$CLANG_FLAGS -fno-use-init-array"
 
 # Handle --version and -v (compiler identification for build systems like meson)
 for arg in "$@"; do
     case "$arg" in
-        --version|-v|--help|-dumpversion|-dumpmachine)
+        --version|-v|-V|--help|-dumpversion|-dumpmachine)
             exec $CLANG $CLANG_FLAGS "$@"
             ;;
     esac

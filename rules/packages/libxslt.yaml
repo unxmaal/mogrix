@@ -1,0 +1,31 @@
+# libxslt - XSLT processing library (FC40)
+package: libxslt
+
+rules:
+  inject_compat_functions:
+    - strdup
+
+  configure_flags:
+    add:
+      - "--without-python"
+    remove:
+      - "--with-python"
+
+  drop_buildrequires:
+    - python3-devel
+    - python3-libxml2
+
+  drop_requires:
+    - libgpg-error-devel
+
+  drop_subpackages:
+    - python3-libxslt
+
+  spec_replacements:
+    # Explicit Provides for shared libraries (AutoProv disabled in rpmmacros.irix)
+    - pattern: "^Provides: xsltproc"
+      replacement: |
+        Provides: xsltproc = %{version}-%{release}
+        Provides: libxslt(mips-32) = %{version}-%{release}
+        Provides: libxslt.so.1
+        Provides: libexslt.so.0

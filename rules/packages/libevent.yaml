@@ -1,0 +1,39 @@
+# libevent - event notification library (FC40: 2.1.12)
+package: libevent
+
+rules:
+  prep_commands:
+    # Remove test include from Makefile.am to avoid test compilation conflicts
+    - "sed -i '/^include test\\/include.am$/d' Makefile.am"
+
+  inject_compat_functions:
+    - getopt_long
+    - strdup
+    - strsep
+
+  ac_cv_overrides:
+    # IRIX has setenv/unsetenv in libc; compat header declares them
+    ac_cv_func_setenv: "yes"
+    ac_cv_func_unsetenv: "yes"
+    # Our compat provides strsep
+    ac_cv_func_strsep: "yes"
+
+  drop_buildrequires:
+    - doxygen
+
+  spec_replacements:
+    # Remove doxygen doc generation (inside %if conditional)
+    - pattern: "%if ! 0%{?_module_build}\n    --enable-doxygen-doc \\\n%endif\n"
+      replacement: ""
+    # Tests removed via prep_commands (SUBDIRS)
+    - pattern: "%make_build all"
+      replacement: "%make_build"
+    # No doxygen docs generated — prevent mv failure in %install
+    - pattern: "mv $RPM_BUILD_ROOT/%{_docdir}/%{name} $RPM_BUILD_ROOT/%{develdocdir}"
+      replacement: "mkdir -p $RPM_BUILD_ROOT/%{develdocdir}"
+    # Major version symlinks (e.g. libevent-2.1.so) not covered by *.so.* glob
+    - pattern: "-2.1.so.*"
+      replacement: "-2.1.so*"
+    # Remove python3 pathfix from %prep — not needed for cross-build
+    - pattern: "%{__python3} %{_rpmconfigdir}/redhat/pathfix.py -i %{__python3} -pn test/check-dumpevents.py \\\n                               event_rpcgen.py"
+      replacement: "# pathfix.py removed for cross-build"

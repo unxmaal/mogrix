@@ -19,7 +19,6 @@ rules:
   skip_check: true
 
   ac_cv_overrides:
-    gl_cv_header_working_stdint_h: "yes"
     # Use __sync builtins (not C11 stdatomic.h which pulls in bits/wordsize.h)
     fc_cv_have_stdatomic_atomic_primitives: "false"
     fc_cv_have_intel_atomic_primitives: "true"

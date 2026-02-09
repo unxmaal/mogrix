@@ -146,7 +146,8 @@ class BatchConverter:
             # Copy compat source files if needed
             if transform.compat_functions:
                 compat_files = self.injector.resolve_functions(transform.compat_functions)
-                for compat_file in compat_files:
+                extra_files = self.injector.get_extra_files(transform.compat_functions)
+                for compat_file in compat_files + extra_files:
                     dest_file = pkg_output_dir / compat_file.name
                     shutil.copy2(compat_file, dest_file)
 

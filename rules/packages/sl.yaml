@@ -1,0 +1,9 @@
+# sl - Steam Locomotive joke command (FC40: 5.02)
+# Links against ncurses (available in staging via SGUG-RSE)
+package: sl
+
+rules:
+  spec_replacements:
+    # Inject cross-compiler CC into Makefile build (no %configure)
+    - pattern: 'make %{?_smp_mflags} CFLAGS="%{optflags}"'
+      replacement: 'make %{?_smp_mflags} CC="%{__cc}" CFLAGS="%{optflags}" LDFLAGS="%{__global_ldflags}"'

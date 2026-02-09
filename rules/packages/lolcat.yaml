@@ -1,0 +1,14 @@
+# lolcat - colorful cat (FC40: 1.4)
+package: lolcat
+
+rules:
+  prep_commands:
+    # Remove unused #include <err.h> — IRIX doesn't have err.h
+    - "sed -i '/#include <err.h>/d' lolcat.c censor.c"
+
+  spec_replacements:
+    # Inject CC for Makefile build (no %configure)
+    - pattern: "%set_build_flags"
+      replacement: |
+        %set_build_flags
+        export CC="%{__cc}"

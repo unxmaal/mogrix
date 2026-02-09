@@ -13,7 +13,6 @@ rules:
       - --disable-rpath
 
   ac_cv_overrides:
-    gl_cv_header_working_stdint_h: "yes"
     gl_cv_func_select_supports0: "yes"
     gl_cv_func_select_detects_ebadf: "yes"
 

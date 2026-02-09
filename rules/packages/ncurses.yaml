@@ -34,6 +34,15 @@ rules:
   # %build/%install scripts run on Linux where bash is available.
   # ncurses has no install-time scriptlets, so most bashism fixes are precautionary.
   spec_replacements:
+    # CRITICAL: Disable extended colors to prevent terminfo number misread.
+    # ABI 6 auto-enables ext-colors, which sets NCURSES_EXT_NUMBERS=1 and
+    # changes NCURSES_INT2 from short (16-bit) to int (32-bit). This causes
+    # the terminfo reader to interpret legacy 16-bit number fields as 32-bit,
+    # corrupting all numeric values (e.g., cols=80 becomes cols=5242888).
+    # The corruption leads to Bus error (SIGBUS) on MIPS when ncurses tries
+    # to allocate buffers based on the garbage column count.
+    - pattern: "--without-ada\""
+      replacement: "--without-ada\n    --disable-ext-colors\""
     # CRITICAL: Convert terminfo symlinks to hardlinks after install
     # Host tic creates symlinks by default, but symlinks cause rpm memory exhaustion
     # on IRIX when installing ncurses-term (2700+ files). SGUG-RSE used hardlinks.
