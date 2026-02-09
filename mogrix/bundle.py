@@ -115,7 +115,7 @@ echo "Add that line to ~/.profile to make it permanent."
 # Uninstall script: removes trampolines from ../bin/
 UNINSTALL_TEMPLATE = """\
 #!/bin/sh
-# Uninstall {package} — remove command trampolines from ../bin/
+# Uninstall {package} — remove command trampolines and bundle directory
 dir=`dirname "$0"`
 case "$dir" in
     /*) ;;
@@ -125,7 +125,9 @@ dir=`cd "$dir" && pwd`
 bindir=`dirname "$dir"`/bin
 echo "Removing {package} commands from $bindir"
 {unlink_commands}
-echo "Done."
+echo ""
+echo "To remove the bundle directory, run:"
+echo "  rm -rf $dir"
 """
 
 
@@ -140,6 +142,7 @@ class BundleManifest:
     staging_sonames: set[str] = field(default_factory=set)
     unresolved_sonames: set[str] = field(default_factory=set)
     binaries: list[str] = field(default_factory=list)
+    bundle_name: str = ""
     bundle_dir: Path | None = None
     tarball_path: Path | None = None
 
@@ -544,16 +547,36 @@ class BundleBuilder:
             for soname in sorted(manifest.staging_sonames):
                 console.print(f"  [yellow]  {soname}[/yellow]")
 
-        # Create bundle directory
-        bundle_name = (
-            f"{manifest.target_package}-{manifest.target_version}-irix-bundle"
+        # Create bundle directory with alphabetic revision suffix
+        base_name = (
+            f"{manifest.target_package}-{manifest.target_version}"
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        bundle_dir = output_dir / bundle_name
 
-        # Clean up previous bundle if it exists
-        if bundle_dir.exists():
-            shutil.rmtree(bundle_dir)
+        # Find next revision letter by scanning existing bundles
+        suffix = "a"
+        for existing in sorted(output_dir.iterdir()):
+            name = existing.name
+            prefix = f"{base_name}-irix-bundle"
+            if existing.is_dir():
+                # Match unsuffixed (legacy) or suffixed bundles
+                if name == prefix:
+                    shutil.rmtree(existing)
+                elif name.startswith(base_name) and name.endswith("-irix-bundle"):
+                    middle = name[len(base_name):-len("-irix-bundle")]
+                    if len(middle) == 1 and middle.isalpha():
+                        next_letter = chr(ord(middle) + 1)
+                        if next_letter > suffix:
+                            suffix = next_letter
+                        shutil.rmtree(existing)
+            elif existing.is_file() and name.endswith("-irix-bundle.tar.gz"):
+                # Clean up old tarballs for this package
+                if name.startswith(base_name):
+                    existing.unlink()
+
+        bundle_name = f"{base_name}{suffix}-irix-bundle"
+        manifest.bundle_name = bundle_name
+        bundle_dir = output_dir / bundle_name
         bundle_dir.mkdir(parents=True)
 
         console.print(f"\n[bold]Creating bundle: {bundle_name}[/bold]\n")
@@ -783,9 +806,7 @@ class BundleBuilder:
 
     def _generate_readme(self, manifest: BundleManifest, bundle_dir: Path) -> None:
         """Generate README with bundle contents and instructions."""
-        bundle_name = (
-            f"{manifest.target_package}-{manifest.target_version}-irix-bundle"
-        )
+        bundle_name = bundle_dir.name
         primary = (
             manifest.target_package
             if manifest.target_package
@@ -866,7 +887,7 @@ class BundleBuilder:
         table.add_column("Category", style="bold")
         table.add_column("Details")
 
-        table.add_row("Version", manifest.target_version)
+        table.add_row("Version", f"{manifest.target_version} (bundle: {manifest.bundle_name})" if manifest.bundle_name else manifest.target_version)
         table.add_row(
             "Included RPMs",
             str(len(manifest.included_rpms)),

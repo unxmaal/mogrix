@@ -141,6 +141,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Rule auditor | mogrix/analyzers/rules.py | Duplication detection across packages |
 | Spec validator | mogrix/validators/spec.py | Specfile structural validator |
 | Methods | rules/methods/*.md | Process documentation |
+| Bundle architecture | rules/methods/bundles.md | How bundles work end-to-end |
 
 ## Rule Hierarchy
 
