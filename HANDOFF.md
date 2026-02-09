@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-08 (session 5)
-**Status**: Phase 5 + OpenSSH. aterm + openssh INSTALLED and WORKING on IRIX. 65 source packages cross-compiled. Ready for /usr/sgug swap.
+**Last Updated**: 2026-02-08 (session 6)
+**Status**: Phase 5 + OpenSSH + tdnf WORKING. `tdnf repolist`, `makecache`, `list`, `reinstall` all verified on IRIX. 65 source packages cross-compiled.
 
 ---
 
@@ -93,7 +93,38 @@ We have `cross/meson-irix-cross.ini` and pixman was successfully built with meso
 
 ---
 
-## What Was Fixed This Session (Session 5)
+## What Was Fixed This Session (Session 6)
+
+### 1. tdnf Error(1602) ROOT CAUSE FOUND AND FIXED
+`tdnf repolist` failed with `Error(1602) : No such file or directory`. Error code 1602 = `ERROR_TDNF_SYSTEM_BASE (1600) + ENOENT (2)`.
+
+**Root cause**: `TDNFAllocateStringPrintf()` in `common/strings.c` uses `vsnprintf(&chDstTest, 1, fmt, args)` to measure output length. On IRIX, the non-XPG5 `vsnprintf` returns 0 (not total chars needed) when output is truncated. The code then checks `if(nSize <= 0)` and reads `errno`, which contains stale ENOENT from earlier operations → error 1602.
+
+**Verified on IRIX** with test binary confirming:
+- `snprintf(buf,1,"%s-%s","mogrix","abcd1234")` returns `ret=0` (C99 expects 15)
+- `snprintf(NULL,0,"%s","hello")` returns `ret=-1` (C99 expects 5)
+- Stale errno is preserved across calls
+
+**Fix**: `tdnf-vsnprintf-irix.sgifixes.patch` — replaces C99-dependent `vsnprintf(&buf,1,...)` measuring approach with iterative buffer-growing (start at 256 bytes, double on truncation). Works on both C99 and pre-C99 systems.
+
+### 2. cmake cross-compilation regression fixes
+New Phase 4/5 packages in staging (`make`, `pkg-config`) caused cmake to find MIPS binaries instead of host tools. Fixed with:
+- `-DCMAKE_MAKE_PROGRAM=/usr/bin/make` — prevent cmake from using cross-compiled gmake
+- `-DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config` — prevent cmake from using cross-compiled pkg-config
+
+### 3. SQLite WAL fix from previous session confirmed working
+`rpm -qa` lists 83 packages. rpmdb uses DELETE journal mode (SQLITE_OMIT_WAL).
+
+### tdnf verified operations on IRIX:
+- `tdnf --version` → `tdnf: 3.5.14`
+- `tdnf repolist` → shows mogrix repo enabled
+- `tdnf makecache` → "Metadata cache created."
+- `tdnf list` → 269 entries (installed + available)
+- `tdnf reinstall tree` → full download/install/remove cycle works
+
+---
+
+## What Was Fixed in Session 5
 
 ### 1. OpenSSH 9.6p1 cross-compilation (first network service!)
 FC40 package, portable SSH server/client. Key approach: drop ALL ~40 Fedora patches (GSSAPI, SELinux, audit, systemd, FIPS, PKCS#11), use clean upstream with OpenSSH's own `openbsd-compat/` portability layer. No mogrix compat injection needed.
@@ -180,12 +211,12 @@ FC39 package, simple autotools VT102 terminal emulator. Key fixes:
 ### 3. `-rdynamic`/`--export-dynamic` filter in irix-ld
 LLD doesn't support `-rdynamic`. Also dangerous for IRIX rld (SIGSEGV on large dynamic symbol tables). Added to filter in both `cross/bin/irix-ld` and staging copy.
 
-### 4. tdnf repo setup (BLOCKED)
+### 4. tdnf repo setup (FIXED in session 6)
 - `createrepo_c --simple-md-filenames` creates repo metadata on Linux
 - Tar and copy to chroot, extract to `/tmp/mogrix-repo`
-- tdnf fails with Error(1609) "Bad file number" — SQLite WAL locking at offset `0x40000002` fails on IRIX `fcntl(F_SETLK)`
-- This is an IRIX libc/kernel limitation — `fcntl` lock at large offsets returns EBADF
-- **Workaround**: Continue using `rpm -Uvh` directly until SQLite WAL fix found
+- Session 5 fixed SQLite WAL locking (SQLITE_OMIT_WAL + rpmdb conversion)
+- Session 6 fixed Error(1602) (IRIX pre-C99 vsnprintf in TDNFAllocateStringPrintf)
+- tdnf now fully working: repolist, makecache, list, reinstall all verified
 
 ### 5. sgugshell shebang fix (live system)
 - Mogrix bash links libtinfo.so, SGUG-RSE's original bash didn't
@@ -385,7 +416,7 @@ gnulib's `gl_STDINT_H` generates replacement headers with different integer type
 - pkgconf installed with `--nodeps` (needs rebuild with `drop_requires: libpkgconf`)
 - coreutils `seq` disabled — IRIX printf doesn't handle `%Lg`
 - **`--export-dynamic` crashes IRIX rld** — large dynamic symbol tables cause SIGSEGV
-- **tdnf install blocked** — SQLite WAL locking at offset 0x40000002 fails on IRIX fcntl → Error(1609)
+- **tdnf install dependency resolution** — some packages have unresolvable deps due to missing `Provides:` in cross-compiled packages (need explicit Provides for all .so files)
 - **Man page .gz in %files** — brp scripts disabled, man pages stay uncompressed. Fix: `%{name}.1.gz` → `%{name}.1*`
 - **CJK fonts not on IRIX** — aterm's k14/taipei16/greek fonts don't exist. Disable with `--disable-kanji --disable-big5 --disable-greek`
 - **R_MIPS_REL32 relocations crash IRIX rld** — function pointers in static/const data arrays. Fix: dispatch functions (switch/strcmp). Affects openssh cipher.c, charclass.h, digest-openssl.c, explicit_bzero.c

@@ -42,6 +42,7 @@ add_patch:
   - gpgcheck-rpm419.sgifixes.patch
   - tdnf-common-utils.sgifixes.patch
   - tdnf.irixfixes.patch
+  - tdnf-vsnprintf-irix.sgifixes.patch
 
 rules:
   # Remove _XOPEN_SOURCE=500 which triggers IRIX sys/time.h static select()
@@ -133,6 +134,8 @@ rules:
         # Compat library (libmogrix-compat.a) is auto-built by generic %build preamble
         export COMPAT_DIR=$(pwd)/mogrix-compat
         cmake -B _build -S . \
+          -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
+          -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_C_COMPILER=%{__cc} \
           -DCMAKE_CXX_COMPILER=%{__cxx} \

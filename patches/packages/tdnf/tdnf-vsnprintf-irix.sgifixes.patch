@@ -1,0 +1,82 @@
+--- tdnf-3.5.14.orig/common/strings.c	2026-02-08 21:48:10.877109372 +0000
++++ tdnf-3.5.14/common/strings.c	2026-02-08 21:48:10.880109409 +0000
+@@ -239,9 +239,9 @@
+     )
+ {
+     uint32_t dwError = 0;
+-    int32_t nSize = 0;
+     char* pszDst = NULL;
+-    char chDstTest = '\0';
++    size_t nBufSize = 256;
++    int nSize = 0;
+     va_list argList;
+ 
+     if(!ppszDst || !pszFmt)
+@@ -250,36 +250,42 @@
+         BAIL_ON_TDNF_ERROR(dwError);
+     }
+ 
+-    //Find size
+-    va_start(argList, pszFmt);
+-    nSize = vsnprintf(&chDstTest, 1, pszFmt, argList);
+-    va_end(argList);
+-
+-    if(nSize <= 0)
++    /* IRIX vsnprintf (non-XPG5) returns 0 or -1 when output is truncated,
++     * instead of C99 behavior of returning total chars needed.
++     * Use iterative buffer-growing approach. */
++    while(1)
+     {
+-        dwError = errno;
+-        BAIL_ON_TDNF_SYSTEM_ERROR(dwError);
+-    }
+-    nSize++;
++        if(nBufSize > TDNF_DEFAULT_MAX_STRING_LEN)
++        {
++            dwError = ERROR_TDNF_STRING_TOO_LONG;
++            BAIL_ON_TDNF_ERROR(dwError);
++        }
+ 
+-    if(nSize > TDNF_DEFAULT_MAX_STRING_LEN)
+-    {
+-        dwError = ERROR_TDNF_STRING_TOO_LONG;
++        dwError = TDNFAllocateMemory(1, nBufSize, (void**)&pszDst);
+         BAIL_ON_TDNF_ERROR(dwError);
+-    }
+ 
+-    dwError = TDNFAllocateMemory(1, nSize, (void**)&pszDst);
+-    BAIL_ON_TDNF_ERROR(dwError);
+-
+-    va_start(argList, pszFmt);
+-    nSize = vsnprintf(pszDst, nSize, pszFmt, argList);
+-    va_end(argList);
+-
+-    if(nSize <= 0)
+-    {
+-        dwError = errno;
+-        BAIL_ON_TDNF_SYSTEM_ERROR(dwError);
++        va_start(argList, pszFmt);
++        nSize = vsnprintf(pszDst, nBufSize, pszFmt, argList);
++        va_end(argList);
++
++        if(nSize >= 0 && (size_t)nSize < nBufSize)
++        {
++            break;
++        }
++
++        TDNF_SAFE_FREE_MEMORY(pszDst);
++        pszDst = NULL;
++
++        if(nSize > 0 && (size_t)nSize >= nBufSize)
++        {
++            nBufSize = (size_t)nSize + 1;
++        }
++        else
++        {
++            nBufSize *= 2;
++        }
+     }
++
+     *ppszDst = pszDst;
+ cleanup:
+     return dwError;
