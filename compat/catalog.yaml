@@ -237,6 +237,30 @@ functions:
       All allocations go through mmap, bypassing the brk() ceiling at
       libpthread (0x0C080000). See rules/methods/irix-address-space.md.
 
+  # PTY functions (IRIX uses _getpty instead of openpty)
+  openpty:
+    file: stdlib/openpty.c
+    header: pty.h
+    description: Open a pseudo-terminal (IRIX uses _getpty())
+    notes: |
+      IRIX has no openpty() or <pty.h>. This wraps _getpty() (declared in
+      <unistd.h>) to provide the BSD/glibc openpty() interface.
+    source_patterns:
+      - pattern: '\bopenpty\s*\('
+        note: "IRIX lacks openpty — inject compat using _getpty()"
+
+  # pselect (IRIX has select but not pselect)
+  pselect:
+    file: stdlib/pselect.c
+    header: sys/select.h
+    description: Synchronous I/O multiplexing with signal mask (POSIX.1-2001)
+    notes: |
+      Wraps select() with sigprocmask(). Not fully atomic (tiny race window)
+      but sufficient for terminal emulators and similar use cases.
+    source_patterns:
+      - pattern: '\bpselect\s*\('
+        note: "IRIX lacks pselect — inject compat wrapping select()+sigprocmask"
+
   # SQLite3 stub for packages that optionally use sqlite3 (e.g., tdnf history)
   sqlite3_stub:
     file: sqlite/sqlite3_stub.c

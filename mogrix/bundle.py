@@ -404,6 +404,81 @@ class BundleBuilder:
                 shutil.copy2(src, dest)
                 break
 
+    def _include_fonts(self, bundle_dir: Path) -> bool:
+        """Include TTF fonts for X11 bundles that use Xft/fontconfig.
+
+        Copies TTF files from the mogrix fonts/ directory into the bundle,
+        adds a relative <dir> to fonts.conf so fontconfig discovers them,
+        and adds a conf.d snippet mapping 'monospace' to the bundled font.
+
+        Returns True if fonts were included, False otherwise.
+        """
+        # Find mogrix fonts/ directory (sibling of mogrix/ package dir)
+        mogrix_root = Path(__file__).resolve().parent.parent
+        fonts_src = mogrix_root / "fonts"
+        if not fonts_src.is_dir():
+            return False
+
+        ttf_files = list(fonts_src.glob("*.ttf"))
+        if not ttf_files:
+            return False
+
+        # Only include fonts if bundle has fontconfig (etc/fonts/fonts.conf)
+        fonts_conf = bundle_dir / "etc" / "fonts" / "fonts.conf"
+        if not fonts_conf.is_file():
+            return False
+
+        # Copy TTF files to share/fonts/
+        fonts_dest = bundle_dir / "share" / "fonts"
+        fonts_dest.mkdir(parents=True, exist_ok=True)
+        for ttf in ttf_files:
+            shutil.copy2(str(ttf), str(fonts_dest / ttf.name))
+
+        # Add relative <dir> to fonts.conf so fontconfig finds bundle fonts.
+        # prefix="relative" makes the path relative to the fonts.conf file
+        # location (etc/fonts/), so ../../share/fonts -> bundle/share/fonts.
+        conf_text = fonts_conf.read_text()
+        if "../../share/fonts" not in conf_text:
+            conf_text = conf_text.replace(
+                "<!-- Font directory list -->",
+                '<!-- Font directory list -->\n\n\t'
+                '<dir prefix="relative">../../share/fonts</dir>',
+            )
+            fonts_conf.write_text(conf_text)
+
+        # Add cachedir relative to bundle (so fc-cache doesn't need /usr/sgug)
+        if "../../var/cache/fontconfig" not in conf_text:
+            conf_text = fonts_conf.read_text()
+            conf_text = conf_text.replace(
+                "<!-- Font cache directory list -->",
+                '<!-- Font cache directory list -->\n\n\t'
+                '<cachedir prefix="relative">../../var/cache/fontconfig</cachedir>',
+            )
+            fonts_conf.write_text(conf_text)
+
+        # Create conf.d/50-monospace.conf mapping 'monospace' to bundled font.
+        # Detect font family name from filename pattern.
+        conf_d = bundle_dir / "etc" / "fonts" / "conf.d"
+        conf_d.mkdir(parents=True, exist_ok=True)
+        monospace_conf = conf_d / "50-monospace.conf"
+        monospace_conf.write_text(
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+            '<fontconfig>\n'
+            '  <alias>\n'
+            '    <family>monospace</family>\n'
+            '    <prefer>\n'
+            '      <family>Iosevka Nerd Font</family>\n'
+            '    </prefer>\n'
+            '  </alias>\n'
+            '</fontconfig>\n'
+        )
+
+        console.print(
+            f"  [dim]Included {len(ttf_files)} font(s) in share/fonts/[/dim]"
+        )
+        return True
+
     def _trim_terminfo(self, bundle_dir: Path) -> None:
         """Trim terminfo database to common terminals only.
 
@@ -641,6 +716,9 @@ class BundleBuilder:
         # Include system CA certificates for TLS-using bundles
         self._include_ca_bundle(bundle_dir)
 
+        # Include bundled fonts for X11 apps using Xft/fontconfig
+        has_fonts = self._include_fonts(bundle_dir)
+
         # Detect if bundle has terminfo data (for TERMINFO env var in wrappers)
         has_terminfo = (bundle_dir / "share" / "terminfo").is_dir()
         terminfo_block = TERMINFO_BLOCK if has_terminfo else ""
@@ -655,6 +733,12 @@ class BundleBuilder:
                 'WEECHAT_EXTRA_LIBDIR="$dir/_lib32/weechat"'
             )
             extra_env_lines.append("export WEECHAT_EXTRA_LIBDIR")
+        # Fontconfig — point to bundle's fonts.conf so bundled fonts are found
+        if has_fonts:
+            extra_env_lines.append(
+                'FONTCONFIG_FILE="$dir/etc/fonts/fonts.conf"'
+            )
+            extra_env_lines.append("export FONTCONFIG_FILE")
         # CA certificate bundle — set env var + weechat gnutls_ca_user
         ca_bundle = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
         if ca_bundle.is_file():

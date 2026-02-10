@@ -62,6 +62,12 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Skip man pages | Man pages cause install errors | skip_manpages | rules/packages/* | Removes man install from spec |
 | Skip lang files | %files -f lang.txt fails | files_no_lang | rules/packages/* | Removes -f lang from %files |
 | X11 path detection | configure AC_PATH_XTRA fails cross | spec_replacements | rules/packages/* | Remove --x-includes/--x-libraries, sysroot autodetects |
+| IRIX X11R6.3 missing APIs | XICCallback, XSetIMValues, Xutf8TextListToTextProperty, XUTF8StringStyle undeclared | prep_commands | rules/packages/* | XICCallback→XIMCallback, XSetIMValues→no-op macro, Xutf8→Xmb, XUTF8→XCompound. See st.yaml |
+| _XOPEN_SOURCE hides IRIX defs | struct winsize, TIOCSWINSZ, TIOCGWINSZ missing | prep_commands | rules/packages/* | Remove `-D_XOPEN_SOURCE=600`; `_SGI_SOURCE` provides all POSIX/XSI |
+| Makefile compat ordering | compat undefined symbols in plain Makefile builds | spec_replacements | rules/packages/* | Build compat archive BEFORE make, pass via LDFLAGS. Autotools injects between configure/make; Makefile must be explicit. See st.yaml, figlet.yaml |
+| PKG_CONFIG_SYSROOT_DIR | pkg-config returns IRIX paths, not host staging paths | spec_replacements | rules/packages/* | `export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"` — already in `%configure` macro but NOT in custom Makefile builds |
+| No TrueType fonts on IRIX | Xft/fontconfig apps fail "can't open font" | bundle fonts | mogrix/bundle.py | `_include_fonts()` copies TTFs from `fonts/`, adds relative `<dir>` to fonts.conf, creates monospace alias conf.d, sets FONTCONFIG_FILE in wrapper |
+| setenv/unsetenv missing | link error: undefined symbol setenv/unsetenv | inject_compat_functions | rules/packages/* | IRIX libc has putenv but not setenv/unsetenv. Compat wraps putenv(). |
 | CJK font dependencies | k14, taipei16 fonts not on IRIX | configure_disable or spec_replacements | rules/packages/* | --disable-kanji --disable-big5 --disable-greek |
 | Unpackaged doc files | make install + %doc both install docs | install_cleanup | rules/packages/* | Remove from %{buildroot}%{_pkgdocdir} |
 | AUTOPOINT=true | autoreconf fails without autopoint | spec_replacements | rules/packages/* | `AUTOPOINT=true autoreconf -vfi` |
@@ -105,6 +111,11 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Source analysis is rules-driven | Patterns in source_checks.yaml + catalog.yaml source_patterns | rules/source_checks.yaml |
 | `-rdynamic` filtered in irix-ld | LLD doesn't support it; IRIX rld crashes on large dynamic symbol tables | cross/bin/irix-ld |
 | X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 | rules/packages/aterm.yaml |
+| IRIX X11R6.3 API limits | XICCallback→XIMCallback, XSetIMValues→no-op, Xutf8→Xmb, XUTF8→XCompound | rules/packages/st.yaml |
+| IRIX has no TrueType fonts | Xft apps need bundled fonts; fontconfig `<dir prefix="relative">` for bundle paths | mogrix/bundle.py `_include_fonts()` |
+| `_XOPEN_SOURCE=600` hides IRIX defs | winsize/TIOCSWINSZ/TIOCGWINSZ gated by `_NO_XOPEN5`; remove, use `_SGI_SOURCE` | rules/packages/st.yaml |
+| setenv/unsetenv NOT in IRIX libc | `putenv()` only; compat wraps it. Must add to `inject_compat_functions` | compat/stdlib/setenv.c |
+| X11 .pc files for IRIX native libs | libXrender/libXft configure use `pkg-config --exists x11/xext`; handcrafted .pc files in staging | /opt/sgug-staging/.../pkgconfig/ |
 | Man pages not compressed | rpmmacros.irix disables brp scripts; use `*.1*` not `*.1.gz` in %files | rpmmacros.irix |
 | AUTOPOINT=true for NLS-disabled | Packages with autoreconf + nls-disabled class need `AUTOPOINT=true` | rules/packages/*.yaml |
 | C++ uses GCC 9 libstdc++ | clang++ with SGUG-RSE libstdc++ headers + custom CRT (.ctors) | cross/bin/irix-cxx |
@@ -130,11 +141,13 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 |----------|------|----------|
 | Generic rules | rules/generic.yaml | Applied to ALL packages |
 | Class rules | rules/classes/*.yaml | Shared rules for package groups |
-| Package rules | rules/packages/*.yaml | Per-package overrides (115 packages) |
+| Package rules | rules/packages/*.yaml | Per-package overrides (119 packages) |
 | Source checks | rules/source_checks.yaml | IRIX source pattern definitions |
 | Compat functions | compat/catalog.yaml | Function registry + source patterns |
 | Compat sources | compat/string/, compat/stdio/, compat/stdlib/, compat/dicl/, compat/malloc/ | Implementation files |
-| Compat headers | compat/include/mogrix-compat/generic/ | Header wrappers |
+| Compat headers | compat/include/mogrix-compat/generic/ | Header wrappers (pty.h for openpty) |
+| Bundle fonts | fonts/ | TTF fonts for X11 bundles (Iosevka Nerd Font) |
+| X11 .pc files | /opt/sgug-staging/.../pkgconfig/ | x11.pc, xext.pc, xproto.pc, renderproto.pc |
 | Patches | patches/packages/*/ | Source patches by package |
 | rpmlint config | rpmlint.toml | IRIX-specific rpmlint filters |
 | Source analyzer | mogrix/analyzers/source.py | Ripgrep-based source scanner |

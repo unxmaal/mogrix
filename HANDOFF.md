@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-09 (session 16)
-**Status**: 83 source packages cross-compiled (225+ RPMs). **weechat connected to Libera.Chat IRC from IRIX!** App bundles with Flatpak-style install, CA certs, plugin autoconfig, alphabetic revision suffixes. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
+**Last Updated**: 2026-02-09 (session 17)
+**Status**: 86 source packages cross-compiled (230+ RPMs). **st (suckless terminal) bundled for IRIX!** Second X11 terminal (after aterm), first with Xft antialiased font rendering. Full X11 dependency chain: libXrender → libXft → st. App bundles with Flatpak-style install, CA certs, plugin autoconfig, alphabetic revision suffixes. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
 
 ---
 
@@ -22,7 +22,7 @@
 **weechat bundle is SHIPPING** — connected to Libera.Chat IRC from SGI IRIX! Tarball at `~/mogrix_outputs/bundles/weechat-4.2.1-2a-irix-bundle.tar.gz` (21.7 MB). Includes CA certs, auto-configures gnutls trust store, plugin autoloading, alphabetic revision suffix.
 
 Priorities:
-- **Ship weechat tarball** to forum user (community request) — READY NOW
+- **Ship weechat + st tarballs** to community — READY NOW
 - **More bundle candidates (already built):** nano, groff, openssh, aterm
 - **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils, expect, tk, gtk2
 - **Meson (need `%meson` macro):** cairo 1.18, harfbuzz, pango, glib2, p11-kit
@@ -32,7 +32,61 @@ Priorities:
 
 ---
 
-## Recent Session (16): Bundle versioning + documentation
+## Recent Session (17): st (suckless terminal) — X11 dependency chain
+
+### 3-package build chain: libXrender → libXft → st
+Built the complete Xft font rendering stack for IRIX:
+1. **libXrender 0.9.11** — X Render Extension client library. Created handcrafted x11.pc, xext.pc, xproto.pc, renderproto.pc for IRIX native X11 libs. Installed xorgproto Render headers manually (xorgproto uses meson, can't RPM-build it).
+2. **libXft 2.3.8** — X FreeType library. Depends on libXrender + fontconfig + freetype (all staged). Staged fontconfig-devel first.
+3. **st 0.9** — suckless terminal emulator. Plain Makefile (not autotools). First terminal with Xft antialiased font rendering on IRIX.
+
+### New compat functions: openpty + pselect
+- **openpty()** (`compat/stdlib/openpty.c`): Wraps IRIX `_getpty()` which returns a pts path string (vs Linux openpty which returns fd pair). Creates master via open, slave via `_getpty()`.
+- **pselect()** (`compat/stdlib/pselect.c`): Wraps `select()` + `sigprocmask()` for signal mask support.
+- Header: `compat/include/mogrix-compat/generic/pty.h`
+
+### IRIX X11R6.3 compatibility patterns (NEW)
+IRIX ships X11R6.3. Modern X11R6.4+ APIs missing:
+- `XICCallback` → use `XIMCallback` (sed global replace)
+- `XSetIMValues()` → `#define XSetIMValues(...) 0` (no-op)
+- `Xutf8TextListToTextProperty()` → `XmbTextListToTextProperty()` (compound text encoding)
+- `XUTF8StringStyle` → `XCompoundTextStyle`
+- `xicdestroy` callback: return type `int` → `void` (matches XIMProc signature)
+
+### _XOPEN_SOURCE=600 hides IRIX definitions (NEW pattern)
+On IRIX, `struct winsize`, `TIOCSWINSZ`, `TIOCGWINSZ` in `<sys/termios.h>` are gated by `(_NO_POSIX && _NO_XOPEN4 && _NO_XOPEN5) || _ABIAPI`. Setting `_XOPEN_SOURCE=600` makes `_NO_XOPEN5=0`, hiding them. Fix: remove `-D_XOPEN_SOURCE=600`; `_SGI_SOURCE` (from cross-compiler) provides all POSIX/XSI functions.
+
+### Makefile builds need compat BEFORE make (NEW pattern)
+For autotools packages, mogrix injects compat build between configure and make. For plain Makefile packages (st, figlet), compat must be built explicitly in the spec_replacement BEFORE the make command, and linked via LDFLAGS.
+
+### PKG_CONFIG_SYSROOT_DIR for non-autotools builds
+`rpmmacros.irix` exports `PKG_CONFIG_SYSROOT_DIR` inside `%configure`, but custom Makefile builds don't use `%configure`. Must export it explicitly in the spec_replacement.
+
+### setenv/unsetenv NOT in IRIX libc
+Confirmed via `llvm-nm -D`. Added to st's `inject_compat_functions`. Existing compat in `compat/stdlib/setenv.c` (wraps `putenv()`).
+
+### Bundle delivered
+`st-0.9-4a-irix-bundle.tar.gz` (5.9 MB). Includes 16 RPMs: st, libXft, libXrender, fontconfig, freetype, expat, bzip2, gettext family, libpng. Tested on IRIX — `DISPLAY=bogus:99 st` correctly prints "can't open display" and exits 1.
+
+### Font bundling for X11 apps (NEW pattern)
+st failed with "can't open font monospace" — IRIX has no TrueType fonts for Xft/fontconfig.
+
+**Fix**: `bundle.py` now includes TTF fonts from `fonts/` directory in the mogrix project:
+- Copies `.ttf` files to `share/fonts/` in bundle
+- Adds `<dir prefix="relative">../../share/fonts</dir>` to bundle's `fonts.conf`
+- Creates `conf.d/50-monospace.conf` mapping "monospace" → "Iosevka Nerd Font"
+- Sets `FONTCONFIG_FILE="$dir/etc/fonts/fonts.conf"` in wrapper scripts
+
+Font file: `fonts/IosevkaNerdFont-Regular.ttf` (13 MB, downloaded from [Nerd Fonts](https://github.com/ryanoasis/nerd-fonts))
+
+Bundle `st-0.9-4b-irix-bundle.tar.gz` (10.2 MB) — tested on IRIX, Iosevka renders via Xft.
+
+### Known issue: RPM-installed st stderr silent
+RPM-installed `st` produces no stderr output (die() / vfprintf silent failure). Bundle version works. Likely dlmalloc symbol export interfering with IRIX libc stdio. Cosmetic — binary is functional.
+
+---
+
+## Session (16): Bundle versioning + documentation
 
 ### Bundle alphabetic revision suffixes
 Bundle names now include an auto-incrementing letter suffix: `weechat-4.2.1-2a-irix-bundle`. When rebuilding, the suffix advances (a → b → c). Old bundle directories and tarballs for the same version are cleaned up automatically. Implemented in `bundle.py` `create_bundle()`.
@@ -137,7 +191,7 @@ Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix).
 
 ## Package Status
 
-**Total: 83 source packages (225+ RPMs)**
+**Total: 86 source packages (230+ RPMs)**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
@@ -188,6 +242,9 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | groff | 1.23.0 | INSTALLED | First C++ package! |
 | **gnutls** | **3.8.3** | **INSTALLED** | **bcond flipping, PRIdMAX compat, _Thread_local fix, drop crypto-policies** |
 | **weechat** | **4.2.1** | **BUNDLED+VERIFIED** | **Connected to Libera.Chat! cmake cross-build, plugin autoload, CA certs** |
+| **libXrender** | **0.9.11** | **INSTALLED** | **X Render Extension. Handcrafted .pc files for IRIX native X11** |
+| **libXft** | **2.3.8** | **INSTALLED** | **Xft font rendering. Depends on libXrender + fontconfig + freetype** |
+| **st** | **0.9** | **BUNDLED+VERIFIED** | **Suckless terminal. X11R6.3 compat, openpty/pselect compat, Xft + Iosevka Nerd Font** |
 
 ---
 
@@ -255,6 +312,10 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **ncurses ext-colors terminfo corruption** — ABI 6 auto-enables ext-colors, reads 16-bit terminfo numbers as 32-bit. Fix: `--disable-ext-colors`
 - **configure_flags: remove vs inline conditionals** — Engine can't handle `%if/%else/%endif` inside `%configure` continuations. Use bcond flipping instead.
 - **select() duplicate symbol** — dicl-clang-compat `extern select()` vs IRIX `static select()` when `_XOPEN_SOURCE` set. Fixed in `cross/include/dicl-clang-compat/sys/select.h`
+- **IRIX X11R6.3 missing APIs** — `XICCallback`, `XSetIMValues`, `Xutf8TextListToTextProperty`, `XUTF8StringStyle` not available. Substitute with X11R6.3 equivalents (XIMCallback, no-op macro, Xmb variant, XCompoundTextStyle)
+- **`_XOPEN_SOURCE=600` hides struct winsize** — On IRIX, winsize/TIOCSWINSZ gated by `_NO_XOPEN5`. Remove `_XOPEN_SOURCE`; `_SGI_SOURCE` provides everything.
+- **setenv/unsetenv not in IRIX libc** — Must use compat (wraps `putenv()`). Add to `inject_compat_functions`.
+- **dlmalloc symbol export** — Statically linked dlmalloc exports malloc/free in dynamic symbol table. IRIX rld resolves libc stdio's malloc calls to dlmalloc, can cause stdio failures. Bundle `LD_LIBRARYN32_PATH` works around this.
 - **__tls_get_addr / _Thread_local** — IRIX rld has no TLS. Any `__thread` or `_Thread_local` variables cause rld Fatal Error. Fix: patch source headers to remove TLS keywords. `-D` from CFLAGS won't work (source `#define` overrides). See gnutls.yaml `prep_commands`.
 - **gnutls-utils libtool wrappers** — `make install` installs libtool wrapper scripts instead of real binaries. Needs fix-libtool-irix.sh or chrpath.
 

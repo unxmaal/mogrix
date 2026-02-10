@@ -29,7 +29,10 @@ Bundles solve this by:
     _lib32/                             # Shared libraries (pruned)
     share/                              # Data files
       terminfo/                         # Trimmed to ~30 common terminals
+      fonts/                            # TTF fonts for Xft apps (if included)
     etc/                                # Config files (if needed)
+      fonts/fonts.conf                  # Fontconfig config (relative font dirs)
+      fonts/conf.d/50-monospace.conf    # Maps "monospace" → bundled font
       pki/tls/certs/ca-bundle.crt       # CA certs for TLS apps
 ```
 
@@ -104,8 +107,10 @@ After extraction, the bundle is aggressively optimized:
 | Terminfo trimming | Keep only ~30 common terminals (iris-ansi, xterm, vt100, screen, etc.) | ~12MB → ~50KB |
 | Staging symlinks | Symlink soname → real file instead of two full copies | Avoids duplicates |
 | CA cert inclusion | Copy build host CA bundle for TLS apps | ~200KB |
+| Font inclusion | Copy TTF fonts from `fonts/` dir for X11/Xft apps | +13MB (Iosevka Nerd Font) |
 
 Result: nano bundle 48MB → 3.9MB (tarball 13MB → 0.9MB).
+Result: st bundle with font: 36.5 MB (tarball 10.2 MB).
 
 ## App-Specific Customization
 
@@ -118,8 +123,23 @@ These are currently detected heuristically in `bundle.py`:
 - weechat plugin directory detected → `WEECHAT_EXTRA_LIBDIR` set
 - CA bundle present + weechat detected → `-r` argument for gnutls CA config
 - CA bundle present → `SSL_CERT_FILE` set (for OpenSSL-based apps)
+- Fonts present + `etc/fonts/fonts.conf` present → `FONTCONFIG_FILE` set
 
 Future apps may need similar customization. The pattern is: detect in `create_bundle()`, add to the `extra_env_lines` list or `extra_args_map` dict.
+
+## Font Bundling for X11 Apps
+
+IRIX has no TrueType fonts. Xft/fontconfig-based apps (like `st`) fail with "can't open font" unless fonts are bundled.
+
+`bundle.py` handles this automatically via `_include_fonts()`:
+
+1. **Font source**: TTF files in `fonts/` at the mogrix project root (e.g., `IosevkaNerdFont-Regular.ttf`)
+2. **Copied to**: `share/fonts/` in the bundle
+3. **Fontconfig discovery**: Adds `<dir prefix="relative">../../share/fonts</dir>` to `etc/fonts/fonts.conf` — the `prefix="relative"` attribute (fontconfig 2.10+) makes the path relative to the fonts.conf file location
+4. **Monospace alias**: Creates `etc/fonts/conf.d/50-monospace.conf` mapping the "monospace" generic family to "Iosevka Nerd Font"
+5. **Wrapper env**: Sets `FONTCONFIG_FILE="$dir/etc/fonts/fonts.conf"` so fontconfig uses the bundle's config (with bundle-relative font paths) instead of system config
+
+This means any bundle that includes fontconfig and has TTF files in `fonts/` will automatically get working fonts. The compiled-in font name doesn't matter as long as fontconfig can resolve it (e.g., st uses "monospace" which resolves to Iosevka via the alias).
 
 ## Versioning
 
@@ -157,6 +177,7 @@ weechat
 |------|---------|
 | `mogrix/bundle.py` | Bundle builder implementation |
 | `mogrix/cli.py` | CLI `bundle` subcommand |
+| `fonts/` | TTF fonts for X11 bundles (e.g., IosevkaNerdFont-Regular.ttf) |
 | `~/mogrix_outputs/bundles/` | Output directory |
 | `~/mogrix_outputs/RPMS/` | Input RPMs |
 | `/opt/irix-sysroot/` | IRIX native soname catalog |
