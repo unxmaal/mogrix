@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-09 (session 17)
-**Status**: 86 source packages cross-compiled (230+ RPMs). **st (suckless terminal) bundled for IRIX!** Second X11 terminal (after aterm), first with Xft antialiased font rendering. Full X11 dependency chain: libXrender → libXft → st. App bundles with Flatpak-style install, CA certs, plugin autoconfig, alphabetic revision suffixes. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf all running on IRIX.
+**Last Updated**: 2026-02-10 (session 18)
+**Status**: 88 source packages cross-compiled (240+ RPMs). **glib2 (first meson package!) + bitlbee (IRC gateway) built and bundled for IRIX!** bitlbee connects via IRC on port 6667 — users can chat on XMPP/Jabber and Twitter from any IRC client (weechat already shipping). Meson cross-compilation UNBLOCKED. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf, weechat, st all running on IRIX.
 
 ---
 
@@ -19,16 +19,88 @@
 
 ## IMMEDIATE NEXT
 
-**weechat bundle is SHIPPING** — connected to Libera.Chat IRC from SGI IRIX! Tarball at `~/mogrix_outputs/bundles/weechat-4.2.1-2a-irix-bundle.tar.gz` (21.7 MB). Includes CA certs, auto-configures gnutls trust store, plugin autoloading, alphabetic revision suffix.
+**bitlbee bundle is SHIPPING** — IRC gateway running on IRIX, accepting connections on port 6668. Users connect with weechat (already shipping) to get XMPP/Jabber and Twitter access.
+
+**glib2 UNBLOCKS meson packages** — first meson cross-compilation working! Pattern established in `rules/packages/glib2.yaml` + `cross/meson-irix-cross.ini`.
 
 Priorities:
-- **Ship weechat + st tarballs** to community — READY NOW
+- **bitlbee-discord plugin** (Task #107) — build from GitHub source, produces a single `discord.so` plugin. Needs bitlbee-devel + glib2-devel (both staged). Manual build outside SRPM flow.
+- **Ship bitlbee + weechat + st tarballs** to community — ALL READY
 - **More bundle candidates (already built):** nano, groff, openssh, aterm
+- **Meson packages NOW UNBLOCKED:** cairo 1.18, harfbuzz, pango, p11-kit (glib2 pattern established)
 - **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils, expect, tk, gtk2
-- **Meson (need `%meson` macro):** cairo 1.18, harfbuzz, pango, glib2, p11-kit
 - **Still blocked:** lolcat (wchar I/O), bc (host binary bootstrap), xclip (IRIX Xmu too old)
 - **gnutls-utils installs libtool wrapper scripts** instead of real binaries (certtool, gnutls-cli etc). Needs fix-libtool-irix.sh or similar.
 - **Implement `extra_cflags`** in rules engine (currently validated but dead code)
+- **GLib warnings on IRIX**: `g_hash_table_lookup: assertion 'hash_table != NULL'` during bitlbee startup — non-fatal but indicates GLib quark table initialization issue. May affect other glib2-dependent apps.
+
+---
+
+## Recent Session (18): glib2 (meson) + bitlbee (IRC gateway)
+
+### glib2 2.80.0 — First meson cross-compilation!
+**THE MESON BLOCKER IS DEAD.** glib2 was listed as blocked since session 7. Now built with raw meson commands (replacing `%meson`/`%meson_build` RPM macros).
+
+Key fixes (many build iterations):
+- **SGUG-RSE patch rebased** from 2.62.6 → 2.80.0 (42KB, 27 file diffs). Selective application — reverted ALL gsocket.c XPG5 hacks (our `_XOPEN5` mode already gives modern msghdr). Added fdopendir guard (`#if defined(AT_FDCWD) && !defined(__sgi)`).
+- **Meson `-Werror` + `__mips` redefinition**: All meson compile checks fail because `__mips` redefinition warning + `-Werror`. Fix: `-Wno-macro-redefined` in `cross/meson-irix-cross.ini` c_args.
+- **Meson cpp removal**: `cpp = 'irix-cc'` in cross-file caused .cpp link tests to fail (irix-cc is C-only). Removed `cpp` entry.
+- **Python packaging module**: meson's uv-installed Python lacks `packaging`. Fix: `uv pip install --python /path/to/meson/bin/python packaging`.
+- **gnulib IRIX frexp assumptions**: gnulib marks IRIX frexp as "broken beyond repair". Patched meson.build to mark as working.
+- **strnlen compat**: New function (`compat/string/strnlen.c`), added to catalog + header.
+- **NLS disabled cleanup**: Extensive spec_replacements to remove gettext, gi-tools, systemtap, man pages, girepository from %files + install_cleanup to remove files meson still installs.
+- Explicit Provides: libglib-2.0.so.0, libgobject-2.0.so.0, libgio-2.0.so.0, libgmodule-2.0.so.0, libgthread-2.0.so.0
+
+**Meson pattern** (reusable for future packages):
+```yaml
+spec_replacements:
+  - pattern: "%meson ... %meson_build"
+    replacement: |
+      MOGRIX_CROSS=/path/to/cross/meson-irix-cross.ini
+      meson setup _build --cross-file=$MOGRIX_CROSS --prefix=... [options]
+      meson compile -C _build
+  - pattern: "%meson_install"
+    replacement: |
+      DESTDIR=$RPM_BUILD_ROOT meson install -C _build --no-rebuild
+```
+
+### bitlbee 3.6 — IRC to chat networks gateway
+Custom configure (not autotools, not meson). Disabled purple (needs dbus+gtk2), OTR (needs libotr), systemd.
+
+Key fixes:
+- **`%zu`/`%zd` format specifiers**: 10+ occurrences sed'd to `%u`/`%d` (IRIX libc crashes on %z). MIPS n32: size_t = unsigned int.
+- **`sa_len` macro collision**: IRIX `<sys/socket.h>` defines `#define sa_len sa_union.sa_generic.sa_len2`. Local variable `sa_len` in dcc.c renamed to `saddr_len`.
+- **GNU ld `-r` vs LLD incompatibility**: GNU ld `ld -r` produces symbols with binding 0 (STB_LOCAL) that LLD rejects as "invalid binding". Fix: use LLD for both `ld -r` and final link (`LD=ld.lld-irix-18`).
+- **libgcrypt-config not in PATH**: bitlbee configure uses `$(libgcrypt-config --libs)` which silently fails. Fix: inject `-lgcrypt` into EFLAGS via Makefile.settings.
+- **strcasestr compat**: IRIX libc lacks strcasestr. Added to `inject_compat_functions`.
+- **bcond flipping for OTR**: `%bcond_without otr` → `%bcond_with otr` cleanly disables OTR.
+- **Brace expansion bashisms**: Fixed in %prep (`touch`), %install (`mkdir`), %files (`%doc`).
+
+### New compat function: strnlen
+- `compat/string/strnlen.c`: Bounded string length (POSIX.1-2008)
+- Added to `compat/catalog.yaml` and `compat/include/mogrix-compat/generic/string.h`
+
+### Files created/modified
+| File | Action |
+|------|--------|
+| `rules/packages/glib2.yaml` | REWRITTEN — full meson cross-compilation rules (178 lines) |
+| `rules/packages/bitlbee.yaml` | CREATED — custom configure + systemd removal |
+| `patches/packages/glib2/glib2.sgifixes.patch` | REWRITTEN — rebased from 2.62.6 to 2.80.0 |
+| `cross/meson-irix-cross.ini` | MODIFIED — added -Wno-macro-redefined, removed cpp |
+| `compat/string/strnlen.c` | CREATED — new compat function |
+| `compat/catalog.yaml` | MODIFIED — added strnlen entry |
+| `compat/include/mogrix-compat/generic/string.h` | MODIFIED — added strnlen declaration |
+
+### bitlbee verified on IRIX
+```
+$ /opt/mogrix-apps/bin/bitlbee -V
+BitlBee 3.6
+API version 030600
+Configure args: ...--jabber=1 --twitter=1 --purple=0 --otr=0 --pie=0
+
+$ echo -e "NICK test\r\nUSER test 0 * :Test\r\n" | nc 192.168.0.81 6668
+:localhost.localdomain 001 test :Welcome to the BitlBee gateway, test
+```
 
 ---
 
@@ -191,7 +263,7 @@ Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix).
 
 ## Package Status
 
-**Total: 86 source packages (230+ RPMs)**
+**Total: 88 source packages (240+ RPMs)**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
@@ -245,6 +317,8 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | **libXrender** | **0.9.11** | **INSTALLED** | **X Render Extension. Handcrafted .pc files for IRIX native X11** |
 | **libXft** | **2.3.8** | **INSTALLED** | **Xft font rendering. Depends on libXrender + fontconfig + freetype** |
 | **st** | **0.9** | **BUNDLED+VERIFIED** | **Suckless terminal. X11R6.3 compat, openpty/pselect compat, Xft + Iosevka Nerd Font** |
+| **glib2** | **2.80.0** | **INSTALLED** | **First meson package! SGUG-RSE patch rebased, gnulib frexp fix, strnlen compat** |
+| **bitlbee** | **3.6** | **BUNDLED+VERIFIED** | **IRC gateway. %zu fix, sa_len macro, LLD ld -r, gcrypt linkage, strcasestr** |
 
 ---
 
@@ -318,10 +392,14 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **dlmalloc symbol export** — Statically linked dlmalloc exports malloc/free in dynamic symbol table. IRIX rld resolves libc stdio's malloc calls to dlmalloc, can cause stdio failures. Bundle `LD_LIBRARYN32_PATH` works around this.
 - **__tls_get_addr / _Thread_local** — IRIX rld has no TLS. Any `__thread` or `_Thread_local` variables cause rld Fatal Error. Fix: patch source headers to remove TLS keywords. `-D` from CFLAGS won't work (source `#define` overrides). See gnutls.yaml `prep_commands`.
 - **gnutls-utils libtool wrappers** — `make install` installs libtool wrapper scripts instead of real binaries. Needs fix-libtool-irix.sh or chrpath.
+- **IRIX `sa_len` macro in `<sys/socket.h>`** — `#define sa_len sa_union.sa_generic.sa_len2` breaks local variables named `sa_len`. Rename to `saddr_len` or similar.
+- **GNU ld `-r` + LLD incompatibility** — GNU ld's partial-link output has STB_LOCAL symbols that LLD rejects. Use LLD for both `ld -r` and final link.
+- **GLib quark table warnings** — `g_hash_table_lookup: assertion 'hash_table != NULL' failed` on IRIX startup. Non-fatal but indicates .init constructor ordering issue. May need investigation for future glib2-dependent apps.
+- **fdopendir missing on IRIX** — compat provides AT_FDCWD but not fdopendir. Code guarded by `#ifdef AT_FDCWD` must add `&& !defined(__sgi)`.
 
 ---
 
-## What Worked (Sessions 14-15)
+## What Worked (Sessions 14-18)
 
 - **bcond flipping**: Cleanly disables features in specs with inline `%if/%else/%endif` inside `%configure`.
 - **PRIdMAX format macros**: Added to mogrix-compat/generic/inttypes.h.
@@ -331,8 +409,12 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **WEECHAT_EXTRA_LIBDIR**: Solved plugin dlopen path for bundle installs.
 - **Bundle CA cert auto-inclusion**: `_include_ca_bundle()` + weechat `-r` auto-config. Users get working TLS out of the box.
 - **Bundle wrapper `{extra_env_block}` + `{extra_args}`**: Generic infrastructure for per-app env vars and CLI args.
+- **Meson raw commands**: Replace `%meson` macros with `meson setup _build --cross-file=... && meson compile -C _build`. Avoids needing meson RPM macros. Pattern in glib2.yaml.
+- **SGUG-RSE patch selective application**: Don't blindly apply old patches. Many are wrong for our `_XOPEN5` mode (e.g., gsocket.c XPG5 hacks). Analyze each hunk individually.
+- **LLD for `ld -r` partial linking**: GNU ld's `-r` output has symbols with binding 0 that LLD rejects. Using LLD for both `ld -r` and final link avoids incompatibility.
+- **Inject into Makefile.settings post-configure**: For non-autotools builds with custom configure, append to Makefile.settings after configure runs (e.g., `echo "EFLAGS += ..." >> Makefile.settings`).
 
-## What Failed / Gotchas (Sessions 14-15)
+## What Failed / Gotchas (Sessions 14-18)
 
 - **configure_flags: remove on inline conditionals**: Leaves orphaned `\` on `%endif` lines. Solution: bcond flipping.
 - **Symlink hack for OpenSSL sonames**: Wrong approach — fixed root cause by rebuilding.
@@ -342,6 +424,13 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **`__tls_get_addr` is NOT just lazy binding**: It crashes on any actual TLS use (e.g., connecting to IRC with TLS). Previous session incorrectly assumed it was harmless.
 - **gnutls_ca_file renamed in weechat 4.x**: Now `gnutls_ca_system` and `gnutls_ca_user` (not `gnutls_ca_file`).
 - **SSL_CERT_FILE is OpenSSL-only**: gnutls ignores it. Must use app-specific mechanisms (weechat `-r`).
+- **SGUG-RSE gsocket.c XPG5 hacks**: Our dicl-clang-compat forces `_XOPEN5` mode where `struct msghdr` already has modern fields (msg_control/msg_controllen). SGUG-RSE's `struct xpg5_msghdr` hacks are WRONG for this mode. Reverted ALL gsocket.c changes.
+- **Meson cpp entry for C-only packages**: Setting `cpp = 'irix-cc'` in meson cross-file causes meson to use irix-cc for C++ link tests (.cpp extension). irix-cc can't handle .cpp files. Fix: remove `cpp` entry for C-only packages.
+- **gnulib IRIX frexp assumptions**: gnulib's meson.build explicitly marks IRIX frexp/frexpl as "broken beyond repair". This is wrong for IRIX 6.5. Must patch the meson.build to add IRIX as working.
+- **fdopendir not available on IRIX**: Our compat provides `AT_FDCWD` (via openat) but NOT `fdopendir`. Code using `#ifdef AT_FDCWD` as proxy for fdopendir must also check `!defined(__sgi)`.
+- **IRIX `sa_len` macro**: `<sys/socket.h>` defines `#define sa_len sa_union.sa_generic.sa_len2`. Any local variable named `sa_len` gets expanded by preprocessor. Rename to avoid collision.
+- **GNU ld `-r` + LLD final link**: GNU ld's relocatable output contains STB_LOCAL symbols with binding 0 that LLD rejects as "invalid binding". Must use same linker for both `-r` and final link.
+- **libgcrypt-config not in PATH**: Cross-compilation staging bin isn't in PATH. Configure scripts using `$(libgcrypt-config --libs)` silently get empty string. Must inject `-lgcrypt` manually.
 
 ---
 

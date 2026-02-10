@@ -1,0 +1,106 @@
+# bitlbee - IRC to other chat networks gateway (FC40: 3.6-14)
+# Custom configure (not autotools, not meson). Uses glib2 + gnutls.
+# Build chain: glib2 + gnutls (all available) → bitlbee
+# Disables purple (needs dbus+gtk2), OTR (needs libotr), systemd
+
+package: bitlbee
+
+rules:
+  # Compat for dlmalloc (IRIX sbrk/brk malloc is broken) + strcasestr (IRIX lacks)
+  inject_compat_functions:
+    - strdup
+    - strcasestr
+
+  drop_buildrequires:
+    - systemd-rpm-macros
+    - libpurple-devel
+    - "%{_bindir}/python3"
+    - libxslt
+    - docbook-style-xsl
+
+  spec_replacements:
+    # Flip OTR bcond: off by default (skips all %if %{with otr} blocks)
+    - pattern: "%bcond_without otr"
+      replacement: "%bcond_with otr"
+
+    # Remove systemd/sysusers macro expansions
+    - pattern: "%{?systemd_requires}\n%{?sysusers_requires_compat}"
+      replacement: "# systemd/sysusers not needed on IRIX"
+
+    # Add explicit Provides (rpmmacros.irix sets AutoProv: no)
+    - pattern: "License:           GPLv2+ and MIT"
+      replacement: "License:           GPLv2+ and MIT\nProvides: bitlbee(mips-32) = %{version}-%{release}"
+
+    # Fix brace expansion in %prep (bash-only syntax)
+    - pattern: "touch -c -r bitlbee.conf{.forkdaemon,}"
+      replacement: "touch -c -r bitlbee.conf.forkdaemon bitlbee.conf"
+
+    # ---- %build: Replace configure + make + doc generation ----
+    # Custom configure (not autotools). Disable purple, otr, systemd, pie.
+    # Set CC/CFLAGS/PKG_CONFIG for cross-compilation.
+    # LD needed for ld -r partial linking of lib/*.o (must understand MIPS ELF)
+    - pattern: "export PYTHON=\"%{_bindir}/python3\"\nexport CFLAGS=\"$RPM_OPT_FLAGS\"\n./configure \\\n  --prefix=%{_prefix} \\\n  --bindir=%{_sbindir} \\\n  --etcdir=%{_sysconfdir}/%{name} \\\n  --mandir=%{_mandir} \\\n  --datadir=%{_datadir}/%{name} \\\n  --config=%{_localstatedir}/lib/%{name} \\\n  --pcdir=%{_libdir}/pkgconfig \\\n  --plugindir=%{_libdir}/%{name} \\\n  --systemdsystemunitdir=%{_unitdir} \\\n  --strip=0 \\\n  --plugins=1 \\\n  --ssl=gnutls \\\n  --jabber=1 \\\n  --twitter=1 \\\n  --purple=1 \\\n%if %{with otr}\n  --otr=plugin\n%endif\n\n%make_build VERBOSE=\"\"\n(cd doc/user-guide/ && make user-guide.html)"
+      replacement: |
+        export CC="%{__cc}"
+        export CFLAGS="%{optflags}"
+        export PKG_CONFIG_LIBDIR="/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig"
+        export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
+        export LD=/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18
+        ./configure \
+          --prefix=%{_prefix} \
+          --bindir=%{_sbindir} \
+          --etcdir=%{_sysconfdir}/%{name} \
+          --mandir=%{_mandir} \
+          --datadir=%{_datadir}/%{name} \
+          --config=%{_localstatedir}/lib/%{name} \
+          --pcdir=%{_libdir}/pkgconfig \
+          --plugindir=%{_libdir}/%{name} \
+          --strip=0 \
+          --plugins=1 \
+          --ssl=gnutls \
+          --jabber=1 \
+          --twitter=1 \
+          --purple=0 \
+          --otr=0 \
+          --pie=0
+        # Inject compat library into build settings
+        # Inject compat library and gcrypt (libgcrypt-config not in PATH)
+        echo "EFLAGS += -L$COMPAT_DIR -lmogrix-compat -lgcrypt" >> Makefile.settings
+        %make_build VERBOSE=""
+
+    # ---- %install: Remove install-systemd, sysusers, fix brace expansion ----
+    - pattern: "%make_install install-etc install-dev install-systemd\n\n# Declarative allocation of system users and groups\ninstall -D -p -m 0644 %{SOURCE1} $RPM_BUILD_ROOT%{_sysusersdir}/%{name}.conf\n\n# Create some directories manually\nmkdir -p $RPM_BUILD_ROOT{%{_localstatedir}/lib,%{_libdir}}/%{name}/"
+      replacement: |
+        %make_install install-etc install-dev
+        # Create directories manually (no brace expansion in /bin/sh)
+        mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/%{name}/
+        mkdir -p $RPM_BUILD_ROOT%{_libdir}/%{name}/
+
+    # ---- Remove all scriptlets (systemd, sysusers) ----
+    - pattern: "%pre\n%sysusers_create_compat %{SOURCE1}\n\n%post\n%systemd_post %{name}.service\n\n%preun\n%systemd_preun %{name}.service\n\n%postun\n%systemd_postun_with_restart %{name}.service"
+      replacement: "# Scriptlets removed for IRIX (no systemd/sysusers)"
+
+    # ---- Fix %files: remove brace expansion, user-guide, systemd, bitlbee user ----
+    - pattern: "%files\n%license COPYING\n%doc doc/{AUTHORS,CHANGES,CREDITS,FAQ,README}\n%doc doc/user-guide/user-guide.html\n%attr(0750,root,bitlbee) %dir %{_sysconfdir}/%{name}/\n%attr(0640,root,bitlbee) %config(noreplace) %{_sysconfdir}/%{name}/*\n%{_sbindir}/%{name}\n%dir %{_libdir}/%{name}/\n%{_datadir}/%{name}/\n%{_mandir}/man?/%{name}*\n%attr(0750,bitlbee,bitlbee) %dir %{_localstatedir}/lib/%{name}/\n%{_unitdir}/%{name}*\n%{_sysusersdir}/%{name}.conf"
+      replacement: |
+        %files
+        %license COPYING
+        %doc doc/AUTHORS doc/CHANGES doc/CREDITS doc/FAQ doc/README
+        %dir %{_sysconfdir}/%{name}/
+        %config(noreplace) %{_sysconfdir}/%{name}/*
+        %{_sbindir}/%{name}
+        %dir %{_libdir}/%{name}/
+        %{_datadir}/%{name}/
+        %{_mandir}/man?/%{name}*
+        %dir %{_localstatedir}/lib/%{name}/
+
+    # Remove devel Requires on pkgconfig (not available on IRIX)
+    - pattern: "Requires:          %{name}%{?_isa} = %{version}-%{release}, pkgconfig"
+      replacement: "Requires:          %{name} = %{version}-%{release}"
+
+  prep_commands:
+    # Fix %zu/%zd/%zx format specifiers — IRIX libc crashes on %z
+    # MIPS n32: size_t = unsigned int, ssize_t = int, so %u/%d is correct
+    - "sed -i -e 's/%10zd/%10d/g' -e 's/%zu/%u/g' -e 's/%zd/%d/g' -e 's/%zx/%x/g' conf.c dcc.c lib/oauth.c lib/oauth2.c protocols/jabber/si.c protocols/twitter/twitter_http.c root_commands.c"
+    # Rename sa_len variable — IRIX defines sa_len as a macro in sys/socket.h
+    - "sed -i 's/sa_len/saddr_len/g' dcc.c"

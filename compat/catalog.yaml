@@ -33,6 +33,11 @@ functions:
     header: string.h
     description: Duplicate at most n bytes of a string
 
+  strnlen:
+    file: string/strnlen.c
+    header: string.h
+    description: Determine the length of a fixed-size string
+
   strcasestr:
     file: string/strcasestr.c
     header: string.h
