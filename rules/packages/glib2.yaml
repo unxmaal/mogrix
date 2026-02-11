@@ -12,12 +12,7 @@ add_patch:
 
 rules:
   inject_compat_functions:
-    - strdup
-    - strndup
     - strnlen
-    - getline
-    - asprintf
-    - vasprintf
 
   # NOTE: systemtap-sdt-devel, libselinux-devel, libattr-devel handled by generic.yaml
   drop_buildrequires:
@@ -30,7 +25,6 @@ rules:
     - "/usr/bin/marshalparser"
     - "/usr/bin/rst2man"
     - python3-devel
-    - gcc-c++
     - meson
 
   drop_requires:
@@ -175,7 +169,6 @@ rules:
       replacement: "# gnutls dlopen requirement handled by bundling"
 
   install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
     # Remove gettext files since NLS is disabled
     - "rm -rf %{buildroot}%{_datadir}/locale"
     - "rm -rf %{buildroot}%{_datadir}/gettext"
@@ -194,3 +187,4 @@ rules:
     - "rm -f %{buildroot}%{_libexecdir}/gio-launch-desktop"
     # Remove systemtap files
     - "rm -rf %{buildroot}%{_datadir}/systemtap"
+

@@ -20,7 +20,6 @@ rules:
     ac_cv_func_wcrtomb: "no"
     # IRIX select() works fine - prevent gnulib from replacing it.
     # Cross-compile default "guessing no" is wrong for IRIX.
-    gl_cv_func_select_detects_ebadf: "yes"
     # generic.yaml sets ac_cv_header_sys_random_h=no, so gnulib won't see
     # our compat getrandom. Let gnulib provide its own replacement.
     ac_cv_func_getrandom: "no"

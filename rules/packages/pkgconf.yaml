@@ -16,10 +16,6 @@ rules:
   drop_requires:
     - libpkgconf
 
-  inject_compat_functions:
-    - strndup
-    - strdup
-
   # IRIX libc is pre-C99 and doesn't support %zu format specifier.
   # When printf encounters %zu, it corrupts the varargs parsing, causing
   # subsequent %s arguments to read garbage pointers → SIGSEGV.
@@ -70,3 +66,4 @@ rules:
     - "rm -f $RPM_BUILD_ROOT%{_libdir}/pkgconfig/libpkgconf.pc"
     - "rm -rf $RPM_BUILD_ROOT%{_includedir}/pkgconf"
     - "rm -rf $RPM_BUILD_ROOT%{_datadir}/licenses/libpkgconf-*"
+

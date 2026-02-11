@@ -45,7 +45,6 @@ rules:
     - libdb-devel
     - groff-base
     - procps
-    - gcc-c++
     - tcsh
 
   # Drop Linux-specific Requires
@@ -267,3 +266,4 @@ rules:
     - "find %{buildroot}%{_bindir} -type f -exec grep -l '#!/usr/bin/perl' {} \\; | xargs -r sed -i 's|#!/usr/bin/perl|#!/usr/sgug/bin/perl|g'"
     - "find %{buildroot}%{_bindir} -type f -exec grep -l '#!.*perl' {} \\; | xargs -r sed -i 's|#!/usr/local/bin/perl|#!/usr/sgug/bin/perl|g'"
     - "find $RPM_BUILD_ROOT -type f -o -type l | sed \"s|$RPM_BUILD_ROOT||\" | sort > perl-filelist.txt"
+

@@ -2,8 +2,6 @@ package: zip
 
 rules:
   inject_compat_functions:
-    - getline
-    - strdup
     - stpcpy
 
   drop_buildrequires: []
@@ -30,3 +28,4 @@ rules:
     # Fix typo in spec: RPM_BULD_ROOT → RPM_BUILD_ROOT
     - pattern: "$RPM_BULD_ROOT"
       replacement: "$RPM_BUILD_ROOT"
+

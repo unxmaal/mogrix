@@ -3,17 +3,12 @@
 
 package: gobject-introspection
 
-
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - gobject-introspection.sgifixes.patch
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - getline
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
@@ -25,3 +20,4 @@ rules:
   # -Dcairo=disabled (if cairo not available)
 
   # NOTE: libdicl remove_lines handled by generic.yaml
+

@@ -3,19 +3,12 @@
 
 package: elfutils
 
-
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - elfutils.sgifixes.patch
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - getline
-    - asprintf
-    - vasprintf
 
   # NOTE: libdicl/systemtap-sdt-devel drop_buildrequires/drop_requires handled by generic.yaml
 
@@ -41,3 +34,4 @@ rules:
     - nls
 
   # NOTE: libdicl remove_lines handled by generic.yaml
+

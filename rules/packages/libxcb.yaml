@@ -6,9 +6,6 @@
 package: libxcb
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   prep_commands:
     # Need xcbgen Python module importable for code generation
@@ -89,7 +86,7 @@ rules:
       replacement: ""
 
   install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
     - "rm -rf %{buildroot}%{_pkgdocdir}"
 
   skip_check: true
+

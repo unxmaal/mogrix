@@ -3,9 +3,6 @@
 package: fontconfig
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   drop_subpackages:
     - "devel-doc"
@@ -91,6 +88,3 @@ rules:
     - pattern: "HOME=/root /usr/bin/fc-cache -f"
       replacement: "HOME=/root %{_bindir}/fc-cache -f"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
-    - "rm -f %{buildroot}%{_infodir}/dir"

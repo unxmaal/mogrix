@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-09)
+## Current Status (2026-02-11)
 
-**81 source packages cross-compiled for IRIX (217 RPMs). C++ cross-compilation WORKING. App bundles WORKING (Flatpak-style install). groff (first C++ package), openssh (first network service), aterm (first X11 app) all running on IRIX.**
+**91 source packages cross-compiled for IRIX (250+ RPMs). Qt5 5.15.13 RUNNING ON IRIX — `qVersion()` returns "5.15.13". All Qt5 modules verified: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin.**
 
-All phases through 4c complete (41 packages). Phase 5 complete with 23 library/app packages. Sessions 5-13 added 17 more packages including openssh (SSH server), nano, rsync, groff (first C++ package), libstrophe, giflib, libxslt, and various utilities. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX that coexist with SGUG-RSE. 115 package rule files covering current and future packages.
+All phases through 4c complete (41 packages). Phase 5+ complete with 50 library/app packages including Qt5 (the boss fight). Sessions 5-20 added the full Qt5 dependency stack: glib2, harfbuzz, xcb-proto, libxcb, xcb-util family, libxkbcommon, double-conversion, pcre2-16, and qt5-qtbase itself. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX. 115+ package rule files. Bundles shipped: weechat, nano, groff, st, bitlbee (+discord) — all tested on IRIX.
 
 ---
 
@@ -188,25 +188,46 @@ Full C++ cross-compilation using clang++ with GCC 9 libstdc++ from SGUG-RSE. Key
 - Staging c++config.h patches: disabled `_GLIBCXX_USE_C99_MATH_TR1` and `_GLIBCXX_USE_STD_SPEC_FUNCS`
 - `-D_WCHAR_T` prevents IRIX wchar_t typedef conflict in C++ mode
 
-#### Current blockers
-- **FC40 GNOME stack uses meson**: cairo 1.18, harfbuzz, pango, glib2, p11-kit all need `%meson`. We have `cross/meson-irix-cross.ini` and pixman built with meson, but no `%meson` RPM macro.
+#### Meson blocker resolved
+glib2 (session 18), harfbuzz, libxkbcommon, pixman all built with raw meson commands replacing `%meson` RPM macros. Pattern documented in glib2.yaml.
 
-#### Remaining targets (autotools)
+### Phase 6: Qt5 (COMPLETE)
+
+| Package | Version | Status | Notes |
+|---------|---------|--------|-------|
+| glib2 | 2.80.0 | INSTALLED | First meson package |
+| harfbuzz | 8.3.0 | INSTALLED | Meson, freetype+glib2 deps |
+| xcb-proto | 1.16.0 | INSTALLED | X11 protocol definitions |
+| libxcb | 1.16 | INSTALLED | X protocol binding, added -lX11 for rld |
+| xcb-util{,-wm,-image,-keysyms,-renderutil} | various | INSTALLED | XCB utility libs |
+| libxkbcommon | 1.6.0 | INSTALLED | Meson, strnlen compat added |
+| double-conversion | 3.3.0 | INSTALLED | cmake, small C++ |
+| **qt5-qtbase** | **5.15.13** | **INSTALLED+VERIFIED** | **Qt5 running on IRIX!** |
+
+Key Qt5 fixes:
+- `-Bsymbolic-functions` reduces global GOT entries below rld ~4370 limit
+- freetype rebuilt `--without-harfbuzz` to break circular NEEDED dependency
+- Preload chain: dlopen Qt5Core + harfbuzz before Qt5Gui
+- libxcb linked with `-lX11` for strict rld UND resolution
+- Full mogrix pipeline: `mogrix convert` + `mogrix build --cross` → 3 RPMs
+
+### Phase 7: Qt5 Apps (IN PROGRESS)
+
+| Package | Build System | Unblocks | Status |
+|---------|-------------|----------|--------|
+| qtermwidget5 | cmake | qterminal | NEXT |
+| qterminal | cmake | Community target | Blocked on qtermwidget5 |
+
+### Future targets
+
 | Package | Build System | Unblocks |
 |---------|-------------|----------|
+| cairo | meson | pango, gtk2 |
+| pango | meson | gtk2, GUI apps |
 | gd | autotools | graphics, emacs |
-| pcre | autotools | glib2, grep (already have pcre2) |
-| gnutls | autotools | libarchive, git, p11-kit |
 | elfutils | autotools | binutils, debuginfo |
 | libarchive | autotools | cmake, rpm |
 | gtk2 | autotools | GUI apps |
-
-### Phase 6: Development Tools (future)
-
-| Package | Status | Notes |
-|---------|--------|-------|
-| binutils | Blocked on tier 2 | Assembler, linker, objdump |
-| gcc | Blocked on binutils | Native compiler for IRIX |
 
 ### Long-Term: Modern Browser
 
@@ -251,7 +272,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
 | Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
 | Roadmap: glob pattern drops for impossible ecosystems | Done |
-| 115 package rules + 1 class rule | Done |
+| 129 package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
 | Batch build (`mogrix batch-build`) | Done |
@@ -260,7 +281,8 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
 | App bundles (`mogrix bundle`) | Done |
-| 81 source packages cross-compiled for IRIX | Done |
+| 91 source packages cross-compiled for IRIX | Done |
+| Qt5 5.15.13 running on IRIX (Core+Gui+Widgets+XcbQpa) | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
 | C++ cross-compilation (clang++ + GCC 9 libstdc++) | Done |
@@ -290,6 +312,10 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | clang++ with GCC 9 libstdc++ | IRIX GCC 9 headers + libs in staging; custom CRT for .ctors/.dtors |
 | `-fno-use-cxa-atexit` | IRIX lacks __cxa_atexit; use atexit() for static destructors |
 | `-fno-use-init-array` | IRIX rld doesn't process .init_array; use .ctors with custom CRT |
+| `-Bsymbolic-functions` for all .so | Reduces global GOT entries by 50-65%, keeping under rld ~4370 limit |
+| Break freetype↔harfbuzz cycle | `--without-harfbuzz` for freetype; rld crashes on circular NEEDED deps |
+| Qt5 preload chain | dlopen Qt5Core + harfbuzz before Qt5Gui; rld can't resolve deep dep trees in one pass |
+| libxcb links libX11 explicitly | IRIX rld strict UND resolution — won't search already-loaded DSOs without NEEDED edge |
 | `-D_WCHAR_T` in C++ mode | Prevents IRIX stdlib.h from typedef-ing wchar_t (C++ keyword) |
 | Disable C99 math TR1 in c++config.h | IRIX libm lacks exp2l, cbrt, fdim, etc. |
 | R_MIPS_REL32 dispatch pattern | IRIX rld fails on function pointers in static data; use switch/strcmp dispatch |
@@ -313,6 +339,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 13. **C++ packages:** groff cross-compiled using clang++ + GCC 9 libstdc++ ✓
 14. **Batch automation:** `mogrix batch-build` automates multi-package pipelines ✓
 15. **App bundles:** `mogrix bundle` creates optimized tarballs that coexist with SGUG-RSE ✓
+16. **Qt5 on IRIX:** Qt5 5.15.13 cross-compiled and verified running (`qVersion()` = "5.15.13") ✓
 
 ---
 

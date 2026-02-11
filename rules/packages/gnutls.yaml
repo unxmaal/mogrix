@@ -13,13 +13,6 @@ package: gnutls
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - asprintf
-    - vasprintf
-    - getline
-    - getopt_long
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   drop_requires:
@@ -45,8 +38,6 @@ rules:
     gl_cv_func_working_getdelim: "yes"
     # IRIX select() works fine - prevent gnulib from replacing it
     # (gnulib's select.c can't find the real select() declaration)
-    gl_cv_func_select_supports0: "yes"
-    gl_cv_func_select_detects_ebadf: "yes"
 
   # Configure flags - only ADD (prepend to %configure line, safe with continuations)
   # Do NOT use remove here - see comment at top of file
@@ -120,3 +111,4 @@ rules:
     - "rm -rf %{buildroot}%{_docdir}/manual"
 
   # NOTE: libdicl remove_lines handled by generic.yaml
+

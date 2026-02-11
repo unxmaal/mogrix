@@ -20,10 +20,6 @@ rules:
   # reallocarray: gnulib xmalloc
   # strerror_r: error reporting
   inject_compat_functions:
-    - strdup
-    - strndup
-    - getopt_long
-    - getline
     - reallocarray
     - strerror_r
 
@@ -46,5 +42,5 @@ rules:
 
   # Remove generated info dir file
   install_cleanup:
-    - "rm -f %{buildroot}%{_infodir}/dir"
     - "rm -rf %{buildroot}%{_infodir}"
+

@@ -14,12 +14,6 @@ package: file
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - getline
-    - asprintf
-    - getopt_long
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
 
@@ -61,3 +55,4 @@ rules:
     # Change file-libs %files to handle both .so and .so.* patterns
     - pattern: "%{_libdir}/*so.*"
       replacement: "%{_libdir}/*.so*"
+

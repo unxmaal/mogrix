@@ -39,5 +39,3 @@ rules:
     - pattern: "%ldconfig_postun\n"
       replacement: ""
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"

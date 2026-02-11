@@ -16,9 +16,6 @@ rules:
   # NOTE: skip_check is inherited from generic.yaml
 
   # Compat functions that may be needed
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   # gnupg2 drop_buildrequires handled by generic.yaml
 
@@ -116,3 +113,4 @@ rules:
       replacement: ""
     - pattern: "%doc %_pkgdocdir/examples*"
       replacement: "# %doc examples* - docs disabled"
+

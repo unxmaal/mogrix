@@ -19,10 +19,6 @@ rules:
   # strerror_r: error reporting
   # posix_spawn: IRIX lacks spawn.h — compat provides fork+exec implementation
   inject_compat_functions:
-    - strdup
-    - getopt_long
-    - getline
-    - asprintf
     - strerror_r
     - posix_spawn
 
@@ -46,3 +42,4 @@ rules:
     - "sed -i 's/gnulib-tests//' Makefile.am || true"
     # Remove -lselinux from the Makefile (in case configure baked it in)
     - "sed -i 's/-lselinux//g' src/Makefile.in || true"
+

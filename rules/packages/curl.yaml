@@ -14,9 +14,6 @@ package: curl
 
 rules:
   # Compat functions that may be needed
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   # Drop problematic dependencies
   drop_buildrequires:
@@ -115,3 +112,4 @@ rules:
       replacement: "--without-nghttp2"
     - pattern: "--with-brotli"
       replacement: "--without-brotli"
+

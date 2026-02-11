@@ -3,9 +3,6 @@ classes: ['nls-disabled']
 
 rules:
   inject_compat_functions:
-    - getline
-    - getopt_long
-    - strdup
     - strerror_r
     - stpcpy
 
@@ -69,3 +66,4 @@ rules:
   install_cleanup:
     - "rm -rf %{buildroot}%{_infodir}"
     - "rm -rf %{buildroot}%{_docdir}/nano"
+

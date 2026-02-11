@@ -3,9 +3,6 @@
 package: uuid
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   # Drop C++, perl, and DCE subpackages for cross-compilation
   drop_subpackages:
@@ -49,5 +46,5 @@ rules:
       replacement: "# popd (disabled)"
 
   install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
     - "rm -f %{buildroot}%{_libdir}/*.a"
+

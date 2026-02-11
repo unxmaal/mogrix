@@ -37,7 +37,6 @@ rules:
     - pattern: "%ldconfig_postun\n"
       replacement: ""
 
-
   # IRIX libX11 lacks _XEatDataWords (added in libX11 1.6 for security hardening)
   # Provide as a macro wrapping the older _XEatData function.
   # Inject into Xrenderint.h (included by all source files).
@@ -45,5 +44,5 @@ rules:
     - "sed -i '/#include.*Xlibint/a\\#ifndef _XEatDataWords\\n#define _XEatDataWords(dpy, n) _XEatData((dpy), (unsigned long)(n) << 2)\\n#endif' src/Xrenderint.h"
 
   install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
     - "rm -rf %{buildroot}%{_docdir}"
+

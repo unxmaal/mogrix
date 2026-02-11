@@ -6,9 +6,6 @@
 package: pango
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   prep_commands:
     # Remove _POSIX_C_SOURCE=200809L which hides IRIX symbols (replaces old sgifixes patch)
@@ -22,7 +19,6 @@ rules:
 
   drop_buildrequires:
     - gcc
-    - gcc-c++
     - gi-docgen
     - help2man
     - "pkgconfig(gobject-introspection-1.0)"
@@ -122,7 +118,5 @@ rules:
     - pattern: "%files tests\n%{_libexecdir}/installed-tests/%{name}\n%{_datadir}/installed-tests"
       replacement: "# tests files removed"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
-
   skip_check: true
+

@@ -6,9 +6,6 @@
 package: harfbuzz
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   drop_buildrequires:
     - cairo-devel
@@ -16,7 +13,6 @@ rules:
     - libicu-devel
     - graphite2-devel
     - gtk-doc
-    - gcc-c++
 
   spec_replacements:
     # Export CXX for C++ compilation (harfbuzz is C++)
@@ -80,3 +76,4 @@ rules:
     - "sed -i 's/^SUBDIRS = src util test perf docs/SUBDIRS = src util docs/' Makefile.in"
 
   skip_check: true
+

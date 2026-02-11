@@ -6,7 +6,6 @@ package: double-conversion
 rules:
   drop_buildrequires:
     - gcc
-    - gcc-c++
 
   spec_replacements:
     # Replace %cmake with raw cmake using cross toolchain
@@ -45,3 +44,4 @@ rules:
     - "rm -f %{buildroot}%{_libdir}/libdouble-conversion.a || true"
 
   skip_check: true
+

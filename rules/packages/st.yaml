@@ -15,8 +15,6 @@ package: st
 
 rules:
   inject_compat_functions:
-    - strdup
-    - strndup
     - openpty
     - pselect
     - setenv
@@ -146,3 +144,4 @@ rules:
     - "rm -f %{buildroot}%{_bindir}/st-user"
     - "rm -f %{buildroot}%{_bindir}/st-fedora"
     - "rm -f %{buildroot}%{_mandir}/man1/st-user.1*"
+

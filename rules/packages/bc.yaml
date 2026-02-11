@@ -3,9 +3,6 @@
 package: bc
 
 rules:
-  inject_compat_functions:
-    - getopt_long
-    - strdup
 
   drop_buildrequires:
     - texinfo
@@ -17,3 +14,4 @@ rules:
 
     - pattern: "%{_infodir}/*"
       replacement: ""
+

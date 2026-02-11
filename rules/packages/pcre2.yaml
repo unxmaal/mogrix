@@ -4,9 +4,6 @@ package: pcre2
 
 rules:
   # Compat functions needed for IRIX
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   # Configure flags
   configure_flags:
@@ -50,3 +47,4 @@ rules:
     # Disable percent-zt — IRIX printf can't handle %zu
     - pattern: "    --enable-percent-zt \\"
       replacement: "    --disable-percent-zt \\"
+

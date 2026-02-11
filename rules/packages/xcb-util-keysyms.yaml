@@ -2,9 +2,6 @@
 package: xcb-util-keysyms
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   prep_commands:
     # IRIX X11R6.3 keysymdef.h is missing modern keysym definitions
@@ -32,7 +29,5 @@ rules:
     - pattern: "rm %{buildroot}%{_libdir}/*.la"
       replacement: "rm -f %{buildroot}%{_libdir}/*.la || true"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la || true"
-
   skip_check: true
+

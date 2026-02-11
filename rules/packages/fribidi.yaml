@@ -5,10 +5,6 @@ package: fribidi
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - getopt_long
 
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
 
@@ -26,10 +22,10 @@ rules:
 
   install_cleanup:
     - "rm -rf %{buildroot}%{_mandir}/man3"
-    - "rm -f %{buildroot}%{_libdir}/*.la"
 
   spec_replacements:
     # Force autotools build path (meson not available for cross-compilation)
     # The spec has %if 0%{?rhel} && 0%{?rhel} <= 8 guards around autotools code
     - pattern: "%if 0%{?rhel} && 0%{?rhel} <= 8"
       replacement: "%if 1"
+

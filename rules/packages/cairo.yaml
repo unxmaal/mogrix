@@ -5,9 +5,6 @@
 package: cairo
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   prep_commands:
     # csi-trace utility links basename from libgen.h but it doesn't resolve
@@ -15,7 +12,6 @@ rules:
     - "sed -i \"s/conf.get('HAVE_LIBGEN_H', 0) == 1/false/\" util/cairo-script/meson.build"
 
   drop_buildrequires:
-    - gcc-c++
     - gtk-doc
     - "pkgconfig(librsvg-2.0)"
     - "pkgconfig(xcb-render)"
@@ -95,7 +91,5 @@ rules:
     - pattern: "%files tools\n%{_bindir}/cairo-trace\n%{_libdir}/cairo/"
       replacement: "# tools files removed (MIPS binaries)"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
-
   skip_check: true
+

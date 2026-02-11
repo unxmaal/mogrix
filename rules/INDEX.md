@@ -10,14 +10,16 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | What | Mechanism | Details |
 |------|-----------|---------|
 | Test suite | `skip_check: true` | Can't run MIPS binaries on build host |
-| Linux-only build deps | `drop_buildrequires` | systemd, systemd-devel, libselinux-devel, kernel-headers, systemtap-sdt-devel, libcap-devel, libcap-ng-devel, libacl-devel, libattr-devel, audit-libs-devel, alsa-lib-devel, gnupg2, libdicl, libdicl-devel |
+| Linux-only build deps | `drop_buildrequires` | systemd, systemd-devel, libselinux-devel, kernel-headers, systemtap-sdt-devel, libcap-devel, libcap-ng-devel, libacl-devel, libattr-devel, audit-libs-devel, alsa-lib-devel, gnupg2, gcc-c++, libdicl, libdicl-devel |
 | Linux-only runtime deps | `drop_requires` | libdicl, libdicl-devel |
 | libdicl removal | `remove_lines` | CPPFLAGS/LIBS exports, %gpgverify, %ldconfig_scriptlets, systemd scriptlets |
-| malloc(0) cross-detect | `ac_cv_overrides` | ac_cv_func_malloc_0_nonnull, ac_cv_func_realloc_0_nonnull |
+| Common compat functions | `inject_compat_functions` | strdup, strndup, getline, getopt_long, asprintf, vasprintf (+ dlmalloc auto) |
+| malloc(0) cross-detect | `ac_cv_overrides` | ac_cv_func_malloc_0_nonnull, ac_cv_func_realloc_0_nonnull, gl_cv_func_select_* |
 | SGUG prefix paths | `rpm_macros` | _prefix=/usr/sgug, _libdir=/usr/sgug/lib32, _bindir, _includedir, etc. |
 | Path translation | `rewrite_paths` | /usr/lib64 → /usr/sgug/lib32, /usr/lib → /usr/sgug/lib32, /usr/include → /usr/sgug/include |
 | Linux-only features | `configure_disable` | selinux, systemd, udev, inotify, epoll, fanotify, timerfd, libcap, audit |
 | Header stubs | `header_overlays: generic` | execinfo.h, malloc.h, error.h, etc. |
+| Install cleanup | `install_cleanup` | Fix /usr/bin paths, rm *.la, rm infodir/dir |
 | Subpackage bloat | `drop_subpackages` | debuginfo, debugsource, langpack-* |
 
 **Only add to a package YAML** when the package needs something beyond the above.
@@ -158,7 +160,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 |----------|------|----------|
 | Generic rules | rules/generic.yaml | Applied to ALL packages |
 | Class rules | rules/classes/*.yaml | Shared rules for package groups |
-| Package rules | rules/packages/*.yaml | Per-package overrides (119 packages) |
+| Package rules | rules/packages/*.yaml | Per-package overrides (129 packages) |
 | Source checks | rules/source_checks.yaml | IRIX source pattern definitions |
 | Compat functions | compat/catalog.yaml | Function registry + source patterns |
 | Compat sources | compat/string/, compat/stdio/, compat/stdlib/, compat/dicl/, compat/malloc/ | Implementation files |
@@ -170,8 +172,27 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Source analyzer | mogrix/analyzers/source.py | Ripgrep-based source scanner |
 | Rule auditor | mogrix/analyzers/rules.py | Duplication detection across packages |
 | Spec validator | mogrix/validators/spec.py | Specfile structural validator |
-| Methods | rules/methods/*.md | Process documentation |
-| Bundle architecture | rules/methods/bundles.md | How bundles work end-to-end |
+| Methods | rules/methods/*.md | Process documentation (15 files) |
+
+**Methods index:**
+
+| File | Purpose |
+|------|---------|
+| before-you-start.md | Pre-debug checklist (read first when stuck) |
+| mogrix-workflow.md | How to run mogrix commands |
+| package-rules.md | Writing package YAML rules |
+| autoconf-cross.md | Autotools cross-compilation patterns |
+| cmake-cross.md | CMake cross-compilation patterns |
+| compat-functions.md | Adding compat functions to catalog |
+| patch-creation.md | Creating source patches |
+| text-replacement.md | safepatch vs sed |
+| linker-selection.md | GNU ld vs LLD 18 selection |
+| irix-testing.md | IRIX shell rules, chroot, debugging |
+| irix-quirks.md | IRIX libc/rld quirks reference |
+| irix-address-space.md | IRIX memory layout and limits |
+| bundles.md | Bundle architecture end-to-end |
+| build-order.md | Package build ordering |
+| task-tracking.md | ultralist task tracking |
 
 ## Rule Hierarchy
 
@@ -187,9 +208,30 @@ Rules are applied in order: **generic → class → package**. Each layer adds t
 
 | Class | Purpose | Packages |
 |-------|---------|----------|
-| `nls-disabled` | Disables NLS, skips %find_lang, removes lang file refs | gawk, grep, sed, flex, libpng, make, findutils, tar, fontconfig |
+| `nls-disabled` | Disables NLS, skips %find_lang, removes lang file refs | bison, coreutils, diffutils, findutils, flex, gawk, grep, gzip, make, nano, sed, tar |
 
 **Auditing for elevation:** Run `mogrix audit-rules` to detect duplicated rules across packages and flag candidates for promotion to class or generic level.
+
+**Elevation candidates** (audit 2026-02-11, rules used in 8+ packages):
+
+| Rule | Type | Count | Candidate for |
+|------|------|-------|---------------|
+| `strdup` | inject_compat_functions | 69 | generic.yaml |
+| `strndup` | inject_compat_functions | 48 | generic.yaml |
+| `getline` | inject_compat_functions | 24 | generic.yaml |
+| `getopt_long` | inject_compat_functions | 21 | generic.yaml |
+| `rm *.la` | install_cleanup | 19 | generic.yaml |
+| `asprintf` | inject_compat_functions | 14 | generic.yaml |
+| `--disable-static` | configure_flags: add | 11 | generic.yaml |
+| `gcc-c++` | drop_buildrequires | 11 | generic.yaml |
+| `vasprintf` | inject_compat_functions | 10 | generic.yaml |
+| `texinfo` | drop_buildrequires | 10 | class rule |
+| `--disable-silent-rules` | configure_flags: add | 9 | generic.yaml |
+| `--disable-doc` | configure_flags: add | 8 | generic.yaml |
+| `rm infodir/dir` | install_cleanup | 7 | generic.yaml |
+| `gl_cv_func_select_*` | ac_cv_overrides | 5-6 | generic.yaml |
+
+Moving these to generic requires testing — compat function injection adds link-time overhead and some packages may not tolerate `--disable-static`. Evaluate before bulk promotion.
 
 ## Smoke Tests
 

@@ -14,9 +14,6 @@ rules:
   # Compat functions needed for IRIX
   # strdup: dlmalloc/libc allocator mismatch
   # getopt_long: option parsing (make bundles its own but links compat too)
-  inject_compat_functions:
-    - strdup
-    - getopt_long
 
   # Drop build deps we don't have
   drop_buildrequires:
@@ -34,3 +31,4 @@ rules:
   spec_replacements:
     - pattern: "autoreconf -vfi"
       replacement: "AUTOPOINT=true autoreconf -vfi"
+

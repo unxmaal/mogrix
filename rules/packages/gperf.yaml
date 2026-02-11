@@ -3,9 +3,6 @@
 package: gperf
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   # gperf uses 'register' keyword, deprecated in C++17
   spec_replacements:
@@ -20,5 +17,3 @@ rules:
     - pattern: "%{_infodir}/gperf.info*"
       replacement: "%{_infodir}/gperf.info"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_infodir}/dir"

@@ -6,8 +6,6 @@ package: libxkbcommon
 
 rules:
   inject_compat_functions:
-    - strdup
-    - strndup
     - strnlen
 
   prep_commands:
@@ -101,3 +99,4 @@ rules:
     - "rm -rf %{buildroot}%{_datadir}/bash-completion || true"
 
   skip_check: true
+

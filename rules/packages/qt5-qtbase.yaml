@@ -13,19 +13,13 @@ rules:
     - "qt5-qtbase-irix-no-elf-tls.patch"
 
   inject_compat_functions:
-    - asprintf
-    - vasprintf
-    - strdup
-    - strndup
     - strerror_r
     - secure_getenv
-    - getline
 
   drop_buildrequires:
     - perl-generators
     - python3
     - qt5-rpm-macros
-    - gcc-c++
     - make
     - cups-devel
     - desktop-file-utils
@@ -767,3 +761,4 @@ rules:
     - "rm -rf %{buildroot}%{_sysconfdir}/X11"
     # Remove QtProject dir (created by FC40 spec)
     - "rm -rf %{buildroot}%{_sysconfdir}/xdg/QtProject"
+

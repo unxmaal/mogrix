@@ -22,9 +22,9 @@ rules:
   # Remove static/libtool archive files (belt and suspenders)
   install_cleanup:
     - "rm -f %{buildroot}%{_libdir}/*.a"
-    - "rm -f %{buildroot}%{_libdir}/*.la"
 
   spec_replacements:
     # --disable-doc means no info pages are generated
     - pattern: "%{_infodir}/ksba.info*\n"
       replacement: ""
+

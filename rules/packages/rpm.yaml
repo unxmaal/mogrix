@@ -27,11 +27,6 @@ add_patch:
 rules:
   # Compat functions needed
   inject_compat_functions:
-    - strdup
-    - strndup
-    - getline
-    - asprintf
-    - vasprintf
     - openat  # Provides all POSIX.1-2008 "at" functions
     - getprogname  # BSD extension for program name
     - posix_spawn  # POSIX spawn functions for rpmlua.c
@@ -240,3 +235,4 @@ rules:
       replacement: "for rpmdb_path in /var/lib/rpm/*; do\n        [ -f \"$rpmdb_path\" ] || continue\n        rpmdb_file=$(basename \"$rpmdb_path\")"
     - pattern: "for rpmdb_file in ${rpmdb_files[@]}; do"
       replacement: "# rpmdb_file loop converted to basename above"
+

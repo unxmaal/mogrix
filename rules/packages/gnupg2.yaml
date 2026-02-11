@@ -20,11 +20,6 @@ add_patch:
 rules:
   # Compat functions needed (dlmalloc requires matching strdup/strndup)
   inject_compat_functions:
-    - strdup
-    - strndup
-    - asprintf
-    - vasprintf
-    - getline
     - stpcpy
     - explicit_bzero
 
@@ -165,3 +160,4 @@ rules:
     - "rm -rf $RPM_BUILD_ROOT%{_pkgdocdir}/examples/systemd-user"
 
   # NOTE: libdicl remove_lines handled by generic.yaml
+

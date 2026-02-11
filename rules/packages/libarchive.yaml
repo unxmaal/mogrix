@@ -3,16 +3,12 @@
 
 package: libarchive
 
-
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - libarchive.sgifixes.patch
 
 rules:
   # Compat functions that may be needed
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   # NOTE: libacl-devel/libattr-devel drop_buildrequires handled by generic.yaml
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
@@ -33,3 +29,4 @@ rules:
   configure_disable:
     - acl
     - xattr
+

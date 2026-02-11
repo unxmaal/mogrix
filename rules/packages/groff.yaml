@@ -7,12 +7,8 @@
 package: groff
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - getopt_long
 
   drop_buildrequires:
-    - gcc-c++
     - texinfo
     - git
     - netpbm-progs
@@ -79,3 +75,4 @@ rules:
     # Base subpackage block
     - pattern: "Requires(post): /usr/sbin/update-alternatives\nRequires(postun): /usr/sbin/update-alternatives\nRequires(preun): /usr/sbin/update-alternatives\n\n%description base"
       replacement: "%description base"
+

@@ -8,7 +8,6 @@ package: bitlbee
 rules:
   # Compat for dlmalloc (IRIX sbrk/brk malloc is broken) + strcasestr (IRIX lacks)
   inject_compat_functions:
-    - strdup
     - strcasestr
 
   drop_buildrequires:
@@ -106,3 +105,4 @@ rules:
     - "sed -i -e 's/%10zd/%10d/g' -e 's/%zu/%u/g' -e 's/%zd/%d/g' -e 's/%zx/%x/g' conf.c dcc.c lib/oauth.c lib/oauth2.c protocols/jabber/si.c protocols/twitter/twitter_http.c root_commands.c"
     # Rename sa_len variable — IRIX defines sa_len as a macro in sys/socket.h
     - "sed -i 's/sa_len/saddr_len/g' dcc.c"
+

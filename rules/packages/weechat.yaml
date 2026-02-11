@@ -11,12 +11,6 @@ package: weechat
 rules:
   # Compat functions needed for IRIX
   inject_compat_functions:
-    - strdup
-    - strndup
-    - asprintf
-    - vasprintf
-    - getline
-    - getopt_long
     - setenv
     - mkdtemp
 
@@ -162,3 +156,4 @@ rules:
 
   # NLS disabled, skip find_lang
   skip_find_lang: true
+

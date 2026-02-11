@@ -2,8 +2,6 @@
 package: libxslt
 
 rules:
-  inject_compat_functions:
-    - strdup
 
   configure_flags:
     add:
@@ -29,3 +27,4 @@ rules:
         Provides: libxslt(mips-32) = %{version}-%{release}
         Provides: libxslt.so.1
         Provides: libexslt.so.0
+

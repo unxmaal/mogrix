@@ -21,8 +21,6 @@ add_patch:
 rules:
   # Compat functions needed (replaces libdicl-devel dependency)
   inject_compat_functions:
-    - strdup
-    - strndup
     - stpcpy     # IRIX libc lacks stpcpy; popt's internal version disabled by patch
     - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
 
@@ -70,3 +68,4 @@ rules:
         %configure
         # Fix libtool to build shared libraries for IRIX
         $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+

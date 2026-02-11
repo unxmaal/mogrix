@@ -4,8 +4,6 @@ package: gettext
 
 rules:
   inject_compat_functions:
-    - strdup
-    - strndup
     - stpcpy
 
   # Drop subpackages we don't need for IRIX
@@ -16,8 +14,6 @@ rules:
     - "libtextstyle-devel"
 
   ac_cv_overrides:
-    gl_cv_func_select_supports0: "yes"
-    gl_cv_func_select_detects_ebadf: "yes"
     ac_cv_func_stpcpy: "yes"
     ac_cv_func_getdelim: "yes"
     ac_cv_have_decl_getdelim: "yes"
@@ -111,6 +107,3 @@ rules:
     - pattern: "sed -e 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=\"\"|g' \\\n    -e 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' \\\n    -e 's|CC=.g..|& -Wl,--as-needed|' \\\n    -i $(find . -name libtool)"
       replacement: "# rpath elimination handled by mogrix"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_infodir}/dir"
-    - "rm -f %{buildroot}%{_libdir}/*.la"

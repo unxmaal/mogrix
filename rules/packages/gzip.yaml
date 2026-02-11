@@ -20,9 +20,6 @@ rules:
   # reallocarray: gnulib xmalloc
   # strerror_r: error reporting
   inject_compat_functions:
-    - strdup
-    - getopt_long
-    - getline
     - reallocarray
     - strerror_r
 
@@ -51,3 +48,4 @@ rules:
   # Remove gnulib-tests from SUBDIRS (built during 'make all' but not needed)
   prep_commands:
     - "sed -i 's/gnulib-tests//' Makefile.in"
+
