@@ -1,0 +1,169 @@
+package: telescope
+upstream:
+  url: https://github.com/omar-polo/telescope
+  version: "0.11"
+  ref: "0.11"
+  type: git
+  build_system: autoconf
+  license: ISC
+  summary: "Gemini, Gopher and Finger browser for the terminal"
+  source_dir: telescope-0.11
+rules:
+  inject_compat_functions:
+    - getopt_long
+    - getline
+    - strdup
+    - strndup
+    - strnlen
+  explicit_provides:
+    - "telescope"
+  ac_cv_overrides:
+    # libretls exports several BSD compat functions (reallocarray, strlcpy, etc.)
+    # that configure falsely detects. Force them off so telescope uses its own
+    # compat implementations (which include proper header declarations).
+    ac_cv_func_reallocarray: "no"
+    ac_cv_func_explicit_bzero: "no"
+    ac_cv_func_freezero: "no"
+    ac_cv_func_getprogname: "no"
+    ac_cv_func_strlcat: "no"
+    ac_cv_func_strlcpy: "no"
+    ac_cv_func_strsep: "no"
+    # ac_cv_func_asprintf: leave as-is, mogrix-compat provides it properly
+  export_vars:
+    # telescope's configure.ac uses AC_SEARCH_LIBS to find tls_init;
+    # we need -ltls in LIBS so it's found during AC_SEARCH_LIBS
+    LIBS: "-ltls -lssl -lcrypto -lgen"
+    CFLAGS: "-Wno-deprecated-declarations"
+  prep_commands:
+    # IRIX has no endian.h, sys/endian.h, or libkern/OSByteOrder.h.
+    # telescope's compat.h #errors if none found. MIPS is big-endian.
+    # Create a minimal endian.h that the configure check will find.
+    - |
+      cat > compat/endian.h << 'ENDIAN_EOF'
+      /* IRIX endian.h - MIPS is always big-endian */
+      #ifndef _COMPAT_ENDIAN_H
+      #define _COMPAT_ENDIAN_H
+
+      #define __LITTLE_ENDIAN 1234
+      #define __BIG_ENDIAN    4321
+      #define __PDP_ENDIAN    3412
+      #define __BYTE_ORDER    __BIG_ENDIAN
+
+      #define LITTLE_ENDIAN __LITTLE_ENDIAN
+      #define BIG_ENDIAN    __BIG_ENDIAN
+      #define PDP_ENDIAN    __PDP_ENDIAN
+      #define BYTE_ORDER    __BYTE_ORDER
+
+      /* htobe/betoh macros - no-op on big-endian */
+      #define htobe16(x) (x)
+      #define htobe32(x) (x)
+      #define htobe64(x) (x)
+      #define be16toh(x) (x)
+      #define be32toh(x) (x)
+      #define be64toh(x) (x)
+
+      /* Little-endian conversions need byte swapping */
+      #define __bswap16(x) ((uint16_t)((((x) >> 8) & 0xff) | (((x) & 0xff) << 8)))
+      #define __bswap32(x) ((uint32_t)((((x) >> 24) & 0xff) | (((x) >> 8) & 0xff00) | (((x) & 0xff00) << 8) | (((x) & 0xff) << 24)))
+      #define htole16(x) __bswap16(x)
+      #define htole32(x) __bswap32(x)
+      #define le16toh(x) __bswap16(x)
+      #define le32toh(x) __bswap32(x)
+
+      #endif /* _COMPAT_ENDIAN_H */
+      ENDIAN_EOF
+
+    # IRIX struct dirent has no d_type field (BSD/Linux extension).
+    # certs.c line 210: replace d_type check with stat() check
+    - |
+      perl -0777 -pi -e '
+        s{if \(dp->d_type != DT_REG\)\n\t\t\tcontinue;}{
+        { struct stat _st; char _p[1024];
+          snprintf(_p, sizeof(_p), "%s/%s", cert_dir, dp->d_name);
+          if (stat(_p, \&_st) == -1 || !S_ISREG(_st.st_mode)) continue; }}sg
+      ' certs.c
+    - "sed -i '1i #include <limits.h>\\n#include <sys/stat.h>' certs.c"
+
+    # fs.c line 122: replace d_type check with stat() check
+    - |
+      perl -0777 -pi -e '
+        s{if \(names\[i\]->d_type == DT_DIR\)\n\t\t\tsufx = "/";}{
+        { struct stat _fst; char _fp[1024];
+          snprintf(_fp, sizeof(_fp), "%s/%s", path, names[i]->d_name);
+          if (stat(_fp, \&_fst) == 0 \&\& S_ISDIR(_fst.st_mode)) sufx = "/"; }}sg
+      ' fs.c
+    - "sed -i '1i #include <limits.h>\\n#include <sys/stat.h>' fs.c"
+
+    # Fix buggy compat.h: warn() and warnx() declared with extra int param
+    # Declarations say warn(int, const char*, ...) but implementations are
+    # warn(const char*, ...) — standard BSD signature. Fix the declarations.
+    - "sed -i 's/void.*warn(int, const char\\*, \\.\\.\\.);/void\\t\\t warn(const char*, ...);/' compat.h"
+    - "sed -i 's/void.*warnx(int, const char\\*, \\.\\.\\.);/void\\t\\t warnx(const char*, ...);/' compat.h"
+
+    # IRIX clock_gettime crashes (no POSIX clock IDs defined, function unreliable).
+    # Replace clock_gettime(CLOCK_MONOTONIC, &ts) with gettimeofday wrapper.
+    # Also provide timersub macro (BSD, not on IRIX).
+    - |
+      sed -i 's/clock_gettime(CLOCK_MONOTONIC, \&beg)/{ struct timeval _gtv; gettimeofday(\&_gtv, NULL); beg.tv_sec = _gtv.tv_sec; beg.tv_nsec = _gtv.tv_usec * 1000; }; if(0)/g' ev.c
+    - |
+      sed -i 's/clock_gettime(CLOCK_MONOTONIC, \&end)/{ struct timeval _gtv; gettimeofday(\&_gtv, NULL); end.tv_sec = _gtv.tv_sec; end.tv_nsec = _gtv.tv_usec * 1000; }; if(0)/g' ev.c
+    - "sed -i '1i #include <sys/time.h>' ev.c"
+    # IRIX scandir selector takes (dirent_t *) not (const struct dirent *).
+    # Remove const from selector functions and pointer declarations.
+    - "sed -i 's/const struct dirent \\*d/struct dirent *d/g' fs.c"
+    - "sed -i 's/const struct dirent \\*/struct dirent */g' fs.c"
+
+    # Add timersub macro to compat.h (before the closing #endif)
+    - |
+      sed -i '/#endif \/\* COMPAT_H \*\//i \
+      #ifndef timersub\
+      #define timersub(tvp, uvp, vvp) do { \\\
+        (vvp)->tv_sec = (tvp)->tv_sec - (uvp)->tv_sec; \\\
+        (vvp)->tv_usec = (tvp)->tv_usec - (uvp)->tv_usec; \\\
+        if ((vvp)->tv_usec < 0) { (vvp)->tv_sec--; (vvp)->tv_usec += 1000000; } \\\
+      } while (0)\
+      #endif' compat.h
+
+    # IRIX lacks open_memstream (POSIX.1-2008) and funopen.
+    # Replace the one open_memstream call in mcache.c with tmpfile + read-back.
+    - |
+      perl -0777 -pi -e '
+        s{if \(\(fp = open_memstream\(&e->buf, &e->buflen\)\) == NULL\)\n\t\tgoto err;\n\n\tif \(!parser_serialize\(&tab->buffer, fp\)\)\n\t\tgoto err;\n\n\tfclose\(fp\);}{
+        /* IRIX: no open_memstream, use tmpfile + read-back */
+        if ((fp = tmpfile()) == NULL)
+          goto err;
+        if (!parser_serialize(\&tab->buffer, fp))
+          goto err;
+        { long _pos = ftell(fp);
+          if (_pos < 0) goto err;
+          e->buflen = (size_t)_pos;
+          e->buf = malloc(e->buflen + 1);
+          if (!e->buf) goto err;
+          rewind(fp);
+          fread(e->buf, 1, e->buflen, fp);
+          e->buf[e->buflen] = 0;
+        }
+        fclose(fp);}sg
+      ' mcache.c
+
+    # Bundled libgrapheme: config.mk sets CC=cc (host), need cross-compiler.
+    # BUILD_CC stays as host for code generators, CC becomes cross-compiler.
+    # Also fix AR/RANLIB and disable shared lib (static only needed).
+    - |
+      sed -i 's|^CC       = cc|CC       = /opt/sgug-staging/usr/sgug/bin/irix-cc|' libgrapheme/config.mk
+    - "sed -i 's|^BUILD_CC = .*|BUILD_CC = gcc|' libgrapheme/config.mk"
+    - "sed -i 's|^AR       = ar|AR       = /opt/cross/bin/llvm-ar|' libgrapheme/config.mk"
+    - "sed -i 's|^RANLIB   = ranlib|RANLIB   = /opt/cross/bin/llvm-ranlib|' libgrapheme/config.mk"
+    - "sed -i 's|^CFLAGS   = .*|CFLAGS   = -std=c99 -Os -Wall|' libgrapheme/config.mk"
+    - "sed -i 's|^SONAME    = .*|SONAME    =|' libgrapheme/config.mk"
+    - "sed -i 's|^SOSYMLINK = .*|SOSYMLINK = false|' libgrapheme/config.mk"
+    - "sed -i 's|^BUILD_CFLAGS.*|BUILD_CFLAGS = -std=c99 -Os|' libgrapheme/config.mk"
+    - "sed -i 's|^BUILD_LDFLAGS.*|BUILD_LDFLAGS =|' libgrapheme/config.mk"
+
+    # IRIX has no IOV_MAX define. POSIX default is typically 1024.
+    - "sed -i '1i #ifndef IOV_MAX\\n#define IOV_MAX 1024\\n#endif' compat/imsg-buffer.c"
+
+    # IRIX lacks dprintf (POSIX.1-2008). Replace with fprintf+fflush.
+    # Only one use: dprintf(1, ...) for setting xterm title to stdout.
+    - "sed -i 's/dprintf(1, /fprintf(stdout, /g' ui.c"
+    - "sed -i '/current_tab->buffer.title);/a \\\\t\\tfflush(stdout);' ui.c"

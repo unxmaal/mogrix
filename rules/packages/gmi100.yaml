@@ -1,0 +1,13 @@
+package: gmi100
+upstream:
+  url: https://github.com/ir33k/gmi100
+  version: "3.2"
+  ref: a4bea88b2e5b429767014da7fa81ed5ec5af06b5
+  type: git
+  build_system: makefile
+  license: Unlicense
+  summary: "Gemini CLI client in 100 lines of ANSI C"
+  source_dir: gmi100-3.2
+rules:
+  inject_compat_functions:
+    - err

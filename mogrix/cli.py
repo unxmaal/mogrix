@@ -35,12 +35,18 @@ def main():
     """Mogrix - SRPM conversion engine for IRIX cross-compilation.
 
     \b
-    Workflow:
+    Workflow (Fedora packages):
       1. mogrix setup-cross                    # One-time setup
       2. mogrix fetch <package> -y             # → ~/mogrix_inputs/SRPMS/
       3. mogrix convert <srpm>                 # → ~/mogrix_outputs/SRPMS/
       4. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
       5. mogrix stage <rpms>                   # → /opt/sgug-staging/
+
+    \b
+    Workflow (upstream git/tarball packages):
+      1. mogrix create-srpm <package>          # → ~/mogrix_inputs/SRPMS/
+      2. mogrix convert <srpm>                 # → ~/mogrix_outputs/SRPMS/
+      3. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
     """
     pass
 
@@ -2470,8 +2476,98 @@ def batch_build(
         write_json_report(report, Path(output_report))
 
 
+@main.command("create-srpm")
+@click.argument("packages", nargs=-1, required=True)
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Directory to save SRPMs (default: ~/mogrix_inputs/SRPMS/)",
+)
+def create_srpm(packages: tuple[str, ...], output_dir: str | None):
+    """Create SRPMs from upstream sources for non-Fedora packages.
+
+    Reads the upstream: block from each package's rules YAML,
+    fetches source from git/tarball, generates a spec file,
+    and packages into an SRPM.
+
+    The resulting SRPMs enter the normal mogrix pipeline:
+    create-srpm → convert → build --cross → stage
+
+    \b
+    Examples:
+        mogrix create-srpm telescope
+        mogrix create-srpm gmi100 gmid libretls
+    """
+    import tempfile
+
+    from mogrix.emitter.srpm import SRPMEmitter
+    from mogrix.upstream import UpstreamSource
+
+    output_path = Path(output_dir) if output_dir else MOGRIX_INPUTS / "SRPMS"
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    upstream = UpstreamSource(rules_dir=RULES_DIR)
+    emitter = SRPMEmitter()
+
+    success = []
+    failed = []
+
+    for pkg in packages:
+        console.print(f"\n[bold]Creating SRPM for:[/bold] {pkg}")
+
+        try:
+            # Load upstream config from package rules YAML
+            config = upstream.load_upstream_config(pkg)
+            console.print(
+                f"  [dim]upstream:[/dim] {config['url']} "
+                f"(v{config['version']}, {config.get('build_system', 'unknown')})"
+            )
+
+            # Fetch source into a temp directory
+            with tempfile.TemporaryDirectory(prefix="mogrix-upstream-") as tmpdir:
+                work_dir = Path(tmpdir)
+                tarball = upstream.fetch_source(config, work_dir)
+
+                # Generate spec content
+                spec_content = upstream.render_spec(config)
+                spec_name = f"{pkg}.spec"
+
+                # Emit SRPM
+                srpm_path = emitter.emit_srpm(
+                    spec_content=spec_content,
+                    spec_name=spec_name,
+                    sources=[tarball],
+                    output_dir=output_path,
+                )
+
+            console.print(f"  [green]✓ Created:[/green] {srpm_path.name}")
+            success.append((pkg, srpm_path))
+
+        except Exception as e:
+            console.print(f"  [red]✗ Failed:[/red] {e}")
+            failed.append((pkg, str(e)))
+
+    # Summary
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  Created: [green]{len(success)}[/green]")
+    if failed:
+        console.print(f"  Failed: [red]{len(failed)}[/red]")
+        for pkg, error in failed:
+            console.print(f"    • {pkg}: {error}")
+
+    if success:
+        console.print("\n[bold]Next step:[/bold]")
+        for pkg, path in success:
+            console.print(f"  mogrix convert {path}")
+
+    if failed:
+        raise SystemExit(1)
+
+
 @main.command()
-@click.argument("package")
+@click.argument("packages", nargs=-1, required=True)
 @click.option(
     "--output",
     "-o",
@@ -2491,29 +2587,42 @@ def batch_build(
     help="Extra packages to include in the bundle",
 )
 @click.option(
+    "--name",
+    default=None,
+    help="Suite name (for multi-package bundles, e.g., mogrix-smallweb)",
+)
+@click.option(
     "--sysroot",
     type=click.Path(exists=True),
     default="/opt/irix-sysroot",
     help="IRIX sysroot path for native lib detection",
 )
 def bundle(
-    package: str,
+    packages: tuple[str, ...],
     output: str | None,
     no_tarball: bool,
     include: tuple[str, ...],
+    name: str | None,
     sysroot: str,
 ):
     """Create a self-contained app bundle for IRIX.
 
-    Bundles PACKAGE with all its mogrix-built shared library dependencies
+    Bundles PACKAGES with all mogrix-built shared library dependencies
     into a self-contained directory with launcher scripts. Extract on an
     IRIX system alongside SGUG-RSE without conflicts.
 
     \b
-    Examples:
+    Single app:
         mogrix bundle nano
-        mogrix bundle groff
-        mogrix bundle nano --no-tarball
+        mogrix bundle groff --no-tarball
+
+    \b
+    Suite (multiple apps in one bundle):
+        mogrix bundle telescope snownews lynx --name mogrix-smallweb
+        mogrix bundle weechat nano --name chat-suite
+
+    \b
+    Extra packages (siblings not auto-detected):
         mogrix bundle openssh --include openssh-clients
     """
     from mogrix.bundle import BundleBuilder
@@ -2525,12 +2634,22 @@ def bundle(
 
     output_dir = Path(output) if output else MOGRIX_OUTPUTS / "bundles"
 
+    # First package is the "target", rest are extra root packages
+    target_package = packages[0]
+    extra = list(packages[1:]) + list(include)
+
+    # Auto-infer suite name when multiple packages given without --name
+    suite_name = name
+    if len(packages) > 1 and not suite_name:
+        suite_name = f"{target_package}-suite"
+
     builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
     builder.create_bundle(
-        target_package=package,
+        target_package=target_package,
         output_dir=output_dir,
-        extra_packages=list(include),
+        extra_packages=extra if extra else None,
         create_tarball=not no_tarball,
+        suite_name=suite_name,
     )
 
 

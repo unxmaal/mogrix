@@ -84,7 +84,27 @@ VALID_PACKAGE_TOP_KEYS = {
     "ac_cv_overrides",
     "drop_buildrequires",
     "classes",
+    "smoke_test",
+    "upstream",
 }
+
+# Valid keys inside the upstream: block
+VALID_UPSTREAM_KEYS = {
+    "url",
+    "version",
+    "ref",
+    "type",
+    "build_system",
+    "license",
+    "summary",
+    "source_dir",
+}
+
+REQUIRED_UPSTREAM_KEYS = {"url", "version", "build_system"}
+
+VALID_BUILD_SYSTEMS = {"autoconf", "cmake", "meson", "makefile"}
+
+VALID_UPSTREAM_TYPES = {"git", "tarball"}
 
 
 class RuleValidator:
@@ -263,6 +283,10 @@ class RuleValidator:
                                 )
                             )
 
+            # Validate upstream block
+            if "upstream" in data:
+                self._validate_upstream(path, data["upstream"], result)
+
             # Validate rules section
             if "rules" in data:
                 self._validate_rules_section(path, data["rules"], result)
@@ -273,6 +297,64 @@ class RuleValidator:
                     file=str(path.name),
                     severity="error",
                     message=f"YAML parse error: {e}",
+                )
+            )
+
+    def _validate_upstream(
+        self, path: Path, upstream: Any, result: ValidationResult
+    ) -> None:
+        """Validate the upstream: block of a package rule."""
+        if not isinstance(upstream, dict):
+            result.issues.append(
+                ValidationIssue(
+                    file=str(path.name),
+                    severity="error",
+                    message="'upstream' must be a dictionary",
+                )
+            )
+            return
+
+        # Check required keys
+        for key in REQUIRED_UPSTREAM_KEYS:
+            if key not in upstream:
+                result.issues.append(
+                    ValidationIssue(
+                        file=str(path.name),
+                        severity="error",
+                        message=f"upstream: missing required key '{key}'",
+                    )
+                )
+
+        # Check for unknown keys
+        for key in upstream:
+            if key not in VALID_UPSTREAM_KEYS:
+                result.issues.append(
+                    ValidationIssue(
+                        file=str(path.name),
+                        severity="warning",
+                        message=f"upstream: unknown key '{key}'",
+                    )
+                )
+
+        # Validate build_system value
+        bs = upstream.get("build_system")
+        if bs and bs not in VALID_BUILD_SYSTEMS:
+            result.issues.append(
+                ValidationIssue(
+                    file=str(path.name),
+                    severity="error",
+                    message=f"upstream: build_system '{bs}' not in {VALID_BUILD_SYSTEMS}",
+                )
+            )
+
+        # Validate type value
+        utype = upstream.get("type")
+        if utype and utype not in VALID_UPSTREAM_TYPES:
+            result.issues.append(
+                ValidationIssue(
+                    file=str(path.name),
+                    severity="error",
+                    message=f"upstream: type '{utype}' not in {VALID_UPSTREAM_TYPES}",
                 )
             )
 

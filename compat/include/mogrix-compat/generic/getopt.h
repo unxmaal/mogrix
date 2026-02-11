@@ -17,6 +17,11 @@
 #include_next <getopt.h>
 #else
 
+/* IRIX unistd.h references fd_set in its select() declaration.
+ * Include sys/select.h first to ensure fd_set is defined.
+ * We can't use sys/types.h here — it includes stdlib.h which
+ * triggers a circular include back to this header. */
+#include <sys/select.h>
 /* Include unistd.h for basic getopt */
 #include_next <unistd.h>
 

@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-11 (session 21)
-**Status**: 90 source packages cross-compiled (240+ RPMs). **Qt5 5.15.13 RUNNING ON IRIX!** `qVersion()` returns "5.15.13". All Qt5 modules load: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin. Preload chain required: Qt5Core + harfbuzz (2 dlopen calls before Qt5Gui). Rules cleaned up — 6 common compat functions elevated to generic.yaml.
+**Last Updated**: 2026-02-11 (session 23)
+**Status**: 93+ source packages cross-compiled (260+ RPMs). Smallweb initiative in progress: telescope (Gemini TUI) and libretls built and verified on IRIX.
 
 ---
 
@@ -19,22 +19,144 @@
 
 ## IMMEDIATE NEXT
 
-**Qt5 is running on IRIX but no GUI app has been tested yet.** Next steps:
+**Smallweb initiative** — the primary project direction. Build ~14 packages for Gemini/Gopher/RSS/Finger browsing on IRIX, then ship as individual bundles + one "mogrix-smallweb" suite bundle.
 
-1. **Find a simple Qt5 app to build** — qtermwidget/qterminal require `liblxqt` (no SRPMs available, heavy dep chain). Need a simpler Qt5 app. Was searching FC40 SRPMs for Qt5 apps without KDE/LXQt deps when session ended. Consider:
-   - Simple Qt5 apps from FC40 SRPMs (search: `pkgconfig(Qt5Widgets)` without `kf5`/`lxqt`/`kde`)
-   - Build `qt5-qtx11extras` first (SRPM ready, simple, needed by many Qt5 apps)
-   - Write a minimal QWidget test app to prove GUI rendering on IRIX X11
-2. **Bundle Qt5 app** — need wrapper that pre-loads Qt5Core + harfbuzz before the main binary
-3. **Test Qt5 GUI rendering on IRIX** — no visual test done yet, only dlopen + qVersion()
+### New capabilities (session 22)
 
-Other priorities:
-- **Public package repo configured**: `https://packages.mogrix.unxmaal.com/repo/` in `configs/tdnf/mogrix.repo`
+1. **`mogrix create-srpm <pkg>`** — generates SRPMs from upstream git repos or tarballs. Reads `upstream:` block from package YAML, fetches source, generates spec from template (or uses hand-written override), calls `rpmbuild -bs`. Tested end-to-end with gmi100.
+2. **Suite bundles** — `mogrix bundle pkg1 pkg2 pkg3 --name mogrix-smallweb` combines multiple apps into one bundle with shared libs, single install/uninstall, suite README. Backward compatible — single `mogrix bundle nano` unchanged.
+3. **IRIX MCP server v2.0.0** — complete rewrite fixing silent failures. SSH ControlMaster persistent connection, auto-reconnect, no stderr output (was causing false "failed" in Claude Code UI), always sends JSON-RPC error responses (was hanging client on exceptions). Log file at `/tmp/irix-mcp.log`. **Requires Claude Code restart** (`/mcp` or new session) to pick up new server.
+
+### Smallweb packages to build
+
+| Package | Source | Status | Notes |
+|---------|--------|--------|-------|
+| gmi100 | GitHub (ir33k/gmi100) | **BUILT + INSTALLED** | Single-file C, hand-written spec, err.h compat |
+| libretls | git.causal.agency/libretls | **BUILT + INSTALLED** | libtls API on OpenSSL. arc4random/getentropy/MAP_ANON IRIX compat |
+| telescope | GitHub (telescope-browser/telescope) | **BUILT + INSTALLED** | Flagship Gemini TUI. 12+ IRIX fixes (see telescope.yaml) |
+| snownews | GitHub (kouya/snownews) | Needs YAML + build | RSS reader |
+| lynx | FC40 SRPM? | Check availability | HTML browser |
+| gmid | GitHub (omar-polo/gmid) | Needs YAML + build | Gemini server |
+| gophernicus | GitHub (gophernicus/gophernicus) | Needs YAML + build | Gopher server |
+| tinc | ? | Needs research | VPN |
+
+Already built: sqlite3, libxml2, libunistring, pcre2 (deps). libevent built but not staged.
+
+### Other priorities (parked)
+- **Qt5 GUI app** — Qt5 loads on IRIX but no GUI app tested yet. Parked in favor of smallweb.
+- **Essential CLI tools** — vim, tmux, man-db, jq, gperf. Lower priority.
+- **Public package repo**: `https://packages.mogrix.unxmaal.com/repo/`
 - **Ship bitlbee + weechat + st tarballs** to community — ALL READY
-- **Meson packages NOW UNBLOCKED:** cairo 1.18, pango, p11-kit
-- **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils
-- **Still blocked:** lolcat (wchar I/O), bc (host binary bootstrap), xclip (IRIX Xmu too old)
 - **GLib warnings on IRIX**: `g_hash_table_lookup: assertion 'hash_table != NULL'` during bitlbee startup
+
+---
+
+## Recent Session (23): libretls + telescope (Smallweb)
+
+### Two new packages built and verified on IRIX
+
+**libretls 3.8.1** — Port of libtls from LibreSSL to OpenSSL. Required by telescope.
+Key IRIX fixes (all in `rules/packages/libretls.yaml`):
+- `compat/arc4random_irix.h` — pthreads mutex locking + /dev/zero mmap (no MAP_ANON on IRIX)
+- `compat/getentropy_irix.c` — reads /dev/urandom (IRIX has no getentropy/getrandom)
+- MAP_ANON defined as 0 (our arc4random uses /dev/zero instead)
+- getopt.h fd_set circular include fix (sys/select.h, not sys/types.h)
+
+**telescope 0.11** — Flagship Gemini/Gopher/Finger TUI browser. Most complex upstream build yet.
+12+ IRIX-specific fixes (all in `rules/packages/telescope.yaml`):
+1. **endian.h** — IRIX has no endian headers. Created compat/endian.h (MIPS big-endian)
+2. **d_type in struct dirent** — IRIX lacks d_type. Replaced with stat() checks in certs.c, fs.c
+3. **warn()/warnx() signature bug** — telescope compat.h declares `warn(int, ...)` instead of `warn(const char*, ...)`
+4. **clock_gettime(CLOCK_MONOTONIC)** — IRIX clock_gettime crashes. Replaced with gettimeofday()
+5. **timersub macro** — BSD macro not on IRIX. Added to compat.h
+6. **scandir selector signature** — IRIX: `int (*)(dirent_t *)`, not `const struct dirent *`
+7. **open_memstream** — IRIX lacks it and funopen. Replaced with tmpfile + read-back in mcache.c
+8. **dprintf** — IRIX lacks it. Replaced with fprintf(stdout) + fflush
+9. **IOV_MAX** — Not defined on IRIX. Defined as 1024
+10. **reallocarray/strlcpy/etc false positives** — libretls exports these, configure falsely detects. ac_cv_overrides force them off
+11. **libgrapheme cross-compilation** — Bundled lib used host CC. Fixed config.mk: CC=irix-cc, BUILD_CC=gcc
+12. **HOSTCC for pagebundler** — Build-time code generator needs host compiler. Passed HOSTCC=gcc
+13. **dirname in -lgen** — IRIX puts dirname in libgen, not libc
+
+### New compat function: err.h (BSD error functions)
+- `compat/include/mogrix-compat/generic/err.h` — header with err/errx/warn/warnx/verr/verrx/vwarn/vwarnx
+- `compat/error/err.c` — implementation (wraps fprintf+strerror+exit)
+- Added to `compat/catalog.yaml`
+
+### getopt.h fd_set fix (affects ALL packages)
+IRIX `stdlib.h` → `getopt.h` (mogrix compat) → `unistd.h` (IRIX) → `fd_set` error.
+Fix: `#include <sys/select.h>` before `#include_next <unistd.h>` in mogrix-compat getopt.h.
+Cannot use `sys/types.h` — circular include (sys/types.h → stdlib.h → getopt.h guard).
+
+### Files created
+| File | Purpose |
+|------|---------|
+| `rules/packages/libretls.yaml` | IRIX arc4random/getentropy/MAP_ANON platform support |
+| `rules/packages/telescope.yaml` | 12+ IRIX fixes for telescope build |
+| `specs/packages/libretls.spec` | Hand-written spec with devel subpackage |
+| `specs/packages/telescope.spec` | Hand-written spec, HOSTCC for cross-compile |
+| `compat/include/mogrix-compat/generic/err.h` | BSD error functions header |
+| `compat/error/err.c` | BSD error functions implementation |
+
+### Files modified
+| File | Change |
+|------|--------|
+| `compat/include/mogrix-compat/generic/getopt.h` | Added sys/select.h for fd_set (fixes all packages) |
+| `compat/catalog.yaml` | Added err entry |
+| `rules/packages/gmi100.yaml` | Added inject_compat_functions: [err] |
+| `specs/packages/gmi100.spec` | Added $LIBS to compile line |
+
+---
+
+## Recent Session (22): Upstream Packages + Suite Bundles
+
+### Two new features implemented
+
+**1. `mogrix create-srpm`** — upstream git/tarball → SRPM pipeline:
+- New `upstream:` block in package YAML (url, version, ref, type, build_system, license, summary, source_dir)
+- `UpstreamSource` class in `mogrix/upstream.py` — git clone+archive or tarball download, spec template rendering
+- 4 spec templates in `specs/templates/` (autoconf, cmake, meson, makefile)
+- Hand-written spec override: `specs/packages/<name>.spec` takes priority over templates
+- SHA refs handled: full commit SHAs use clone+checkout instead of `--depth 1 --branch`
+- Validator updated: `_validate_upstream()` checks required keys, valid build systems/types
+
+**2. Suite bundles** — multi-app combined bundles:
+- `mogrix bundle pkg1 pkg2 --name suite-name` creates single bundle with shared libs
+- Multiple packages without `--name` auto-generates `pkg-suite` name
+- `BundleManifest` extended with `suite_name` and `suite_packages` fields
+- Suite README lists included applications, install script uses suite name
+- Bundle naming: `suite-name-1a-irix-bundle` (pseudo-version "1" for revision tracking)
+- Single-package bundles unchanged (full backward compatibility verified)
+
+### Files created
+| File | Purpose |
+|------|---------|
+| `mogrix/upstream.py` | Source fetching + spec template rendering |
+| `specs/templates/autoconf.spec` | Spec template for autoconf packages |
+| `specs/templates/cmake.spec` | Spec template for cmake packages |
+| `specs/templates/meson.spec` | Spec template for meson packages |
+| `specs/templates/makefile.spec` | Spec template for plain Makefile packages |
+| `specs/packages/gmi100.spec` | Hand-written spec for gmi100 (single-file C) |
+| `rules/packages/gmi100.yaml` | First upstream package YAML |
+| `rules/methods/upstream-packages.md` | Documentation for upstream workflow + suites |
+| `tools/irix-mcp-server.py` | REWRITTEN — v2.0.0, SSHConnection class, ControlMaster, auto-reconnect |
+
+### Files modified
+| File | Change |
+|------|--------|
+| `mogrix/cli.py` | Added `create-srpm` command. Updated `bundle` for multi-package + `--name`. Updated main help. |
+| `mogrix/bundle.py` | Suite support: `suite_name` param in `create_bundle()`, `BundleManifest` fields, suite README/install/summary |
+| `mogrix/rules/validator.py` | Added `upstream:` + `smoke_test` to whitelist, upstream validation |
+| `README.md` | Updated tagline, package count, added upstream workflow + suite examples |
+| `rules/INDEX.md` | Added upstream packages + suite bundles to problem reference + file locations |
+| `CLAUDE.md` | Added upstream-packages.md to file index |
+| `.mcp.json` | Added IRIX_LOG env var for persistent diagnostics |
+
+### End-to-end verified
+- `mogrix create-srpm gmi100` — clones GitHub repo by SHA, creates tarball, uses hand-written spec, emits SRPM
+- `mogrix convert <gmi100 SRPM>` — generic rules applied (11 rules, 7 compat functions injected)
+- `mogrix bundle nano weechat --name test-suite --no-tarball` — suite bundle with shared libs, suite README, correct naming
+- `mogrix bundle nano --no-tarball` — single-package backward compat confirmed
 
 ---
 
@@ -382,7 +504,7 @@ Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix).
 
 ## Package Status
 
-**Total: 91 source packages (250+ RPMs)**
+**Total: 93 source packages (260+ RPMs)**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
@@ -441,6 +563,9 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | **libxcb** | **1.16** | **INSTALLED** | **Added NEEDED libX11 for _XLockMutex_fn (IRIX rld strict UND resolution)** |
 | **libxkbcommon** | **1.6.0** | **INSTALLED** | **Added strnlen compat function** |
 | **qt5-qtbase** | **5.15.13** | **INSTALLED+VERIFIED** | **Qt5 running on IRIX! Preload: Core+harfbuzz. GOT counts under 4370** |
+| **gmi100** | **3.2** | **BUILT+INSTALLED** | **First upstream package. Single-file Gemini client, err.h compat** |
+| **libretls** | **3.8.1** | **INSTALLED** | **libtls on OpenSSL. IRIX arc4random/getentropy/MAP_ANON compat** |
+| **telescope** | **0.11** | **INSTALLED+VERIFIED** | **Flagship Gemini TUI! 12+ IRIX fixes, bundled libgrapheme cross-compiled** |
 
 ---
 
@@ -572,5 +697,9 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 | `compat/catalog.yaml` | Compat function registry |
 | `plan.md` | Project plan and architecture |
 | `packages_plan.md` | Distribution strategy, killer app targets, build tiers |
-| `mogrix/bundle.py` | App bundle generator |
+| `mogrix/bundle.py` | App bundle generator (single + suite) |
+| `mogrix/upstream.py` | Upstream git/tarball source fetcher |
 | `rules/methods/bundles.md` | Bundle architecture documentation |
+| `rules/methods/upstream-packages.md` | Upstream packages + suite bundles |
+| `specs/templates/` | Spec templates (autoconf, cmake, meson, makefile) |
+| `specs/packages/` | Hand-written spec overrides |
