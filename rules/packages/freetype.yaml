@@ -12,7 +12,7 @@ rules:
       - --with-zlib=yes
       - --with-bzip2=yes
       - --with-png=yes
-      - --without-harfbuzz
+      - --with-harfbuzz=yes
       - --without-brotli
       - --enable-freetype-config
 
@@ -27,9 +27,7 @@ rules:
       replacement: "cd docs"
     - pattern: "popd"
       replacement: "cd .."
-    # Override harfbuzz — our --without-harfbuzz must win over Fedora conditional
-    - pattern: "           --with-harfbuzz=yes \\"
-      replacement: "           --with-harfbuzz=no \\"
+    # Harfbuzz now available — keep Fedora's --with-harfbuzz=yes (no override needed)
     # Override brotli — we don't have brotli
     - pattern: "           --with-brotli=yes"
       replacement: "           --without-brotli"

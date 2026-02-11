@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-10 (session 18)
-**Status**: 88 source packages cross-compiled (240+ RPMs). **glib2 (first meson package!) + bitlbee (IRC gateway) built and bundled for IRIX!** bitlbee connects via IRC on port 6667 — users can chat on XMPP/Jabber and Twitter from any IRC client (weechat already shipping). Meson cross-compilation UNBLOCKED. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf, weechat, st all running on IRIX.
+**Last Updated**: 2026-02-10 (session 18 continued)
+**Status**: 88 source packages cross-compiled (240+ RPMs). **glib2 (first meson package!) + bitlbee (IRC gateway) + bitlbee-discord plugin built and bundled for IRIX!** bitlbee connects via IRC on port 6667 — users can chat on XMPP/Jabber, Twitter, and Discord from any IRC client (weechat already shipping). Meson cross-compilation UNBLOCKED. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf, weechat, st all running on IRIX.
 
 ---
 
@@ -19,12 +19,11 @@
 
 ## IMMEDIATE NEXT
 
-**bitlbee bundle is SHIPPING** — IRC gateway running on IRIX, accepting connections on port 6668. Users connect with weechat (already shipping) to get XMPP/Jabber and Twitter access.
+**bitlbee bundle is SHIPPING with Discord support** — IRC gateway running on IRIX with discord.so plugin. Users connect with weechat (already shipping) to get XMPP/Jabber, Twitter, and Discord access.
 
 **glib2 UNBLOCKS meson packages** — first meson cross-compilation working! Pattern established in `rules/packages/glib2.yaml` + `cross/meson-irix-cross.ini`.
 
 Priorities:
-- **bitlbee-discord plugin** (Task #107) — build from GitHub source, produces a single `discord.so` plugin. Needs bitlbee-devel + glib2-devel (both staged). Manual build outside SRPM flow.
 - **Ship bitlbee + weechat + st tarballs** to community — ALL READY
 - **More bundle candidates (already built):** nano, groff, openssh, aterm
 - **Meson packages NOW UNBLOCKED:** cairo 1.18, harfbuzz, pango, p11-kit (glib2 pattern established)
@@ -101,6 +100,24 @@ Configure args: ...--jabber=1 --twitter=1 --purple=0 --otr=0 --pie=0
 $ echo -e "NICK test\r\nUSER test 0 * :Test\r\n" | nc 192.168.0.81 6668
 :localhost.localdomain 001 test :Welcome to the BitlBee gateway, test
 ```
+
+### Session 18 continued: bitlbee-discord plugin
+
+**discord.so plugin built and bundled.** Built manually from GitHub (sm00th/bitlbee-discord), not via mogrix SRPM flow.
+
+Key discoveries and changes:
+- **irix-ld updated**: `--export-dynamic` is now conditional via `MOGRIX_ALLOW_EXPORT_DYNAMIC` env var. Without the env var set, `--export-dynamic` is silently dropped (previous behavior). With `MOGRIX_ALLOW_EXPORT_DYNAMIC=1`, it passes through to the linker.
+- **`--dynamic-list` for selective symbol export**: `--export-dynamic` with 887 symbols crashes rld SIGSEGV (known pattern: >468 entries). `--dynamic-list` with 48 listed symbols (365 total dynamic symbols) works fine. This is the correct approach for plugin dlopen support.
+- **New files**: `cross/bitlbee-plugin-symbols.list` (dynamic-list format for bitlbee plugin symbols), `cross/bitlbee-plugin-symbols.ver` (unused version script alternative)
+- **Bundle**: `bitlbee-3.6-14c-irix-bundle.tar.gz` with discord.so plugin included
+- **Wrapper updated**: sed replaces `__MOGRIX_BUNDLE_DIR__` placeholder in `bitlbee.conf` for `PluginDir` at runtime, so plugins are found at the correct bundle-relative path
+
+### Files created/modified (session 18 continued)
+| File | Action |
+|------|--------|
+| `cross/bin/irix-ld` | MODIFIED — `--export-dynamic` now conditional on `MOGRIX_ALLOW_EXPORT_DYNAMIC` env var |
+| `cross/bitlbee-plugin-symbols.list` | CREATED — dynamic-list of 48 symbols needed by discord.so |
+| `cross/bitlbee-plugin-symbols.ver` | CREATED — version script alternative (unused) |
 
 ---
 
@@ -374,7 +391,7 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **`%zu` format specifier** crashes IRIX libc — use `%u` for size_t
 - **Volatile function pointer static initializers** crash on IRIX rld — use dispatch functions
 - **fopencookie** crashes — use funopen instead
-- **`--export-dynamic`** crashes IRIX rld with large symbol tables
+- **`--export-dynamic`** crashes IRIX rld with large symbol tables (>468 entries). Use `--dynamic-list` for selective export (e.g., plugin dlopen). irix-ld now gates `--export-dynamic` behind `MOGRIX_ALLOW_EXPORT_DYNAMIC` env var
 - **R_MIPS_REL32 relocations** from function pointers in static data — use switch/strcmp dispatch
 - **Long double (128-bit)** not supported on MIPS n32 — `__extenddftf2` crashes. Fix: `ac_cv_type_long_double_wider: "no"`
 - **openssh fork-mode broken** — use `-d` (debug/no-fork) in a loop
@@ -401,6 +418,9 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 
 ## What Worked (Sessions 14-18)
 
+- **`--dynamic-list` for plugin symbol export**: `--export-dynamic` exports ALL symbols (887) → rld SIGSEGV. `--dynamic-list` exports only the 48 symbols the plugin needs (365 total) → works. Create .list file: `readelf -sW plugin.so | grep UND` to find needed symbols.
+- **`MOGRIX_ALLOW_EXPORT_DYNAMIC` env var in irix-ld**: Makes `--export-dynamic` opt-in instead of silently dropped. Safe default (filtered) with escape hatch when needed.
+- **`__MOGRIX_BUNDLE_DIR__` placeholder in config files**: Bundle wrapper seds the placeholder to actual path at runtime. Avoids baking absolute paths into config.
 - **bcond flipping**: Cleanly disables features in specs with inline `%if/%else/%endif` inside `%configure`.
 - **PRIdMAX format macros**: Added to mogrix-compat/generic/inttypes.h.
 - **cmake cross-compilation for weechat**: Full raw cmake invocation replacing `%cmake3` macro.

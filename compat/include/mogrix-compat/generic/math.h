@@ -45,8 +45,10 @@ static inline float ldexpf(float x, int exp) { return (float)ldexp((double)x, ex
 static inline float frexpf(float x, int *exp) { return (float)frexp((double)x, exp); }
 #endif
 
-/* C99 math functions — skip in C++ mode where these are builtins */
-#ifndef __cplusplus
+/* C99 math functions missing from IRIX headers.
+ * These are NOT builtins — IRIX libm lacks log2/exp2/round/trunc entirely.
+ * We provide them in compat (log2.c etc.) so they must be declared in
+ * both C and C++ mode. */
 
 /* log2 - base-2 logarithm (C99) */
 #ifndef log2
@@ -68,27 +70,8 @@ double exp2(double x);
 float exp2f(float x);
 #endif
 
-/* round - round to nearest integer (C99) */
-#ifndef round
-double round(double x);
-#endif
-
-/* roundf - float version of round (C99) */
-#ifndef roundf
-float roundf(float x);
-#endif
-
-/* trunc - truncate toward zero (C99) */
-#ifndef trunc
-double trunc(double x);
-#endif
-
-/* truncf - float version of trunc (C99) */
-#ifndef truncf
-float truncf(float x);
-#endif
-
-#endif /* !__cplusplus */
+/* round/roundf/trunc/truncf are declared in dicl-clang-compat/math.h —
+ * do NOT redeclare here (causes C++ language linkage conflict) */
 
 /*
  * C99 comparison macros for floating point (may be missing from IRIX)

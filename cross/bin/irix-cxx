@@ -33,6 +33,9 @@ LD="${STAGING}/bin/irix-ld"
 # 5. SGUG staging headers (cross-built packages)
 # 6. IRIX sysroot headers (pristine IRIX)
 CLANG_FLAGS="--target=mips-sgi-irix6.5 -mabi=n32 -march=mips3"
+# Override _MIPS_ISA - clang sets _MIPS_ISA_MIPS64 which IRIX headers don't recognize
+# (same fix as irix-cc)
+CLANG_FLAGS="$CLANG_FLAGS -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS3"
 # Disable default C/C++ header search — we provide explicit -isystem paths
 CLANG_FLAGS="$CLANG_FLAGS -nostdlibinc -nostdinc++"
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
@@ -61,6 +64,15 @@ CLANG_FLAGS="$CLANG_FLAGS -fno-use-cxa-atexit"
 # Use .ctors/.dtors instead of .init_array/.fini_array — IRIX rld doesn't support init_array
 # Our crtbeginT.o/crtendT.o (linked by irix-ld) process .ctors at startup
 CLANG_FLAGS="$CLANG_FLAGS -fno-use-init-array"
+
+# Handle --version and -v (compiler identification for build systems like meson)
+for arg in "$@"; do
+    case "$arg" in
+        --version|-v|-V|--help|-dumpversion|-dumpmachine|-print-search-dirs|-print-*)
+            exec $CLANG $CLANG_FLAGS "$@"
+            ;;
+    esac
+done
 
 # Check if this is preprocess-only (-E flag present)
 preprocess_only=false

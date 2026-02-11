@@ -1,0 +1,88 @@
+# libxcb 1.16 - X protocol C-language Binding (FC40: 1.16-4)
+# Autotools. Needs xcb-proto, libXau (IRIX native).
+# Generates C code from xcb-proto XML using Python.
+# selinux disabled (not on IRIX).
+
+package: libxcb
+
+rules:
+  inject_compat_functions:
+    - strdup
+    - strndup
+
+  prep_commands:
+    # Need xcbgen Python module importable for code generation
+    - "export PYTHONPATH=/opt/sgug-staging/usr/sgug/lib/python3.12/site-packages:$PYTHONPATH"
+
+  drop_buildrequires:
+    - doxygen
+    - graphviz
+    - libtool
+    - libxslt
+    - "pkgconfig(xorg-macros)"
+    - python3
+    - python3-devel
+
+  configure_flags:
+    add:
+      - "--disable-selinux"
+      - "--disable-doxygen"
+    remove:
+      - "--enable-selinux"
+
+  spec_replacements:
+    # Add PYTHONPATH export before autoreconf so it persists through configure/make
+    # Skip the pthread-stubs sed and autoreconf — we provide pthread-stubs.pc
+    # and run configure from distributed source to avoid needing xorg-macros m4
+    - pattern: "sed -i 's/pthread-stubs //' configure.ac\n# autoreconf -f needed to expunge rpaths\nautoreconf -v -f --install"
+      replacement: |
+        export PYTHONPATH=/opt/sgug-staging/usr/sgug/lib/python3.12/site-packages:$PYTHONPATH
+        # Skip autoreconf — use distributed configure, provide pthread-stubs.pc
+
+    # Add explicit Provides for all xcb libraries
+    - pattern: "URL:        http://xcb.freedesktop.org/"
+      replacement: |
+        URL:        http://xcb.freedesktop.org/
+        Provides: libxcb.so.1(mips-32)
+        Provides: libxcb-xkb.so.1(mips-32)
+        Provides: libxcb-render.so.0(mips-32)
+        Provides: libxcb-shm.so.0(mips-32)
+        Provides: libxcb-shape.so.0(mips-32)
+        Provides: libxcb-xinput.so.0(mips-32)
+        Provides: libxcb-xfixes.so.0(mips-32)
+        Provides: libxcb-sync.so.1(mips-32)
+        Provides: libxcb-randr.so.0(mips-32)
+        Provides: libxcb-glx.so.0(mips-32)
+        Provides: libxcb-keysyms.so.0(mips-32)
+        Provides: libxcb-icccm.so.0(mips-32)
+        Provides: libxcb(mips-32) = %{version}-%{release}
+
+    # Fix devel Requires
+    - pattern: "Requires:   %{name}%{?_isa} = %{version}-%{release}"
+      replacement: "Requires:   %{name} = %{version}-%{release}"
+
+    # Remove doc subpackage
+    - pattern: "%package doc\nSummary:    Documentation for %{name}\nBuildArch:  noarch\n\n%description doc\nThe %{name}-doc package contains documentation for the %{name} library."
+      replacement: "# doc subpackage removed"
+
+    # Remove doc %files
+    - pattern: "%files doc\n%{_pkgdocdir}"
+      replacement: "# doc files removed"
+
+    # Man pages are pre-generated in the source tarball, keep them
+    #- pattern: "%{_mandir}/man3/*.3*"
+    #  replacement: ""
+
+    # Remove ldconfig scriptlets (not supported in our macros)
+    - pattern: "%ldconfig_post\n\n%ldconfig_postun"
+      replacement: "# ldconfig scriptlets removed"
+
+    # Remove xselinux from %files (selinux disabled)
+    - pattern: "%{_libdir}/libxcb-xselinux.so.0*\n"
+      replacement: ""
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+    - "rm -rf %{buildroot}%{_pkgdocdir}"
+
+  skip_check: true

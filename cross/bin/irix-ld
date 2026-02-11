@@ -45,10 +45,19 @@ for arg in "$@"; do
         -static-libgcc)
             # Skip GCC-specific flag - not meaningful for clang/lld
             ;;
-        -rdynamic|--export-dynamic)
-            # Skip: -rdynamic exports all symbols to dynamic table.
-            # IRIX rld SIGSEGV on large dynamic symbol tables (468+ entries).
-            # LLD also doesn't support -rdynamic directly.
+        -rdynamic)
+            # Skip -rdynamic (GCC driver flag, LLD doesn't support it).
+            # Use --export-dynamic directly for LLD if needed.
+            ;;
+        --export-dynamic)
+            # Allow if MOGRIX_ALLOW_EXPORT_DYNAMIC=1 (for plugin hosts like bitlbee).
+            # IRIX rld may crash on very large dynamic symbol tables (468+ entries)
+            # due to brk heap limits (libpthread at 0x0C080000). Check with:
+            #   readelf --dyn-syms <binary> | wc -l
+            # Use dlmalloc (inject_compat_functions: strdup) to bypass brk limits.
+            if [ "$MOGRIX_ALLOW_EXPORT_DYNAMIC" = "1" ]; then
+                filtered_args="$filtered_args --export-dynamic"
+            fi
             ;;
         --no-undefined|-z,no-undefined|--no-undefined-version)
             # Skip --no-undefined for cross builds: IRIX libc has TLS

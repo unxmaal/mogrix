@@ -63,9 +63,11 @@ rules:
           --purple=0 \
           --otr=0 \
           --pie=0
-        # Inject compat library into build settings
         # Inject compat library and gcrypt (libgcrypt-config not in PATH)
-        echo "EFLAGS += -L$COMPAT_DIR -lmogrix-compat -lgcrypt" >> Makefile.settings
+        # Dynamic list: export only the 48 symbols plugins need (discord.so etc.)
+        # --export-dynamic exports ALL symbols and crashes IRIX rld (>468 entries)
+        # --dynamic-list exports only listed symbols for dlopen resolution
+        echo "EFLAGS += -L$COMPAT_DIR -lmogrix-compat -lgcrypt -Wl,--dynamic-list=/home/edodd/projects/github/unxmaal/mogrix/cross/bitlbee-plugin-symbols.list" >> Makefile.settings
         %make_build VERBOSE=""
 
     # ---- %install: Remove install-systemd, sysusers, fix brace expansion ----

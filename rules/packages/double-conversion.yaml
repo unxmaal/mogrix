@@ -1,0 +1,47 @@
+# double-conversion 3.3.0 - IEEE double conversion library (FC40: 3.3.0-3)
+# CMake build. Pure C++ algorithm library, no system deps.
+
+package: double-conversion
+
+rules:
+  drop_buildrequires:
+    - gcc
+    - gcc-c++
+
+  spec_replacements:
+    # Replace %cmake with raw cmake using cross toolchain
+    - pattern: "%cmake -DBUILD_TESTING=ON\n%cmake_build"
+      replacement: |
+        MOGRIX_TOOLCHAIN=/home/edodd/projects/github/unxmaal/mogrix/cross/cmake-irix-toolchain.cmake
+        cmake -B _build \
+          -DCMAKE_TOOLCHAIN_FILE=$MOGRIX_TOOLCHAIN \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+          -DCMAKE_INSTALL_LIBDIR=lib32 \
+          -DBUILD_TESTING=OFF \
+          -DBUILD_SHARED_LIBS=ON
+        cmake --build _build
+
+    # Replace %cmake_install
+    - pattern: "%cmake_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT cmake --install _build"
+
+    # Fix Requires (remove %{?_isa})
+    - pattern: "Requires:       %{name}%{?_isa} = %{version}-%{release}"
+      replacement: "Requires:       %{name} = %{version}-%{release}"
+
+    # Fix %files glob pattern (RPM can't expand shell brace expansion)
+    - pattern: "%{_libdir}/libdouble-conversion.so.3{,.*}"
+      replacement: "%{_libdir}/libdouble-conversion.so.3*"
+
+    # Add Provides
+    - pattern: "URL:            https://github.com/google/double-conversion"
+      replacement: |
+        URL:            https://github.com/google/double-conversion
+        Provides: libdouble-conversion.so.3(mips-32)
+        Provides: double-conversion(mips-32) = %{version}-%{release}
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/libdouble-conversion.a || true"
+
+  skip_check: true

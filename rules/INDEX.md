@@ -89,6 +89,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | rld symbol resolution debug | Binary crashes silently or ldd SIGSEGV | `_RLD_ARGS="-log /tmp/rld.log"` | methods/irix-testing.md | Shows unresolvable symbols, soname mismatches. Check NEEDED sonames match installed .so files |
 | ncurses ext-colors terminfo | SIGBUS on MIPS, garbage cols/lines values | spec_replacements | rules/packages/ncurses.yaml | `--disable-ext-colors`; ext-colors reads 16-bit terminfo fields as 32-bit |
 | Explicit Provides required | rpm -Uvh fails with unresolved deps | spec_replacements | rules/packages/* | rpmmacros.irix sets AutoProv:no; add `Provides: libfoo.so.N` for each .so |
+| Plugin dlopen symbol export | rld Fatal Error: unresolvable symbol in plugin .so | --dynamic-list via spec_replacements | cross/bitlbee-plugin-symbols.list | --export-dynamic exports ALL symbols, crashes rld (>468 entries). --dynamic-list exports only listed symbols. Create .list file with plugin's UND symbols: `readelf -sW plugin.so \| grep UND` |
 
 ## Invariants (Settled Facts)
 

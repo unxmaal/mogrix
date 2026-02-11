@@ -92,7 +92,7 @@
   export AR="%{__ar}"; \
   export RANLIB="%{__ranlib}"; \
   export LD="%{__ld}"; \
-  export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig"; \
+  export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig"; \
   export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"; \
   export SED="/usr/bin/sed"; \
   export AWK="/usr/bin/gawk"; \
@@ -113,3 +113,20 @@
 %__find_provides        %{nil}
 AutoReq:                no
 AutoProv:               no
+
+# Qt5 directory macros (normally from qt5-rpm-macros)
+%_qt5_prefix            %{_prefix}
+%_qt5_archdatadir       %{_libdir}/qt5
+%_qt5_bindir            %{_libdir}/qt5/bin
+%_qt5_datadir           %{_datadir}/qt5
+%_qt5_docdir            %{_docdir}/qt5
+%_qt5_examplesdir       %{_qt5_archdatadir}/examples
+%_qt5_headerdir         %{_includedir}/qt5
+%_qt5_importdir         %{_qt5_archdatadir}/imports
+%_qt5_libdir            %{_libdir}
+%_qt5_libexecdir        %{_qt5_archdatadir}/libexec
+%_qt5_plugindir         %{_qt5_archdatadir}/plugins
+%_qt5_qmldir            %{_qt5_archdatadir}/qml
+%_qt5_settingsdir       %{_sysconfdir}/xdg
+%_qt5_sysconfdir        %{_sysconfdir}
+%_qt5_translationdir    %{_datadir}/qt5/translations

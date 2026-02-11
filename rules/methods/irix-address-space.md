@@ -4,6 +4,34 @@
 > Programs that use brk() for heap are limited to 176MB by libpthread's fixed mapping.
 > Use mmap-based malloc (in mogrix-compat) to access the full 1.2GB free region.
 
+> **Source**: SGI "Topics in IRIX Programming" (007-2478-008), Chapter 1: Process Address Space.
+> Our probed map below is confirmed by the official documentation. Key official facts are
+> annotated with `[SGI]` tags.
+
+---
+
+## Official Address Space Rules (from SGI docs)
+
+- **Total user space**: 0x00000000 - 0x7FFFFFFF (2 GB). Above 0x80000000 is kernel. `[SGI p.3]`
+- **Conventional lowest allocation**: 0x00400000 (4 MB). Below this is intentionally undefined to trap null pointers. `[SGI p.4]` *(Note: n32 cross-compiled binaries use 0x10000 as image base, well below the 4MB convention.)*
+- **DSO addresses declared in** `/usr/lib/so_locations` — rld uses this for quickstart placement. `[SGI p.4]`
+- **MIPS ABI reserved region**: 0x30000000 - 0x3FFC0000 reserved for user-defined mmap segments. `[SGI p.23]` *(This falls within our 1.2GB free gap.)*
+- **brk() extends heap to a specific virtual address** — malloc() calls brk() as required. `[SGI p.6]`
+- **Addresses cannot be undefined** once allocated by brk()/malloc(). Only process termination releases them. mmap'd regions can be munmap'd. `[SGI p.6]`
+- **Virtual swap** (default since IRIX 5.2): malloc() never returns NULL until resource limit — pages are only defined when accessed. If swap exhausted at access time, process gets **SIGKILL** (not NULL). `[SGI p.7-8]`
+- **Page size**: 4096 bytes on 32-bit systems (O2, etc.), larger and configurable on 64-bit systems. `[SGI p.5]`
+
+### Resource Limits (systune defaults)
+
+| Parameter | Default | Hex |
+|-----------|---------|-----|
+| rlimit_vmem_max | 536,870,912 | 0x20000000 (512 MB) |
+| rlimit_stack_cur | 67,108,864 | 0x04000000 (64 MB) |
+
+These can be changed via `systune` or `setrlimit()`. `[SGI p.6-7]`
+
+**Warning**: Each `sproc()` child that doesn't supply its own stack reserves rlimit_stack_max bytes of address space. Programs creating many processes can hit rlimit_vmem_max quickly. `[SGI p.7]`
+
 ---
 
 ## Full Address Map (probed 2026-02-04, IP30/Octane2)
@@ -62,7 +90,9 @@ The gap at `0x0FC40000 - 0x5C000000` (1,219 MB) is available for mmap allocation
 
 ## Library Load Addresses
 
-These are **fixed** by rld quickstart. They do NOT change based on the program's image base.
+These are **fixed** by rld quickstart (declared in `/usr/lib/so_locations`). They do NOT change based on the program's image base. `[SGI p.4]`
+
+When IRIX loads a DSO not declared in so_locations, rld seeks a segment that doesn't overlap any declared DSO and won't interfere with stack growth. `[SGI p.4]`
 
 | Library | Address | Size |
 |---------|---------|------|
@@ -76,6 +106,8 @@ These are **fixed** by rld quickstart. They do NOT change based on the program's
 | rld (text) | 0x5FFE0000 | 640 KB |
 
 **Note**: Cross-compiled libraries (sqlite, libxml2, etc.) are placed in the 0x5C region. IRIX system libraries are placed in the 0x0F9 region. libpthread is isolated at 0x0C08 due to its special requirements.
+
+**Segment alignment**: In the MIPS ABI reserved region (0x30000000-0x3FFC0000), no two mapped segments can occupy the same 256 KB unit. This ensures segments start on different pages even with maximum page size. `[SGI p.23]`
 
 ---
 
@@ -97,12 +129,26 @@ This gives every program access to the 1.2 GB mmap region regardless of image ba
 3. `free()` calls `munmap()` to release pages back to the OS
 4. Small allocations are served from larger mmap'd chunks (no per-allocation syscall)
 
+### Why mmap-based malloc is superior to brk()
+
+Per the SGI docs `[SGI p.6]`: brk-allocated addresses **cannot be undefined** — they persist until process exit. Even `free()` only makes memory reusable within the process; the pages remain defined in page tables and swap is still allocated. In contrast, `munmap()` truly releases pages back to the OS.
+
+Additionally, with virtual swap enabled `[SGI p.7-8]`, brk-based malloc() never returns NULL on failure — instead the process gets **SIGKILL** when it finally touches an overcommitted page. mmap-based malloc avoids this because each allocation actually maps pages.
+
 ### Why not just increase image base?
 
 - The heap ceiling is **always** 0x0C080000 (libpthread) regardless of base
 - Max 176 MB of brk heap, not enough for large programs
 - Changing image base can overlap with library mappings (0x00F90000 libm overlap discovered)
 - mmap-based malloc works regardless of address layout
+
+### mmap details (from SGI docs)
+
+- `MAP_AUTOGROW`: IRIX-specific flag that extends the segment when storing past its end (zero-filled). `[SGI p.14]`
+- `MAP_AUTORESRV`: IRIX-specific flag that delays reserving swap space until a store is done. `[SGI p.14]`
+- `MAP_LOCAL`: IRIX-specific flag for sproc() — mapped segment not shared with child processes. `[SGI p.15]`
+- `madvise()`: Can tell IRIX pages are unneeded — they stay defined but go to top of reclaim list. `[SGI p.29]`
+- Segments based on `/dev/zero` with `MAP_AUTOGROW` delay page definition until accessed. `[SGI p.15]`
 
 ---
 
@@ -114,6 +160,19 @@ This gives every program access to the 1.2 GB mmap region regardless of image ba
 4. `--image-base=0x1000000` moved program above rld, giving 176MB
 5. Comprehensive probe revealed libpthread at 0x0C080000 as the true ceiling
 6. mmap-based malloc bypasses brk() entirely, using the 1.2GB gap
+
+---
+
+## Memory Locking (real-time relevance)
+
+Per `[SGI p.23-27]`: Page faults take 10-50ms. For real-time apps, lock pages with `mlock()`, `mlockall()`, `mpin()`, or `plock()`. Locking forces all pages to be defined (may trigger SIGKILL under virtual swap). Key rules:
+
+- `plock(PROCLOCK)` locks text + data + stack + MAP_PRIVATE segments
+- `plock()` does NOT lock MAP_SHARED segments — use `mpin()` for those
+- Locking an `MAP_AUTOGROW` segment with `MCL_FUTURE` auto-locks new pages
+- `mpin()` maintains a lock counter per page — must `munpin()` same number of times
+
+Not directly relevant to mogrix bundles, but useful context for why certain IRIX programs have specific memory requirements.
 
 ---
 
@@ -130,3 +189,33 @@ ssh root@<host> "LD_LIBRARYN32_PATH=<paths> /tmp/probe"
 ```
 
 Different IRIX hardware (IP27, IP30, IP32, IP35) or different library sets may produce different layouts. Always probe before assuming addresses.
+
+### Checking so_locations
+
+The official DSO placement file is at `/usr/lib/so_locations`. To see what addresses rld has reserved:
+
+```bash
+cat /usr/lib/so_locations
+```
+
+This file declares base addresses for all system DSOs. When a DSO is not listed, rld picks an address that doesn't overlap existing mappings. `[SGI p.4]`
+
+### Checking resource limits
+
+```bash
+# From IRIX shell:
+systune -i
+systune-> rlimit_vmem_max    # default: 0x20000000 (512 MB)
+systune-> rlimit_data_max     # max heap size
+systune-> rlimit_stack_max    # max stack size
+```
+
+Or programmatically: `getrlimit(RLIMIT_VMEM, &rl)`, `setrlimit()` to change. `[SGI p.6-7]`
+
+---
+
+## Reference
+
+- **SGI "Topics in IRIX Programming"** (007-2478-008): Chapter 1, pages 3-42. Official documentation for the IRIX process address space, mmap, memory locking, and CC-NUMA placement.
+- **rld(1)**, **dso(5)**: Man pages for the IRIX dynamic linker and DSO format.
+- **MIPSpro Compiling, Linking, and Performance Tuning Guide**: Additional details on image base, DSO placement.
