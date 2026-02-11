@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-11 (session 20)
-**Status**: 90 source packages cross-compiled (240+ RPMs). **Qt5 5.15.13 RUNNING ON IRIX!** `qVersion()` returns "5.15.13". All Qt5 modules load: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin. Preload chain required: Qt5Core + harfbuzz (2 dlopen calls before Qt5Gui).
+**Last Updated**: 2026-02-11 (session 21)
+**Status**: 90 source packages cross-compiled (240+ RPMs). **Qt5 5.15.13 RUNNING ON IRIX!** `qVersion()` returns "5.15.13". All Qt5 modules load: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin. Preload chain required: Qt5Core + harfbuzz (2 dlopen calls before Qt5Gui). Rules cleaned up — 6 common compat functions elevated to generic.yaml.
 
 ---
 
@@ -19,13 +19,17 @@
 
 ## IMMEDIATE NEXT
 
-**Qt5 is running on IRIX.** Next steps:
-1. **Build qtermwidget5** — terminal emulator, THE community target. Qt5 libs are ready.
+**Qt5 is running on IRIX but no GUI app has been tested yet.** Next steps:
+
+1. **Find a simple Qt5 app to build** — qtermwidget/qterminal require `liblxqt` (no SRPMs available, heavy dep chain). Need a simpler Qt5 app. Was searching FC40 SRPMs for Qt5 apps without KDE/LXQt deps when session ended. Consider:
+   - Simple Qt5 apps from FC40 SRPMs (search: `pkgconfig(Qt5Widgets)` without `kf5`/`lxqt`/`kde`)
+   - Build `qt5-qtx11extras` first (SRPM ready, simple, needed by many Qt5 apps)
+   - Write a minimal QWidget test app to prove GUI rendering on IRIX X11
 2. **Bundle Qt5 app** — need wrapper that pre-loads Qt5Core + harfbuzz before the main binary
-3. **Test Qt5 GUI app on IRIX** — create a minimal QWidget test, verify it renders on IRIX X11
-4. **Consider rebuilding Qt5** against new freetype (no-harfbuzz) — current Qt5 was built against old freetype. May not matter since harfbuzz is still available as a standalone lib.
+3. **Test Qt5 GUI rendering on IRIX** — no visual test done yet, only dlopen + qVersion()
 
 Other priorities:
+- **Public package repo configured**: `https://packages.mogrix.unxmaal.com/repo/` in `configs/tdnf/mogrix.repo`
 - **Ship bitlbee + weechat + st tarballs** to community — ALL READY
 - **Meson packages NOW UNBLOCKED:** cairo 1.18, pango, p11-kit
 - **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils

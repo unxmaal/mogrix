@@ -227,32 +227,27 @@ install_extras() {
     fi
 }
 
-# Generate tdnf repo config and tdnf.conf
+# Install tdnf repo config and tdnf.conf
 generate_repo_config() {
-    log_info "Generating tdnf repository configuration..."
+    log_info "Installing tdnf repository configuration..."
 
-    # Auto-detect build host IP if not provided via --repo-url
-    if [ -z "$REPO_URL" ]; then
-        local host_ip
-        host_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-        if [ -z "$host_ip" ]; then
-            log_warn "Could not detect host IP. Using localhost."
-            host_ip="127.0.0.1"
-        fi
-        REPO_URL="http://${host_ip}:${REPO_PORT}/"
-    fi
-
-    log_info "Repository URL: $REPO_URL"
-
-    # Write mogrix.repo
+    # Install mogrix.repo (public package server)
     mkdir -p "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d"
-    cat > "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d/mogrix.repo" << EOF
-[mogrix]
-name=Mogrix Repository
+    cp "$PROJECT_DIR/configs/tdnf/mogrix.repo" "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d/mogrix.repo"
+
+    # If --repo-url was provided, also create a local override repo
+    if [ -n "$REPO_URL" ]; then
+        log_info "Adding local repo override: $REPO_URL"
+        cat > "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d/mogrix-local.repo" << EOF
+[mogrix-local]
+name=Mogrix Local Repository
 baseurl=${REPO_URL}
 enabled=1
 gpgcheck=0
 EOF
+        echo "  [OK] /usr/sgug/etc/yum.repos.d/mogrix-local.repo (local override)"
+    fi
+
     echo "  [OK] /usr/sgug/etc/yum.repos.d/mogrix.repo"
 
     # Write tdnf.conf (our version, not whatever the RPM shipped)
@@ -452,7 +447,7 @@ print_next_steps() {
     echo "  - Extracted files under /usr/sgug/"
     echo "  - RPM files in /tmp/bootstrap-rpms/ for database registration"
     echo "  - sgugshell + sgug-exec environment wrappers"
-    echo "  - tdnf repo config pointing to build host (${REPO_URL})"
+    echo "  - tdnf repo config pointing to https://packages.mogrix.unxmaal.com/repo/"
     echo ""
     echo "Next steps:"
     echo ""
