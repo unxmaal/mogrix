@@ -59,6 +59,16 @@ CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_NAMESPACE_QUALIFIER="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_USING_FROM_STD(x)="
+# Enable C99 math functions in libstdc++ <cmath>.
+# SGUG-RSE configured GCC 9 with these disabled because IRIX libm lacks some C99
+# math functions (exp2, log2, tgamma, etc.). However:
+# - Classification functions (isnan, isinf, etc.) use __builtin_* — no libc needed
+# - Common functions (hypot, cbrt, lgamma, etc.) ARE in IRIX libm
+# - Missing functions are provided by our compat math.h or as builtins
+# Without C99_MATH, std::isnan etc. are unavailable.
+# Without C99_MATH_TR1, std::hypot(x,y) is unavailable (only 3-arg C++17 version).
+CLANG_FLAGS="$CLANG_FLAGS -D_GLIBCXX_USE_C99_MATH=1"
+CLANG_FLAGS="$CLANG_FLAGS -D_GLIBCXX_USE_C99_MATH_TR1=1"
 # IRIX libc doesn't have __cxa_atexit (Itanium C++ ABI) — use atexit() instead
 CLANG_FLAGS="$CLANG_FLAGS -fno-use-cxa-atexit"
 # Use .ctors/.dtors instead of .init_array/.fini_array — IRIX rld doesn't support init_array

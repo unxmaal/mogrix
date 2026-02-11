@@ -25,6 +25,65 @@ IRIX rld handles this correctly (tested with `DynaLoader::dl_load_file`).
 SGUG-RSE avoided this issue because their patched binutils + GCC produced compatible
 single-segment layout. Our unpatched GNU ld + clang needs the explicit flag.
 
+### C++ Static Constructors in Shared Libraries (2026-02-10)
+
+IRIX rld does NOT process `.init_array` sections — it only processes `.init` functions
+via `DT_INIT`. GNU ld's default linker script merges `.ctors` → `.init_array`, so even
+with clang's `-fno-use-init-array` (which generates `.ctors` in .o files), the final .so
+ends up with `.init_array` only. Static constructors silently don't run.
+
+**Fix (3 parts):**
+1. **Custom linker script** (`cross/irix-shared.lds`): Keeps `.ctors` in its own section
+   instead of merging into `.init_array`. Also handles `.dtors`.
+2. **CRT objects** (`cross/crt/crtbeginS.S`, `cross/crt/crtendS.S`): PIC versions of
+   crtbeginT/crtendT. `crtbeginS.o` provides a `_init` function (in `.init` section)
+   that walks the `.ctors` array calling each constructor. `crtendS.o` provides the
+   NULL sentinel at `.ctors` end. The `_init` global symbol triggers GNU ld to create
+   a `DT_INIT` entry pointing to it.
+3. **irix-ld** links shared libs: `crtbeginS.o <user.o files> crtendS.o` with `-T irix-shared.lds`.
+
+**Verification**: `readelf -d foo.so` must show `INIT` tag. `readelf -S foo.so` must show
+`.ctors` section (not `.init_array`). `.init` section must also exist.
+
+### rld Re-Encounter GOT Crash (2026-02-11)
+
+When a shared library is loaded via `dlopen()`, and then another DSO references it as
+`DT_NEEDED`, IRIX rld "re-encounters" the already-loaded library. During re-encounter,
+rld re-processes the GOT and re-runs `DT_INIT`. For libraries with `MIPS_LOCAL_GOTNO > ~128`,
+the global GOT entries above a certain index get zeroed during this re-processing.
+
+The `__do_global_ctors_aux` function (from `crtbeginS.o`) reads `__CTOR_END__` from a global
+GOT entry. On re-encounter, this entry is zeroed, causing `s0 = 0`, then `s0 = 0 - 4 = 0xFFFFFFFC`,
+then `lw $25, 0($s0)` → SIGBUS at address 0xFFFFFFFC.
+
+**Threshold**: Libraries with `LOCAL_GOTNO ≤ 103` are not affected. Those with `≥ 140` crash.
+The exact threshold is between 103 and 140 (likely 128, a power-of-2 internal rld limit).
+
+**Affected libraries**: harfbuzz (LOCAL_GOTNO=1250), Qt5Core (2714), Qt5Sql (140),
+freetype (152, when it had .init). Pure C libraries without crtbeginS.o are unaffected.
+
+**Fix**: Added `beqz $s0, .Ldone` guard in `crtbeginS.S` after the `lw %got(__CTOR_END__)($gp)`
+instruction. If the GOT entry is zeroed (re-encounter), the function returns immediately
+without walking the .ctors array. On first load, the GOT entry is valid and constructors
+run normally.
+
+**Why DT_INIT removal doesn't help**: Even when DT_INIT is stripped from the dynamic section,
+rld still calls the `_init` symbol (found by name in dynsym) on re-encounter. The crash
+happens in `__do_global_ctors_aux` which is called by `_init`.
+
+**Test pattern**: `dlopen("libX.so"); dlopen("libY.so")` where Y has X as NEEDED.
+Working: both loads succeed. Crashing: SIGBUS during second dlopen.
+
+### GNU Symbol Versioning Crashes rld (2026-02-10)
+
+`--version-script` creates `.gnu.version`, `.gnu.version_r`, and adds `VERNEED`/`VERSYM`
+dynamic tags. IRIX rld predates GNU symbol versioning and crashes (SIGSEGV) when
+processing these unknown tags during `dlopen()`.
+
+**Fix**: `irix-ld` filters out `--version-script` (both `=FILE` and ` FILE` forms).
+Symbols are still exported globally; they just don't have version tags. This is fine
+for IRIX since rld doesn't support version-based symbol resolution anyway.
+
 ## KNOWN BAD FIXES - DO NOT ATTEMPT
 
 ### ❌ GNU ld for executables

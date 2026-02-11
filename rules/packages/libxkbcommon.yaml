@@ -8,6 +8,7 @@ rules:
   inject_compat_functions:
     - strdup
     - strndup
+    - strnlen
 
   prep_commands:
     # Remove test/fuzz/benchmark executables from meson.build - they link against

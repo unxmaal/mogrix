@@ -24,7 +24,7 @@ rules:
       replacement: |
         export CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx"
         export CXXFLAGS="%{optflags}"
-        %configure --disable-static --without-graphite2 --without-gobject --disable-introspection --without-cairo --without-icu
+        %configure --disable-static --without-graphite2 --without-gobject --without-glib --disable-introspection --without-cairo --without-icu
 
     # Add explicit Provides (rpmmacros.irix sets AutoProv: no)
     - pattern: "License:        MIT-Modern-Variant"
@@ -61,10 +61,6 @@ rules:
       replacement: |
         %files devel
         %doc %{_datadir}/gtk-doc
-        %{_bindir}/hb-info
-        %{_bindir}/hb-ot-shape-closure
-        %{_bindir}/hb-shape
-        %{_bindir}/hb-subset
         %{_includedir}/harfbuzz/
         %{_libdir}/libharfbuzz.so
         %{_libdir}/libharfbuzz-cairo.so

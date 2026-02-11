@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-10 (session 18 continued)
-**Status**: 88 source packages cross-compiled (240+ RPMs). **glib2 (first meson package!) + bitlbee (IRC gateway) + bitlbee-discord plugin built and bundled for IRIX!** bitlbee connects via IRC on port 6667 — users can chat on XMPP/Jabber, Twitter, and Discord from any IRC client (weechat already shipping). Meson cross-compilation UNBLOCKED. C++ cross-compilation WORKING (groff). OpenSSH, aterm, tdnf, weechat, st all running on IRIX.
+**Last Updated**: 2026-02-11 (session 20)
+**Status**: 90 source packages cross-compiled (240+ RPMs). **Qt5 5.15.13 RUNNING ON IRIX!** `qVersion()` returns "5.15.13". All Qt5 modules load: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin. Preload chain required: Qt5Core + harfbuzz (2 dlopen calls before Qt5Gui).
 
 ---
 
@@ -19,19 +19,117 @@
 
 ## IMMEDIATE NEXT
 
-**bitlbee bundle is SHIPPING with Discord support** — IRC gateway running on IRIX with discord.so plugin. Users connect with weechat (already shipping) to get XMPP/Jabber, Twitter, and Discord access.
+**Qt5 is running on IRIX.** Next steps:
+1. **Build qtermwidget5** — terminal emulator, THE community target. Qt5 libs are ready.
+2. **Bundle Qt5 app** — need wrapper that pre-loads Qt5Core + harfbuzz before the main binary
+3. **Test Qt5 GUI app on IRIX** — create a minimal QWidget test, verify it renders on IRIX X11
+4. **Consider rebuilding Qt5** against new freetype (no-harfbuzz) — current Qt5 was built against old freetype. May not matter since harfbuzz is still available as a standalone lib.
 
-**glib2 UNBLOCKS meson packages** — first meson cross-compilation working! Pattern established in `rules/packages/glib2.yaml` + `cross/meson-irix-cross.ini`.
-
-Priorities:
+Other priorities:
 - **Ship bitlbee + weechat + st tarballs** to community — ALL READY
-- **More bundle candidates (already built):** nano, groff, openssh, aterm
-- **Meson packages NOW UNBLOCKED:** cairo 1.18, harfbuzz, pango, p11-kit (glib2 pattern established)
-- **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils, expect, tk, gtk2
+- **Meson packages NOW UNBLOCKED:** cairo 1.18, pango, p11-kit
+- **Autotools (ready to build):** gperf, jq, pcre, gd, libarchive, elfutils
 - **Still blocked:** lolcat (wchar I/O), bc (host binary bootstrap), xclip (IRIX Xmu too old)
-- **gnutls-utils installs libtool wrapper scripts** instead of real binaries (certtool, gnutls-cli etc). Needs fix-libtool-irix.sh or similar.
-- **Implement `extra_cflags`** in rules engine (currently validated but dead code)
-- **GLib warnings on IRIX**: `g_hash_table_lookup: assertion 'hash_table != NULL'` during bitlbee startup — non-fatal but indicates GLib quark table initialization issue. May affect other glib2-dependent apps.
+- **GLib warnings on IRIX**: `g_hash_table_lookup: assertion 'hash_table != NULL'` during bitlbee startup
+
+---
+
+## Recent Session (20): Qt5 Verified on IRIX + Dependency Fixes
+
+### Qt5 5.15.13 loads and executes on IRIX!
+
+**Milestone**: `qVersion()` called via dlsym returns "5.15.13" on IRIX 6.5. All Qt5 modules verified loading:
+- Qt5Core, Qt5Gui, Qt5Widgets, Qt5Network — all OK
+- Qt5XcbQpa (XCB platform plugin) — OK
+- libqxcb.so (XCB platform plugin) — OK
+
+### Preload chain required
+
+IRIX rld crashes when resolving Qt5Gui's full dependency tree in a single dlopen. The workaround is sequential preloading:
+```
+dlopen(libQt5Core.so.5)     # loads stdc++, pcre2, zstd, etc.
+dlopen(libharfbuzz.so.0)    # loads freetype (no circular dep now)
+dlopen(libQt5Gui.so.5)      # remaining deps are small, rld handles it
+```
+**Bundle wrappers** will need to implement this preload chain.
+
+### Three bugs fixed this session
+
+**1. freetype↔harfbuzz circular dependency crashes rld**
+- freetype NEEDED libharfbuzz, harfbuzz NEEDED libfreetype → circular
+- IRIX rld crashes (PC=0x0) during single-pass dependency resolution with this cycle
+- **Fix**: Rebuilt freetype with `--without-harfbuzz` (breaks the cycle)
+- Harfbuzz still provides OpenType shaping; freetype just doesn't use harfbuzz internally
+- Rule: `rules/packages/freetype.yaml` — `--without-harfbuzz` in configure_flags + spec_replacement
+
+**2. libxcb missing NEEDED libX11 → unresolvable `_XLockMutex_fn`**
+- libxcb references `_XLockMutex_fn` (Xlib-xcb interop symbol from libX11)
+- On Linux: lazily resolved. On IRIX: rld requires all UND symbols at load time
+- **Fix**: Added `export_vars: LDFLAGS: "-lX11"` to libxcb rules
+- libxcb.so.1 now has `NEEDED libX11.so.1` in its ELF
+- Rule: `rules/packages/libxcb.yaml`
+
+**3. libxkbcommon-x11 missing strnlen compat**
+- `strnlen` not in IRIX libc, wasn't in libxkbcommon's inject_compat_functions
+- **Fix**: Added `strnlen` to libxkbcommon's inject_compat_functions
+- Rule: `rules/packages/libxkbcommon.yaml`
+
+### GOT counts verified (all under 4370 limit)
+
+| Library | Global GOT (old) | Global GOT (new) | Change |
+|---------|-------------------|-------------------|--------|
+| Qt5Gui | 5364 | 1840 | -66% |
+| Qt5Widgets | 8567 | 3207 | -63% |
+| Qt5XcbQpa | 1615 | 1217 | -25% |
+| Qt5Core | - | 690 | OK |
+| Qt5Network | - | 1155 | OK |
+
+### Important: old irix-cc vs staging irix-ld
+
+`/opt/cross/bin/irix-ld` is the OLD simple wrapper using GNU ld directly for executables. Produces binaries with `MIPS_OPTIONS` tag that crashes IRIX rld. **Always use `/opt/sgug-staging/usr/sgug/bin/irix-ld`** which uses LLD 18 for executables (correct for IRIX).
+
+### Files changed
+- `rules/packages/freetype.yaml` — `--without-harfbuzz` (break circular dep)
+- `rules/packages/libxcb.yaml` — `export_vars: LDFLAGS: "-lX11"` (link native X11)
+- `rules/packages/libxkbcommon.yaml` — added `strnlen` to inject_compat_functions
+- Rebuilt + staged: freetype, libxcb, libxkbcommon
+- Installed on IRIX: freetype, libxcb, libxkbcommon, xcb-util-*, expat
+
+---
+
+## Recent Session (19): rld Global GOT Limit + Qt5 Rebuild
+
+### Discovery: IRIX rld has a ~4370 global GOT entry limit per shared library
+
+**Symptoms**: Qt5Gui and Qt5Widgets crash rld (SIGSEGV at PC=0x0FB6AA44, inside rld itself) when loaded via dlopen or as NEEDED deps. Qt5Core (smaller) loads fine.
+
+**Root cause**: MIPS ELF shared libraries have a Global Offset Table (GOT) split into local entries (LOCAL_GOTNO) and global entries (SYMTABNO - GOTSYM). rld processes global GOT entries during library loading. When the global GOT entry count exceeds ~4370, rld crashes internally.
+
+| Library | Global GOT | Status |
+|---------|-----------|--------|
+| Qt5Core | 3857 | OK |
+| Qt5Gui | 5364 | CRASH |
+| Qt5Widgets | 8567 | CRASH |
+
+**Binary search** confirmed the exact threshold for Qt5Gui: global GOT 4369 → OK, 4370 → CRASH. Used `/tmp/patch_symtabno.py` to modify MIPS_SYMTABNO in the ELF dynamic section.
+
+**Fix: `-Bsymbolic-functions`** (GNU ld flag). This resolves intra-library function calls locally instead of through the global GOT. Moves defined FUNC symbols from global → local GOT entries. Effect:
+- Qt5Gui: 5364 → ~1840 global GOT (well under limit)
+- Qt5Widgets: 8567 → ~3207 global GOT (well under limit)
+
+**Implementation**: Added `-Bsymbolic-functions` unconditionally to `cross/bin/irix-ld` for all shared libraries (line 135). Also updated `cross/mkspecs/irix-n32-clang/qmake.conf` to pass it via `QMAKE_LFLAGS_BSYMBOLIC_FUNC`. This benefits ALL future packages, not just Qt5.
+
+**Verified**: Test library comparison showed LOCAL_GOTNO increased from 2→9 and GOTSYM from 8→15, confirming function symbols moved from global to local GOT.
+
+### Second bug: dlopen re-encounter crash (SOLVED in session 20)
+
+Root cause: freetype↔harfbuzz circular NEEDED + deep dependency tree. rld crashes (PC=0x0) during single-pass dependency resolution. Fix: rebuilt freetype with `--without-harfbuzz` (breaks circular dep) + pre-load Qt5Core and harfbuzz before loading Qt5Gui.
+
+### Files changed
+- `cross/bin/irix-ld`: Added `-Bsymbolic-functions` for shared libraries
+- `cross/mkspecs/irix-n32-clang/qmake.conf`: Enabled BSYMBOLIC_FUNC flag
+- `rules/INDEX.md`: Documented rld global GOT limit pattern
+- `HANDOFF.md`: This update
 
 ---
 
@@ -280,7 +378,7 @@ Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix).
 
 ## Package Status
 
-**Total: 88 source packages (240+ RPMs)**
+**Total: 91 source packages (250+ RPMs)**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
@@ -303,7 +401,7 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | gettext | 0.22.5 | INSTALLED | %files substring collision, dep fixes |
 | zstd | 1.5.5 | INSTALLED | Makefile CC/AR/RANLIB, pthread, LDFLAGS |
 | fontconfig | 2.15.0 | INSTALLED | Host gperf, expat, __sync atomics |
-| freetype | 2.13.2 | INSTALLED | Explicit Provides for ISA + .so |
+| freetype | 2.13.2 | INSTALLED | --without-harfbuzz (breaks rld circular dep) |
 | expat | 2.6.0 | STAGED | man page touch, --without-docbook |
 | nettle | 3.9.1 | INSTALLED | --enable-mini-gmp |
 | libtasn1 | 4.19.0 | INSTALLED | GTKDOCIZE=true |
@@ -336,6 +434,9 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | **st** | **0.9** | **BUNDLED+VERIFIED** | **Suckless terminal. X11R6.3 compat, openpty/pselect compat, Xft + Iosevka Nerd Font** |
 | **glib2** | **2.80.0** | **INSTALLED** | **First meson package! SGUG-RSE patch rebased, gnulib frexp fix, strnlen compat** |
 | **bitlbee** | **3.6** | **BUNDLED+VERIFIED** | **IRC gateway. %zu fix, sa_len macro, LLD ld -r, gcrypt linkage, strcasestr** |
+| **libxcb** | **1.16** | **INSTALLED** | **Added NEEDED libX11 for _XLockMutex_fn (IRIX rld strict UND resolution)** |
+| **libxkbcommon** | **1.6.0** | **INSTALLED** | **Added strnlen compat function** |
+| **qt5-qtbase** | **5.15.13** | **INSTALLED+VERIFIED** | **Qt5 running on IRIX! Preload: Core+harfbuzz. GOT counts under 4370** |
 
 ---
 
@@ -411,6 +512,9 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **gnutls-utils libtool wrappers** — `make install` installs libtool wrapper scripts instead of real binaries. Needs fix-libtool-irix.sh or chrpath.
 - **IRIX `sa_len` macro in `<sys/socket.h>`** — `#define sa_len sa_union.sa_generic.sa_len2` breaks local variables named `sa_len`. Rename to `saddr_len` or similar.
 - **GNU ld `-r` + LLD incompatibility** — GNU ld's partial-link output has STB_LOCAL symbols that LLD rejects. Use LLD for both `ld -r` and final link.
+- **rld crashes on deep dependency trees** — single dlopen of a library with 10+ transitive deps crashes rld (PC=0x0). Fix: pre-load heavy deps (Qt5Core, harfbuzz) individually before loading the leaf library (Qt5Gui). Bundle wrappers must implement this preload chain.
+- **libxcb `_XLockMutex_fn`** — libxcb references Xlib-xcb interop symbols from libX11. IRIX rld requires explicit NEEDED (no lazy resolution from already-loaded DSOs). Fix: link libxcb with `-lX11`.
+- **Old `/opt/cross/bin/irix-ld` crashes executables** — The simple GNU ld wrapper produces `MIPS_OPTIONS` tags that crash IRIX rld. Always use `/opt/sgug-staging/usr/sgug/bin/irix-ld` (LLD 18).
 - **GLib quark table warnings** — `g_hash_table_lookup: assertion 'hash_table != NULL' failed` on IRIX startup. Non-fatal but indicates .init constructor ordering issue. May need investigation for future glib2-dependent apps.
 - **fdopendir missing on IRIX** — compat provides AT_FDCWD but not fdopendir. Code guarded by `#ifdef AT_FDCWD` must add `&& !defined(__sgi)`.
 

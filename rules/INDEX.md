@@ -90,6 +90,13 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | ncurses ext-colors terminfo | SIGBUS on MIPS, garbage cols/lines values | spec_replacements | rules/packages/ncurses.yaml | `--disable-ext-colors`; ext-colors reads 16-bit terminfo fields as 32-bit |
 | Explicit Provides required | rpm -Uvh fails with unresolved deps | spec_replacements | rules/packages/* | rpmmacros.irix sets AutoProv:no; add `Provides: libfoo.so.N` for each .so |
 | Plugin dlopen symbol export | rld Fatal Error: unresolvable symbol in plugin .so | --dynamic-list via spec_replacements | cross/bitlbee-plugin-symbols.list | --export-dynamic exports ALL symbols, crashes rld (>468 entries). --dynamic-list exports only listed symbols. Create .list file with plugin's UND symbols: `readelf -sW plugin.so \| grep UND` |
+| GNU symbol versioning crash | dlopen SIGSEGV in rld processing .gnu.version* sections | irix-ld filters --version-script | cross/bin/irix-ld | Qt5, GLib, and other libs pass `--version-script` via `-Wl,`; irix-ld strips it. Symbols still exported, just without version tags |
+| .init_array ignored by rld | Static constructors silently don't run in shared libs | custom linker script + CRT objects | cross/irix-shared.lds, cross/crt/ | `.ctors` preserved by linker script; crtbeginS.o provides `_init` that walks .ctors array. All .so linked via GNU ld now uses this |
+| rld re-encounter GOT crash | SIGBUS when DSO with large GOT is loaded as NEEDED after dlopen | `beqz` guard in crtbeginS.o | cross/crt/crtbeginS.S | rld re-runs DT_INIT on re-encounter, zeros global GOT entries above LOCAL_GOTNO ~128. Guard checks `__CTOR_END__` for NULL before deref. Threshold: LOCAL_GOTNO ≤103 OK, ≥140 crashes. |
+| rld global GOT entry limit | SIGSEGV/SIGBUS in rld (PC=0x0FB6AA44) loading .so with large symbol table | `-Bsymbolic-functions` in irix-ld | cross/bin/irix-ld | rld has ~4370 global GOT entry limit per shared library. Global GOT = SYMTABNO - GOTSYM. Qt5Gui (5364) and Qt5Widgets (8567) exceed it. `-Bsymbolic-functions` moves defined FUNC symbols to local GOT, reducing count by 50-65%. Added unconditionally to irix-ld for all shared libraries. |
+| Circular NEEDED crashes rld | SIGSEGV (PC=0x0) during dependency resolution with circular NEEDED entries | Break the cycle | rules/packages/freetype.yaml | freetype↔harfbuzz circular dep (freetype NEEDED harfbuzz, harfbuzz NEEDED freetype) crashes rld during single-pass resolution combined with deep dep trees. Fix: `--without-harfbuzz` for freetype. Harfbuzz still works standalone. |
+| rld deep dependency tree crash | dlopen of library with 10+ transitive deps crashes rld | Sequential preloading | Bundle wrappers | Pre-load heavy deps (Qt5Core, harfbuzz) individually via sequential dlopen before loading the leaf library (Qt5Gui). Bundle wrappers implement the preload chain. |
+| IRIX rld strict UND resolution | "unresolvable symbol" even when symbol exists in already-loaded DSO | Add explicit NEEDED | rules/packages/libxcb.yaml | IRIX rld does NOT search already-loaded DSOs for UND symbols unless there's a direct NEEDED chain. libxcb had UND `_XLockMutex_fn` from libX11 but no NEEDED libX11. Fix: `-lX11` in LDFLAGS. |
 
 ## Invariants (Settled Facts)
 
@@ -111,6 +118,11 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Volatile fptr initializers crash | `static volatile fptr = memset;` relocation fails on rld | compat/string/explicit_bzero.c |
 | Source analysis is rules-driven | Patterns in source_checks.yaml + catalog.yaml source_patterns | rules/source_checks.yaml |
 | `-rdynamic` filtered in irix-ld | LLD doesn't support it; IRIX rld crashes on large dynamic symbol tables | cross/bin/irix-ld |
+| GNU version scripts crash rld | `--version-script` creates VERNEED/VERSYM dynamic tags that IRIX rld doesn't understand → SIGSEGV during dlopen | cross/bin/irix-ld (filtered) |
+| Shared libs need .ctors + DT_INIT | IRIX rld ignores `.init_array`; GNU ld merges .ctors→.init_array by default. Custom linker script + crtbeginS.o keeps .ctors and provides DT_INIT via .init function | cross/crt/crtbeginS.S, cross/irix-shared.lds |
+| C++ static ctors in .so require CRT | Without crtbeginS.o/crtendS.o, static constructors silently don't run → NULL d_ptr in STL containers, crashes on first use | cross/crt/crtbeginS.S, cross/crt/crtendS.S |
+| rld re-runs DT_INIT on re-encounter | Loading DSO A, then DSO B that NEEDS A, triggers A's .init again. Global GOT entries zeroed → SIGBUS. Fixed with beqz guard in crtbeginS.o | cross/crt/crtbeginS.S |
+| rld global GOT limit ~4370 | Shared libs with >4370 global GOT entries crash rld (SIGSEGV at rld internal PC). Not total GOT, specifically global entries. `-Bsymbolic-functions` reduces by moving defined FUNC symbols from global→local GOT | cross/bin/irix-ld |
 | X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 | rules/packages/aterm.yaml |
 | IRIX X11R6.3 API limits | XICCallback→XIMCallback, XSetIMValues→no-op, Xutf8→Xmb, XUTF8→XCompound | rules/packages/st.yaml |
 | IRIX has no TrueType fonts | Xft apps need bundled fonts; fontconfig `<dir prefix="relative">` for bundle paths | mogrix/bundle.py `_include_fonts()` |
@@ -118,6 +130,10 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | setenv/unsetenv NOT in IRIX libc | `putenv()` only; compat wraps it. Must add to `inject_compat_functions` | compat/stdlib/setenv.c |
 | X11 .pc files for IRIX native libs | libXrender/libXft configure use `pkg-config --exists x11/xext`; handcrafted .pc files in staging | /opt/sgug-staging/.../pkgconfig/ |
 | Man pages not compressed | rpmmacros.irix disables brp scripts; use `*.1*` not `*.1.gz` in %files | rpmmacros.irix |
+| Circular NEEDED crashes rld | freetype↔harfbuzz circular dep + deep dep tree → rld SIGSEGV. Break cycles at build time | rules/packages/freetype.yaml |
+| rld strict UND resolution | IRIX rld doesn't search already-loaded DSOs for UND symbols unless there's a NEEDED edge. Must add explicit `-l` linkage | rules/packages/libxcb.yaml |
+| Qt5 needs preload chain | rld can't handle Qt5Gui's full dep tree in one dlopen. Must preload Qt5Core + harfbuzz first. Bundle wrappers implement this | rules/packages/qt5-qtbase.yaml |
+| Old /opt/cross/bin/irix-ld broken | Simple GNU ld wrapper produces MIPS_OPTIONS tags → rld crash. Always use staging irix-ld (LLD 18 for executables) | /opt/sgug-staging/usr/sgug/bin/irix-ld |
 | AUTOPOINT=true for NLS-disabled | Packages with autoreconf + nls-disabled class need `AUTOPOINT=true` | rules/packages/*.yaml |
 | C++ uses GCC 9 libstdc++ | clang++ with SGUG-RSE libstdc++ headers + custom CRT (.ctors) | cross/bin/irix-cxx |
 | IRIX libm lacks C99 math | Must disable _GLIBCXX_USE_C99_MATH_TR1 in c++config.h | staging c++config.h |

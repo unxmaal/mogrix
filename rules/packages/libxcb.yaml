@@ -30,6 +30,13 @@ rules:
     remove:
       - "--enable-selinux"
 
+  # IRIX rld requires all UND symbols resolvable at load time.
+  # libxcb references _XLockMutex_fn (Xlib-xcb interop) which lives in
+  # IRIX native libX11. On Linux this is lazily resolved; on IRIX we must
+  # link explicitly so libxcb has NEEDED libX11.so.1.
+  export_vars:
+    LDFLAGS: "-lX11"
+
   spec_replacements:
     # Add PYTHONPATH export before autoreconf so it persists through configure/make
     # Skip the pthread-stubs sed and autoreconf — we provide pthread-stubs.pc

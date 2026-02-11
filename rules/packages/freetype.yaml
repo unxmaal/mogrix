@@ -12,7 +12,12 @@ rules:
       - --with-zlib=yes
       - --with-bzip2=yes
       - --with-png=yes
-      - --with-harfbuzz=yes
+      # IRIX rld cannot handle the circular dependency freetype↔harfbuzz when
+      # loading complex dependency trees (crashes in rld during single-pass
+      # resolution with many DSOs). Building without harfbuzz breaks the cycle.
+      # Harfbuzz itself still provides OpenType shaping; freetype just won't
+      # use harfbuzz internally for auto-hinting.
+      - --without-harfbuzz
       - --without-brotli
       - --enable-freetype-config
 
@@ -27,7 +32,9 @@ rules:
       replacement: "cd docs"
     - pattern: "popd"
       replacement: "cd .."
-    # Harfbuzz now available — keep Fedora's --with-harfbuzz=yes (no override needed)
+    # Override harfbuzz — building without breaks circular dep (see configure_flags comment)
+    - pattern: "           --with-harfbuzz=yes"
+      replacement: "           --without-harfbuzz"
     # Override brotli — we don't have brotli
     - pattern: "           --with-brotli=yes"
       replacement: "           --without-brotli"
