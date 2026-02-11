@@ -206,6 +206,12 @@ class RuleEngine:
                 f"install_cleanup: {len(rules['install_cleanup'])} commands"
             )
 
+        # Inject compat functions (generic)
+        if "inject_compat_functions" in rules:
+            funcs = rules["inject_compat_functions"]
+            result.compat_functions.extend(funcs)
+            result.applied_rules.append(f"inject_compat_functions: {funcs}")
+
     def _apply_class_rules(
         self, result: TransformResult, rules: dict, class_name: str
     ) -> None:

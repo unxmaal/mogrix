@@ -30,6 +30,3 @@ rules:
     - pattern: "%{_infodir}/nettle.info.*"
       replacement: "%{_infodir}/nettle.info"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
-    - "rm -f %{buildroot}%{_infodir}/dir"

@@ -10,5 +10,4 @@ smoke_test:
     expect: "/usr/sgug/bin/bash"
 
 rules:
-  inject_compat_functions:
-    - getopt_long
+

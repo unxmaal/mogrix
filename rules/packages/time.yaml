@@ -3,8 +3,6 @@ package: time
 
 rules:
   inject_compat_functions:
-    - getopt_long
-    - strdup
     - strerror_r
 
   drop_buildrequires:
@@ -22,3 +20,4 @@ rules:
 
     - pattern: "%{_infodir}/time.info*"
       replacement: ""
+

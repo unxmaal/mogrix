@@ -1,0 +1,102 @@
+# libxkbcommon 1.6.0 - XKB keymap library (FC40: 1.6.0-2)
+# Meson build. Needs xcb-xkb, libxml2, xkeyboard-config.
+# Wayland disabled (not on IRIX). X11 backend enabled.
+
+package: libxkbcommon
+
+rules:
+  inject_compat_functions:
+    - strnlen
+
+  prep_commands:
+    # Remove test/fuzz/benchmark executables from meson.build - they link against
+    # IRIX-missing functions (setenv, unsetenv, mkdtemp, vasprintf, secure_getenv)
+    - "sed -i '/^test(/,/^# Documentation/{ /^# Documentation/!d }' meson.build"
+
+  drop_buildrequires:
+    - gcc
+    - git
+    - byacc
+    - flex
+    - bison
+    - xorg-x11-proto-devel
+    - libX11-devel
+    - xkeyboard-config-devel
+    - libxml2-devel
+
+  spec_replacements:
+    # Replace %meson + %meson_build with raw meson using cross file
+    - pattern: "%meson -Denable-docs=false \\\n       -Denable-x11=true \\\n       -Denable-wayland=false\n%meson_build"
+      replacement: |
+        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          -Denable-docs=false \
+          -Denable-x11=true \
+          -Denable-wayland=false \
+          -Denable-tools=false \
+          -Denable-bash-completion=false \
+          -Dc_link_args="-L$COMPAT_DIR -lmogrix-compat" \
+          --wrap-mode=nodownload
+        /home/edodd/.local/bin/meson compile -C _build
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Add Provides
+    - pattern: "URL:            http://www.x.org"
+      replacement: |
+        URL:            http://www.x.org
+        Provides: libxkbcommon.so.0(mips-32)
+        Provides: libxkbregistry.so.0(mips-32)
+        Provides: libxkbcommon-x11.so.0(mips-32)
+        Provides: libxkbcommon(mips-32) = %{version}-%{release}
+
+    # Fix Requires (remove %{?_isa}) - main package deps
+    - pattern: "Requires:       %{name}%{?_isa} = %{version}-%{release}"
+      replacement: "Requires:       %{name} = %{version}-%{release}"
+      replace_all: true
+    # Fix x11-devel Requires
+    - pattern: "Requires:       %{name}-x11%{?_isa} = %{version}-%{release}"
+      replacement: "Requires:       %{name}-x11 = %{version}-%{release}"
+
+    # Remove ldconfig scriptlets
+    - pattern: "%ldconfig_scriptlets"
+      replacement: "# ldconfig removed"
+      replace_all: true
+
+    # Remove utils subpackage description
+    - pattern: "%package utils\nSummary:        X.Org X11 XKB parsing utilities\nRequires:       %{name} = %{version}-%{release}\n\n%description utils\n%{name}-utils is a set of utilities to analyze and test XKB parsing."
+      replacement: "# utils subpackage removed (MIPS binaries)"
+
+    # Remove utils %files section (keep everything else)
+    - pattern: "%files utils\n%{_bindir}/xkbcli\n%{_libexecdir}/xkbcommon/xkbcli-compile-keymap\n%{_libexecdir}/xkbcommon/xkbcli-how-to-type\n%{_libexecdir}/xkbcommon/xkbcli-interactive-evdev\n%{_libexecdir}/xkbcommon/xkbcli-interactive-x11\n%{_libexecdir}/xkbcommon/xkbcli-list\n%{_mandir}/man1/xkbcli-compile-keymap.1.gz\n%{_mandir}/man1/xkbcli-how-to-type.1.gz\n%{_mandir}/man1/xkbcli-interactive-evdev.1.gz\n%{_mandir}/man1/xkbcli-interactive-x11.1.gz\n%{_mandir}/man1/xkbcli-list.1.gz\n%{_mandir}/man1/xkbcli.1.gz\n%{_datadir}/bash-completion/completions/xkbcli"
+      replacement: "# utils files removed"
+
+    # Merge x11 files into main package
+    - pattern: "%files x11\n%{_libdir}/libxkbcommon-x11.so.0.0.0\n%{_libdir}/libxkbcommon-x11.so.0"
+      replacement: "# x11 files merged into main"
+
+    # Merge x11-devel files into devel package
+    - pattern: "%files x11-devel\n%{_libdir}/libxkbcommon-x11.so\n%{_includedir}/xkbcommon/xkbcommon-x11.h\n%{_libdir}/pkgconfig/xkbcommon-x11.pc"
+      replacement: "# x11-devel merged into devel"
+
+    # Add x11 libs to main %files (anchor to both .0.0.0 and .0 lines to avoid substring match)
+    - pattern: "%{_libdir}/libxkbregistry.so.0.0.0\n%{_libdir}/libxkbregistry.so.0"
+      replacement: "%{_libdir}/libxkbregistry.so.0.0.0\n%{_libdir}/libxkbregistry.so.0\n%{_libdir}/libxkbcommon-x11.so.0.0.0\n%{_libdir}/libxkbcommon-x11.so.0"
+
+    # Add x11 devel files to devel %files (xkbregistry.pc is last devel line)
+    - pattern: "%{_libdir}/pkgconfig/xkbcommon.pc\n%{_libdir}/pkgconfig/xkbregistry.pc"
+      replacement: "%{_libdir}/pkgconfig/xkbcommon.pc\n%{_libdir}/pkgconfig/xkbregistry.pc\n%{_libdir}/libxkbcommon-x11.so\n%{_includedir}/xkbcommon/xkbcommon-x11.h\n%{_libdir}/pkgconfig/xkbcommon-x11.pc"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_bindir}/xkbcli || true"
+    - "rm -rf %{buildroot}%{_libexecdir}/xkbcommon || true"
+    - "rm -rf %{buildroot}%{_mandir}/man1/xkbcli* || true"
+    - "rm -rf %{buildroot}%{_datadir}/bash-completion || true"
+
+  skip_check: true
+

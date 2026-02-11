@@ -1,28 +1,46 @@
 # gnutls - TLS library
 # Needs compat functions
+# Build system: autotools (complex spec with many inline %if/%else/%endif)
+#
+# IMPORTANT: This spec has inline %if/%else/%endif blocks inside the
+# %configure line continuation. The configure_flags:remove engine can't
+# handle these (it leaves orphaned \ on %endif lines). Instead we:
+# 1. Flip bcond macros via spec_replacements so RPM resolves conditionals
+# 2. Remove specific configure lines via spec_replacements
+# 3. Only use configure_flags:add (prepend is safe)
 
 package: gnutls
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - asprintf
-    - vasprintf
-    - getline
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
+  drop_requires:
+    - crypto-policies
+    - "crypto-policies-scripts"
+    - p11-kit-trust
+
   drop_buildrequires:
     - trousers-devel
     - libidn2-devel
+    - "mingw*"
+
+  # IRIX rld has no TLS support (__tls_get_addr unresolvable)
+  # gthreads.h maps _Thread_local to __thread; redefine to empty (plain static)
+  # Safe: IRIX is single-threaded for our purposes
+  # Can't use -D from CFLAGS because #define in gthreads.h overrides -D
+  prep_commands:
+    - "sed -i 's/#define _Thread_local __thread/#define _Thread_local/' lib/gthreads.h"
 
   # Autoconf cache overrides
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
     gl_cv_func_working_getdelim: "yes"
+    # IRIX select() works fine - prevent gnulib from replacing it
+    # (gnulib's select.c can't find the real select() declaration)
 
-  # Configure flags
+  # Configure flags - only ADD (prepend to %configure line, safe with continuations)
+  # Do NOT use remove here - see comment at top of file
   configure_flags:
     add:
       - --disable-doc
@@ -35,12 +53,62 @@ rules:
       - --without-idn
       - --disable-libdane
       - --disable-valgrind-tests
-    remove:
-      - --enable-ktls
-      - --with-default-trust-store-pkcs11
+      - --without-p11-kit
 
   # Disable Linux-specific features
   configure_disable:
     - seccomp-tests
 
+  spec_replacements:
+    # === Flip bcond macros to disable features not available on IRIX ===
+    # %bcond_without X = ON by default; %bcond_with X = OFF by default
+    # Flipping these makes RPM evaluate all %if %{with X} blocks to FALSE,
+    # keeping only the %else branches (which have the --disable/--without flags)
+    - pattern: "%bcond_without dane"
+      replacement: "%bcond_with dane"
+    - pattern: "%bcond_without fips"
+      replacement: "%bcond_with fips"
+    - pattern: "%bcond_without tpm2"
+      replacement: "%bcond_with tpm2"
+    - pattern: "%bcond_without gost"
+      replacement: "%bcond_with gost"
+    - pattern: "%bcond_without mingw"
+      replacement: "%bcond_with mingw"
+    # Disable bootstrap (autoreconf) - pre-generated configure works fine
+    # and autoreconf needs autopoint (gettext) which may not be available
+    - pattern: "%bcond_without bootstrap"
+      replacement: "%bcond_with bootstrap"
+    # === Remove configure flags that can't use configure_flags:remove ===
+    # These are inside the multi-line %configure block with inline conditionals
+    - pattern: "           --enable-ktls \\\n"
+      replacement: ""
+    - pattern: "           --with-default-trust-store-pkcs11=\"pkcs11:\" \\\n"
+      replacement: ""
+    # Bashisms: pushd/popd not available in /bin/sh
+    - pattern: "pushd native_build"
+      replacement: "cd native_build"
+    - pattern: "popd"
+      replacement: "cd .."
+    # Remove doc/info file entries - we disabled doc generation
+    - pattern: "%{_mandir}/man3/*\n"
+      replacement: ""
+    - pattern: "%{_infodir}/gnutls*\n"
+      replacement: ""
+    - pattern: "%{_infodir}/pkcs11-vision*\n"
+      replacement: ""
+    # p11tool not built (--without-p11-kit)
+    - pattern: "%{_bindir}/p11tool\n"
+      replacement: ""
+    # Man pages not generated (--disable-doc)
+    - pattern: "%{_mandir}/man1/*\n"
+      replacement: ""
+    # HTML docs not generated (--disable-doc --disable-gtk-doc)
+    - pattern: "%{_docdir}/manual/*\n"
+      replacement: ""
+
+  # Clean up doc files we don't want packaged
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_docdir}/manual"
+
   # NOTE: libdicl remove_lines handled by generic.yaml
+

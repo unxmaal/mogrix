@@ -7,13 +7,15 @@
 # scope: global (applies to every package)
 # purpose: Remove Linux-specific deps, set IRIX paths, skip %check
 # key_sections:
-#   - drop_buildrequires: systemd, selinux, kernel-headers, libdicl, gnupg2, etc.
+#   - drop_buildrequires: systemd, selinux, kernel-headers, libdicl, gnupg2, gcc-c++, etc.
 #   - drop_requires: libdicl (replaced by mogrix compat injection)
 #   - remove_lines: gpgverify, ldconfig_scriptlets, libdicl exports, systemd scriptlets
-#   - ac_cv_overrides: malloc_0_nonnull, realloc_0_nonnull, gl_cv_cc_wallow
+#   - ac_cv_overrides: malloc_0_nonnull, realloc_0_nonnull, gl_cv_cc_wallow, gl_cv_func_select_*
+#   - inject_compat_functions: strdup, strndup, getline, getopt_long, asprintf, vasprintf
 #   - rpm_macros: _prefix=/usr/sgug, _libdir=/usr/sgug/lib32
 #   - configure_disable: selinux, systemd, udev, inotify, epoll, etc.
 #   - header_overlays: generic (stdarg.h, stdio.h, etc.)
+#   - install_cleanup: fix /usr/bin paths, rm *.la, rm infodir/dir
 #   - skip_check: true (can't run cross-compiled tests)
 #   - drop_subpackages: debuginfo, debugsource, langpack-*
 # ---
@@ -32,6 +34,8 @@ generic:
     - libacl-devel
     - libattr-devel
     - audit-libs-devel
+    # C++ compiler not needed - we use clang cross-compiler
+    - gcc-c++
     # GPG verification not needed for cross-compilation
     - gnupg2
     # libdicl replaced by mogrix compat injection
@@ -96,6 +100,21 @@ generic:
     # types (long vs int) that conflict with dicl-clang-compat/stdint.h.
     # On MIPS n32 both int and long are 32-bit so our stdint.h is correct.
     gl_cv_header_working_stdint_h: "yes"
+    # Gnulib select() detection: IRIX select works correctly for EBADF
+    # and zero-timeout cases. These tests can't run cross-compiled.
+    gl_cv_func_select_detects_ebadf: "yes"
+    gl_cv_func_select_supports0: "yes"
+
+  # Common compat functions needed by most packages.
+  # IRIX libc lacks these POSIX/BSD functions. Static archive linking
+  # means unused functions are not pulled in, so this is safe globally.
+  inject_compat_functions:
+    - strdup
+    - strndup
+    - getline
+    - getopt_long
+    - asprintf
+    - vasprintf
 
   # RPM macros injected directly (replaces sgug-rpm-config)
   rpm_macros:
@@ -147,6 +166,10 @@ generic:
   # /usr/bin/env is restored since it exists on IRIX.
   install_cleanup:
     - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i 's|/usr/bin/|/usr/sgug/bin/|g; s|/usr/sgug/bin/env|/usr/bin/env|g'"
+    # Remove libtool archives - IRIX doesn't use them
+    - "rm -f %{buildroot}%{_libdir}/*.la"
+    # Remove info dir file - rebuilt by install-info on target
+    - "rm -f %{buildroot}%{_infodir}/dir"
 
   drop_subpackages:
     - "debuginfo"

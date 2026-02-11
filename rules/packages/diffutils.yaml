@@ -17,9 +17,6 @@ rules:
   # reallocarray: gnulib xmalloc
   # strerror_r: error reporting
   inject_compat_functions:
-    - strdup
-    - strndup
-    - getopt_long
     - reallocarray
     - strerror_r
 
@@ -34,9 +31,6 @@ rules:
 
   # Tell gnulib that IRIX's select() works fine — prevents gnulib from
   # building a replacement select.c that can't find the real select() declaration
-  ac_cv_overrides:
-    gl_cv_func_select_detects_ebadf: "yes"
-    gl_cv_func_select_supports0: "yes"
 
   # Remove gnulib-tests from SUBDIRS (built during 'make all' but not needed)
   # Also modify Makefile.am in case autoreconf regenerates Makefile.in
@@ -49,3 +43,4 @@ rules:
     - "sed -i 's/gnulib-tests//' Makefile.am || true"
     - "sed -i 's/#define pI \"t\"/#define pI \"\"/' src/system.h"
     - "sed -i 's/STAT_TIMESPEC_NS/DISABLED_STAT_TIMESPEC_NS/' src/diff.c"
+

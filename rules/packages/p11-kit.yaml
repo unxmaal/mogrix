@@ -3,19 +3,12 @@
 
 package: p11-kit
 
-
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - p11-kit.sgifixes.patch
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - asprintf
-    - vasprintf
-    - getline
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
 
@@ -32,3 +25,4 @@ rules:
       - --without-bash-completion
     remove:
       - --with-trust-paths
+

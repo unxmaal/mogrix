@@ -1,0 +1,48 @@
+# libXrender - X Render extension client library (FC40: 0.9.11)
+# Simple autotools X.org library. Provides Xrender protocol client support.
+# IRIX X server may not support Render — Xft degrades gracefully.
+package: libXrender
+
+rules:
+  drop_buildrequires:
+    - xorg-x11-util-macros
+    - libX11-devel            # IRIX native, found via sysroot + x11.pc
+
+  drop_requires:
+    - "libX11 >= 1.5.99.902"  # IRIX native
+
+  # X.org uses its own malloc(0) test, not the standard autoconf one
+  ac_cv_overrides:
+    xorg_cv_malloc0_returns_null: "no"
+
+  configure_flags:
+    add:
+      - "--disable-static"
+
+  spec_replacements:
+    # Explicit Provides (AutoProv: no in rpmmacros.irix)
+    - pattern: "%description\n"
+      replacement: |
+        Provides: libXrender(mips-32) = %{version}-%{release}
+        Provides: libXrender.so.1
+
+        %description
+
+    # Skip autoreconf — tarball has pre-generated configure, and we lack xorg-macros
+    - pattern: "autoreconf -v --install --force\n"
+      replacement: "# autoreconf skipped — using pre-generated configure\n"
+    # Remove ldconfig scriptlet macros (not available on IRIX)
+    - pattern: "%ldconfig_post\n"
+      replacement: ""
+    - pattern: "%ldconfig_postun\n"
+      replacement: ""
+
+  # IRIX libX11 lacks _XEatDataWords (added in libX11 1.6 for security hardening)
+  # Provide as a macro wrapping the older _XEatData function.
+  # Inject into Xrenderint.h (included by all source files).
+  prep_commands:
+    - "sed -i '/#include.*Xlibint/a\\#ifndef _XEatDataWords\\n#define _XEatDataWords(dpy, n) _XEatData((dpy), (unsigned long)(n) << 2)\\n#endif' src/Xrenderint.h"
+
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_docdir}"
+

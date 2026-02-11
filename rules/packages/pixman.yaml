@@ -3,9 +3,6 @@
 package: pixman
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   spec_replacements:
     # Replace %meson with raw meson commands using our cross file
@@ -15,7 +12,4 @@ rules:
     # Replace %meson_install
     - pattern: "%meson_install"
       replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
-
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
 

@@ -25,4 +25,17 @@
 #undef offsetof
 #define offsetof(type, member) __builtin_offsetof(type, member)
 
+/*
+ * max_align_t - C11/C++11 type with maximum fundamental alignment.
+ * IRIX predates C11 and doesn't define this. Required by libstdc++ <cstddef>.
+ * On MIPS n32: max fundamental alignment is 8 (double, long long).
+ */
+#ifndef __max_align_t_defined
+#define __max_align_t_defined
+typedef union {
+    long long __ll;
+    double __d;
+} max_align_t;
+#endif
+
 #endif /* _DICL_CLANG_COMPAT_STDDEF_H */

@@ -63,7 +63,7 @@ else
     LD_LIBRARYN32_PATH="$dir/_lib32"
 fi
 export LD_LIBRARYN32_PATH
-{terminfo_block}exec "$dir/_bin/{binary}" "$@"
+{terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
 """
 
 SBIN_WRAPPER_TEMPLATE = """\
@@ -79,7 +79,7 @@ else
     LD_LIBRARYN32_PATH="$dir/_lib32"
 fi
 export LD_LIBRARYN32_PATH
-{terminfo_block}exec "$dir/_sbin/{binary}" "$@"
+{terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
 """
 
 TERMINFO_BLOCK = """\
@@ -115,7 +115,7 @@ echo "Add that line to ~/.profile to make it permanent."
 # Uninstall script: removes trampolines from ../bin/
 UNINSTALL_TEMPLATE = """\
 #!/bin/sh
-# Uninstall {package} — remove command trampolines from ../bin/
+# Uninstall {package} — remove command trampolines and bundle directory
 dir=`dirname "$0"`
 case "$dir" in
     /*) ;;
@@ -125,7 +125,9 @@ dir=`cd "$dir" && pwd`
 bindir=`dirname "$dir"`/bin
 echo "Removing {package} commands from $bindir"
 {unlink_commands}
-echo "Done."
+echo ""
+echo "To remove the bundle directory, run:"
+echo "  rm -rf $dir"
 """
 
 
@@ -140,6 +142,7 @@ class BundleManifest:
     staging_sonames: set[str] = field(default_factory=set)
     unresolved_sonames: set[str] = field(default_factory=set)
     binaries: list[str] = field(default_factory=list)
+    bundle_name: str = ""
     bundle_dir: Path | None = None
     tarball_path: Path | None = None
 
@@ -384,6 +387,98 @@ class BundleBuilder:
         "dtterm", "sun",
     }
 
+    def _include_ca_bundle(self, bundle_dir: Path) -> None:
+        """Include system CA certificates for TLS verification.
+
+        Copies the build host's CA bundle into the bundle so gnutls/openssl
+        can verify server certificates on IRIX (which has no CA store).
+        """
+        ca_sources = [
+            Path("/etc/ssl/certs/ca-certificates.crt"),  # Debian/Ubuntu
+            Path("/etc/pki/tls/certs/ca-bundle.crt"),  # RHEL/Fedora
+        ]
+        for src in ca_sources:
+            if src.is_file():
+                dest = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                break
+
+    def _include_fonts(self, bundle_dir: Path) -> bool:
+        """Include TTF fonts for X11 bundles that use Xft/fontconfig.
+
+        Copies TTF files from the mogrix fonts/ directory into the bundle,
+        adds a relative <dir> to fonts.conf so fontconfig discovers them,
+        and adds a conf.d snippet mapping 'monospace' to the bundled font.
+
+        Returns True if fonts were included, False otherwise.
+        """
+        # Find mogrix fonts/ directory (sibling of mogrix/ package dir)
+        mogrix_root = Path(__file__).resolve().parent.parent
+        fonts_src = mogrix_root / "fonts"
+        if not fonts_src.is_dir():
+            return False
+
+        ttf_files = list(fonts_src.glob("*.ttf"))
+        if not ttf_files:
+            return False
+
+        # Only include fonts if bundle has fontconfig (etc/fonts/fonts.conf)
+        fonts_conf = bundle_dir / "etc" / "fonts" / "fonts.conf"
+        if not fonts_conf.is_file():
+            return False
+
+        # Copy TTF files to share/fonts/
+        fonts_dest = bundle_dir / "share" / "fonts"
+        fonts_dest.mkdir(parents=True, exist_ok=True)
+        for ttf in ttf_files:
+            shutil.copy2(str(ttf), str(fonts_dest / ttf.name))
+
+        # Add relative <dir> to fonts.conf so fontconfig finds bundle fonts.
+        # prefix="relative" makes the path relative to the fonts.conf file
+        # location (etc/fonts/), so ../../share/fonts -> bundle/share/fonts.
+        conf_text = fonts_conf.read_text()
+        if "../../share/fonts" not in conf_text:
+            conf_text = conf_text.replace(
+                "<!-- Font directory list -->",
+                '<!-- Font directory list -->\n\n\t'
+                '<dir prefix="relative">../../share/fonts</dir>',
+            )
+            fonts_conf.write_text(conf_text)
+
+        # Add cachedir relative to bundle (so fc-cache doesn't need /usr/sgug)
+        if "../../var/cache/fontconfig" not in conf_text:
+            conf_text = fonts_conf.read_text()
+            conf_text = conf_text.replace(
+                "<!-- Font cache directory list -->",
+                '<!-- Font cache directory list -->\n\n\t'
+                '<cachedir prefix="relative">../../var/cache/fontconfig</cachedir>',
+            )
+            fonts_conf.write_text(conf_text)
+
+        # Create conf.d/50-monospace.conf mapping 'monospace' to bundled font.
+        # Detect font family name from filename pattern.
+        conf_d = bundle_dir / "etc" / "fonts" / "conf.d"
+        conf_d.mkdir(parents=True, exist_ok=True)
+        monospace_conf = conf_d / "50-monospace.conf"
+        monospace_conf.write_text(
+            '<?xml version="1.0"?>\n'
+            '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+            '<fontconfig>\n'
+            '  <alias>\n'
+            '    <family>monospace</family>\n'
+            '    <prefer>\n'
+            '      <family>Iosevka Nerd Font</family>\n'
+            '    </prefer>\n'
+            '  </alias>\n'
+            '</fontconfig>\n'
+        )
+
+        console.print(
+            f"  [dim]Included {len(ttf_files)} font(s) in share/fonts/[/dim]"
+        )
+        return True
+
     def _trim_terminfo(self, bundle_dir: Path) -> None:
         """Trim terminfo database to common terminals only.
 
@@ -527,16 +622,36 @@ class BundleBuilder:
             for soname in sorted(manifest.staging_sonames):
                 console.print(f"  [yellow]  {soname}[/yellow]")
 
-        # Create bundle directory
-        bundle_name = (
-            f"{manifest.target_package}-{manifest.target_version}-irix-bundle"
+        # Create bundle directory with alphabetic revision suffix
+        base_name = (
+            f"{manifest.target_package}-{manifest.target_version}"
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        bundle_dir = output_dir / bundle_name
 
-        # Clean up previous bundle if it exists
-        if bundle_dir.exists():
-            shutil.rmtree(bundle_dir)
+        # Find next revision letter by scanning existing bundles
+        suffix = "a"
+        for existing in sorted(output_dir.iterdir()):
+            name = existing.name
+            prefix = f"{base_name}-irix-bundle"
+            if existing.is_dir():
+                # Match unsuffixed (legacy) or suffixed bundles
+                if name == prefix:
+                    shutil.rmtree(existing)
+                elif name.startswith(base_name) and name.endswith("-irix-bundle"):
+                    middle = name[len(base_name):-len("-irix-bundle")]
+                    if len(middle) == 1 and middle.isalpha():
+                        next_letter = chr(ord(middle) + 1)
+                        if next_letter > suffix:
+                            suffix = next_letter
+                        shutil.rmtree(existing)
+            elif existing.is_file() and name.endswith("-irix-bundle.tar.gz"):
+                # Clean up old tarballs for this package
+                if name.startswith(base_name):
+                    existing.unlink()
+
+        bundle_name = f"{base_name}{suffix}-irix-bundle"
+        manifest.bundle_name = bundle_name
+        bundle_dir = output_dir / bundle_name
         bundle_dir.mkdir(parents=True)
 
         console.print(f"\n[bold]Creating bundle: {bundle_name}[/bold]\n")
@@ -598,9 +713,49 @@ class BundleBuilder:
         # Trim terminfo to common terminals (full set is ~12MB)
         self._trim_terminfo(bundle_dir)
 
+        # Include system CA certificates for TLS-using bundles
+        self._include_ca_bundle(bundle_dir)
+
+        # Include bundled fonts for X11 apps using Xft/fontconfig
+        has_fonts = self._include_fonts(bundle_dir)
+
         # Detect if bundle has terminfo data (for TERMINFO env var in wrappers)
         has_terminfo = (bundle_dir / "share" / "terminfo").is_dir()
         terminfo_block = TERMINFO_BLOCK if has_terminfo else ""
+
+        # Detect app-specific env vars needed for plugin loading etc.
+        extra_env_lines = []
+        extra_args_map = {}  # binary name -> extra CLI args string
+        # weechat: WEECHAT_EXTRA_LIBDIR for dlopen-loaded plugins
+        weechat_plugins = bundle_dir / "_lib32" / "weechat" / "plugins"
+        if weechat_plugins.is_dir():
+            extra_env_lines.append(
+                'WEECHAT_EXTRA_LIBDIR="$dir/_lib32/weechat"'
+            )
+            extra_env_lines.append("export WEECHAT_EXTRA_LIBDIR")
+        # Fontconfig — point to bundle's fonts.conf so bundled fonts are found
+        if has_fonts:
+            extra_env_lines.append(
+                'FONTCONFIG_FILE="$dir/etc/fonts/fonts.conf"'
+            )
+            extra_env_lines.append("export FONTCONFIG_FILE")
+        # CA certificate bundle — set env var + weechat gnutls_ca_user
+        ca_bundle = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
+        if ca_bundle.is_file():
+            extra_env_lines.append(
+                'SSL_CERT_FILE="$dir/etc/pki/tls/certs/ca-bundle.crt"'
+            )
+            extra_env_lines.append("export SSL_CERT_FILE")
+            # weechat uses gnutls, not openssl — needs -r to set CA path
+            if weechat_plugins.is_dir():
+                ca_cmd = '/set weechat.network.gnutls_ca_user $dir/etc/pki/tls/certs/ca-bundle.crt'
+                for wc_bin in ("weechat", "weechat-curses"):
+                    extra_args_map[wc_bin] = (
+                        f'-r "{ca_cmd}" '
+                    )
+        extra_env_block = (
+            "\n".join(extra_env_lines) + "\n" if extra_env_lines else ""
+        )
 
         # Find all binaries (real files + symlinks in _bin/ and _sbin/)
         bin_dir = bundle_dir / "_bin"
@@ -623,7 +778,10 @@ class BundleBuilder:
             wrapper_path = bundle_dir / binary
             wrapper_path.write_text(
                 WRAPPER_TEMPLATE.format(
-                    binary=binary, terminfo_block=terminfo_block
+                    binary=binary,
+                    terminfo_block=terminfo_block,
+                    extra_env_block=extra_env_block,
+                    extra_args=extra_args_map.get(binary, ""),
                 )
             )
             wrapper_path.chmod(0o755)
@@ -632,7 +790,10 @@ class BundleBuilder:
             wrapper_path = bundle_dir / binary
             wrapper_path.write_text(
                 SBIN_WRAPPER_TEMPLATE.format(
-                    binary=binary, terminfo_block=terminfo_block
+                    binary=binary,
+                    terminfo_block=terminfo_block,
+                    extra_env_block=extra_env_block,
+                    extra_args=extra_args_map.get(binary, ""),
                 )
             )
             wrapper_path.chmod(0o755)
@@ -729,9 +890,7 @@ class BundleBuilder:
 
     def _generate_readme(self, manifest: BundleManifest, bundle_dir: Path) -> None:
         """Generate README with bundle contents and instructions."""
-        bundle_name = (
-            f"{manifest.target_package}-{manifest.target_version}-irix-bundle"
-        )
+        bundle_name = bundle_dir.name
         primary = (
             manifest.target_package
             if manifest.target_package
@@ -812,7 +971,7 @@ class BundleBuilder:
         table.add_column("Category", style="bold")
         table.add_column("Details")
 
-        table.add_row("Version", manifest.target_version)
+        table.add_row("Version", f"{manifest.target_version} (bundle: {manifest.bundle_name})" if manifest.bundle_name else manifest.target_version)
         table.add_row(
             "Included RPMs",
             str(len(manifest.included_rpms)),

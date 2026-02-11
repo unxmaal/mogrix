@@ -2,7 +2,6 @@ package: unzip
 
 rules:
   inject_compat_functions:
-    - strdup
     - stpcpy
 
   # bzip2-devel is already in staging
@@ -34,3 +33,4 @@ rules:
   install_cleanup:
     - "rm -f %{buildroot}%{_bindir}/zipinfo"
     - "ln -sf unzip %{buildroot}%{_bindir}/zipinfo"
+

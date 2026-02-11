@@ -49,7 +49,7 @@ CLANG_FLAGS="$CLANG_FLAGS -fno-use-init-array"
 # Handle --version and -v (compiler identification for build systems like meson)
 for arg in "$@"; do
     case "$arg" in
-        --version|-v|-V|--help|-dumpversion|-dumpmachine)
+        --version|-v|-V|--help|-dumpversion|-dumpmachine|-print-search-dirs|-print-*)
             exec $CLANG $CLANG_FLAGS "$@"
             ;;
     esac

@@ -4,8 +4,6 @@ package: libjpeg-turbo
 
 rules:
   inject_compat_functions:
-    - strdup
-    - strndup
     - setenv
 
   spec_replacements:
@@ -21,7 +19,4 @@ rules:
     # Skip multilib header hack (uname -i doesn't work for cross)
     - pattern: "case `uname -i` in"
       replacement: "case \"mips\" in"
-
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
 

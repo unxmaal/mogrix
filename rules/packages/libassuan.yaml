@@ -23,7 +23,6 @@ rules:
   # subdirectory path which doesn't work through the sysroot)
   install_cleanup:
     - "rm -f %{buildroot}%{_libdir}/*.a"
-    - "rm -f %{buildroot}%{_libdir}/*.la"
     - "rm -rf %{buildroot}%{_infodir}"
     - "ln -sf libassuan2/assuan.h %{buildroot}%{_includedir}/assuan.h"
 
@@ -43,3 +42,4 @@ rules:
     # Remove info page from %files devel (may not be generated)
     - pattern: "%{_infodir}/assuan.info*\n"
       replacement: ""
+

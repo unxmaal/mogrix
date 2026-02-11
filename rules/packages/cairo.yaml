@@ -1,39 +1,95 @@
-# cairo - 2D graphics library
-# Has sgifixes patches, needs compat functions
+# cairo 1.18.0 - 2D graphics library (FC40: 1.18.0-3)
+# Meson build. Needs pixman, freetype, fontconfig, glib2, libpng, X11.
+# Built WITHOUT xcb (not ported), tee, svg (no librsvg).
 
 package: cairo
 
-
-# SGUG-RSE patch (cairo.sgifixes.patch) for RTLD_NEXT in util/cairo-sphinx/fdr.c
-# dropped — only applies to 1.16.0, utility code not part of main library
-
 rules:
-  # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
 
-  # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
+  prep_commands:
+    # csi-trace utility links basename from libgen.h but it doesn't resolve
+    # in cross-compile. We don't need it (tools subpackage removed).
+    - "sed -i \"s/conf.get('HAVE_LIBGEN_H', 0) == 1/false/\" util/cairo-script/meson.build"
 
-  # Autoconf cache overrides
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
-  ac_cv_overrides:
-    cairo_cv_atomic_primitives: "none"
+  drop_buildrequires:
+    - gtk-doc
+    - "pkgconfig(librsvg-2.0)"
+    - "pkgconfig(xcb-render)"
 
-  # Configure flags
-  configure_flags:
-    add:
-      - --disable-silent-rules
-      - --disable-gtk-doc
-      - --disable-valgrind
-      - --enable-xlib
-      - --enable-ft
-      - --enable-png
-      - --enable-svg
-    remove:
-      - --enable-tee
-      - --enable-gl
+  spec_replacements:
+    # Replace %meson + %meson_build with raw meson commands using cross file
+    - pattern: "%meson \\\n  -Dfreetype=enabled \\\n  -Dfontconfig=enabled \\\n  -Dglib=enabled \\\n  -Dgtk_doc=true \\\n  -Dspectre=disabled \\\n  -Dsymbol-lookup=disabled \\\n  -Dtee=enabled \\\n  -Dtests=disabled \\\n  -Dxcb=enabled \\\n  -Dxlib=enabled \\\n  %{nil}\n%meson_build"
+      replacement: |
+        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          -Dfreetype=enabled \
+          -Dfontconfig=enabled \
+          -Dglib=enabled \
+          -Dgtk_doc=false \
+          -Dspectre=disabled \
+          -Dsymbol-lookup=disabled \
+          -Dtee=disabled \
+          -Dtests=disabled \
+          -Dxcb=disabled \
+          -Dxlib=enabled \
+          -Dc_link_args="-L$COMPAT_DIR -lmogrix-compat" \
+          --wrap-mode=nodownload
+        /home/edodd/.local/bin/meson compile -C _build
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Add explicit Provides
+    - pattern: "URL:            https://cairographics.org"
+      replacement: |
+        URL:            https://cairographics.org
+        Provides: libcairo.so.2(mips-32)
+        Provides: libcairo-gobject.so.2(mips-32)
+        Provides: libcairo-script-interpreter.so.2(mips-32)
+        Provides: cairo(mips-32) = %{version}-%{release}
+
+    # Fix devel Requires (remove ISA)
+    - pattern: "Requires: %{name}%{?_isa} = %{version}-%{release}\n\n%description devel"
+      replacement: "Requires: %{name} = %{version}-%{release}\n\n%description devel"
+
+    # Fix gobject Requires
+    - pattern: "Requires: %{name}%{?_isa} = %{version}-%{release}\n\n%description gobject\n"
+      replacement: "Requires: %{name} = %{version}-%{release}\n\n%description gobject\n"
+
+    # Fix gobject-devel Requires
+    - pattern: "Requires: %{name}-devel%{?_isa} = %{version}-%{release}\nRequires: %{name}-gobject%{?_isa} = %{version}-%{release}"
+      replacement: "Requires: %{name}-devel = %{version}-%{release}\nRequires: %{name}-gobject = %{version}-%{release}"
+
+    # Remove tools subpackage description (cairo-trace is MIPS binary, can't run on host)
+    - pattern: "%package tools\nSummary: Development tools for cairo\nRequires: %{name}%{?_isa} = %{version}-%{release}\n\n%description tools\nCairo is a 2D graphics library designed to provide high-quality display\nand print output.\n\nThis package contains tools for working with the cairo graphics library.\n * cairo-trace: Record cairo library calls for later playback"
+      replacement: "# tools subpackage removed (MIPS binaries, not runnable on build host)"
+
+    # Fix %files - remove xcb/tee/svg references not built
+    - pattern: "%{_libdir}/libcairo-script-interpreter.so.2*"
+      replacement: "%{_libdir}/libcairo-script-interpreter.so.2*\n%{_libdir}/libcairo-gobject.so.2*"
+
+    # Fix %files devel — remove xcb/tee/svg/gtk-doc references
+    - pattern: "%files devel\n%dir %{_includedir}/cairo/\n%{_includedir}/cairo/cairo-deprecated.h\n%{_includedir}/cairo/cairo-features.h\n%{_includedir}/cairo/cairo-ft.h\n%{_includedir}/cairo/cairo.h\n%{_includedir}/cairo/cairo-pdf.h\n%{_includedir}/cairo/cairo-ps.h\n%{_includedir}/cairo/cairo-script-interpreter.h\n%{_includedir}/cairo/cairo-svg.h\n%{_includedir}/cairo/cairo-tee.h\n%{_includedir}/cairo/cairo-version.h\n%{_includedir}/cairo/cairo-xlib-xrender.h\n%{_includedir}/cairo/cairo-xlib.h\n%{_includedir}/cairo/cairo-script.h\n%{_includedir}/cairo/cairo-xcb.h\n%{_libdir}/libcairo.so\n%{_libdir}/libcairo-script-interpreter.so\n%{_libdir}/pkgconfig/cairo-fc.pc\n%{_libdir}/pkgconfig/cairo-ft.pc\n%{_libdir}/pkgconfig/cairo.pc\n%{_libdir}/pkgconfig/cairo-pdf.pc\n%{_libdir}/pkgconfig/cairo-png.pc\n%{_libdir}/pkgconfig/cairo-ps.pc\n%{_libdir}/pkgconfig/cairo-script-interpreter.pc\n%{_libdir}/pkgconfig/cairo-svg.pc\n%{_libdir}/pkgconfig/cairo-tee.pc\n%{_libdir}/pkgconfig/cairo-xlib.pc\n%{_libdir}/pkgconfig/cairo-xlib-xrender.pc\n%{_libdir}/pkgconfig/cairo-script.pc\n%{_libdir}/pkgconfig/cairo-xcb-shm.pc\n%{_libdir}/pkgconfig/cairo-xcb.pc\n%{_datadir}/gtk-doc/html/cairo"
+      replacement: |
+        %files devel
+        %dir %{_includedir}/cairo/
+        %{_includedir}/cairo/
+        %{_libdir}/libcairo.so
+        %{_libdir}/libcairo-script-interpreter.so
+        %{_libdir}/libcairo-gobject.so
+        %{_libdir}/pkgconfig/cairo*.pc
+
+    # Remove gobject %files sections (merged into main + devel above)
+    - pattern: "%files gobject\n%{_libdir}/libcairo-gobject.so.2*\n\n%files gobject-devel\n%{_includedir}/cairo/cairo-gobject.h\n%{_libdir}/libcairo-gobject.so\n%{_libdir}/pkgconfig/cairo-gobject.pc"
+      replacement: "# gobject files merged into main and devel packages"
+
+    # Remove tools %files section
+    - pattern: "%files tools\n%{_bindir}/cairo-trace\n%{_libdir}/cairo/"
+      replacement: "# tools files removed (MIPS binaries)"
 
   skip_check: true
 
-  # NOTE: libdicl remove_lines handled by generic.yaml

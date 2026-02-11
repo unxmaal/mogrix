@@ -1,0 +1,147 @@
+# st - suckless terminal emulator (FC40: 0.9)
+# Second X11 terminal for IRIX (after aterm). First with Xft font rendering.
+# Uses plain Makefile (not autotools/cmake). Config via config.h (suckless style).
+#
+# IRIX fixes needed:
+# - openpty() → compat wrapping _getpty()
+# - pselect() → compat wrapping select()+sigprocmask
+# - CLOCK_MONOTONIC → CLOCK_SGI_CYCLE (hardware counter)
+# - TIOCSCTTY → not needed on IRIX SVR4
+# - <pty.h> → compat/mogrix-compat/generic/pty.h
+# - -lrt, -lutil → not available on IRIX
+# - Default font → "monospace" (fontconfig alias)
+# - IRIX X11R6.3 missing: XICCallback, XSetIMValues, Xutf8TextListToTextProperty
+package: st
+
+rules:
+  inject_compat_functions:
+    - openpty
+    - pselect
+    - setenv
+    - unsetenv
+
+  drop_buildrequires:
+    - desktop-file-utils
+    - libX11-devel            # IRIX native
+    - libXext-devel           # IRIX native
+    - libXft-devel            # In staging
+
+  drop_subpackages:
+    - user                    # st-user (custom config recompilation) not useful on IRIX
+
+  drop_requires:
+    - "ncurses-base"
+    - "font(liberationmono)"
+    - "%{_sbindir}/update-alternatives"
+
+  prep_commands:
+    # Fix config.mk: remove -lrt and -lutil (IRIX lacks these)
+    - "sed -i 's/-lrt //' config.mk"
+    - "sed -i 's/-lutil //' config.mk"
+    # Fix config.mk: remove X11R6 paths (sysroot autodetects)
+    - "sed -i 's|X11INC = /usr/X11R6/include|X11INC = |' config.mk"
+    - "sed -i 's|X11LIB = /usr/X11R6/lib|X11LIB = |' config.mk"
+    # Fix config.mk: add -lgen for dirname() (IRIX libgen.so pattern)
+    - "sed -i 's/-lXft/-lXft -lgen/' config.mk"
+    # Fix config.mk: remove _XOPEN_SOURCE=600 — it hides struct winsize, TIOCSWINSZ,
+    # and TIOCGWINSZ on IRIX (gated by _NO_POSIX && _NO_XOPEN4 && _NO_XOPEN5).
+    # _SGI_SOURCE (from cross-compiler) provides all needed POSIX/XSI functions.
+    - "sed -i 's/-D_XOPEN_SOURCE=600//' config.mk"
+    # Add #else clause for IRIX in the platform detection block.
+    # Original: #if __linux / #elif __OpenBSD__ / #elif __FreeBSD__ / #endif
+    # These are all dead code for IRIX. Add #else with IRIX-specific includes:
+    # - <time.h> for struct timespec (needed by pselect declaration)
+    # - <sys/termios.h> for struct winsize + TIOCSWINSZ (IRIX, not sys/ioctl.h)
+    # - <pty.h> from mogrix-compat (wraps IRIX _getpty → openpty)
+    # - pselect() declaration (compat provides function, no IRIX header declares it)
+    - "sed -i '/<libutil.h>/a\\#else\\n #include <time.h>\\n #include <sys/termios.h>\\n #include <pty.h>\\nint pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' st.c"
+    # Define CLOCK_MONOTONIC as CLOCK_SGI_CYCLE (IRIX hardware counter)
+    - "sed -i '1i#ifndef CLOCK_MONOTONIC\\n#define CLOCK_MONOTONIC 2 /* CLOCK_SGI_CYCLE */\\n#endif' x.c"
+    # Add pselect declaration to x.c (also uses pselect, not just st.c)
+    - "sed -i '/#include <X11\\/XKBlib.h>/a\\int pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' x.c"
+    # IRIX X11R6.3 compatibility fixes for x.c:
+    # XICCallback → XIMCallback (XICCallback added in X11R6.4, IRIX only has XIMCallback)
+    - "sed -i 's/XICCallback/XIMCallback/g' x.c"
+    # xicdestroy: change return type from int to void to match XIMProc (void(*)())
+    - "sed -i 's/static int xicdestroy/static void xicdestroy/' x.c"
+    - "sed -i '/^int$/{N;/xicdestroy/s/^int/void/}' x.c"
+    - "sed -i '/xw\\.ime\\.xic = NULL/{n;s/return 1;/return;/}' x.c"
+    # XSetIMValues: not available on IRIX X11R6.3, define as no-op
+    - "sed -i '/#include <X11\\/XKBlib.h>/a\\#define XSetIMValues(...) 0  /* IRIX X11R6.3: not available */' x.c"
+    # Xutf8TextListToTextProperty → XmbTextListToTextProperty (no UTF-8 text properties on IRIX)
+    - "sed -i 's/Xutf8TextListToTextProperty/XmbTextListToTextProperty/g' x.c"
+    # XUTF8StringStyle → XCompoundTextStyle (IRIX X11 supports compound text encoding)
+    - "sed -i 's/XUTF8StringStyle/XCompoundTextStyle/g' x.c"
+    # Remove TIOCSCTTY ioctl (IRIX SVR4 auto-sets ctty on first PTY open by session leader)
+    - "sed -i '/TIOCSCTTY/s/if (ioctl.*)/if (0)/' st.c"
+    # Change default font from Liberation Mono to fontconfig "monospace" alias
+    - "sed -i 's/Liberation Mono/monospace/' config.def.h"
+
+  spec_replacements:
+    # Inject cross-compiler into Makefile build (figlet.yaml pattern)
+    # Plain Makefile: must build compat archive BEFORE make (not after, as autotools does)
+    # PKG_CONFIG_SYSROOT_DIR translates pkg-config -I/-L paths to host staging paths
+    - pattern: 'CFLAGS="%{optflags}" LDFLAGS="%{?__global_ldflags}" make %{?_smp_mflags}'
+      replacement: |
+        # Build mogrix compat library first (before main build — plain Makefile, not autotools)
+        COMPAT_DIR=$(pwd)/mogrix-compat
+        for f in $COMPAT_DIR/*.c; do
+          %{__cc} %{optflags} -c "$f" -o "${f%.c}.o"
+        done
+        %{__ar} rcs "$COMPAT_DIR/libmogrix-compat.a" $COMPAT_DIR/*.o
+        # Build st with cross-compiler and compat library
+        export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig"
+        export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
+        make %{?_smp_mflags} CC="%{__cc}" CFLAGS="%{optflags}" LDFLAGS="%{?__global_ldflags} -L$COMPAT_DIR -lmogrix-compat"
+    # Skip the mv to st-fedora (we just install as 'st')
+    - pattern: "mv %{buildroot}%{_bindir}/%{name}{,-fedora}\n"
+      replacement: "# st-fedora rename skipped for IRIX\n"
+    # Skip st-user binary install
+    - pattern: "install -pm755 %{SOURCE2} %{buildroot}%{_bindir}/%{name}-user\n"
+      replacement: "# st-user install skipped for IRIX\n"
+    # Skip st-user man page install
+    - pattern: "install -Dpm644 %{SOURCE3} %{buildroot}%{_mandir}/man1/%{name}-user.1\n"
+      replacement: "# st-user man page skipped for IRIX\n"
+    # Skip the version substitution loop (references st-user files)
+    - pattern: "for file in \\\n    %{buildroot}%{_bindir}/%{name}-user \\\n    %{buildroot}%{_mandir}/man1/%{name}-user.1; do\nsed -i -e 's/VERSION/%{version}/' \\\n       -e 's/RELEASE/%{release}/' \\\n       ${file}\ndone\n"
+      replacement: "# st-user version substitution skipped\n"
+    # Skip st-user source dir install
+    - pattern: "mkdir -p %{buildroot}%{_stsourcedir}\ninstall -m644 * \\\n    %{buildroot}%{_stsourcedir}\n"
+      replacement: "# st-user source dir skipped\n"
+    # Skip ghost binary (it's real now, not alternatives-managed)
+    - pattern: "touch %{buildroot}%{_bindir}/%{name}\n"
+      replacement: "# ghost touch skipped — st is a real binary now\n"
+    # Skip desktop file install
+    - pattern: "desktop-file-install --dir=%{buildroot}%{_datadir}/applications %{SOURCE1}\n"
+      replacement: "# desktop-file-install skipped for IRIX\n"
+    # Remove %pre (update-alternatives cleanup)
+    - pattern: "%pre\n[ -L %{_bindir}/%{name} ] || rm -f %{_bindir}/%{name}\n"
+      replacement: ""
+    # Remove %post (update-alternatives)
+    - pattern: "%post\n%{_sbindir}/update-alternatives --install %{_bindir}/%{name} %{name} \\\n    %{_bindir}/%{name}-fedora 10\n"
+      replacement: ""
+    # Remove %postun (update-alternatives)
+    - pattern: "%postun\nif [ $1 -eq 0 ] ; then\n    %{_sbindir}/update-alternatives --remove %{name} %{_bindir}/%{name}-fedora\nfi\n"
+      replacement: ""
+    # Remove st-user scriptlets (subpackage dropped but scriptlets remain)
+    - pattern: "%post user\n%{_sbindir}/update-alternatives --install %{_bindir}/%{name} %{name} \\\n    %{_bindir}/%{name}-user 20\n"
+      replacement: ""
+    - pattern: "%postun user\nif [ $1 -eq 0 ] ; then\n    %{_sbindir}/update-alternatives --remove %{name} %{_bindir}/%{name}-user\nfi\n"
+      replacement: ""
+    # Fix %files: replace ghost + st-fedora with real st binary
+    - pattern: "%ghost %{_bindir}/%{name}\n%{_bindir}/%{name}-fedora\n"
+      replacement: "%{_bindir}/%{name}\n"
+    # Remove desktop file from %files
+    - pattern: "%{_datadir}/applications/%{name}.desktop\n"
+      replacement: ""
+    # Man page compression fix
+    - pattern: "%{_mandir}/man1/%{name}.*\n"
+      replacement: "%{_mandir}/man1/%{name}.1*\n"
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_datadir}/applications/st.desktop"
+    - "rm -rf %{buildroot}%{_usrsrc}/st-*"
+    - "rm -f %{buildroot}%{_bindir}/st-user"
+    - "rm -f %{buildroot}%{_bindir}/st-fedora"
+    - "rm -f %{buildroot}%{_mandir}/man1/st-user.1*"
+

@@ -20,8 +20,6 @@ rules:
   # reallocarray: lib/xmalloc.c, lib/ialloc.h, lib/reallocarray.c
   # strerror_r: lib/error.c
   inject_compat_functions:
-    - strdup
-    - getopt_long
     - reallocarray
     - strerror_r
 
@@ -51,3 +49,4 @@ rules:
     - "sed -i 's/gnulib-tests//' Makefile.in"
 
   # NLS and %find_lang handled by nls-disabled class
+

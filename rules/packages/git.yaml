@@ -6,12 +6,8 @@
 package: git
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - getline
 
   drop_buildrequires:
-    - gcc-c++
     - systemd
     - libsecret-devel
     - perl-generators
@@ -26,3 +22,4 @@ rules:
       replacement: "mv contrib/contacts/git-*.txt contrib/subtree/git-*.txt Documentation/"
     - pattern: "rm -rf %{buildroot}%{_pkgdocdir}/contrib/{contacts,credential}/"
       replacement: "rm -rf %{buildroot}%{_pkgdocdir}/contrib/contacts/ %{buildroot}%{_pkgdocdir}/contrib/credential/"
+

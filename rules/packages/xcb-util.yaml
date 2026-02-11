@@ -1,0 +1,29 @@
+# xcb-util 0.4.1 - XCB utility functions (FC40: 0.4.1-5)
+# Autotools. Needs libxcb.
+
+package: xcb-util
+
+rules:
+
+  spec_replacements:
+    - pattern: "Requires:       %{name}%{?_isa}"
+      replacement: "Requires:       %{name}"
+    - pattern: "%ldconfig_post"
+      replacement: "# ldconfig_post removed"
+    - pattern: "%ldconfig_postun"
+      replacement: "# ldconfig_postun removed"
+    - pattern: "URL:            http://xcb.freedesktop.org/"
+      replacement: |
+        URL:            http://xcb.freedesktop.org/
+        Provides: libxcb-util.so.1(mips-32)
+
+    # Fix %endif comment that rpm rejects
+    - pattern: "%endif # licensedir"
+      replacement: "%endif"
+      replace_all: true
+    # Fix original .la removal (no -f, fails on empty glob)
+    - pattern: "rm %{buildroot}%{_libdir}/*.la"
+      replacement: "rm -f %{buildroot}%{_libdir}/*.la || true"
+
+  skip_check: true
+

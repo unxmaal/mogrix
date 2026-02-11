@@ -4,7 +4,6 @@ package: libstrophe
 rules:
   inject_compat_functions:
     - explicit_bzero
-    - strdup
 
   configure_flags:
     add:
@@ -47,3 +46,4 @@ rules:
         Name:           libstrophe
         Provides: libstrophe(mips-32) = %{version}-%{release}
         Provides: libstrophe.so.0
+

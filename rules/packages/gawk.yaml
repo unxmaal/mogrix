@@ -17,10 +17,6 @@ rules:
   # strdup: dlmalloc/libc allocator mismatch (6 locations)
   # getopt_long: main.c uses it for option parsing
   # getline: eval.c uses it
-  inject_compat_functions:
-    - strdup
-    - getopt_long
-    - getline
 
   # Drop build deps not available or not needed
   drop_buildrequires:
@@ -98,3 +94,4 @@ rules:
       replacement: "# symlink removed (cross-build)"
     - pattern: "ln -sf /usr/sgug/lib32exec/awk %{buildroot}%{_libexecdir}/gawk"
       replacement: "# symlink removed (cross-build)"
+

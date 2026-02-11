@@ -3,17 +3,12 @@
 
 package: libtasn1
 
-
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - libtasn1.sgifixes.patch
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
-    - getline
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
 
@@ -47,6 +42,3 @@ rules:
     - pattern: "rm -f $RPM_BUILD_ROOT{%_libdir/*.la,%_infodir/dir}"
       replacement: "rm -f $RPM_BUILD_ROOT%{_libdir}/*.la $RPM_BUILD_ROOT%{_infodir}/dir"
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"
-    - "rm -f %{buildroot}%{_infodir}/dir"

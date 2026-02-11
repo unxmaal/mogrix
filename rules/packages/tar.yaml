@@ -19,11 +19,6 @@ rules:
   # reallocarray: gnulib xmalloc
   # strerror_r: error reporting
   inject_compat_functions:
-    - strdup
-    - strndup
-    - getopt_long
-    - getline
-    - asprintf
     - reallocarray
     - strerror_r
 
@@ -64,3 +59,4 @@ rules:
     - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/paxerror.c"
     - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/rtapelib.c"
     - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' gnu/malloc/dynarray_at_failure.c || true"
+

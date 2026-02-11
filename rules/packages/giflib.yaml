@@ -7,7 +7,6 @@ package: giflib
 rules:
   inject_compat_functions:
     - reallocarray
-    - strdup
 
   drop_subpackages:
     - "mingw32-*"
@@ -66,3 +65,4 @@ rules:
         Name:           giflib
         Provides: giflib(mips-32) = %{version}-%{release}
         Provides: libgif.so.7
+

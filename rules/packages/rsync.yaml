@@ -3,7 +3,6 @@ package: rsync
 
 rules:
   inject_compat_functions:
-    - strdup
     - stpcpy
 
   # IRIX doesn't support 128-bit long double — rsync's bundled snprintf
@@ -12,7 +11,6 @@ rules:
     ac_cv_type_long_double_wider: "no"
 
   drop_buildrequires:
-    - gcc-c++
     - popt-devel
     - lz4-devel
     - xxhash-devel
@@ -72,3 +70,4 @@ rules:
       replacement: ""
     - pattern: "%postun daemon\n"
       replacement: ""
+

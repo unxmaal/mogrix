@@ -32,7 +32,6 @@ smoke_test:
 
 package: tdnf
 
-
 # IRIX-specific patches
 # client-defines.sgifixes.patch - fixes hardcoded /etc paths to /usr/sgug/etc
 # gpgcheck-rpm419.sgifixes.patch - fixes gpgcheck for rpm 4.19 API
@@ -53,11 +52,7 @@ rules:
   # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
   # These get statically linked so we don't need libdicl at runtime
   inject_compat_functions:
-    - strdup
-    - strndup
-    - getline
     - asprintf      # includes vasprintf with IRIX-safe iterative implementation
-    - getopt_long
 
   # Drop problematic dependencies (systemd-devel and libdicl handled by generic.yaml)
   drop_buildrequires:
@@ -280,3 +275,4 @@ rules:
       enabled=1
       gpgcheck=0
       REPOEOF
+

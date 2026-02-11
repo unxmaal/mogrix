@@ -3,9 +3,6 @@
 package: zstd
 
 rules:
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   spec_replacements:
     # Disable asm (x86-only), pzstd (C++), lz4 (not built), gtest
@@ -35,5 +32,3 @@ rules:
 
   skip_check: true
 
-  install_cleanup:
-    - "rm -f %{buildroot}%{_libdir}/*.la"

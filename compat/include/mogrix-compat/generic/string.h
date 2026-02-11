@@ -25,6 +25,9 @@ extern "C" {
 char *strdup(const char *s);
 char *strndup(const char *s, size_t n);
 
+/* strnlen - POSIX.1-2008, bounded string length */
+size_t strnlen(const char *s, size_t maxlen);
+
 /* stpcpy/stpncpy - POSIX.1-2008, copy returning pointer to end */
 char *stpcpy(char *dest, const char *src);
 char *stpncpy(char *dest, const char *src, size_t n);

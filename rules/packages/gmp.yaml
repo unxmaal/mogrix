@@ -2,11 +2,8 @@
 package: gmp
 
 rules:
-  inject_compat_functions:
-    - strdup
 
   drop_buildrequires:
-    - gcc-c++
     - texinfo
 
   spec_replacements:
@@ -21,3 +18,4 @@ rules:
     # Remove info files from %files
     - pattern: "%{_infodir}/gmp.info*"
       replacement: ""
+

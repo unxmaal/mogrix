@@ -16,9 +16,6 @@ add_source:
 
 rules:
   # Compat functions needed
-  inject_compat_functions:
-    - strdup
-    - strndup
 
   skip_find_lang: true
   skip_check: true
@@ -65,3 +62,4 @@ rules:
       replacement: ""
     - pattern: "%{_mandir}/man1/gpgrt-config.*\n"
       replacement: ""
+
