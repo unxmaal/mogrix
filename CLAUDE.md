@@ -55,6 +55,7 @@ r AI) starts informed.
 | `rules/methods/compat-functions.md` | Adding compat functions |
 | `rules/methods/text-replacement.md` | safepatch vs sed |
 | `rules/methods/patch-creation.md` | Creating patches |
+| `rules/methods/upstream-packages.md` | Non-Fedora packages (git/tarball) + suite bundles |
 | `compat/catalog.yaml` | Compat function registry |
 | `HANDOFF.md` | Current session state |
 
@@ -67,7 +68,7 @@ r AI) starts informed.
 uv run mogrix <command>
 ```
 
-**IRIX connection:** `ssh root@192.168.0.81` (chroot: `/opt/chroot`)
+**IRIX connection:** Use MCP tools (`irix_exec`, `irix_copy_to`, `irix_read_file`, `irix_par`) or fallback `tools/irix-exec.sh "command"`. **Never SSH as root directly.**
 
 **IRIX shell:** Always use `/bin/sh`, not bash. Use `LD_LIBRARYN32_PATH`.
 

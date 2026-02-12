@@ -5,14 +5,15 @@
 # Categories and key functions for quick reference:
 #
 # string/     : strdup, strndup, strcasestr, strsep, basename
-# stdio/      : getline, asprintf, funopen (BSD cookie I/O - USE THIS, not fopencookie)
+# stdio/      : getline, asprintf, funopen (BSD cookie I/O - USE THIS, not fopencookie),
+#               dprintf, open_memstream
 # stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r
 # runtime/    : stpcpy, spawn (posix_spawn/posix_spawnp/file_actions)
 # dicl/       : openat-compat.c (17 POSIX "at" functions: openat, fstatat, futimens, etc.)
 # functions/  : getopt_long
 # unistd/     : getprogname, setprogname
 # time/       : timegm
-# error/      : strerror_r
+# error/      : err (BSD err/errx/warn/warnx), strerror_r
 #
 # IMPORTANT: fopencookie (stdio/fopencookie.c) CRASHES on IRIX - use funopen instead
 # IMPORTANT: vasprintf in asprintf.c uses iterative approach (IRIX vsnprintf(NULL,0) returns -1)
@@ -122,6 +123,35 @@ functions:
       - pattern: '\bfopencookie\s*\('
         note: "fopencookie crashes on IRIX — use funopen instead"
 
+  # dprintf/vdprintf (IRIX lacks POSIX.1-2008 dprintf)
+  dprintf:
+    file: stdio/dprintf.c
+    header: stdio.h
+    description: Formatted print to file descriptor (POSIX.1-2008)
+    provides:
+      - dprintf
+      - vdprintf
+    source_patterns:
+      - pattern: '\bdprintf\s*\('
+        note: "IRIX libc lacks dprintf — inject compat version"
+
+  vdprintf:
+    file: stdio/dprintf.c
+    header: stdio.h
+    description: Formatted print to file descriptor (va_list version)
+
+  # open_memstream (IRIX lacks POSIX.1-2008 open_memstream)
+  open_memstream:
+    file: stdio/open_memstream.c
+    header: stdio.h
+    description: Open a dynamic memory buffer as a stream (POSIX.1-2008)
+    notes: |
+      Implementation uses funopen() (BSD cookie I/O). Packages using
+      open_memstream must also inject funopen.
+    source_patterns:
+      - pattern: '\bopen_memstream\s*\('
+        note: "IRIX libc lacks open_memstream — inject compat version (requires funopen)"
+
   # setenv/unsetenv (IRIX only has putenv)
   setenv:
     file: stdlib/setenv.c
@@ -174,6 +204,39 @@ functions:
     file: time/timegm.c
     header: time.h
     description: Convert broken-down time to time_t in UTC (GNU extension)
+
+  # BSD error functions (err/errx/warn/warnx)
+  err:
+    file: error/err.c
+    header: err.h
+    description: BSD error reporting functions (err, errx, warn, warnx)
+    provides:
+      - err
+      - errx
+      - warn
+      - warnx
+      - verr
+      - verrx
+      - vwarn
+      - vwarnx
+    source_patterns:
+      - pattern: '\berr[x]?\s*\(\d'
+        note: "IRIX lacks <err.h> — inject compat BSD error functions"
+
+  errx:
+    file: error/err.c
+    header: err.h
+    description: BSD error reporting (no errno variant)
+
+  warn:
+    file: error/err.c
+    header: err.h
+    description: BSD warning reporting
+
+  warnx:
+    file: error/err.c
+    header: err.h
+    description: BSD warning reporting (no errno variant)
 
   # error functions
   strerror_r:

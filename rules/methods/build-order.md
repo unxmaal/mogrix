@@ -98,16 +98,16 @@ Before starting, ensure:
 
 ## Validation Commands
 
-After each package, test on IRIX:
+After each package, test on IRIX via MCP tools:
 
 ```bash
-# For shared libraries
-ssh edodd@192.168.0.81
-LD_LIBRARYN32_PATH=/tmp /tmp/test-dlopen /tmp/libfoo.so
+# For shared libraries (via MCP)
+irix_copy_to /path/to/libfoo.so /tmp/libfoo.so
+irix_exec "LD_LIBRARYN32_PATH=/tmp /tmp/test-dlopen /tmp/libfoo.so"
 
-# For executables
-ssh edodd@192.168.0.81
-LD_LIBRARYN32_PATH=/tmp /tmp/executable --version
+# For executables (via MCP)
+irix_copy_to /path/to/executable /tmp/executable
+irix_exec "LD_LIBRARYN32_PATH=/tmp /tmp/executable --version"
 ```
 
 ## Final Validation

@@ -31,6 +31,8 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Problem class | Symptoms / triggers | Rule mechanism | Rule location | Notes / constraints |
 |---------------|---------------------|----------------|---------------|---------------------|
 | Before you start | Stuck, confused, debugging | Read checklist | methods/before-you-start.md | Check SGUG-RSE, git history, clean build |
+| Upstream (non-Fedora) package | Package only in git/tarball, not FC40 | upstream: block + create-srpm | methods/upstream-packages.md | Generates SRPM from git clone or tarball download |
+| Suite bundle | Combine multiple apps in one bundle | mogrix bundle pkg1 pkg2 --name X | methods/upstream-packages.md | Shared libs, single install/uninstall |
 | Package-specific build deps | dbus-devel, gpgme-devel, etc. | drop_buildrequires | rules/packages/* | Only deps NOT in generic.yaml |
 | Package-specific runtime deps | systemd-libs, rpm-libs, etc. | drop_requires | rules/packages/* | Cross-compiled pkgs need explicit deps |
 | Autoconf cross-detect | configure misdetects headers/funcs | ac_cv_overrides | rules/packages/* | malloc/realloc already in generic |
@@ -99,6 +101,19 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Circular NEEDED crashes rld | SIGSEGV (PC=0x0) during dependency resolution with circular NEEDED entries | Break the cycle | rules/packages/freetype.yaml | freetype↔harfbuzz circular dep (freetype NEEDED harfbuzz, harfbuzz NEEDED freetype) crashes rld during single-pass resolution combined with deep dep trees. Fix: `--without-harfbuzz` for freetype. Harfbuzz still works standalone. |
 | rld deep dependency tree crash | dlopen of library with 10+ transitive deps crashes rld | Sequential preloading | Bundle wrappers | Pre-load heavy deps (Qt5Core, harfbuzz) individually via sequential dlopen before loading the leaf library (Qt5Gui). Bundle wrappers implement the preload chain. |
 | IRIX rld strict UND resolution | "unresolvable symbol" even when symbol exists in already-loaded DSO | Add explicit NEEDED | rules/packages/libxcb.yaml | IRIX rld does NOT search already-loaded DSOs for UND symbols unless there's a direct NEEDED chain. libxcb had UND `_XLockMutex_fn` from libX11 but no NEEDED libX11. Fix: `-lX11` in LDFLAGS. |
+| IRIX lacks endian.h | `#include <endian.h>` or `<sys/endian.h>` fails; no byte-order macros | **GLOBAL: dicl-clang-compat/endian.h** | cross/include/dicl-clang-compat/endian.h | Provided globally — no per-package fix needed. Defines BYTE_ORDER, htobe16/32/64, htole16/32, be16toh/32toh/64toh, le16toh/32toh and bswap helpers. MIPS big-endian: htobe/betoh are no-ops. |
+| IRIX struct dirent has no d_type | `d_type`, `DT_REG`, `DT_DIR` undeclared; compile error | prep_commands or add_patch | rules/packages/telescope.yaml | BSD/Linux extension not in IRIX `struct dirent`. Replace `d_type` checks with `stat()` calls and `S_ISREG()`/`S_ISDIR()` macros. |
+| IRIX clock_gettime crashes | SIGSEGV or undefined CLOCK_MONOTONIC/CLOCK_REALTIME | prep_commands or add_patch | rules/packages/telescope.yaml | IRIX has `clock_gettime` in libc but no POSIX `CLOCK_*` constants defined. Calling with any value crashes. Replace with `gettimeofday()`. |
+| IRIX lacks timersub macro | `timersub()` undeclared | **GLOBAL: dicl-clang-compat/sys/time.h** | cross/include/dicl-clang-compat/sys/time.h | Provided globally — no per-package fix needed. Also provides timeradd, timercmp, timerclear, timerisset. |
+| IRIX scandir selector signature | `const struct dirent *` vs `dirent_t *` mismatch | prep_commands or add_patch | rules/packages/* | Linux: `int (*)(const struct dirent *)`. IRIX: `int (*)(dirent_t *)` (no const). Remove const from selector function signatures. |
+| IRIX lacks open_memstream | `open_memstream()` undeclared / link error | **inject_compat_functions: open_memstream** | compat/stdio/open_memstream.c | Compat function available. Uses funopen() internally — must also inject funopen. Header declaration in mogrix-compat/generic/stdio.h (auto-available). |
+| IRIX lacks dprintf | `dprintf(fd, fmt, ...)` undeclared / link error | **inject_compat_functions: dprintf** | compat/stdio/dprintf.c | Compat function available. Also provides vdprintf. Uses dup()+fdopen()+vfprintf(). Header declaration in mogrix-compat/generic/stdio.h (auto-available). |
+| IRIX lacks IOV_MAX | `IOV_MAX` undeclared | **GLOBAL: dicl-clang-compat/limits.h** | cross/include/dicl-clang-compat/limits.h | Provided globally — no per-package fix needed. Defined as 1024 (POSIX typical). |
+| MAP_ANON not on IRIX | `MAP_ANON` / `MAP_ANONYMOUS` undeclared | prep_commands or compat header | rules/packages/* | IRIX has no `MAP_ANON`/`MAP_ANONYMOUS`. Anonymous mmap must use `/dev/zero` fd with `MAP_PRIVATE`. Define `MAP_ANON` as 0 and open `/dev/zero` for the fd argument. |
+| IRIX getentropy via /dev/urandom | `getentropy()` / `getrandom()` link error | prep_commands or add_patch | rules/packages/* | IRIX has no `getentropy`/`getrandom` syscall. `/dev/urandom` works and is available. Replace calls with `open("/dev/urandom") + read()`. |
+| libretls exports compat functions | configure falsely detects `reallocarray`, `strlcpy`, `strlcat` as available | ac_cv_overrides | rules/packages/* | libretls.so exports these functions; configure links against it and thinks system libc has them. Fix: `ac_cv_func_reallocarray: "no"`, `ac_cv_func_strlcpy: "no"`, etc. to force internal implementations. |
+| Cross-compile HOSTCC pattern | Build fails running MIPS binary on build host | spec_replacements or make_env | rules/packages/* | Build-time code generators (pagebundler, etc.) need host compiler. Pass `HOSTCC=gcc` to configure. Build system must use `BUILD_CC`/`HOSTCC` for generators and `CC` for target objects. See telescope.yaml. |
+| Bundled library cross-compilation | Bundled library compiles for host instead of target | spec_replacements or prep_commands | rules/packages/* | Libraries bundled in source (e.g. libgrapheme in telescope) default to host CC. Must fix their config.mk/Makefile to use cross-compiler for target objects and host compiler for generators. |
 
 ## Invariants (Settled Facts)
 
@@ -151,8 +166,29 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | IRIX inttypes.h lacks MAX/PTR macros | PRIdMAX, SCNd64, etc. not defined; mogrix-compat inttypes.h provides them | compat/include/mogrix-compat/generic/inttypes.h |
 | Source `#define` overrides `-D` | CFLAGS `-D_Thread_local=` won't work if source has `#define _Thread_local __thread` | rules/packages/gnutls.yaml |
 | `extra_cflags` rule is dead code | Validated in validator.py but never applied by engine.py; use prep_commands or export_vars | mogrix/rules/validator.py |
+| `skip_manpages` rule is dead code | Validated but never applied by engine. Use prep_commands to touch man pages | mogrix/rules/validator.py |
+| `make_env` rule is dead code | Validated but never applied by engine. Use spec_replacements instead | mogrix/rules/validator.py |
+| `drop_subpackages` must be inside `rules:` | Only `add_patch` and `add_source` are handled at both top-level and rules-level | rules/packages/*.yaml |
+| `install_cleanup` misplacement | If spec has `%triggerpostun` before `%files`, cleanup lands in trigger scriptlet. Workaround: use spec_replacements | mogrix/rules/engine.py |
+| `remove_conditionals` can't nest | Simple regex matches first `%endif`, not the correct one for nested `%if/%endif`. Use bcond flipping instead | mogrix/rules/engine.py |
+| Clang 16 `.cpsetup` N32 bug | `.cpsetup` expands to `__gnu_local_gp` absolute refs instead of GP-relative. Fix: `-fno-integrated-as -B/opt/cross/bin/mips-sgi-irix6.5-`. Fixed in LLVM 18 (issue #52785) | rules/packages/libffi.yaml |
+| cmake finds MIPS staging binaries | `CMAKE_FIND_ROOT_PATH` picks up gmake/pkg-config from staging. Must set `-DCMAKE_MAKE_PROGRAM=/usr/bin/make -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config` | rules/packages/weechat.yaml |
+| `inject_compat_functions` affects HOST link | Bootstrap packages (flex, etc.) build HOST tools before cross-compiling. `-lmogrix-compat` in LIBS breaks HOST link. Fix: inject compat via prep_commands into cross-only source files | rules/packages/flex.yaml |
+| Perl `drop_subpackages` glob trap | `"*"` glob matches `-f` in `%files -f`, breaking file manifests. Use `"[A-Za-z]*"` to match package names only | rules/packages/perl.yaml |
 | SSL_CERT_FILE is OpenSSL-only | gnutls ignores it; use app-specific CA config (weechat: gnutls_ca_user) | mogrix/bundle.py |
 | weechat 4.x renamed gnutls settings | `gnutls_ca_file` → `gnutls_ca_system` + `gnutls_ca_user` | rules/packages/weechat.yaml |
+| IRIX has no endian.h | **SOLVED**: dicl-clang-compat/endian.h provides BYTE_ORDER, htobe/htole, bswap globally | cross/include/dicl-clang-compat/endian.h |
+| IRIX struct dirent lacks d_type | `d_type`, `DT_REG`, `DT_DIR` are BSD/Linux extensions; use `stat()` instead (per-package) | rules/packages/telescope.yaml |
+| IRIX clock_gettime has no CLOCK_* | Function exists in libc but CLOCK_MONOTONIC/CLOCK_REALTIME undefined; calling crashes (per-package) | rules/packages/telescope.yaml |
+| IRIX lacks timersub macro | **SOLVED**: dicl-clang-compat/sys/time.h provides timersub/timeradd/timercmp globally | cross/include/dicl-clang-compat/sys/time.h |
+| IRIX scandir selector lacks const | IRIX signature: `int (*)(dirent_t *)` not `int (*)(const struct dirent *)` (per-package) | rules/packages/*.yaml |
+| IRIX lacks open_memstream | **SOLVED**: `inject_compat_functions: open_memstream` (also needs funopen) | compat/stdio/open_memstream.c |
+| IRIX lacks dprintf | **SOLVED**: `inject_compat_functions: dprintf` (also provides vdprintf) | compat/stdio/dprintf.c |
+| IRIX lacks IOV_MAX | **SOLVED**: dicl-clang-compat/limits.h provides IOV_MAX=1024 globally | cross/include/dicl-clang-compat/limits.h |
+| MAP_ANON not on IRIX | No `MAP_ANON`/`MAP_ANONYMOUS`; anonymous mmap requires `/dev/zero` fd + `MAP_PRIVATE` | rules/packages/*.yaml |
+| IRIX has no getentropy/getrandom | `/dev/urandom` available as fallback | rules/packages/*.yaml |
+| libretls exports compat symbols | `reallocarray`, `strlcpy`, `strlcat` in libretls.so fool configure; override with ac_cv | rules/packages/*.yaml |
+| HOSTCC needed for code generators | Build-time generators must use host compiler; target objects use cross-compiler | rules/packages/telescope.yaml |
 
 ## File Locations
 
@@ -165,6 +201,8 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Compat functions | compat/catalog.yaml | Function registry + source patterns |
 | Compat sources | compat/string/, compat/stdio/, compat/stdlib/, compat/dicl/, compat/malloc/ | Implementation files |
 | Compat headers | compat/include/mogrix-compat/generic/ | Header wrappers (pty.h for openpty) |
+| Spec templates | specs/templates/ | Build-system spec templates (autoconf, cmake, meson, makefile) |
+| Hand-written specs | specs/packages/ | Package-specific spec overrides |
 | Bundle fonts | fonts/ | TTF fonts for X11 bundles (Iosevka Nerd Font) |
 | X11 .pc files | /opt/sgug-staging/.../pkgconfig/ | x11.pc, xext.pc, xproto.pc, renderproto.pc |
 | Patches | patches/packages/*/ | Source patches by package |

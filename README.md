@@ -2,9 +2,9 @@
 
 ## Overview
 
-Mogrix is a complete IRIX cross-compilation system that transforms Fedora 40 SRPMs into working IRIX packages. It handles the entire pipeline from SRPM fetch through cross-compilation to deployable RPMs.
+Mogrix is a complete IRIX cross-compilation system that transforms C/C++ software into working IRIX packages. It supports Fedora 40 SRPMs, upstream git repos, and tarball downloads — handling the entire pipeline from source fetch through cross-compilation to deployable RPMs and self-contained app bundles.
 
-**Current Status:** 81 source packages cross-compiled for IRIX (217 RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **openssh** (SSH server), **groff** (first C++ package — document formatting system), **nano** (text editor), **rsync** (file sync), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **App bundles** (`mogrix bundle`) create optimized, self-contained tarballs that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+**Current Status:** 91+ source packages cross-compiled for IRIX (257 RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client), **rsync** (file sync), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **App bundles** (`mogrix bundle`) create optimized, self-contained tarballs that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -79,6 +79,35 @@ uv run mogrix stage ~/rpmbuild/RPMS/mips/popt*.rpm
 cp ~/rpmbuild/RPMS/mips/popt*.rpm ~/mogrix_outputs/RPMS/
 ```
 
+### Upstream Source Workflow (Git Repos & Tarballs)
+
+For packages not in Fedora, add an `upstream:` block to the package YAML and use `create-srpm`:
+
+```bash
+# 1. Create package rules with upstream: block
+cat > rules/packages/gmi100.yaml << 'EOF'
+package: gmi100
+upstream:
+  url: https://github.com/shtanton/gmi100
+  version: "1.0"
+  build_system: makefile
+  license: MIT
+  summary: "Minimalist Gemini client"
+rules:
+  inject_compat_functions:
+    - getline
+EOF
+
+# 2. Generate SRPM from upstream source
+uv run mogrix create-srpm gmi100
+
+# 3. Normal pipeline from here
+uv run mogrix convert ~/mogrix_inputs/SRPMS/gmi100-1.0-1.src.rpm
+uv run mogrix build ~/mogrix_outputs/SRPMS/.../gmi100-1.0-1.src.rpm --cross
+```
+
+Supports `autoconf`, `cmake`, `meson`, and `makefile` build systems. See `rules/methods/upstream-packages.md` for full documentation.
+
 ### Analyze an SRPM
 
 ```bash
@@ -109,8 +138,11 @@ Packages without rules get candidate YAML generated in `rules/candidates/` for h
 Create self-contained app tarballs for IRIX that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
 
 ```bash
-# Create a bundle
+# Single app bundle
 uv run mogrix bundle nano
+
+# Suite bundle (multiple apps, shared libs)
+uv run mogrix bundle telescope snownews lynx --name mogrix-smallweb
 
 # Include extra subpackages
 uv run mogrix bundle groff --include groff-perl

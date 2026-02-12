@@ -183,9 +183,9 @@ The probe programs are in `/tmp/` (not committed). To re-probe on a different IR
 ```bash
 # Cross-compile with same libraries as the target program
 irix-cc -o probe addrspace-probe.c -lrpm -lrpmio -lpopt -lsqlite3 -ldl
-# Copy to IRIX and run
-scp probe root@<host>:/tmp/
-ssh root@<host> "LD_LIBRARYN32_PATH=<paths> /tmp/probe"
+# Copy to IRIX and run (via MCP tools)
+irix_copy_to probe /tmp/probe
+irix_exec "LD_LIBRARYN32_PATH=<paths> /tmp/probe"
 ```
 
 Different IRIX hardware (IP27, IP30, IP32, IP35) or different library sets may produce different layouts. Always probe before assuming addresses.

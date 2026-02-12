@@ -1,0 +1,50 @@
+package: tinc
+
+add_source:
+  - irix-device.c
+
+upstream:
+  url: https://www.tinc-vpn.org/packages/tinc-1.0.36.tar.gz
+  version: "1.0.36"
+  type: tarball
+  build_system: autoconf
+  license: GPLv2+
+  summary: "Virtual Private Network daemon"
+  source_dir: tinc-1.0.36
+rules:
+  inject_compat_functions:
+    - getopt_long
+    - strdup
+    - strndup
+    - setenv
+  explicit_provides:
+    - "tinc"
+  ac_cv_overrides:
+    # tinc has its own select() fallback when pselect is unavailable.
+    # IRIX lacks pselect declaration in headers, so force off.
+    ac_cv_func_pselect: "no"
+  export_vars:
+    CFLAGS: "-Wno-deprecated-declarations"
+  configure_flags:
+    add:
+      - "--disable-uml"
+      - "--disable-lzo"
+      - "--disable-hardening"
+      - "--with-openssl=yes"
+      - "--with-openssl-include=/opt/sgug-staging/usr/sgug/include"
+      - "--with-openssl-lib=/opt/sgug-staging/usr/sgug/lib32"
+  prep_commands:
+    # configure.ac has a case $host_os that errors on unknown OS.
+    # Add an IRIX case before the catch-all error.
+    - "sed -i '/^  \\*)/i \\  *irix*)\\n  ;;' configure.ac"
+    # IRIX needs an OS device driver stub. Without one, os_devops/device/iface/
+    # device_fd are undefined. Create minimal driver that maps to dummy_devops.
+    # Source: patches/packages/tinc/irix-device.c
+    - "mkdir -p src/irix"
+    - "cp %{_sourcedir}/irix-device.c src/irix/device.c"
+    # Add IRIX device to Makefile.am — append after Solaris section
+    - "sed -i '/^if SOLARIS/,/^endif/a \\\\nif IRIX\\ntincd_SOURCES += irix/device.c\\nendif' src/Makefile.am"
+    # Add IRIX AM_CONDITIONAL to configure.ac (after other AM_CONDITIONALs)
+    - "sed -i '/AM_CONDITIONAL(SOLARIS/a AM_CONDITIONAL(IRIX, test \"$irix\" = true)' configure.ac"
+    # Set irix=true in the *irix*) case
+    - "sed -i 's/^  \\*irix\\*)/  *irix*)\\n    irix=true/' configure.ac"

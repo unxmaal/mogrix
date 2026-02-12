@@ -97,6 +97,21 @@ int asprintf(char **strp, const char *fmt, ...);
 int vasprintf(char **strp, const char *fmt, va_list ap);
 #endif
 
+/*
+ * dprintf/vdprintf - formatted print to file descriptor (POSIX.1-2008)
+ *
+ * IRIX doesn't have dprintf. We provide our own implementation.
+ */
+int dprintf(int fd, const char *fmt, ...);
+int vdprintf(int fd, const char *fmt, va_list ap);
+
+/*
+ * open_memstream - open a dynamic memory buffer as a stream (POSIX.1-2008)
+ *
+ * IRIX doesn't have open_memstream. Implementation uses funopen().
+ */
+FILE *open_memstream(char **bufp, size_t *sizep);
+
 #ifdef __cplusplus
 }
 #endif

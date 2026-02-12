@@ -21,4 +21,9 @@
 #define ULLONG_MAX  18446744073709551615ULL
 #endif
 
+/* IOV_MAX - IRIX doesn't define it. POSIX minimum is 16, typical is 1024. */
+#ifndef IOV_MAX
+#define IOV_MAX 1024
+#endif
+
 #endif /* _DICL_LIMITS_H */

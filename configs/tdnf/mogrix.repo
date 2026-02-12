@@ -1,0 +1,5 @@
+[mogrix]
+name=Mogrix IRIX Packages
+baseurl=https://packages.mogrix.unxmaal.com/repo/
+enabled=1
+gpgcheck=0

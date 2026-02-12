@@ -74,7 +74,7 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/popt*.rpm
 
 ### 5. Install on IRIX
 ```bash
-scp ~/mogrix_outputs/RPMS/popt*.rpm root@192.168.0.81:/opt/chroot/tmp/
+scp ~/mogrix_outputs/RPMS/popt*.rpm 192.168.0.81:/opt/chroot/tmp/
 # On IRIX: rpm -Uvh /tmp/popt*.rpm
 ```
 

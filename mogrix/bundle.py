@@ -145,6 +145,8 @@ class BundleManifest:
     bundle_name: str = ""
     bundle_dir: Path | None = None
     tarball_path: Path | None = None
+    suite_name: str | None = None
+    suite_packages: list[str] = field(default_factory=list)
 
 
 class BundleBuilder:
@@ -603,11 +605,29 @@ class BundleBuilder:
         output_dir: Path,
         extra_packages: list[str] | None = None,
         create_tarball: bool = True,
+        suite_name: str | None = None,
     ) -> BundleManifest:
-        """Create a self-contained app bundle."""
-        console.print(f"\n[bold]Resolving dependencies for: {target_package}[/bold]\n")
+        """Create a self-contained app bundle.
+
+        If suite_name is provided, creates a suite bundle combining multiple
+        packages under a single name (e.g., "mogrix-smallweb").
+        """
+        if suite_name:
+            all_pkgs = [target_package] + list(extra_packages or [])
+            console.print(
+                f"\n[bold]Creating suite: {suite_name}[/bold]"
+            )
+            console.print(
+                f"[dim]Packages: {', '.join(all_pkgs)}[/dim]\n"
+            )
+        else:
+            console.print(f"\n[bold]Resolving dependencies for: {target_package}[/bold]\n")
 
         manifest = self.resolve_deps(target_package, extra_packages)
+
+        if suite_name:
+            manifest.suite_name = suite_name
+            manifest.suite_packages = [target_package] + list(extra_packages or [])
 
         if manifest.unresolved_sonames:
             console.print("\n[red]Unresolved dependencies:[/red]")
@@ -623,9 +643,12 @@ class BundleBuilder:
                 console.print(f"  [yellow]  {soname}[/yellow]")
 
         # Create bundle directory with alphabetic revision suffix
-        base_name = (
-            f"{manifest.target_package}-{manifest.target_version}"
-        )
+        if suite_name:
+            base_name = f"{suite_name}-1"
+        else:
+            base_name = (
+                f"{manifest.target_package}-{manifest.target_version}"
+            )
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Find next revision letter by scanning existing bundles
@@ -739,6 +762,13 @@ class BundleBuilder:
                 'FONTCONFIG_FILE="$dir/etc/fonts/fonts.conf"'
             )
             extra_env_lines.append("export FONTCONFIG_FILE")
+        # figlet: FIGLET_FONTDIR so bundled fonts are found
+        figlet_fonts = bundle_dir / "share" / "figlet"
+        if figlet_fonts.is_dir():
+            extra_env_lines.append(
+                'FIGLET_FONTDIR="$dir/share/figlet"'
+            )
+            extra_env_lines.append("export FIGLET_FONTDIR")
         # CA certificate bundle — set env var + weechat gnutls_ca_user
         ca_bundle = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
         if ca_bundle.is_file():
@@ -800,14 +830,40 @@ class BundleBuilder:
 
         # Generate install/uninstall scripts
         all_cmds = binaries + sbin_binaries
+        install_label = manifest.suite_name or manifest.target_package
         self._generate_install_scripts(
-            manifest.target_package, bundle_name, all_cmds, bundle_dir
+            install_label, bundle_name, all_cmds, bundle_dir
         )
 
         # Generate README
         self._generate_readme(manifest, bundle_dir)
 
+        # Copy package-specific docs from docs/ directory
+        docs_dir = Path(__file__).parent.parent / "docs"
+        if docs_dir.is_dir():
+            target_pkg = manifest.target_package or ""
+            for doc in docs_dir.iterdir():
+                if doc.is_file() and target_pkg and doc.stem.startswith(target_pkg):
+                    shutil.copy2(str(doc), str(bundle_dir / doc.name))
+
         manifest.bundle_dir = bundle_dir
+
+        # Fix permissions: RPM extraction preserves restrictive modes (700 dirs,
+        # 600 files). Make everything world-readable for IRIX users.
+        bundle_dir.chmod(bundle_dir.stat().st_mode | 0o555)
+        for root, dirs, files in os.walk(bundle_dir):
+            for d in dirs:
+                p = Path(root) / d
+                if p.is_symlink():
+                    continue
+                p.chmod(p.stat().st_mode | 0o555)
+            for f in files:
+                p = Path(root) / f
+                if p.is_symlink():
+                    continue
+                mode = p.stat().st_mode
+                # Add read for all; add execute for all if owner has execute
+                p.chmod(mode | 0o444 | (0o111 if mode & 0o100 else 0))
 
         # Create tarball
         if create_tarball:
@@ -817,7 +873,10 @@ class BundleBuilder:
             subprocess.run(
                 [
                     "tar",
-                    "czf",
+                    "--format=v7",
+                    "--owner=0",
+                    "--group=0",
+                    "-czf",
                     str(tarball_path),
                     "-C",
                     str(output_dir),
@@ -891,6 +950,18 @@ class BundleBuilder:
     def _generate_readme(self, manifest: BundleManifest, bundle_dir: Path) -> None:
         """Generate README with bundle contents and instructions."""
         bundle_name = bundle_dir.name
+        is_suite = bool(manifest.suite_name)
+
+        if is_suite:
+            title = f"{manifest.suite_name} — IRIX App Suite"
+            description = (
+                f"Suite bundle containing {len(manifest.suite_packages)} "
+                f"packages for IRIX 6.5 (MIPS n32)."
+            )
+        else:
+            title = f"{manifest.target_package} {manifest.target_version} — IRIX App Bundle"
+            description = "Self-contained app bundle for IRIX 6.5 (MIPS n32)."
+
         primary = (
             manifest.target_package
             if manifest.target_package
@@ -898,15 +969,29 @@ class BundleBuilder:
             else (manifest.binaries[0] if manifest.binaries else "BINARY")
         )
         lines = [
-            f"# {manifest.target_package} {manifest.target_version} — IRIX App Bundle",
+            f"# {title}",
             "",
-            "Self-contained app bundle for IRIX 6.5 (MIPS n32).",
+            description,
             "Generated by mogrix (https://github.com/unxmaal/mogrix).",
             "",
+        ]
+
+        if is_suite:
+            lines.extend([
+                "## Included Applications",
+                "",
+            ])
+            for pkg in manifest.suite_packages:
+                lines.append(f"  - {pkg}")
+            lines.append("")
+
+        lines.extend([
             "## Install",
             "",
-            f"    tar xzf {bundle_name}.tar.gz -C /opt/mogrix-apps/",
-            f"    cd /opt/mogrix-apps/{bundle_name}",
+            f"    cd /opt/mogrix-apps",
+            f"    gunzip {bundle_name}.tar.gz",
+            f"    tar xf {bundle_name}.tar",
+            f"    cd {bundle_name}",
             "    ./install",
             "",
             "Then add /opt/mogrix-apps/bin to your PATH (once, in ~/.profile):",
@@ -923,7 +1008,7 @@ class BundleBuilder:
             "",
             "## Available Commands",
             "",
-        ]
+        ])
         for binary in manifest.binaries:
             basename = os.path.basename(binary)
             lines.append(f"    {basename}")
@@ -967,11 +1052,18 @@ class BundleBuilder:
         """Print a Rich summary table."""
         console.print()
 
-        table = Table(title=f"Bundle: {manifest.target_package}")
+        if manifest.suite_name:
+            table = Table(title=f"Suite: {manifest.suite_name}")
+        else:
+            table = Table(title=f"Bundle: {manifest.target_package}")
         table.add_column("Category", style="bold")
         table.add_column("Details")
 
-        table.add_row("Version", f"{manifest.target_version} (bundle: {manifest.bundle_name})" if manifest.bundle_name else manifest.target_version)
+        if manifest.suite_name:
+            table.add_row("Suite packages", ", ".join(manifest.suite_packages))
+            table.add_row("Bundle", manifest.bundle_name)
+        else:
+            table.add_row("Version", f"{manifest.target_version} (bundle: {manifest.bundle_name})" if manifest.bundle_name else manifest.target_version)
         table.add_row(
             "Included RPMs",
             str(len(manifest.included_rpms)),

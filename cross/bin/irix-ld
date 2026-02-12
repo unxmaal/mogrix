@@ -134,15 +134,19 @@ if [ "$is_shared" = "1" ]; then
     # Without this, large C++ libs (Qt5Gui: 5364, Qt5Widgets: 8567) exceed
     # the limit and crash rld. -Bsymbolic-functions moves defined FUNC
     # symbols from global to local GOT, typically reducing count by 50-65%.
+    # Build-system -L flags (in $filtered_args) must come BEFORE sysroot -L flags
+    # so the build directory's libraries are found first. Otherwise, building
+    # libssl.so finds IRIX native libcrypto.so.0.9.7 instead of the just-built
+    # libcrypto.so.3. This matches the executable case (LLD) ordering.
     $GNULD \
       -Bsymbolic-functions \
       -T "$LDSCRIPT" \
       $CRTBEGIN \
       $DSOHANDLE \
+      $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
-      $filtered_args \
       $CRTEND
     rc=$?
 

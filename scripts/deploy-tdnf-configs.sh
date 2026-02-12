@@ -29,14 +29,24 @@ echo ""
 # Create temp files with correct repo URL
 TEMP_DIR=$(mktemp -d)
 cp "$CONFIG_DIR/tdnf.conf" "$TEMP_DIR/"
-sed "s|baseurl=.*|baseurl=http://${LOCAL_IP}:${REPO_PORT}/mips/|" "$CONFIG_DIR/irix-local.repo" > "$TEMP_DIR/irix-local.repo"
+cp "$CONFIG_DIR/mogrix.repo" "$TEMP_DIR/"
+
+# Also create a local repo override if the build host is reachable
+cat > "$TEMP_DIR/mogrix-local.repo" << EOF
+[mogrix-local]
+name=Mogrix Local Repository
+baseurl=http://${LOCAL_IP}:${REPO_PORT}/
+enabled=1
+gpgcheck=0
+EOF
 
 echo "Creating directories on IRIX..."
-ssh "$IRIX_HOST" "mkdir -p ${CHROOT_PATH}/etc/tdnf ${CHROOT_PATH}/etc/yum.repos.d ${CHROOT_PATH}/var/cache/tdnf"
+ssh "$IRIX_HOST" "mkdir -p ${CHROOT_PATH}/usr/sgug/etc/tdnf ${CHROOT_PATH}/usr/sgug/etc/yum.repos.d ${CHROOT_PATH}/usr/sgug/var/cache/tdnf"
 
 echo "Copying configuration files..."
-scp "$TEMP_DIR/tdnf.conf" "${IRIX_HOST}:${CHROOT_PATH}/etc/tdnf/"
-scp "$TEMP_DIR/irix-local.repo" "${IRIX_HOST}:${CHROOT_PATH}/etc/yum.repos.d/"
+scp "$TEMP_DIR/tdnf.conf" "${IRIX_HOST}:${CHROOT_PATH}/usr/sgug/etc/tdnf/"
+scp "$TEMP_DIR/mogrix.repo" "${IRIX_HOST}:${CHROOT_PATH}/usr/sgug/etc/yum.repos.d/"
+scp "$TEMP_DIR/mogrix-local.repo" "${IRIX_HOST}:${CHROOT_PATH}/usr/sgug/etc/yum.repos.d/"
 
 rm -rf "$TEMP_DIR"
 

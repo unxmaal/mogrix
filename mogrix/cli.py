@@ -35,12 +35,18 @@ def main():
     """Mogrix - SRPM conversion engine for IRIX cross-compilation.
 
     \b
-    Workflow:
+    Workflow (Fedora packages):
       1. mogrix setup-cross                    # One-time setup
       2. mogrix fetch <package> -y             # → ~/mogrix_inputs/SRPMS/
       3. mogrix convert <srpm>                 # → ~/mogrix_outputs/SRPMS/
       4. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
       5. mogrix stage <rpms>                   # → /opt/sgug-staging/
+
+    \b
+    Workflow (upstream git/tarball packages):
+      1. mogrix create-srpm <package>          # → ~/mogrix_inputs/SRPMS/
+      2. mogrix convert <srpm>                 # → ~/mogrix_outputs/SRPMS/
+      3. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
     """
     pass
 
@@ -2470,8 +2476,98 @@ def batch_build(
         write_json_report(report, Path(output_report))
 
 
+@main.command("create-srpm")
+@click.argument("packages", nargs=-1, required=True)
+@click.option(
+    "--output-dir",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Directory to save SRPMs (default: ~/mogrix_inputs/SRPMS/)",
+)
+def create_srpm(packages: tuple[str, ...], output_dir: str | None):
+    """Create SRPMs from upstream sources for non-Fedora packages.
+
+    Reads the upstream: block from each package's rules YAML,
+    fetches source from git/tarball, generates a spec file,
+    and packages into an SRPM.
+
+    The resulting SRPMs enter the normal mogrix pipeline:
+    create-srpm → convert → build --cross → stage
+
+    \b
+    Examples:
+        mogrix create-srpm telescope
+        mogrix create-srpm gmi100 gmid libretls
+    """
+    import tempfile
+
+    from mogrix.emitter.srpm import SRPMEmitter
+    from mogrix.upstream import UpstreamSource
+
+    output_path = Path(output_dir) if output_dir else MOGRIX_INPUTS / "SRPMS"
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    upstream = UpstreamSource(rules_dir=RULES_DIR)
+    emitter = SRPMEmitter()
+
+    success = []
+    failed = []
+
+    for pkg in packages:
+        console.print(f"\n[bold]Creating SRPM for:[/bold] {pkg}")
+
+        try:
+            # Load upstream config from package rules YAML
+            config = upstream.load_upstream_config(pkg)
+            console.print(
+                f"  [dim]upstream:[/dim] {config['url']} "
+                f"(v{config['version']}, {config.get('build_system', 'unknown')})"
+            )
+
+            # Fetch source into a temp directory
+            with tempfile.TemporaryDirectory(prefix="mogrix-upstream-") as tmpdir:
+                work_dir = Path(tmpdir)
+                tarball = upstream.fetch_source(config, work_dir)
+
+                # Generate spec content
+                spec_content = upstream.render_spec(config)
+                spec_name = f"{pkg}.spec"
+
+                # Emit SRPM
+                srpm_path = emitter.emit_srpm(
+                    spec_content=spec_content,
+                    spec_name=spec_name,
+                    sources=[tarball],
+                    output_dir=output_path,
+                )
+
+            console.print(f"  [green]✓ Created:[/green] {srpm_path.name}")
+            success.append((pkg, srpm_path))
+
+        except Exception as e:
+            console.print(f"  [red]✗ Failed:[/red] {e}")
+            failed.append((pkg, str(e)))
+
+    # Summary
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  Created: [green]{len(success)}[/green]")
+    if failed:
+        console.print(f"  Failed: [red]{len(failed)}[/red]")
+        for pkg, error in failed:
+            console.print(f"    • {pkg}: {error}")
+
+    if success:
+        console.print("\n[bold]Next step:[/bold]")
+        for pkg, path in success:
+            console.print(f"  mogrix convert {path}")
+
+    if failed:
+        raise SystemExit(1)
+
+
 @main.command()
-@click.argument("package")
+@click.argument("packages", nargs=-1, required=True)
 @click.option(
     "--output",
     "-o",
@@ -2491,29 +2587,42 @@ def batch_build(
     help="Extra packages to include in the bundle",
 )
 @click.option(
+    "--name",
+    default=None,
+    help="Suite name (for multi-package bundles, e.g., mogrix-smallweb)",
+)
+@click.option(
     "--sysroot",
     type=click.Path(exists=True),
     default="/opt/irix-sysroot",
     help="IRIX sysroot path for native lib detection",
 )
 def bundle(
-    package: str,
+    packages: tuple[str, ...],
     output: str | None,
     no_tarball: bool,
     include: tuple[str, ...],
+    name: str | None,
     sysroot: str,
 ):
     """Create a self-contained app bundle for IRIX.
 
-    Bundles PACKAGE with all its mogrix-built shared library dependencies
+    Bundles PACKAGES with all mogrix-built shared library dependencies
     into a self-contained directory with launcher scripts. Extract on an
     IRIX system alongside SGUG-RSE without conflicts.
 
     \b
-    Examples:
+    Single app:
         mogrix bundle nano
-        mogrix bundle groff
-        mogrix bundle nano --no-tarball
+        mogrix bundle groff --no-tarball
+
+    \b
+    Suite (multiple apps in one bundle):
+        mogrix bundle telescope snownews lynx --name mogrix-smallweb
+        mogrix bundle weechat nano --name chat-suite
+
+    \b
+    Extra packages (siblings not auto-detected):
         mogrix bundle openssh --include openssh-clients
     """
     from mogrix.bundle import BundleBuilder
@@ -2525,13 +2634,128 @@ def bundle(
 
     output_dir = Path(output) if output else MOGRIX_OUTPUTS / "bundles"
 
+    # First package is the "target", rest are extra root packages
+    target_package = packages[0]
+    extra = list(packages[1:]) + list(include)
+
+    # Auto-infer suite name when multiple packages given without --name
+    suite_name = name
+    if len(packages) > 1 and not suite_name:
+        suite_name = f"{target_package}-suite"
+
     builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
     builder.create_bundle(
-        target_package=package,
+        target_package=target_package,
         output_dir=output_dir,
-        extra_packages=list(include),
+        extra_packages=extra if extra else None,
         create_tarball=not no_tarball,
+        suite_name=suite_name,
     )
+
+
+@main.command()
+@click.argument("bundle_path", type=click.Path(exists=True))
+@click.option(
+    "--host",
+    default="192.168.0.81",
+    help="IRIX host IP/hostname",
+)
+@click.option(
+    "--user",
+    default="root",
+    help="SSH user for IRIX",
+)
+@click.option(
+    "--keep",
+    is_flag=True,
+    help="Don't clean up test bundle on IRIX after testing",
+)
+def test(bundle_path: str, host: str, user: str, keep: bool):
+    """Test a bundle on IRIX.
+
+    Deploys the bundle to IRIX, runs auto-tests (--version) for every
+    binary and YAML-defined smoke_tests, then reports pass/fail.
+
+    \b
+    Examples:
+        mogrix test ~/mogrix_outputs/bundles/mogrix-fun-1b-irix-bundle
+        mogrix test ~/mogrix_outputs/bundles/mogrix-essentials-1b-irix-bundle --keep
+    """
+    from mogrix.test import (
+        TestDiscovery,
+        ScriptGenerator,
+        IRIXTestRunner,
+        TestReport,
+        print_report,
+    )
+
+    bundle_dir = Path(bundle_path)
+    if not bundle_dir.is_dir():
+        if bundle_dir.name.endswith(".tar.gz"):
+            console.print(
+                "[red]Please provide the bundle directory, not the tarball.[/red]"
+            )
+            raise SystemExit(1)
+        console.print(f"[red]Not a directory: {bundle_dir}[/red]")
+        raise SystemExit(1)
+
+    remote_dir = "/tmp/mogrix-test"
+    remote_bundle = f"{remote_dir}/{bundle_dir.name}"
+
+    # 1. Check connectivity
+    runner = IRIXTestRunner(host=host, user=user)
+    console.print("[dim]Checking IRIX connectivity...[/dim]")
+    ok, msg = runner.check_connectivity()
+    if not ok:
+        report = TestReport(
+            bundle_name=bundle_dir.name,
+            irix_reachable=False,
+            error_message=msg,
+        )
+        print_report(report, console)
+        raise SystemExit(2)
+    console.print(f"[dim]IRIX: connected to {host}[/dim]")
+
+    # 2. Discover tests
+    discovery = TestDiscovery(RULES_DIR)
+    tests = discovery.discover(bundle_dir)
+    console.print(f"[dim]Discovered {len(tests)} tests for {bundle_dir.name}[/dim]")
+    if not tests:
+        console.print("[yellow]No testable wrappers found in bundle.[/yellow]")
+        raise SystemExit(0)
+
+    # 3. Deploy bundle
+    console.print(f"[dim]Deploying bundle to {host}:{remote_bundle}...[/dim]")
+    ok, msg = runner.deploy_bundle(bundle_dir, remote_dir)
+    if not ok:
+        console.print(f"[red]Deploy failed: {msg}[/red]")
+        raise SystemExit(1)
+
+    # 4. Generate and run test script
+    generator = ScriptGenerator()
+    script = generator.generate(tests)
+
+    console.print(f"[dim]Running {len(tests)} tests on IRIX...[/dim]")
+    rc, stdout, stderr = runner.run_script(script, remote_bundle)
+
+    # 5. Cleanup (unless --keep)
+    if not keep:
+        runner.cleanup(remote_bundle)
+
+    # 6. Parse results and report
+    results = runner.parse_results(stdout)
+    report = TestReport(bundle_name=bundle_dir.name, results=results)
+
+    if not results and stdout:
+        # Script ran but no results parsed — show raw output
+        console.print("[yellow]No test results parsed. Raw output:[/yellow]")
+        console.print(stdout[:2000])
+        if stderr:
+            console.print(f"[dim]stderr: {stderr[:500]}[/dim]")
+        raise SystemExit(1)
+
+    print_report(report, console)
+    raise SystemExit(1 if report.failed > 0 else 0)
 
 
 if __name__ == "__main__":
