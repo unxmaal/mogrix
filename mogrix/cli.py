@@ -2653,5 +2653,110 @@ def bundle(
     )
 
 
+@main.command()
+@click.argument("bundle_path", type=click.Path(exists=True))
+@click.option(
+    "--host",
+    default="192.168.0.81",
+    help="IRIX host IP/hostname",
+)
+@click.option(
+    "--user",
+    default="root",
+    help="SSH user for IRIX",
+)
+@click.option(
+    "--keep",
+    is_flag=True,
+    help="Don't clean up test bundle on IRIX after testing",
+)
+def test(bundle_path: str, host: str, user: str, keep: bool):
+    """Test a bundle on IRIX.
+
+    Deploys the bundle to IRIX, runs auto-tests (--version) for every
+    binary and YAML-defined smoke_tests, then reports pass/fail.
+
+    \b
+    Examples:
+        mogrix test ~/mogrix_outputs/bundles/mogrix-fun-1b-irix-bundle
+        mogrix test ~/mogrix_outputs/bundles/mogrix-essentials-1b-irix-bundle --keep
+    """
+    from mogrix.test import (
+        TestDiscovery,
+        ScriptGenerator,
+        IRIXTestRunner,
+        TestReport,
+        print_report,
+    )
+
+    bundle_dir = Path(bundle_path)
+    if not bundle_dir.is_dir():
+        if bundle_dir.name.endswith(".tar.gz"):
+            console.print(
+                "[red]Please provide the bundle directory, not the tarball.[/red]"
+            )
+            raise SystemExit(1)
+        console.print(f"[red]Not a directory: {bundle_dir}[/red]")
+        raise SystemExit(1)
+
+    remote_dir = "/tmp/mogrix-test"
+    remote_bundle = f"{remote_dir}/{bundle_dir.name}"
+
+    # 1. Check connectivity
+    runner = IRIXTestRunner(host=host, user=user)
+    console.print("[dim]Checking IRIX connectivity...[/dim]")
+    ok, msg = runner.check_connectivity()
+    if not ok:
+        report = TestReport(
+            bundle_name=bundle_dir.name,
+            irix_reachable=False,
+            error_message=msg,
+        )
+        print_report(report, console)
+        raise SystemExit(2)
+    console.print(f"[dim]IRIX: connected to {host}[/dim]")
+
+    # 2. Discover tests
+    discovery = TestDiscovery(RULES_DIR)
+    tests = discovery.discover(bundle_dir)
+    console.print(f"[dim]Discovered {len(tests)} tests for {bundle_dir.name}[/dim]")
+    if not tests:
+        console.print("[yellow]No testable wrappers found in bundle.[/yellow]")
+        raise SystemExit(0)
+
+    # 3. Deploy bundle
+    console.print(f"[dim]Deploying bundle to {host}:{remote_bundle}...[/dim]")
+    ok, msg = runner.deploy_bundle(bundle_dir, remote_dir)
+    if not ok:
+        console.print(f"[red]Deploy failed: {msg}[/red]")
+        raise SystemExit(1)
+
+    # 4. Generate and run test script
+    generator = ScriptGenerator()
+    script = generator.generate(tests)
+
+    console.print(f"[dim]Running {len(tests)} tests on IRIX...[/dim]")
+    rc, stdout, stderr = runner.run_script(script, remote_bundle)
+
+    # 5. Cleanup (unless --keep)
+    if not keep:
+        runner.cleanup(remote_bundle)
+
+    # 6. Parse results and report
+    results = runner.parse_results(stdout)
+    report = TestReport(bundle_name=bundle_dir.name, results=results)
+
+    if not results and stdout:
+        # Script ran but no results parsed — show raw output
+        console.print("[yellow]No test results parsed. Raw output:[/yellow]")
+        console.print(stdout[:2000])
+        if stderr:
+            console.print(f"[dim]stderr: {stderr[:500]}[/dim]")
+        raise SystemExit(1)
+
+    print_report(report, console)
+    raise SystemExit(1 if report.failed > 0 else 0)
+
+
 if __name__ == "__main__":
     main()

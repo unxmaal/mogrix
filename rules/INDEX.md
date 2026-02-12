@@ -166,6 +166,15 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | IRIX inttypes.h lacks MAX/PTR macros | PRIdMAX, SCNd64, etc. not defined; mogrix-compat inttypes.h provides them | compat/include/mogrix-compat/generic/inttypes.h |
 | Source `#define` overrides `-D` | CFLAGS `-D_Thread_local=` won't work if source has `#define _Thread_local __thread` | rules/packages/gnutls.yaml |
 | `extra_cflags` rule is dead code | Validated in validator.py but never applied by engine.py; use prep_commands or export_vars | mogrix/rules/validator.py |
+| `skip_manpages` rule is dead code | Validated but never applied by engine. Use prep_commands to touch man pages | mogrix/rules/validator.py |
+| `make_env` rule is dead code | Validated but never applied by engine. Use spec_replacements instead | mogrix/rules/validator.py |
+| `drop_subpackages` must be inside `rules:` | Only `add_patch` and `add_source` are handled at both top-level and rules-level | rules/packages/*.yaml |
+| `install_cleanup` misplacement | If spec has `%triggerpostun` before `%files`, cleanup lands in trigger scriptlet. Workaround: use spec_replacements | mogrix/rules/engine.py |
+| `remove_conditionals` can't nest | Simple regex matches first `%endif`, not the correct one for nested `%if/%endif`. Use bcond flipping instead | mogrix/rules/engine.py |
+| Clang 16 `.cpsetup` N32 bug | `.cpsetup` expands to `__gnu_local_gp` absolute refs instead of GP-relative. Fix: `-fno-integrated-as -B/opt/cross/bin/mips-sgi-irix6.5-`. Fixed in LLVM 18 (issue #52785) | rules/packages/libffi.yaml |
+| cmake finds MIPS staging binaries | `CMAKE_FIND_ROOT_PATH` picks up gmake/pkg-config from staging. Must set `-DCMAKE_MAKE_PROGRAM=/usr/bin/make -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config` | rules/packages/weechat.yaml |
+| `inject_compat_functions` affects HOST link | Bootstrap packages (flex, etc.) build HOST tools before cross-compiling. `-lmogrix-compat` in LIBS breaks HOST link. Fix: inject compat via prep_commands into cross-only source files | rules/packages/flex.yaml |
+| Perl `drop_subpackages` glob trap | `"*"` glob matches `-f` in `%files -f`, breaking file manifests. Use `"[A-Za-z]*"` to match package names only | rules/packages/perl.yaml |
 | SSL_CERT_FILE is OpenSSL-only | gnutls ignores it; use app-specific CA config (weechat: gnutls_ca_user) | mogrix/bundle.py |
 | weechat 4.x renamed gnutls settings | `gnutls_ca_file` → `gnutls_ca_system` + `gnutls_ca_user` | rules/packages/weechat.yaml |
 | IRIX has no endian.h | **SOLVED**: dicl-clang-compat/endian.h provides BYTE_ORDER, htobe/htole, bswap globally | cross/include/dicl-clang-compat/endian.h |
