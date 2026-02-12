@@ -833,6 +833,19 @@ class BundleBuilder:
 
         manifest.bundle_dir = bundle_dir
 
+        # Fix permissions: RPM extraction preserves restrictive modes (700 dirs,
+        # 600 files). Make everything world-readable for IRIX users.
+        bundle_dir.chmod(bundle_dir.stat().st_mode | 0o555)
+        for root, dirs, files in os.walk(bundle_dir):
+            for d in dirs:
+                p = Path(root) / d
+                p.chmod(p.stat().st_mode | 0o555)
+            for f in files:
+                p = Path(root) / f
+                mode = p.stat().st_mode
+                # Add read for all; add execute for all if owner has execute
+                p.chmod(mode | 0o444 | (0o111 if mode & 0o100 else 0))
+
         # Create tarball
         if create_tarball:
             tarball_name = f"{bundle_name}.tar.gz"
@@ -841,7 +854,10 @@ class BundleBuilder:
             subprocess.run(
                 [
                     "tar",
-                    "czf",
+                    "--format=v7",
+                    "--owner=0",
+                    "--group=0",
+                    "-czf",
                     str(tarball_path),
                     "-C",
                     str(output_dir),
@@ -953,8 +969,10 @@ class BundleBuilder:
         lines.extend([
             "## Install",
             "",
-            f"    tar xzf {bundle_name}.tar.gz -C /opt/mogrix-apps/",
-            f"    cd /opt/mogrix-apps/{bundle_name}",
+            f"    cd /opt/mogrix-apps",
+            f"    gunzip {bundle_name}.tar.gz",
+            f"    tar xf {bundle_name}.tar",
+            f"    cd {bundle_name}",
             "    ./install",
             "",
             "Then add /opt/mogrix-apps/bin to your PATH (once, in ~/.profile):",

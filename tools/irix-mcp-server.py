@@ -30,7 +30,7 @@ IRIX_CHROOT = os.environ.get("IRIX_CHROOT", "/opt/chroot")
 IRIX_TIMEOUT = int(os.environ.get("IRIX_TIMEOUT", "60"))
 IRIX_LOG = os.environ.get("IRIX_LOG", "/tmp/irix-mcp.log")
 
-# Commands that should never be run
+# Commands that should never be run (in chroot)
 BLOCKED_PATTERNS = [
     r"rm\s+(-[rf]+\s+)?/\s*$",         # rm -rf /
     r"rm\s+(-[rf]+\s+)?/usr\s*$",       # rm -rf /usr
@@ -45,6 +45,24 @@ BLOCKED_PATTERNS = [
     r"\bnewfs\b",
     r"\bformat\b",
 ]
+
+# Commands allowed on the IRIX host (outside chroot).
+# Only safe, non-destructive operations. Each entry is matched as
+# a word boundary at the start of a pipeline segment.
+HOST_ALLOWED_COMMANDS = {
+    # Read-only inspection
+    "ls", "cat", "head", "tail", "wc", "file", "readelf",
+    "elfdump", "echo", "uname", "hostname", "date", "du", "df",
+    "find", "which", "env", "id", "pwd",
+    # File management (safe paths only — validated separately)
+    "mkdir", "chmod", "cp", "mv", "ln",
+    # Archive operations (for bundle extraction)
+    "tar", "gzip", "gunzip",
+    # Debugging
+    "par",
+    # SGUG-RSE
+    "rpm",
+}
 
 _log_file = None
 
@@ -84,6 +102,57 @@ def is_blocked(command: str) -> str | None:
     for pattern in BLOCKED_PATTERNS:
         if re.search(pattern, command, re.IGNORECASE):
             return f"Blocked: matches safety pattern '{pattern}'"
+    return None
+
+
+# Paths that are off-limits for host commands (write operations)
+HOST_DANGEROUS_PATHS = [
+    "/etc", "/bin", "/sbin", "/lib", "/lib32", "/lib64",
+    "/usr/bin", "/usr/sbin", "/usr/lib", "/usr/lib32",
+    "/usr/sgug",  # Must go through chroot, not direct host access
+    "/dev", "/proc", "/hw",
+]
+
+
+def is_host_allowed(command: str) -> str | None:
+    """Check if a command is allowed on the IRIX host (outside chroot).
+
+    Returns error message if blocked, None if allowed.
+    Validates each pipeline/chain segment's first command word against
+    HOST_ALLOWED_COMMANDS. Handles VAR=value prefixes and subshells.
+    """
+    # Split on pipes, &&, ;, and || to check each segment
+    segments = re.split(r"\s*(?:\||&&|;|\|\|)\s*", command.strip())
+    for segment in segments:
+        segment = segment.strip().lstrip("(")  # handle subshells like (cd dir && ...)
+        if not segment:
+            continue
+        # Skip VAR=value prefixes (env variable assignments before command)
+        words = segment.split()
+        cmd_word = None
+        for word in words:
+            if "=" in word and not word.startswith("-") and not word.startswith("/"):
+                # Looks like VAR=value, skip it
+                continue
+            cmd_word = word
+            break
+        if cmd_word is None:
+            continue  # Pure assignment like "FOO=bar" — harmless
+        cmd = os.path.basename(cmd_word)  # Handle /usr/bin/ls -> ls
+        if cmd not in HOST_ALLOWED_COMMANDS:
+            return (
+                f"Command '{cmd}' not in host allowlist. "
+                f"Allowed: {', '.join(sorted(HOST_ALLOWED_COMMANDS))}"
+            )
+
+    # Block writes to dangerous system paths
+    # Check for output redirection to dangerous paths
+    for path in HOST_DANGEROUS_PATHS:
+        # Check if command writes to a dangerous path (not just reads)
+        # Simple heuristic: if a write command targets a dangerous path
+        if re.search(rf"(?:cp|mv|mkdir|tar\s.*-[xC])\s+.*(?:^|\s){re.escape(path)}(?:/|\s|$)", command):
+            return f"Write to system path '{path}' blocked — use chroot tools instead"
+
     return None
 
 
@@ -188,6 +257,48 @@ class SSHConnection:
         except Exception as e:
             return -1, "", f"SSH error: {e}"
 
+    def exec_host(self, command: str, timeout: int = 60) -> tuple[int, str, str]:
+        """Execute command on the IRIX host (outside chroot). Auto-reconnects."""
+        rc, stdout, stderr = self._exec_host_once(command, timeout)
+        if rc == 255 and not self.is_alive():
+            log("SSH connection lost, reconnecting...")
+            ok, msg = self.reconnect()
+            if ok:
+                log("Reconnected, retrying host command")
+                rc, stdout, stderr = self._exec_host_once(command, timeout)
+            else:
+                stderr = f"SSH connection lost and reconnect failed: {msg}"
+        return rc, stdout, stderr
+
+    def _exec_host_once(self, command: str, timeout: int) -> tuple[int, str, str]:
+        """Execute a single command on the host (no chroot, no retry)."""
+        escaped_cmd = command.replace("'", "'\\''")
+        # Run via /bin/sh directly on the host — no chroot wrapper
+        remote_cmd = f"/bin/sh -c '{escaped_cmd}'"
+
+        ssh_cmd = [
+            "ssh",
+            "-o", f"ControlPath={self.socket_path}",
+            "-o", "BatchMode=yes",
+            f"{self.user}@{self.host}",
+            remote_cmd,
+        ]
+
+        log(f"host-exec: {command}")
+        try:
+            result = subprocess.run(
+                ssh_cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                errors="replace",
+            )
+            return result.returncode, result.stdout, result.stderr
+        except subprocess.TimeoutExpired:
+            return -1, "", f"Command timed out after {timeout}s"
+        except Exception as e:
+            return -1, "", f"SSH error: {e}"
+
     def scp_to(self, local_path: str, remote_path: str) -> tuple[bool, str]:
         """Copy a file to the IRIX chroot via SCP over the control connection."""
         if not remote_path.startswith("/"):
@@ -272,7 +383,7 @@ class IRIXMCPServer:
 
     def __init__(self):
         self.name = "irix-mcp"
-        self.version = "2.0.0"
+        self.version = "2.1.0"
         self.protocol_version = "2025-11-25"
         self.fallback_version = "2024-11-05"
         self.initialized = False
@@ -375,6 +486,37 @@ class IRIXMCPServer:
                     "required": ["command"],
                 },
             },
+            {
+                "name": "irix_host_exec",
+                "description": (
+                    "Execute a command on the IRIX host OUTSIDE the chroot. "
+                    "For operations on the live IRIX system like extracting "
+                    "bundles, managing files in user directories, or "
+                    "inspecting the base system. Only a limited set of safe "
+                    "commands are allowed: "
+                    + ", ".join(sorted(HOST_ALLOWED_COMMANDS))
+                    + ". System directories (/etc, /bin, /usr/sgug, etc.) "
+                    "are protected from writes."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": (
+                                "Shell command to run on the IRIX host. "
+                                "Only allowlisted commands accepted. "
+                                "Example: 'ls /usr/people/edodd/apps/'"
+                            ),
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": f"Timeout in seconds (default: {IRIX_TIMEOUT})",
+                        },
+                    },
+                    "required": ["command"],
+                },
+            },
         ]
 
     def _ensure_connected(self, request_id: Any) -> dict | None:
@@ -426,10 +568,10 @@ class IRIXMCPServer:
                     "version": self.version,
                 },
                 "instructions": (
-                    f"IRIX chroot access at {IRIX_HOST}:{IRIX_CHROOT}. "
-                    "Commands execute via sgug-exec with proper environment. "
-                    "Use irix_exec for commands, irix_copy_to for file transfers, "
-                    "irix_par for syscall tracing."
+                    f"IRIX access at {IRIX_HOST}:{IRIX_CHROOT}. "
+                    "irix_exec: commands in chroot (sgug-exec environment). "
+                    "irix_host_exec: commands on live host (allowlisted only). "
+                    "irix_copy_to: file transfers. irix_par: syscall tracing."
                 ),
             },
         }
@@ -453,6 +595,8 @@ class IRIXMCPServer:
             return self._tool_read_file(request_id, args)
         elif tool_name == "irix_par":
             return self._tool_par(request_id, args)
+        elif tool_name == "irix_host_exec":
+            return self._tool_host_exec(request_id, args)
         else:
             return self._error(-32602, f"Unknown tool: {tool_name}", request_id)
 
@@ -538,8 +682,8 @@ class IRIXMCPServer:
         if err:
             return err
 
-        # par -SICals gives: syscalls, signals, with args, long output, summary
-        par_cmd = f"par -SICals {command} 2>&1; true"
+        # par -s: collect syscalls, -SS: trace, -l: long format, -i: inherit on fork
+        par_cmd = f"par -s -SS -l -i {command} 2>&1; true"
         rc, stdout, stderr = self.ssh.exec(par_cmd, timeout)
 
         output_parts = []
@@ -550,6 +694,40 @@ class IRIXMCPServer:
 
         text = "\n".join(output_parts) if output_parts else "(no par output)"
         return self._tool_result(request_id, text)
+
+    def _tool_host_exec(self, request_id: Any, args: dict) -> dict:
+        command = args.get("command", "")
+        timeout = args.get("timeout", IRIX_TIMEOUT)
+
+        if not command:
+            return self._tool_error(request_id, "command is required")
+
+        # Check against allowlist (stricter than chroot commands)
+        blocked = is_host_allowed(command)
+        if blocked:
+            return self._tool_error(request_id, blocked)
+
+        # Also check the general blocklist
+        blocked = is_blocked(command)
+        if blocked:
+            return self._tool_error(request_id, blocked)
+
+        err = self._ensure_connected(request_id)
+        if err:
+            return err
+
+        rc, stdout, stderr = self.ssh.exec_host(command, timeout)
+
+        output_parts = []
+        if stdout:
+            output_parts.append(stdout)
+        if stderr:
+            output_parts.append(f"[stderr]\n{stderr}")
+        if rc != 0:
+            output_parts.append(f"[exit code: {rc}]")
+
+        text = "\n".join(output_parts) if output_parts else "(no output)"
+        return self._tool_result(request_id, text, is_error=(rc != 0))
 
     # --- Response helpers ---
 

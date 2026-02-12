@@ -14,6 +14,11 @@
 
 package: openssh
 
+add_source:
+  - explicit_bzero.irix.c
+  - digest-openssl.irix.c
+  - charclass.irix.h
+
 smoke_test:
   - command: "/usr/sgug/bin/ssh -V"
     expect: "OpenSSH_9.6"
@@ -496,215 +501,15 @@ rules:
     # IRIX rld cannot resolve the bzero relocation in the static initializer.
     # Same pattern as gnupg2's wipememory() crash. Replace with volatile char
     # pointer loop that avoids function pointer relocation entirely.
-    - |
-      cat > openbsd-compat/explicit_bzero.c << 'IRIXFIX'
-      /* IRIX replacement: avoid volatile function pointer static initializer */
-      /* Original used: static void (* volatile ssh_bzero)(void *, size_t) = bzero; */
-      /* which crashes on IRIX rld (relocation for bzero in static init fails). */
-      #include "includes.h"
-      #include <string.h>
-      #ifndef HAVE_EXPLICIT_BZERO
-      void
-      explicit_bzero(void *p, size_t n)
-      {
-          volatile unsigned char *vp = (volatile unsigned char *)p;
-          size_t i;
-          if (n == 0)
-              return;
-          for (i = 0; i < n; i++)
-              vp[i] = 0;
-      }
-      #endif /* HAVE_EXPLICIT_BZERO */
-      IRIXFIX
+    - "cp %{_sourcedir}/explicit_bzero.irix.c openbsd-compat/explicit_bzero.c"
     # Fix function pointer relocations in digest-openssl.c static array:
     # IRIX rld fails to apply some relocations for function pointers in
     # static const arrays. EVP_sha1 and EVP_sha512 resolve to NULL in
     # the digests[] table despite being valid symbols. Direct function calls
     # work fine (they go through GOT). Fix: add a helper that uses a switch
     # to call EVP functions directly, replacing digest->mdfunc() calls.
-    - |
-      cat > digest-openssl.c << 'DIGEST_IRIX_FIX'
-      /* $OpenBSD: digest-openssl.c,v 1.9 2020/10/29 02:52:43 djm Exp $ */
-      /* IRIX-patched: replaced function pointer array with switch dispatch */
-      /* to avoid rld relocation failures in static data arrays. */
-      #include "includes.h"
-      #ifdef WITH_OPENSSL
-      #include <sys/types.h>
-      #include <limits.h>
-      #include <stdlib.h>
-      #include <string.h>
-      #include <openssl/evp.h>
-      #include "openbsd-compat/openssl-compat.h"
-      #include "sshbuf.h"
-      #include "digest.h"
-      #include "ssherr.h"
-      struct ssh_digest_ctx {
-          int alg;
-          EVP_MD_CTX *mdctx;
-      };
-      struct ssh_digest {
-          int id;
-          const char *name;
-          size_t digest_len;
-      };
-      /* NB. Indexed directly by algorithm number */
-      const struct ssh_digest digests[] = {
-          { SSH_DIGEST_MD5,    "MD5",    16 },
-          { SSH_DIGEST_SHA1,   "SHA1",   20 },
-          { SSH_DIGEST_SHA256, "SHA256", 32 },
-          { SSH_DIGEST_SHA384, "SHA384", 48 },
-          { SSH_DIGEST_SHA512, "SHA512", 64 },
-          { -1,                NULL,      0 },
-      };
-      /* IRIX rld fix: call EVP functions directly instead of through
-       * function pointers in a static array (rld fails to relocate some). */
-      static const EVP_MD *
-      ssh_digest_md(int alg)
-      {
-          switch (alg) {
-          case SSH_DIGEST_MD5:    return EVP_md5();
-          case SSH_DIGEST_SHA1:   return EVP_sha1();
-      #ifdef HAVE_EVP_SHA256
-          case SSH_DIGEST_SHA256: return EVP_sha256();
-      #endif
-      #ifdef HAVE_EVP_SHA384
-          case SSH_DIGEST_SHA384: return EVP_sha384();
-      #endif
-      #ifdef HAVE_EVP_SHA512
-          case SSH_DIGEST_SHA512: return EVP_sha512();
-      #endif
-          default: return NULL;
-          }
-      }
-      static const struct ssh_digest *
-      ssh_digest_by_alg(int alg)
-      {
-          if (alg < 0 || alg >= SSH_DIGEST_MAX)
-              return NULL;
-          if (digests[alg].id != alg)
-              return NULL;
-          if (ssh_digest_md(alg) == NULL)
-              return NULL;
-          return &(digests[alg]);
-      }
-      int
-      ssh_digest_alg_by_name(const char *name)
-      {
-          int alg;
-          for (alg = 0; digests[alg].id != -1; alg++) {
-              if (strcasecmp(name, digests[alg].name) == 0)
-                  return digests[alg].id;
-          }
-          return -1;
-      }
-      const char *
-      ssh_digest_alg_name(int alg)
-      {
-          const struct ssh_digest *digest = ssh_digest_by_alg(alg);
-          return digest == NULL ? NULL : digest->name;
-      }
-      size_t
-      ssh_digest_bytes(int alg)
-      {
-          const struct ssh_digest *digest = ssh_digest_by_alg(alg);
-          return digest == NULL ? 0 : digest->digest_len;
-      }
-      size_t
-      ssh_digest_blocksize(struct ssh_digest_ctx *ctx)
-      {
-          return EVP_MD_CTX_block_size(ctx->mdctx);
-      }
-      struct ssh_digest_ctx *
-      ssh_digest_start(int alg)
-      {
-          const struct ssh_digest *digest = ssh_digest_by_alg(alg);
-          const EVP_MD *md;
-          struct ssh_digest_ctx *ret;
-          if (digest == NULL || ((ret = calloc(1, sizeof(*ret))) == NULL))
-              return NULL;
-          ret->alg = alg;
-          if ((ret->mdctx = EVP_MD_CTX_new()) == NULL) {
-              free(ret);
-              return NULL;
-          }
-          md = ssh_digest_md(alg);
-          if (md == NULL || EVP_DigestInit_ex(ret->mdctx, md, NULL) != 1) {
-              ssh_digest_free(ret);
-              return NULL;
-          }
-          return ret;
-      }
-      int
-      ssh_digest_copy_state(struct ssh_digest_ctx *from, struct ssh_digest_ctx *to)
-      {
-          if (from->alg != to->alg)
-              return SSH_ERR_INVALID_ARGUMENT;
-          if (!EVP_MD_CTX_copy_ex(to->mdctx, from->mdctx))
-              return SSH_ERR_LIBCRYPTO_ERROR;
-          return 0;
-      }
-      int
-      ssh_digest_update(struct ssh_digest_ctx *ctx, const void *m, size_t mlen)
-      {
-          if (EVP_DigestUpdate(ctx->mdctx, m, mlen) != 1)
-              return SSH_ERR_LIBCRYPTO_ERROR;
-          return 0;
-      }
-      int
-      ssh_digest_update_buffer(struct ssh_digest_ctx *ctx, const struct sshbuf *b)
-      {
-          return ssh_digest_update(ctx, sshbuf_ptr(b), sshbuf_len(b));
-      }
-      int
-      ssh_digest_final(struct ssh_digest_ctx *ctx, u_char *d, size_t dlen)
-      {
-          const struct ssh_digest *digest = ssh_digest_by_alg(ctx->alg);
-          u_int l = dlen;
-          if (digest == NULL || dlen > UINT_MAX)
-              return SSH_ERR_INVALID_ARGUMENT;
-          if (dlen < digest->digest_len)
-              return SSH_ERR_INVALID_ARGUMENT;
-          if (EVP_DigestFinal_ex(ctx->mdctx, d, &l) != 1)
-              return SSH_ERR_LIBCRYPTO_ERROR;
-          if (l != digest->digest_len)
-              return SSH_ERR_INTERNAL_ERROR;
-          return 0;
-      }
-      void
-      ssh_digest_free(struct ssh_digest_ctx *ctx)
-      {
-          if (ctx == NULL)
-              return;
-          EVP_MD_CTX_free(ctx->mdctx);
-          freezero(ctx, sizeof(*ctx));
-      }
-      int
-      ssh_digest_memory(int alg, const void *m, size_t mlen, u_char *d, size_t dlen)
-      {
-          const struct ssh_digest *digest = ssh_digest_by_alg(alg);
-          const EVP_MD *md;
-          u_int mdlen;
-          if (digest == NULL)
-              return SSH_ERR_INVALID_ARGUMENT;
-          if (dlen > UINT_MAX)
-              return SSH_ERR_INVALID_ARGUMENT;
-          if (dlen < digest->digest_len)
-              return SSH_ERR_INVALID_ARGUMENT;
-          mdlen = dlen;
-          md = ssh_digest_md(alg);
-          if (md == NULL)
-              return SSH_ERR_INVALID_ARGUMENT;
-          if (!EVP_Digest(m, mlen, d, &mdlen, md, NULL))
-              return SSH_ERR_LIBCRYPTO_ERROR;
-          return 0;
-      }
-      int
-      ssh_digest_buffer(int alg, const struct sshbuf *b, u_char *d, size_t dlen)
-      {
-          return ssh_digest_memory(alg, sshbuf_ptr(b), sshbuf_len(b), d, dlen);
-      }
-      #endif /* WITH_OPENSSL */
-      DIGEST_IRIX_FIX
+    # Source: patches/packages/openssh/digest-openssl.irix.c
+    - "cp %{_sourcedir}/digest-openssl.irix.c digest-openssl.c"
     # Fix IRIX rld R_MIPS_REL32 relocation failures in cipher.c:
     # Function pointers in the static ciphers[] array require dynamic
     # relocations that IRIX rld intermittently fails to process.
@@ -749,48 +554,8 @@ rules:
     # The cclasses[] static array uses function pointers to libc ctype
     # functions (isalnum, isalpha, etc.) which require dynamic relocations.
     # Replace with a dispatch function that calls them directly.
-    - |
-      cat > openbsd-compat/charclass.h << 'CHARCLASS_IRIX_FIX'
-      /* IRIX-patched: replaced function pointer array with dispatch function.
-       * IRIX rld intermittently fails R_MIPS_REL32 relocations for function
-       * pointers in static data arrays. */
-      #include <ctype.h>
-      static struct cclass {
-      	const char *name;
-      } cclasses[] = {
-      	{ "alnum" },
-      	{ "alpha" },
-      	{ "blank" },
-      	{ "cntrl" },
-      	{ "digit" },
-      	{ "graph" },
-      	{ "lower" },
-      	{ "print" },
-      	{ "punct" },
-      	{ "space" },
-      	{ "upper" },
-      	{ "xdigit" },
-      	{ NULL }
-      };
-      static int
-      cclass_isctype(const char *name, int c)
-      {
-      	if (strcmp(name, "alnum") == 0) return isalnum(c);
-      	if (strcmp(name, "alpha") == 0) return isalpha(c);
-      	if (strcmp(name, "blank") == 0) return isblank(c);
-      	if (strcmp(name, "cntrl") == 0) return iscntrl(c);
-      	if (strcmp(name, "digit") == 0) return isdigit(c);
-      	if (strcmp(name, "graph") == 0) return isgraph(c);
-      	if (strcmp(name, "lower") == 0) return islower(c);
-      	if (strcmp(name, "print") == 0) return isprint(c);
-      	if (strcmp(name, "punct") == 0) return ispunct(c);
-      	if (strcmp(name, "space") == 0) return isspace(c);
-      	if (strcmp(name, "upper") == 0) return isupper(c);
-      	if (strcmp(name, "xdigit") == 0) return isxdigit(c);
-      	return 0;
-      }
-      #define NCCLASSES (sizeof(cclasses)/sizeof(cclasses[0])-1)
-      CHARCLASS_IRIX_FIX
+    # Source: patches/packages/openssh/charclass.irix.h
+    - "cp %{_sourcedir}/charclass.irix.h openbsd-compat/charclass.h"
     # Update charclass.h users to use cclass_isctype() instead of .isctype()
     # glob.c uses cclasses[idx].isctype(k) — access by array index
     - "sed -i 's/cclasses\\[idx\\]\\.isctype(k)/cclass_isctype(cclasses[idx].name, k)/g' openbsd-compat/glob.c"

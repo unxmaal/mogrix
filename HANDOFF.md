@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-11 (session 23)
-**Status**: 93+ source packages cross-compiled (260+ RPMs). Smallweb initiative in progress: telescope (Gemini TUI) and libretls built and verified on IRIX.
+**Last Updated**: 2026-02-12 (session 28)
+**Status**: 96+ source packages cross-compiled (270+ RPMs). **Smallweb suite complete!** 5 apps bundled: telescope, gmi100, tinc, lynx, snownews. TLS verified working on IRIX. libssl NEEDED properly fixed. Telescope %zu SIGSEGV fixed — runs stable on live IRIX.
 
 ---
 
@@ -27,18 +27,20 @@
 2. **Suite bundles** — `mogrix bundle pkg1 pkg2 pkg3 --name mogrix-smallweb` combines multiple apps into one bundle with shared libs, single install/uninstall, suite README. Backward compatible — single `mogrix bundle nano` unchanged.
 3. **IRIX MCP server v2.0.0** — complete rewrite fixing silent failures. SSH ControlMaster persistent connection, auto-reconnect, no stderr output (was causing false "failed" in Claude Code UI), always sends JSON-RPC error responses (was hanging client on exceptions). Log file at `/tmp/irix-mcp.log`. **Requires Claude Code restart** (`/mcp` or new session) to pick up new server.
 
-### Smallweb packages to build
+### Smallweb packages — ALL FIVE BUILT + BUNDLED
 
 | Package | Source | Status | Notes |
 |---------|--------|--------|-------|
-| gmi100 | GitHub (ir33k/gmi100) | **BUILT + INSTALLED** | Single-file C, hand-written spec, err.h compat |
+| gmi100 | GitHub (ir33k/gmi100) | **BUILT + BUNDLED** | Single-file C, hand-written spec, err.h compat |
 | libretls | git.causal.agency/libretls | **BUILT + INSTALLED** | libtls API on OpenSSL. arc4random/getentropy/MAP_ANON IRIX compat |
-| telescope | GitHub (telescope-browser/telescope) | **BUILT + INSTALLED** | Flagship Gemini TUI. 12+ IRIX fixes (see telescope.yaml) |
-| snownews | GitHub (kouya/snownews) | Needs YAML + build | RSS reader |
-| lynx | FC40 SRPM? | Check availability | HTML browser |
-| gmid | GitHub (omar-polo/gmid) | Needs YAML + build | Gemini server |
-| gophernicus | GitHub (gophernicus/gophernicus) | Needs YAML + build | Gopher server |
-| tinc | ? | Needs research | VPN |
+| telescope | GitHub (telescope-browser/telescope) | **BUILT + BUNDLED** | Flagship Gemini TUI. 12+ IRIX fixes (see telescope.yaml). libssl NEEDED fix (session 24) |
+| tinc | tinc-vpn.org upstream | **BUILT + BUNDLED** | VPN daemon. IRIX dummy device driver, disable-hardening, pselect fallback |
+| lynx | invisible-mirror.net upstream | **BUILT + BUNDLED** | Text-mode web browser. Clean build, referenced SGUG-RSE configure flags |
+| snownews | SourceForge upstream | **BUILT + BUNDLED** | RSS reader. Shadow libintl.h, strsep/timegm compat, pkg-config path fix |
+| gmid | GitHub (omar-polo/gmid) | Not started | Gemini server (optional, lower priority) |
+| gophernicus | GitHub (gophernicus/gophernicus) | Not started | Gopher server (optional, lower priority) |
+
+**Suite bundle:** `mogrix-smallweb-1f-irix-bundle.tar.gz` (11.1 MB) — telescope, gmi100, lynx, snownews with 19 shared RPMs. Telescope %zu fix verified on live IRIX.
 
 Already built: sqlite3, libxml2, libunistring, pcre2 (deps). libevent built but not staged.
 
@@ -48,6 +50,135 @@ Already built: sqlite3, libxml2, libunistring, pcre2 (deps). libevent built but 
 - **Public package repo**: `https://packages.mogrix.unxmaal.com/repo/`
 - **Ship bitlbee + weechat + st tarballs** to community — ALL READY
 - **GLib warnings on IRIX**: `g_hash_table_lookup: assertion 'hash_table != NULL'` during bitlbee startup
+
+---
+
+## Recent Session (24): Smallweb Suite Complete + libssl Fix
+
+### Three new packages built
+
+**tinc 1.0.36** — VPN daemon. Built from upstream tarball (Fedora archives returning 503).
+Key IRIX fixes (all in `rules/packages/tinc.yaml`):
+- IRIX case added to configure.ac `case $host_os` (was error on unknown OS)
+- IRIX dummy device driver stub (`src/irix/device.c`) — IRIX 6.5 has no TUN/TAP
+- `--disable-hardening` — PIE linking incompatible with IRIX CRT objects
+- `ac_cv_func_pselect: "no"` — tinc has its own select() fallback
+- setenv compat (IRIX lacks setenv, only has putenv)
+
+**lynx 2.9.2** — Text-mode web browser. Clean first-attempt build from upstream tarball.
+Referenced SGUG-RSE port (at `~/projects/github/sgug-rse/packages/lynx/`) for configure flags.
+Uses `--with-screen=ncurses --with-ssl --with-zlib --disable-nls --disable-ipv6`.
+
+**snownews 1.11** — Console RSS reader. Custom configure (not autoconf), multiple IRIX fixes:
+- `PKG_CONFIG_PATH` must be set explicitly (custom configure doesn't use `%configure`)
+- Shadow `libintl.h` with local stub — our libintl exports `bindtextdomain`, not `libintl_bindtextdomain`
+- `strsep`/`timegm` via mogrix compat (IRIX SVR4 lacks both, like Solaris)
+- `-std=c11` → `-std=gnu11` (Config.mk uses lowercase `cflags` not `CFLAGS`)
+- NLS disabled: empty `po/Module.mk` (no msgfmt during cross-build)
+
+### Critical fix: libssl.so.3 wrong NEEDED entry
+
+**Root cause**: `libssl.so.3.2.1` had `NEEDED: libcrypto.so.0.9.7` (IRIX native soname) instead of `NEEDED: libcrypto.so.3`. When OpenSSL was originally cross-compiled, irix-ld found `/opt/irix-sysroot/usr/lib32/libcrypto.so` (soname 0.9.7) during the libssl link.
+
+**Impact**: Any SSL app loads BOTH our libcrypto.so.3 AND IRIX native libcrypto.so.0.9.7 → SIGSEGV. This was the root cause of the telescope core dump.
+
+**PROPERLY FIXED (session 26)**: Root cause was irix-ld's shared lib case putting sysroot `-L` flags before build-system flags. Reordered `$filtered_args` before sysroot `-L` paths in `cross/bin/irix-ld` (matching the executable case). Rebuilt OpenSSL — libssl.so.3 now correctly has `NEEDED: libcrypto.so.3`. No more binary patching needed.
+
+### mogrix-smallweb suite bundle
+
+`mogrix-smallweb-1a-irix-bundle.tar.gz` (11.4 MB) containing:
+- **telescope** — Gemini/Gopher/Finger TUI browser
+- **gmi100** — Minimalist Gemini client
+- **tinc** — VPN daemon
+- **lynx** — Text-mode web browser
+- **snownews** — Console RSS reader
+- 20 shared RPMs (openssl, ncurses, curl, libxml2, libretls, bzip2, etc.)
+
+### Files created
+| File | Purpose |
+|------|---------|
+| `rules/packages/tinc.yaml` | IRIX device driver, configure fixes, pselect fallback |
+| `rules/packages/lynx.yaml` | Configure flags from SGUG-RSE reference |
+| `rules/packages/snownews.yaml` | PKG_CONFIG_PATH, strsep/timegm compat |
+| `specs/packages/tinc.spec` | Hand-written spec for tinc VPN |
+| `specs/packages/lynx.spec` | Hand-written spec for lynx browser |
+| `specs/packages/snownews.spec` | Hand-written spec with custom build steps |
+
+### Session 25: Inline code extraction (task #132 DONE)
+
+Extracted 330 lines of C source, headers, and shell scripts from YAML block scalars into proper files in `patches/packages/*/`. Each file referenced via `add_source` and `cp %{_sourcedir}/...` in prep_commands.
+
+| Package | File extracted | Lines | Destination during build |
+|---------|---------------|-------|--------------------------|
+| openssh | `explicit_bzero.irix.c` | 17 | `openbsd-compat/explicit_bzero.c` |
+| openssh | `digest-openssl.irix.c` | 180 | `digest-openssl.c` |
+| openssh | `charclass.irix.h` | 39 | `openbsd-compat/charclass.h` |
+| tinc | `irix-device.c` | 50 | `src/irix/device.c` |
+| telescope | `endian.irix.h` | 31 | `compat/endian.h` |
+| gnupg2 | `npth-config.irix.sh` | 13 | `npth-config-wrapper/npth-config` |
+
+**Not extracted** (kept as prep_commands): Complex perl/sed transforms that modify source in-place (openssh cipher.c dispatch, telescope d_type/clock_gettime/open_memstream patches, st.yaml X11R6.3 sed chains). These are build-time transformations, not standalone source files — they belong in prep_commands. Future improvement: convert these to proper diff patches.
+
+**Not extracted** (kept as spec_replacements): cmake cross-compilation blocks in rpm.yaml and tdnf.yaml. These are RPM spec fragments (cmake flags, make overrides), not source code. They correctly live in spec_replacements.
+
+### Session 26: Compat promotion + OpenSSL fix + bundle audit
+
+**Task #133 — Telescope SIGSEGV fix**: Fixed. Root cause: smallweb suite bundle had unpatched libssl.so.3. Verified TLS working on IRIX (gmi100 + curl + par trace).
+
+**Task #130 — Compat fixes promoted to generic infrastructure**:
+- **endian.h**: Added htobe/htole/bswap macros to `dicl-clang-compat/endian.h` (global)
+- **sys/time.h**: Added timersub/timeradd/timercmp/timerclear/timerisset (global)
+- **limits.h**: Added IOV_MAX=1024 (global)
+- **dprintf**: New compat function `compat/stdio/dprintf.c` + catalog entry
+- **open_memstream**: New compat function `compat/stdio/open_memstream.c` (uses funopen) + catalog entry
+- Updated telescope.yaml: removed inline timersub and IOV_MAX seds
+- Updated INDEX.md: 5 items marked as SOLVED
+
+**Task #131 — OpenSSL NEEDED properly fixed**:
+Root cause: `irix-ld`'s shared lib case put sysroot `-L` flags before `$filtered_args`, so GNU ld found IRIX's native `libcrypto.so.0.9.7` before the build directory's `libcrypto.so.3`. Fixed by reordering — `$filtered_args` now comes before sysroot `-L` paths (matching the executable/LLD case). Rebuilt OpenSSL, staged. No more binary patching needed.
+
+**Task #135 — Bundle audit**: Identified 20+ user-facing apps already built but not bundled. Suggested: mogrix-essentials (bash, less, coreutils, grep, sed, gawk, findutils, diffutils, tar, tree), mogrix-fun (cmatrix, figlet, sl), mogrix-net (curl, rsync, gnupg2).
+
+**Task #136 — Recreated smallweb bundle** (1b): Deployed to live IRIX, TLS verified.
+
+**DNS note**: IRIX chroot's getaddrinfo() doesn't resolve external hostnames (nslookup works, but programs using getaddrinfo fail). Workaround: add entries to `/opt/chroot/etc/hosts`. Live system DNS works fine.
+
+### Session 28: Telescope %zu SIGSEGV fixed + bundle ownership fix
+
+**Telescope %zu SIGSEGV — THE REAL FIX**: Session 27 was a false positive (SSH test without real TTY didn't exercise rendering code). The actual crash was caused by `%zu` format specifiers in telescope source code (ui.c:897, cmd.c:1128, session.c:187, xwrapper.c:37). IRIX libc is pre-C99 and `%zu` corrupts varargs → SIGSEGV. The rendering artifacts (`T~C` characters) the user saw were corrupted snprintf output.
+
+**Fix**: Added prep_command to `telescope.yaml`: `sed -i 's/%\([0-9]*\)z\([udx]\)/%\1\2/g' ui.c cmd.c session.c xwrapper.c` — removes the `z` length modifier, turning `%zu`→`%u`, `%zd`→`%d`, `%zx`→`%x` (size_t = unsigned int on IRIX n32). Verified: binary has zero `%zu` strings, telescope runs 8+ seconds on live IRIX with gemini:// URL loaded. Bundle `mogrix-smallweb-1f` deployed and tested.
+
+**Bundle ownership fix**: Tarballs were extracting with ownership 1000:1000 (Linux UID). Fixed by adding `--owner=0 --group=0` to tar command in `bundle.py`. Verified: files extract as root:sys on IRIX.
+
+**Bundle tar fix**: `--format=v7` wasn't compatible with `czf` (combined option). Fixed to `-czf` (with dash).
+
+### Session 27: MCP server v2.1.0 + IRIX tar discovery
+
+**IRIX MCP server v2.1.0** — three improvements:
+1. **`irix_host_exec` tool**: Run allowlisted commands on the live IRIX host outside the chroot. Needed for bundle deployment, host filesystem inspection, and live system debugging. Allowlist: ls, cat, cp, mv, tar, chmod, elfdump, par, rpm, etc. Path safety: blocks writes to system dirs (/bin, /usr/sgug, /etc, etc.).
+2. **Fixed par flags**: Was `-SICals` (wrong), now `-s -SS -l -i` (correct IRIX par flags).
+3. **Path checker fix**: Dangerous path regex now requires whitespace before path (prevents `_bin` matching `/bin`).
+
+**IRIX tar discovery** — critical for bundle deployment:
+- IRIX tar does NOT support `-C` (change directory) — silently ignored!
+- IRIX tar does NOT support `-z` (gzip) — must gunzip separately
+- IRIX tar does NOT support GNU/pax tar format — silently fails to extract
+- **Fix**: `bundle.py` now creates tarballs with `--format=v7`
+- **Fix**: Install instructions updated: `gunzip foo.tar.gz && tar xf foo.tar` (no `-C`)
+
+**Files modified**:
+| File | Change |
+|------|--------|
+| `tools/irix-mcp-server.py` | v2.1.0: irix_host_exec, par flag fix, path checker fix |
+| `mogrix/bundle.py` | `--format=v7` for IRIX-compatible tarballs, install instructions |
+| `rules/packages/telescope.yaml` | Removed debug markers (clean) |
+| `rules/methods/irix-testing.md` | IRIX tar limitations documented |
+
+### Pending tasks (priority order)
+- **#134**: Add tinc bundle config guide for IRIX networking
+- Create new bundles: mogrix-essentials, mogrix-fun, mogrix-net
+- **Optional**: Build gmid (Gemini server) and gophernicus (Gopher server)
 
 ---
 
@@ -504,7 +635,7 @@ Also completed: libxslt, giflib, libstrophe (sockaddr_storage fix).
 
 ## Package Status
 
-**Total: 93 source packages (260+ RPMs)**
+**Total: 96 source packages (270+ RPMs)**
 
 ### Phases 1-4c: 41 packages (ALL INSTALLED)
 Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3) + utilities (9).
@@ -565,7 +696,10 @@ Bootstrap (14) + system libs (2) + build tools (6) + crypto (7) + text tools (3)
 | **qt5-qtbase** | **5.15.13** | **INSTALLED+VERIFIED** | **Qt5 running on IRIX! Preload: Core+harfbuzz. GOT counts under 4370** |
 | **gmi100** | **3.2** | **BUILT+INSTALLED** | **First upstream package. Single-file Gemini client, err.h compat** |
 | **libretls** | **3.8.1** | **INSTALLED** | **libtls on OpenSSL. IRIX arc4random/getentropy/MAP_ANON compat** |
-| **telescope** | **0.11** | **INSTALLED+VERIFIED** | **Flagship Gemini TUI! 12+ IRIX fixes, bundled libgrapheme cross-compiled** |
+| **telescope** | **0.11** | **BUNDLED+VERIFIED** | **Flagship Gemini TUI! 12+ IRIX fixes, bundled libgrapheme cross-compiled** |
+| **tinc** | **1.0.36** | **BUNDLED** | **VPN daemon. IRIX dummy device driver, pselect fallback, disable-hardening** |
+| **lynx** | **2.9.2** | **BUNDLED** | **Text-mode web browser. Clean build from upstream, SGUG-RSE flags reference** |
+| **snownews** | **1.11** | **BUNDLED** | **RSS reader. Shadow libintl.h, strsep/timegm compat, custom configure** |
 
 ---
 
@@ -646,10 +780,14 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **Old `/opt/cross/bin/irix-ld` crashes executables** — The simple GNU ld wrapper produces `MIPS_OPTIONS` tags that crash IRIX rld. Always use `/opt/sgug-staging/usr/sgug/bin/irix-ld` (LLD 18).
 - **GLib quark table warnings** — `g_hash_table_lookup: assertion 'hash_table != NULL' failed` on IRIX startup. Non-fatal but indicates .init constructor ordering issue. May need investigation for future glib2-dependent apps.
 - **fdopendir missing on IRIX** — compat provides AT_FDCWD but not fdopendir. Code guarded by `#ifdef AT_FDCWD` must add `&& !defined(__sgi)`.
+- **libssl.so.3 wrong NEEDED libcrypto.so.0.9.7** — irix-ld found IRIX native libcrypto during original OpenSSL build. **FIXED (session 26)**: reordered `-L` flags in irix-ld. Rebuilt OpenSSL properly.
+- **Config.mk sed patterns must match actual file format** — snownews uses tabs+`:=` not spaces+`=`. `^CFLAGS\t.*` never matched because variable is `cflags` (lowercase). Always inspect generated Config.mk before writing sed patterns.
+- **Fedora archives 503** — archives.fedoraproject.org returning HTTP 503 for SRPM downloads. Use `mogrix create-srpm` with `upstream:` block pointing to project's tarball URL instead.
+- **`-include` doesn't shadow `#include`** — `-include nls-stub.h` is processed before all other headers, but a later `#include <libintl.h>` redefines the macros. Must shadow by creating a local `libintl.h` in a higher-priority include directory.
 
 ---
 
-## What Worked (Sessions 14-18)
+## What Worked (Sessions 14-24)
 
 - **`--dynamic-list` for plugin symbol export**: `--export-dynamic` exports ALL symbols (887) → rld SIGSEGV. `--dynamic-list` exports only the 48 symbols the plugin needs (365 total) → works. Create .list file: `readelf -sW plugin.so | grep UND` to find needed symbols.
 - **`MOGRIX_ALLOW_EXPORT_DYNAMIC` env var in irix-ld**: Makes `--export-dynamic` opt-in instead of silently dropped. Safe default (filtered) with escape hatch when needed.
@@ -667,7 +805,14 @@ uv run mogrix stage ~/mogrix_outputs/RPMS/<pkg>*.rpm
 - **LLD for `ld -r` partial linking**: GNU ld's `-r` output has symbols with binding 0 that LLD rejects. Using LLD for both `ld -r` and final link avoids incompatibility.
 - **Inject into Makefile.settings post-configure**: For non-autotools builds with custom configure, append to Makefile.settings after configure runs (e.g., `echo "EFLAGS += ..." >> Makefile.settings`).
 
-## What Failed / Gotchas (Sessions 14-18)
+- **Shadow `libintl.h` for gettext prefix mismatch**: Our libintl exports `bindtextdomain`, but `<libintl.h>` maps to `libintl_bindtextdomain`. Create local `libintl.h` stub with no-op macros, add via `-I$(pwd)/nls-stub` in CFLAGS. Prevents system `<libintl.h>` from being included.
+- **PKG_CONFIG_PATH for custom configure packages**: Non-autoconf packages don't use `%configure` which auto-sets PKG_CONFIG_PATH. Must set it explicitly via `export_vars` in YAML.
+- **Config.mk lowercase variable names**: snownews uses `cflags` not `CFLAGS`, `ldflags` not `LDFLAGS`, `libs` not `LIBS`. Config.mk appends `${CFLAGS}` and `${LDFLAGS}` from env, so export_vars work. But `libs` is separate — must sed to append compat library.
+- **SGUG-RSE as reference**: Checking `~/projects/github/sgug-rse/packages/<name>/` for prior port work saves time. Don't copy patches (different versions), but reuse configure flags and fix patterns.
+- **IRIX dummy device driver for tinc**: IRIX has no TUN/TAP. Created minimal `os_devops` struct with read/write no-ops. Added AM_CONDITIONAL via prep_commands.
+- **Binary patching ELF NEEDED**: Replace soname string in `.dynstr` section with null-padded shorter string. Works for quick fixes but proper rebuild is better.
+
+## What Failed / Gotchas (Sessions 14-24)
 
 - **configure_flags: remove on inline conditionals**: Leaves orphaned `\` on `%endif` lines. Solution: bcond flipping.
 - **Symlink hack for OpenSSL sonames**: Wrong approach — fixed root cause by rebuilding.

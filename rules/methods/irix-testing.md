@@ -9,12 +9,29 @@
 
 | Property | Value |
 |----------|-------|
-| SSH | `ssh root@192.168.0.81` |
-| Hostname | `blue` |
+| Hostname | `blue` / `192.168.0.81` |
 | IRIX version | 6.5.30 |
 | Machine | SGI Octane (IP30) |
 | Chroot | `/opt/chroot` |
 | SGUG-RSE | `/usr/sgug` (existing rpm 4.15.0) |
+
+### Always Use MCP Tools
+
+**NEVER use raw SSH to IRIX.** Use MCP tools for all IRIX interaction:
+
+| Tool | Purpose |
+|------|---------|
+| `irix_exec "command"` | Run a command in the chroot |
+| `irix_host_exec "command"` | Run a safe command on the live host (outside chroot) |
+| `irix_copy_to local remote` | Copy a file to IRIX chroot |
+| `irix_read_file path` | Read a file from IRIX chroot |
+| `irix_par "command"` | Run par (syscall trace) on a command |
+
+`irix_host_exec` has a command allowlist (ls, tar, cp, mkdir, etc.) and blocks writes to system paths. Use it for bundle extraction, inspecting the live system, or managing user directories.
+
+**Fallback** (if MCP is down): `tools/irix-exec.sh "command"` — uses the same chroot+sgug-exec pattern via SSH.
+
+Test MCP at session start: `irix_exec "echo ok"`
 
 ---
 
@@ -22,15 +39,7 @@
 
 ### IRIX Default Shell is csh
 
-When you SSH in, you're in csh (C shell). **Always use `/bin/sh` for scripts.**
-
-```bash
-# CORRECT - explicitly invoke /bin/sh:
-ssh root@192.168.0.81 "/bin/sh -c 'export FOO=bar; echo \$FOO'"
-
-# WRONG - relies on csh which doesn't understand export:
-ssh root@192.168.0.81 "export FOO=bar"
-```
+All MCP tools and `irix-exec.sh` run commands via `/bin/sh` inside the chroot — you don't need to worry about csh. But if you ever end up in an interactive IRIX session, remember csh is the default.
 
 ### Bashisms That Don't Work
 
@@ -114,36 +123,42 @@ ln -sf /opt/chroot/usr/sgug/lib32/rpm /usr/sgug/lib32/rpm
 
 ## Test Patterns
 
-### Pattern 1: Quick Single Command
+### Pattern 1: Quick Single Command (MCP)
 
 ```bash
-ssh root@192.168.0.81 "/bin/sh -c '/opt/chroot/usr/sgug/bin/sgug-exec /opt/chroot/usr/sgug/bin/rpm --version'"
+# Via MCP tool (preferred)
+irix_exec "rpm --version"
+
+# Via fallback script
+tools/irix-exec.sh "rpm --version"
 ```
 
-### Pattern 2: Script-Based Test
+### Pattern 2: Copy File and Test (MCP)
 
 ```bash
-# Create test script locally
-cat > /tmp/test.sh << 'EOF'
-#!/bin/sh
-/opt/chroot/usr/sgug/bin/sgug-exec /opt/chroot/usr/sgug/bin/tdnf -c /opt/chroot/etc/tdnf/tdnf.conf --installroot=/opt/chroot repolist
-echo "Exit code: $?"
-EOF
+# Copy RPM to IRIX chroot
+irix_copy_to /path/to/package.rpm /tmp/package.rpm
 
-# Copy and run
-scp /tmp/test.sh root@192.168.0.81:/tmp/
-ssh root@192.168.0.81 "/bin/sh /tmp/test.sh"
+# Install and test
+irix_exec "rpm -Uvh --nodeps /tmp/package.rpm"
+irix_exec "/usr/sgug/bin/some-binary --version"
 ```
 
-### Pattern 3: Interactive Chroot
+### Pattern 3: Read Files from IRIX (MCP)
 
 ```bash
-ssh root@192.168.0.81
-chroot /opt/chroot /bin/sh
-export LD_LIBRARYN32_PATH=/usr/sgug/lib32
-export PATH=/usr/sgug/bin:$PATH
-rpm --version
+# Read a config file or log
+irix_read_file /usr/sgug/etc/tdnf/tdnf.conf
 ```
+
+### Pattern 4: Syscall Tracing (MCP)
+
+```bash
+# Trace a command with par
+irix_par "/usr/sgug/bin/some-binary --version"
+```
+
+Note: All MCP tools run inside the chroot with sgug-exec — LD_LIBRARYN32_PATH and PATH are set automatically.
 
 ---
 
@@ -152,11 +167,14 @@ rpm --version
 `par` is IRIX's strace equivalent:
 
 ```bash
-# Trace system calls (inside chroot)
-/usr/sgug/bin/sgug-exec par -s /usr/sgug/bin/tdnf repolist > /tmp/par_out.txt 2>&1
+# Trace system calls (via MCP)
+irix_par "/usr/sgug/bin/tdnf repolist"
 
-# Copy trace to Linux for analysis
-scp root@192.168.0.81:/opt/chroot/tmp/par_out.txt /tmp/
+# Or manually with output redirect:
+irix_exec "par -s /usr/sgug/bin/tdnf repolist > /tmp/par_out.txt 2>&1"
+
+# Read trace output on Linux for analysis
+irix_read_file /tmp/par_out.txt
 ```
 
 ### Reading par Output
@@ -286,7 +304,9 @@ EOF
 # Create tarball
 tar cvf ../tdnf-chroot-bundle.tar usr var
 gzip ../tdnf-chroot-bundle.tar
-scp ../tdnf-chroot-bundle.tar.gz root@192.168.0.81:/tmp/
+
+# Copy to IRIX (via MCP or fallback)
+irix_copy_to ../tdnf-chroot-bundle.tar.gz /tmp/tdnf-chroot-bundle.tar.gz
 ```
 
 ### Installing on IRIX
@@ -321,11 +341,34 @@ Inside the chroot:
 
 ---
 
-## Creating Repos for IRIX
+## IRIX tar Limitations
 
-**IMPORTANT**: Always use `--simple-md-filenames` with createrepo_c.
+IRIX tar is NOT GNU tar. Critical differences:
 
-IRIX tar doesn't support GNU long filename extensions. Without this flag, filenames like `a05ec0b1a1165abf978441a5654b86afd1bd380d19a2dede505e1a7dfd561a02-primary.xml.gz` get corrupted during extraction (the file mode gets appended to the filename).
+| Feature | IRIX tar | GNU tar |
+|---------|----------|---------|
+| `-C dir` (change directory) | **Not supported** — silently ignored | Works |
+| `-z` (gzip) | **Not supported** | Works |
+| GNU/pax extensions | **Silently fails** — extracts nothing | Works |
+| Long filenames (>100 chars) | Corrupts (appends mode to name) | Works |
+
+### Creating tarballs for IRIX
+
+Always use `--format=v7` when creating tarballs on Linux for IRIX:
+
+```bash
+# CORRECT — v7 format that IRIX tar understands
+tar --format=v7 -cf bundle.tar bundle-dir/
+gzip bundle.tar
+
+# On IRIX — must gunzip separately, no -C flag
+gunzip bundle.tar.gz
+tar xf bundle.tar           # extracts to cwd!
+```
+
+### Creating repos for IRIX
+
+Always use `--simple-md-filenames` with createrepo_c:
 
 ```bash
 # CORRECT - simple filenames that IRIX tar can handle
@@ -340,18 +383,21 @@ createrepo_c /path/to/repo
 ## Quick Reference
 
 ```bash
-# Connect
-ssh root@192.168.0.81
+# Run a command (MCP — preferred)
+irix_exec "command"
 
-# Enter SGUG environment
-/usr/sgug/bin/sgugshell
+# Copy a file to IRIX (MCP)
+irix_copy_to local_path /remote/path
 
-# Run chroot binary from base
-/opt/chroot/usr/sgug/bin/sgug-exec /opt/chroot/usr/sgug/bin/CMD
+# Read a file from IRIX (MCP)
+irix_read_file /path/on/irix
 
-# Copy file to chroot
-scp file root@192.168.0.81:/opt/chroot/tmp/
+# Syscall trace (MCP)
+irix_par "command"
+
+# Fallback (if MCP is down)
+tools/irix-exec.sh "command"
 
 # Check library dependencies
-elfdump -Dl /path/to/binary
+irix_exec "elfdump -Dl /path/to/binary"
 ```

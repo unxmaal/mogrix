@@ -17,6 +17,9 @@ add_patch:
   # but gettime.c only includes util.h. On Linux this codepath is dead.
   - gnupg2-gettime-sysutils-include.patch
 
+add_source:
+  - npth-config.irix.sh
+
 rules:
   # Compat functions needed (dlmalloc requires matching strdup/strndup)
   inject_compat_functions:
@@ -51,28 +54,13 @@ rules:
   # npth-config doesn't exist in FC40's npth package (only .pc file).
   # gnupg2's configure uses AM_PATH_NPTH which requires npth-config or gpgrt-config.
   # gpgrt-config can't find modules because irix-cc doesn't support -print-search-dirs.
-  # Solution: create a minimal npth-config wrapper during %prep.
+  # Solution: copy a minimal npth-config wrapper during %prep.
+  # Source: patches/packages/gnupg2/npth-config.irix.sh
   # Remove tests from build (gpgscm uses -imacros flag that lld rejects)
   prep_commands:
     - sed -i 's/\${tests}//' Makefile.in
-    - |
-      mkdir -p npth-config-wrapper
-      cat > npth-config-wrapper/npth-config << 'NPTHEOF'
-      #!/bin/sh
-      prefix=/usr/sgug
-      exec_prefix=/usr/sgug
-      libdir=/usr/sgug/lib32
-      includedir=/usr/sgug/include
-      case "$1" in
-        --version) echo "1.7" ;;
-        --cflags) echo "-I${includedir}" ;;
-        --libs) echo "-L${libdir} -lnpth -lpthread" ;;
-        --api-version) echo "1" ;;
-        --host) echo "mips-unknown-irix6.5" ;;
-        *) echo "Usage: npth-config [--version|--cflags|--libs|--api-version|--host]" >&2 ;;
-      esac
-      NPTHEOF
-      chmod +x npth-config-wrapper/npth-config
+    - "mkdir -p npth-config-wrapper"
+    - "cp %{_sourcedir}/npth-config.irix.sh npth-config-wrapper/npth-config && chmod +x npth-config-wrapper/npth-config"
 
   export_vars:
     NPTH_CONFIG: "$(pwd)/npth-config-wrapper/npth-config"

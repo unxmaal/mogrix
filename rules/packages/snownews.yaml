@@ -1,0 +1,23 @@
+package: snownews
+upstream:
+  url: https://sourceforge.net/projects/snownews/files/snownews-1.11.tar.gz/download
+  version: "1.11"
+  type: tarball
+  build_system: makefile
+  license: GPLv3
+  summary: "Console RSS reader"
+  source_dir: snownews-1.11
+rules:
+  inject_compat_functions:
+    - getopt_long
+    - strdup
+    - strndup
+    - setenv
+    - strsep
+    - timegm
+  explicit_provides:
+    - "snownews"
+  export_vars:
+    # Custom configure doesn't use %configure, so PKG_CONFIG_PATH
+    # isn't set automatically. Point to our staging pkgconfig.
+    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
