@@ -1,0 +1,241 @@
+TINC VPN ON IRIX — SETUP GUIDE
+===============================
+
+tinc 1.0.36 cross-compiled for IRIX 6.5 (MIPS n32) by mogrix.
+
+IMPORTANT LIMITATIONS
+---------------------
+
+IRIX 6.5 has NO TUN/TAP device driver. tinc uses a dummy device
+driver that accepts but discards packets. This means:
+
+  * tinc CAN establish encrypted connections between nodes
+  * tinc CAN authenticate peers via RSA keys
+  * tinc CANNOT create a virtual network interface
+  * tinc CANNOT route IP traffic through a tunnel
+
+In practice, tinc on IRIX is useful as an encrypted TCP relay or
+for mesh network membership (so other nodes know the IRIX box
+exists), but not for full VPN routing.
+
+If you need to proxy traffic, use tinc's Proxy option or combine
+with SSH port forwarding.
+
+
+QUICK START: TWO-NODE SETUP (IRIX + Linux)
+-------------------------------------------
+
+This example sets up a tinc network called "mogrix" between:
+  - "gateway" (Linux box, public IP or LAN)
+  - "octane" (SGI IRIX box, connects to gateway)
+
+
+STEP 1: Create config directory structure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On the IRIX box (assuming bundle at /opt/mogrix-apps/tinc-*):
+
+    TINC_HOME=/usr/people/edodd/tinc
+    mkdir -p $TINC_HOME/mogrix/hosts
+
+On the Linux gateway:
+
+    sudo mkdir -p /etc/tinc/mogrix/hosts
+
+
+STEP 2: Generate RSA keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On Linux (easier — has /dev/urandom, interactive prompts work):
+
+    # Generate gateway keys
+    sudo tincd -n mogrix -K 2048
+
+    # Generate octane keys (we'll copy them to IRIX)
+    mkdir /tmp/octane-keys
+    tincd -n mogrix -K 2048 \
+        --config=/tmp/octane-keys
+
+This creates rsa_key.priv (private) and puts the public key
+into the host file.
+
+Alternatively, generate keys ON the IRIX box:
+
+    BUNDLE=/opt/mogrix-apps/tinc-*-irix-bundle
+    $BUNDLE/tincd -n mogrix -K 2048 \
+        --config=$TINC_HOME/mogrix
+
+Note: key generation on IRIX uses /dev/urandom via our compat
+getentropy implementation. It works but may be slow on older
+hardware.
+
+
+STEP 3: Configure the Linux gateway
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/etc/tinc/mogrix/tinc.conf:
+
+    Name = gateway
+    Device = /dev/net/tun
+    AddressFamily = ipv4
+    Mode = switch
+    ConnectTo = octane
+
+/etc/tinc/mogrix/hosts/gateway:
+
+    Address = 192.168.1.100
+    Port = 655
+    Subnet = 10.0.0.1/32
+    -----BEGIN RSA PUBLIC KEY-----
+    (paste gateway's public key here)
+    -----END RSA PUBLIC KEY-----
+
+/etc/tinc/mogrix/tinc-up:
+
+    #!/bin/sh
+    ip addr add 10.0.0.1/24 dev $INTERFACE
+    ip link set $INTERFACE up
+
+/etc/tinc/mogrix/tinc-down:
+
+    #!/bin/sh
+    ip link set $INTERFACE down
+
+    chmod +x /etc/tinc/mogrix/tinc-up /etc/tinc/mogrix/tinc-down
+
+
+STEP 4: Configure the IRIX node
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+$TINC_HOME/mogrix/tinc.conf:
+
+    Name = octane
+    DeviceType = dummy
+    Mode = switch
+    ConnectTo = gateway
+
+The critical line is "DeviceType = dummy" — this tells tinc to
+use the dummy device driver instead of trying to open /dev/tun.
+
+$TINC_HOME/mogrix/hosts/octane:
+
+    Address = 192.168.1.81
+    Port = 655
+    Subnet = 10.0.0.2/32
+    -----BEGIN RSA PUBLIC KEY-----
+    (paste octane's public key here)
+    -----END RSA PUBLIC KEY-----
+
+tinc-up and tinc-down scripts (IRIX /bin/sh syntax):
+
+$TINC_HOME/mogrix/tinc-up:
+
+    #!/bin/sh
+    # IRIX: no tun device, nothing to configure
+    # If you had a real interface, IRIX ifconfig syntax is:
+    #   /usr/etc/ifconfig $INTERFACE 10.0.0.2 netmask 255.255.255.0 up
+
+$TINC_HOME/mogrix/tinc-down:
+
+    #!/bin/sh
+    # IRIX: nothing to tear down
+
+    chmod 755 $TINC_HOME/mogrix/tinc-up $TINC_HOME/mogrix/tinc-down
+
+
+STEP 5: Exchange host files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Copy the host files between nodes. Each node needs the other's
+host file (which contains the public key).
+
+    # On Linux — copy octane's host file
+    scp edodd@192.168.1.81:$TINC_HOME/mogrix/hosts/octane \
+        /etc/tinc/mogrix/hosts/
+
+    # On IRIX — copy gateway's host file
+    scp root@192.168.1.100:/etc/tinc/mogrix/hosts/gateway \
+        $TINC_HOME/mogrix/hosts/
+
+
+STEP 6: Start tinc
+~~~~~~~~~~~~~~~~~~~
+
+On Linux:
+
+    sudo tincd -n mogrix -D     # foreground (debug)
+    sudo tincd -n mogrix        # daemon mode
+
+On IRIX:
+
+    BUNDLE=/opt/mogrix-apps/tinc-*-irix-bundle
+    $BUNDLE/tincd -n mogrix -D \
+        --config=$TINC_HOME/mogrix
+
+    # Or in daemon mode:
+    $BUNDLE/tincd -n mogrix \
+        --config=$TINC_HOME/mogrix
+
+Add -d 5 for verbose debug output.
+
+
+STEP 7: Verify connection
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On either node, check the log output for:
+
+    Connected to gateway
+    ...
+    octane is reachable
+
+With -D -d 3 you'll see the RSA handshake and connection
+establishment.
+
+
+IRIX-SPECIFIC NOTES
+-------------------
+
+Paths:
+  tinc on IRIX looks for configs in /usr/sgug/etc/tinc/ by
+  default (the --sysconfdir from the build). Override with
+  --config= or --net= flags.
+
+Shell scripts:
+  Always use #!/bin/sh (not #!/bin/bash). IRIX default shell
+  is /bin/sh (SVR4 Bourne shell). Do not use bashisms.
+
+Firewall:
+  IRIX 6.5 has ipfilterd. To allow tinc traffic:
+    - Port 655/tcp and 655/udp (default tinc port)
+    - Or whatever port you configure in the host file
+
+ifconfig:
+  IRIX ifconfig syntax differs from Linux:
+    Linux:  ip addr add 10.0.0.2/24 dev tun0
+    IRIX:   /usr/etc/ifconfig tun0 10.0.0.2 netmask 255.255.255.0 up
+  (Moot point since we use dummy device, but noted for reference.)
+
+DNS:
+  If tinc uses hostnames in Address= lines, ensure /etc/resolv.conf
+  is configured. IRIX's resolver works but the chroot may not have
+  proper DNS config.
+
+
+TROUBLESHOOTING
+---------------
+
+"Error while reading ... private RSA key"
+  -> Key file permissions must be 600:
+     chmod 600 $TINC_HOME/mogrix/rsa_key.priv
+
+"Cannot open TUN/TAP device"
+  -> Add "DeviceType = dummy" to tinc.conf
+
+"Connection refused"
+  -> Check that the other node's tincd is running
+  -> Check firewall rules (port 655)
+  -> Check that Address= in host files is correct
+
+"getentropy" error
+  -> Make sure you're using the mogrix-built tinc bundle
+     (not an older version without the getentropy fix)

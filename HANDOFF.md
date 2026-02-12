@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-12 (session 28)
-**Status**: 96+ source packages cross-compiled (270+ RPMs). **Smallweb suite complete!** 5 apps bundled: telescope, gmi100, tinc, lynx, snownews. TLS verified working on IRIX. libssl NEEDED properly fixed. Telescope %zu SIGSEGV fixed — runs stable on live IRIX.
+**Last Updated**: 2026-02-12 (session 29)
+**Status**: 96+ source packages cross-compiled (270+ RPMs). **7 suite bundles shipped!** mogrix-smallweb (telescope, gmi100, lynx, snownews), mogrix-fun (cmatrix, figlet, sl), mogrix-essentials (nano, grep, sed, gawk, less, coreutils, findutils, diffutils, tar, tree), mogrix-net (curl, rsync, gnupg2). All verified on live IRIX.
 
 ---
 
@@ -40,9 +40,17 @@
 | gmid | GitHub (omar-polo/gmid) | Not started | Gemini server (optional, lower priority) |
 | gophernicus | GitHub (gophernicus/gophernicus) | Not started | Gopher server (optional, lower priority) |
 
-**Suite bundle:** `mogrix-smallweb-1f-irix-bundle.tar.gz` (11.1 MB) — telescope, gmi100, lynx, snownews with 19 shared RPMs. Telescope %zu fix verified on live IRIX.
+**Suite bundle:** `mogrix-smallweb-1i-irix-bundle.tar.gz` (11.1 MB) — telescope, gmi100, lynx, snownews with 19 shared RPMs. Telescope %zu fix verified on live IRIX.
 
 Already built: sqlite3, libxml2, libunistring, pcre2 (deps). libevent built but not staged.
+
+### New bundles (session 29) — ALL VERIFIED ON IRIX
+
+| Bundle | Size | Apps | Status |
+|--------|------|------|--------|
+| **mogrix-fun** | 0.6 MB | cmatrix, figlet, sl | Verified: figlet ASCII art, cmatrix -V, sl runs |
+| **mogrix-essentials** | 24 MB | nano, less, coreutils, grep, sed, gawk, findutils, diffutils, tar, tree | 120+ commands, all tested |
+| **mogrix-net** | 20.8 MB | curl 8.6.0, rsync 3.2.7, gnupg2 2.4.4 + bzip2, openssl, xz, zstd | All TLS/crypto apps tested |
 
 ### Other priorities (parked)
 - **Qt5 GUI app** — Qt5 loads on IRIX but no GUI app tested yet. Parked in favor of smallweb.
@@ -143,15 +151,53 @@ Root cause: `irix-ld`'s shared lib case put sysroot `-L` flags before `$filtered
 
 **DNS note**: IRIX chroot's getaddrinfo() doesn't resolve external hostnames (nslookup works, but programs using getaddrinfo fail). Workaround: add entries to `/opt/chroot/etc/hosts`. Live system DNS works fine.
 
-### Session 28: Telescope %zu SIGSEGV fixed + bundle ownership fix
+### Session 29: Three new bundles + bundle.py fixes
 
-**Telescope %zu SIGSEGV — THE REAL FIX**: Session 27 was a false positive (SSH test without real TTY didn't exercise rendering code). The actual crash was caused by `%zu` format specifiers in telescope source code (ui.c:897, cmd.c:1128, session.c:187, xwrapper.c:37). IRIX libc is pre-C99 and `%zu` corrupts varargs → SIGSEGV. The rendering artifacts (`T~C` characters) the user saw were corrupted snprintf output.
+**Three bundles created and deployed to IRIX:**
+- **mogrix-fun** (0.6 MB) — cmatrix, figlet, sl. 7 RPMs, ncurses shared.
+- **mogrix-essentials** (24 MB) — nano, less, grep, sed, gawk, coreutils, findutils, diffutils, tar, tree. 14 RPMs, 120+ commands installed to `~/apps/bin/`.
+- **mogrix-net** (20.8 MB) — curl (OpenSSL TLS), rsync, gnupg2 + bzip2, openssl, xz, zstd. 22 RPMs.
 
-**Fix**: Added prep_command to `telescope.yaml`: `sed -i 's/%\([0-9]*\)z\([udx]\)/%\1\2/g' ui.c cmd.c session.c xwrapper.c` — removes the `z` length modifier, turning `%zu`→`%u`, `%zd`→`%d`, `%zx`→`%x` (size_t = unsigned int on IRIX n32). Verified: binary has zero `%zu` strings, telescope runs 8+ seconds on live IRIX with gemini:// URL loaded. Bundle `mogrix-smallweb-1f` deployed and tested.
+**bundle.py fixes:**
+1. **Symlink crash** — `os.walk` + `chmod` crashed on broken symlinks (e.g., gawk `libexec/gawk` symlink). Fix: skip symlinks in the permissions-fixing loop.
+2. **figlet font path** — figlet compiled with `/usr/sgug/share/figlet` as default font dir, but bundle puts fonts in `share/figlet/`. Fix: auto-detect `share/figlet/` and set `FIGLET_FONTDIR` in wrapper scripts.
+3. **MCP server task #49 closed** — v2.1.0 already implements all planned improvements (SSH ControlMaster, no stderr, error responses, auto-reconnect, SIGTERM handler). Task was stale.
 
-**Bundle ownership fix**: Tarballs were extracting with ownership 1000:1000 (Linux UID). Fixed by adding `--owner=0 --group=0` to tar command in `bundle.py`. Verified: files extract as root:sys on IRIX.
+**Files modified:**
+| File | Change |
+|------|--------|
+| `mogrix/bundle.py` | Symlink skip in chmod loop, FIGLET_FONTDIR auto-detection |
 
-**Bundle tar fix**: `--format=v7` wasn't compatible with `czf` (combined option). Fixed to `-czf` (with dash).
+**Deployed on IRIX** (`/usr/people/edodd/apps/`):
+- `mogrix-fun-1b-irix-bundle` — figlet, cmatrix, sl all working
+- `mogrix-essentials-1b-irix-bundle` — nano, grep, sed, gawk, less, tree all working
+- `mogrix-net-1a-irix-bundle` — curl 8.6.0, rsync 3.2.7, gpg 2.4.4 all working
+
+### Session 28: Telescope %zu + UTF-8 + getentropy fixes + tinc guide
+
+**Telescope %zu SIGSEGV — THE REAL FIX**: Session 27 was a false positive (SSH test without real TTY didn't exercise rendering code). The actual crash was caused by `%zu` format specifiers in telescope source code (ui.c:897, cmd.c:1128, session.c:187, xwrapper.c:37). IRIX libc is pre-C99 and `%zu` corrupts varargs → SIGSEGV. Fix: `sed -i 's/%\([0-9]*\)z\([udx]\)/%\1\2/g'` in telescope.yaml. Verified: telescope runs stable on live IRIX.
+
+**Telescope UTF-8 glyph fix**: IRIX terminals don't support UTF-8. Telescope uses Unicode UI glyphs (tab separator `┃`, bullet `•`, horizontal rule `─`, arrow `→`). Fix: perl replacement in telescope.yaml converts to ASCII equivalents (`|`, `*`, `-`, `->`).
+
+**libretls getentropy fix**: `libtls.so.28` had `getentropy` as UND (undefined). Root cause: libretls's Makefile.am puts compat getentropy under `if HOST_LINUX`, but cross-compiling for IRIX means no HOST_ conditional matches. Fix: perl -0777 strips the `if HOST_LINUX`/`endif` around getentropy_irix.c in libretls.yaml. Verified: getentropy now defined (532 bytes) in libtls.so.28.
+
+**Bundle ownership fix**: Tarballs extracted with ownership 1000:1000 (Linux UID). Fixed: `--owner=0 --group=0` in bundle.py tar command.
+
+**Bundle permissions fix**: RPM extraction preserved restrictive modes (700 dirs, 600 files). Fixed: `os.walk` chmod in bundle.py makes everything world-readable.
+
+**Bundle tar fix**: `--format=v7` wasn't compatible with `czf` (combined option). Fixed to `-czf`.
+
+**Tinc IRIX guide**: Created `docs/tinc-irix-guide.txt` with full two-node setup (IRIX + Linux), key generation, config files, IRIX-specific notes (dummy device, ifconfig syntax, shell caveats). Bundle.py now copies matching docs into bundles. tinc-1.0.36-1b bundle includes the guide.
+
+**Files modified**:
+| File | Change |
+|------|--------|
+| `rules/packages/telescope.yaml` | `%zu` fix, UTF-8 glyph → ASCII replacement |
+| `rules/packages/libretls.yaml` | Strip HOST_LINUX conditional around getentropy |
+| `mogrix/bundle.py` | ownership, permissions, tar flag, doc copy mechanism |
+| `docs/tinc-irix-guide.txt` | Tinc VPN setup guide for IRIX |
+
+**Current bundle**: `mogrix-smallweb-1i-irix-bundle` (11.1 MB) — telescope, gmi100, lynx, snownews. All tested on live IRIX.
 
 ### Session 27: MCP server v2.1.0 + IRIX tar discovery
 
@@ -176,9 +222,9 @@ Root cause: `irix-ld`'s shared lib case put sysroot `-L` flags before `$filtered
 | `rules/methods/irix-testing.md` | IRIX tar limitations documented |
 
 ### Pending tasks (priority order)
-- **#134**: Add tinc bundle config guide for IRIX networking
-- Create new bundles: mogrix-essentials, mogrix-fun, mogrix-net
 - **Optional**: Build gmid (Gemini server) and gophernicus (Gopher server)
+- **Optional**: Build vim, tmux, man-db, jq for additional essentials
+- **Qt5 pipeline**: Build qtermwidget5 + qterminal (tasks #37, #38, #46)
 
 ---
 

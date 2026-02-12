@@ -762,6 +762,13 @@ class BundleBuilder:
                 'FONTCONFIG_FILE="$dir/etc/fonts/fonts.conf"'
             )
             extra_env_lines.append("export FONTCONFIG_FILE")
+        # figlet: FIGLET_FONTDIR so bundled fonts are found
+        figlet_fonts = bundle_dir / "share" / "figlet"
+        if figlet_fonts.is_dir():
+            extra_env_lines.append(
+                'FIGLET_FONTDIR="$dir/share/figlet"'
+            )
+            extra_env_lines.append("export FIGLET_FONTDIR")
         # CA certificate bundle — set env var + weechat gnutls_ca_user
         ca_bundle = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
         if ca_bundle.is_file():
@@ -831,6 +838,14 @@ class BundleBuilder:
         # Generate README
         self._generate_readme(manifest, bundle_dir)
 
+        # Copy package-specific docs from docs/ directory
+        docs_dir = Path(__file__).parent.parent / "docs"
+        if docs_dir.is_dir():
+            target_pkg = manifest.target_package or ""
+            for doc in docs_dir.iterdir():
+                if doc.is_file() and target_pkg and doc.stem.startswith(target_pkg):
+                    shutil.copy2(str(doc), str(bundle_dir / doc.name))
+
         manifest.bundle_dir = bundle_dir
 
         # Fix permissions: RPM extraction preserves restrictive modes (700 dirs,
@@ -839,9 +854,13 @@ class BundleBuilder:
         for root, dirs, files in os.walk(bundle_dir):
             for d in dirs:
                 p = Path(root) / d
+                if p.is_symlink():
+                    continue
                 p.chmod(p.stat().st_mode | 0o555)
             for f in files:
                 p = Path(root) / f
+                if p.is_symlink():
+                    continue
                 mode = p.stat().st_mode
                 # Add read for all; add execute for all if owner has execute
                 p.chmod(mode | 0o444 | (0o111 if mode & 0o100 else 0))
