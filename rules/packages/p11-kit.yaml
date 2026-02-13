@@ -1,11 +1,7 @@
 # p11-kit - PKCS#11 module support
-# Has sgifixes patches, needs compat functions
+# SGUG-RSE sgifixes patch was for 0.23.16.1; replaced with prep_commands for 0.25.3
 
 package: p11-kit
-
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - p11-kit.sgifixes.patch
 
 rules:
   # Compat functions needed
@@ -17,6 +13,28 @@ rules:
   ac_cv_overrides:
     gl_cv_func_working_getdelim: "yes"
 
+  # IRIX-specific source fixes (replacing p11-kit.sgifixes.patch for 0.25.3)
+  prep_commands:
+    # Add sys/time.h include to compat.c and message.c (IRIX needs explicit include)
+    - "sed -i '/#include \"config.h\"/a\\#include <sys/time.h>' common/compat.c common/message.c"
+    # Fix unix-peer.c: IRIX has no SO_PEERCRED, return -1
+    - "sed -i 's/#if defined(SO_PEERCRED)/#if defined(__sgi)\\n\\treturn -1;\\n#elif defined(SO_PEERCRED)/' common/unix-peer.c"
+    # Add SGI-specific headers and SUN_LEN to server.c
+    - "sed -i '1i\\#if defined(__sgi)\\n#include <sys/time.h>\\n#include <sys/socket.h>\\n#include <sys/un.h>\\n#define SUN_LEN(ptr) ((size_t)(((struct sockaddr_un *)0)->sun_path) + strlen((ptr)->sun_path))\\n#endif' p11-kit/server.c"
+    # Add sys/signal.h include after signal.h in server.c
+    - "sed -i '/#include <signal.h>/a\\#include <sys/signal.h>' p11-kit/server.c"
+    # Fix sighandler_t: add SGI-specific typedef before HAVE_SIGHANDLER_T check
+    - "sed -i 's/#ifdef HAVE_SIGHANDLER_T/#if defined(__sgi)\\ntypedef void (*sighandler_t)(int);\\n#define SIGHANDLER_T sighandler_t\\n#elif defined(HAVE_SIGHANDLER_T)/' p11-kit/server.c"
+    # Fix bare HAVE_SIG_T / HAVE___SIGHANDLER_T checks (need defined())
+    - "sed -i 's/#elif HAVE_SIG_T/#elif defined(HAVE_SIG_T)/; s/#elif HAVE___SIGHANDLER_T/#elif defined(HAVE___SIGHANDLER_T)/' p11-kit/server.c"
+    # Rename sa_len to my_sa_len in server.c (conflicts with IRIX macro)
+    - "sed -i 's/socklen_t sa_len;/socklen_t my_sa_len;/; s/sa_len = sizeof/my_sa_len = sizeof/g; s/, \\&sa_len)/, \\&my_sa_len)/g' p11-kit/server.c"
+
+  spec_replacements:
+    # Skip GPG signature verification (gpgv2 not available on build host)
+    - pattern: "gpgv2 --keyring %{SOURCE2} %{SOURCE1} %{SOURCE0}"
+      replacement: ": # skip gpgv2 signature verification"
+
   # Configure flags
   configure_flags:
     add:
@@ -25,4 +43,3 @@ rules:
       - --without-bash-completion
     remove:
       - --with-trust-paths
-

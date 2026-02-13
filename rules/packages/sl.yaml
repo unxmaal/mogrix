@@ -4,6 +4,9 @@ package: sl
 
 rules:
   spec_replacements:
-    # Inject cross-compiler CC into Makefile build (no %configure)
+    # sl's Makefile hardcodes link command as $(CC) $(CFLAGS) -o sl sl.c -lncurses
+    # and ignores $(LDFLAGS). Bypass Makefile and compile directly.
+    # -ltinfo needed because ncurses is split (libncurses + libtinfo) in staging.
+    # $LIBS picks up mogrix-compat static archive from the build preamble.
     - pattern: 'make %{?_smp_mflags} CFLAGS="%{optflags}"'
-      replacement: 'make %{?_smp_mflags} CC="%{__cc}" CFLAGS="%{optflags}" LDFLAGS="%{__global_ldflags}"'
+      replacement: '%{__cc} %{optflags} -o sl sl.c -lncurses -ltinfo $LIBS'

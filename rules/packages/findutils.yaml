@@ -33,7 +33,7 @@ rules:
   # the same SUBDIRS line in Makefile.am, causing a hunk rejection.
   spec_replacements:
     - pattern: "autoreconf -fiv"
-      replacement: "AUTOPOINT=true autoreconf -fiv\nsed -i 's/gnulib-tests//' Makefile.in || true\nsed -i 's/gnulib-tests//' Makefile.am || true"
+      replacement: "AUTOPOINT=true autoreconf -fiv\nsed -i 's/gnulib-tests//' Makefile.in || true\nsed -i 's/gnulib-tests//' Makefile.am || true\n# Fix gnulib stdint.in.h: AC_COMPUTE_INT produces empty values in cross-compile\n# which breaks SIG_ATOMIC_MAX (and potentially other type limits)\nsed -i 's/@BITSIZEOF_SIG_ATOMIC_T@/32/g; s/@HAVE_SIGNED_SIG_ATOMIC_T@/1/g; s/@SIG_ATOMIC_T_SUFFIX@//g' lib/stdint.in.h gl/lib/stdint.in.h 2>/dev/null || true"
     # Remove info page references — no texinfo on IRIX, info pages not useful
     - pattern: "%{_infodir}/find.info*"
       replacement: "# %{_infodir}/find.info* (removed — no texinfo)"

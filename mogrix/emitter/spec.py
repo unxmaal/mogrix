@@ -64,6 +64,12 @@ class SpecWriter:
                 if pattern:
                     content = content.replace(pattern, repl)
 
+        # Handle conditionals early — MUST run before compat/extra/patch Source
+        # injection. remove_conditionals deletes %if...%endif blocks that may
+        # contain Source lines; if compat Source entries are injected first they
+        # land inside the conditional and get deleted along with it.
+        content = self._handle_conditionals(content, result)
+
         # Remove dropped BuildRequires
         # Separate exact names from glob patterns
         exact_drops = [d for d in drops if "*" not in d and "?" not in d]
@@ -474,9 +480,6 @@ _mogrix_origdir=$(pwd)
                     count=1,
                     flags=re.MULTILINE,
                 )
-
-        # Handle conditionals
-        content = self._handle_conditionals(content, result)
 
         # Handle subpackage dropping
         content = self._handle_subpackages(content, result)

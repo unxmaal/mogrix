@@ -40,16 +40,16 @@ rules:
         %setup -q -n rsync-%{version}%{?prerelease}
 
     # Re-inject compat copies after patches (emitter put them in dead %if branch)
+    # Must list ALL compat sources — generic + package-specific + extra_files
     - pattern: "%patch 2 -p1 -b .buffer-overflow"
       replacement: |
         %patch 2 -p1 -b .buffer-overflow
 
         # Mogrix compat sources (re-injected — emitter put them in %if branch)
         mkdir -p mogrix-compat
-        cp %{SOURCE100} mogrix-compat/
-        cp %{SOURCE101} mogrix-compat/
-        cp %{SOURCE102} mogrix-compat/
-        cp %{SOURCE103} mogrix-compat/
+        for src in %{SOURCE100} %{SOURCE101} %{SOURCE102} %{SOURCE103} %{SOURCE104} %{SOURCE105} %{SOURCE106} %{SOURCE107} %{SOURCE108}; do
+          cp "$src" mogrix-compat/
+        done
 
     # Remove systemd unit file installations (daemon subpackage dropped)
     - pattern: "install -D -m644 %{SOURCE3} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd.service"

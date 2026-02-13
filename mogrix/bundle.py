@@ -50,12 +50,17 @@ STAGING_LIB_DIR = Path("/opt/sgug-staging/usr/sgug/lib32")
 #
 # {terminfo_block} is replaced with TERMINFO export if bundle has terminfo data,
 # or empty string if not.
+#
+# IMPORTANT: Use /bin/dirname and /bin/pwd (absolute paths) because the bundle
+# may install a trampoline for "dirname" or "pwd" into ~/apps/bin/. If that
+# directory is in $PATH, a relative "dirname" call would resolve to the
+# trampoline, which calls the wrapper, which calls "dirname" — infinite loop.
 WRAPPER_TEMPLATE = """\
 #!/bin/sh
-dir=`dirname "$0"`
+dir=`/bin/dirname "$0"`
 case "$dir" in
     /*) ;;
-    *)  dir="`pwd`/$dir" ;;
+    *)  dir="`/bin/pwd`/$dir" ;;
 esac
 if [ -n "$LD_LIBRARYN32_PATH" ]; then
     LD_LIBRARYN32_PATH="$dir/_lib32:$LD_LIBRARYN32_PATH"
@@ -68,10 +73,10 @@ export LD_LIBRARYN32_PATH
 
 SBIN_WRAPPER_TEMPLATE = """\
 #!/bin/sh
-dir=`dirname "$0"`
+dir=`/bin/dirname "$0"`
 case "$dir" in
     /*) ;;
-    *)  dir="`pwd`/$dir" ;;
+    *)  dir="`/bin/pwd`/$dir" ;;
 esac
 if [ -n "$LD_LIBRARYN32_PATH" ]; then
     LD_LIBRARYN32_PATH="$dir/_lib32:$LD_LIBRARYN32_PATH"
@@ -94,14 +99,14 @@ export TERMINFO
 INSTALL_TEMPLATE = """\
 #!/bin/sh
 # Install {package} — create command trampolines in ../bin/
-dir=`dirname "$0"`
+dir=`/bin/dirname "$0"`
 case "$dir" in
     /*) ;;
-    *)  dir="`pwd`/$dir" ;;
+    *)  dir="`/bin/pwd`/$dir" ;;
 esac
-dir=`cd "$dir" && pwd`
-bundle=`basename "$dir"`
-bindir=`dirname "$dir"`/bin
+dir=`cd "$dir" && /bin/pwd`
+bundle=`/bin/basename "$dir"`
+bindir=`/bin/dirname "$dir"`/bin
 mkdir -p "$bindir"
 echo "Installing {package} commands into $bindir"
 {trampoline_commands}
@@ -116,13 +121,13 @@ echo "Add that line to ~/.profile to make it permanent."
 UNINSTALL_TEMPLATE = """\
 #!/bin/sh
 # Uninstall {package} — remove command trampolines and bundle directory
-dir=`dirname "$0"`
+dir=`/bin/dirname "$0"`
 case "$dir" in
     /*) ;;
-    *)  dir="`pwd`/$dir" ;;
+    *)  dir="`/bin/pwd`/$dir" ;;
 esac
-dir=`cd "$dir" && pwd`
-bindir=`dirname "$dir"`/bin
+dir=`cd "$dir" && /bin/pwd`
+bindir=`/bin/dirname "$dir"`/bin
 echo "Removing {package} commands from $bindir"
 {unlink_commands}
 echo ""
@@ -914,10 +919,10 @@ class BundleBuilder:
                 f'echo \'#!/bin/sh\' > "$bindir/{cmd}"'
             )
             trampoline_lines.append(
-                f'echo \'dir=`dirname "$0"`\' >> "$bindir/{cmd}"'
+                f'echo \'dir=`/bin/dirname "$0"`\' >> "$bindir/{cmd}"'
             )
             trampoline_lines.append(
-                f'echo \'case "$dir" in /*) ;; *) dir="`pwd`/$dir" ;; esac\' >> "$bindir/{cmd}"'
+                f'echo \'case "$dir" in /*) ;; *) dir="`/bin/pwd`/$dir" ;; esac\' >> "$bindir/{cmd}"'
             )
             trampoline_lines.append(
                 f'echo "exec \\"\\$dir/../$bundle/{cmd}\\" \\"\\$@\\"" >> "$bindir/{cmd}"'

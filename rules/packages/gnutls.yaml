@@ -12,8 +12,6 @@
 package: gnutls
 
 rules:
-  # Compat functions needed
-
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   drop_requires:
     - crypto-policies
@@ -105,6 +103,9 @@ rules:
     # HTML docs not generated (--disable-doc --disable-gtk-doc)
     - pattern: "%{_docdir}/manual/*\n"
       replacement: ""
+    # Remove locale file references (NLS disabled, locale dir removed by cleanup)
+    - pattern: "%files -f native_build/gnutls.lang"
+      replacement: "%files"
 
   # Clean up doc files we don't want packaged
   install_cleanup:

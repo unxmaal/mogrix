@@ -25,20 +25,18 @@ rules:
     - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
 
   # Configure options for cross-compilation
-  configure_opts:
-    - --disable-nls
+  configure_flags:
+    add:
+      - --disable-nls
 
   # Export LD for libtool - use GNU ld for IRIX-compatible shared libraries
   # GNU ld produces correct 2-LOAD-segment layout; LLD's 3-segment layout crashes IRIX
   export_vars:
     LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
 
-  # Remove .la files (not needed)
+  # Remove .la files (popt installs to subdirs, need recursive find)
   install_cleanup:
     - "find $RPM_BUILD_ROOT -name '*.la' -delete"
-
-  # Skip find_lang (no NLS)
-  skip_find_lang: true
 
   # Remove %files -f lang reference
   files_no_lang: true

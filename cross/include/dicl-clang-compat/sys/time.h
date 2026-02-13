@@ -1,13 +1,28 @@
 /* sys/time.h - wrapper for IRIX sys/time.h
  *
- * This wrapper just passes through to the real IRIX header.
- * The struct timezone and struct timeval definitions come from the IRIX
- * header based on _SGIAPI/_BSD_TYPES which are set when _SGI_SOURCE is defined.
+ * This wrapper passes through to the real IRIX header with a fix:
+ * IRIX sys/time.h provides a static select() wrapper around __xpg4_select()
+ * when _XOPEN4UX/_XOPEN5 is active (which it is under _SGI_SOURCE).
+ * The static function emits a symbol in every .o that includes this header.
+ * When these .o files are archived into a static library, lld reports
+ * duplicate symbols. Fix: force the extern declaration path by setting
+ * _NO_XOPEN4=1 _NO_XOPEN5=1 before including the real header.
  */
 #ifndef _CLANG_COMPAT_SYS_TIME_H
 #define _CLANG_COMPAT_SYS_TIME_H
 
+/* Save and override XOPEN flags to get extern select() instead of static */
+#pragma push_macro("_NO_XOPEN4")
+#pragma push_macro("_NO_XOPEN5")
+#undef _NO_XOPEN4
+#define _NO_XOPEN4 1
+#undef _NO_XOPEN5
+#define _NO_XOPEN5 1
+
 #include_next <sys/time.h>
+
+#pragma pop_macro("_NO_XOPEN4")
+#pragma pop_macro("_NO_XOPEN5")
 
 /* timersub - BSD macro not available on IRIX */
 #ifndef timersub

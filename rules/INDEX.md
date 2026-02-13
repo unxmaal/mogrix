@@ -142,6 +142,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | rld global GOT limit ~4370 | Shared libs with >4370 global GOT entries crash rld (SIGSEGV at rld internal PC). Not total GOT, specifically global entries. `-Bsymbolic-functions` reduces by moving defined FUNC symbols from global→local GOT | cross/bin/irix-ld |
 | X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 | rules/packages/aterm.yaml |
 | IRIX X11R6.3 API limits | XICCallback→XIMCallback, XSetIMValues→no-op, Xutf8→Xmb, XUTF8→XCompound | rules/packages/st.yaml |
+| Bundle wrapper shell recursion | Wrappers use `dirname`/`pwd`/`basename`; if those are also bundled commands, `$PATH` causes infinite loop fork bomb. Use `/bin/dirname`, `/bin/pwd`, `/bin/basename` (absolute paths) in all shell templates | mogrix/bundle.py |
 | IRIX has no TrueType fonts | Xft apps need bundled fonts; fontconfig `<dir prefix="relative">` for bundle paths | mogrix/bundle.py `_include_fonts()` |
 | `_XOPEN_SOURCE=600` hides IRIX defs | winsize/TIOCSWINSZ/TIOCGWINSZ gated by `_NO_XOPEN5`; remove, use `_SGI_SOURCE` | rules/packages/st.yaml |
 | setenv/unsetenv NOT in IRIX libc | `putenv()` only; compat wraps it. Must add to `inject_compat_functions` | compat/stdlib/setenv.c |

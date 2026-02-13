@@ -20,7 +20,16 @@ rules:
     fc_cv_have_stdatomic_atomic_primitives: "false"
     fc_cv_have_intel_atomic_primitives: "true"
 
+  install_cleanup:
+    - "rm -f %{buildroot}%{_sysconfdir}/fonts/fonts.conf.bak"
+
   spec_replacements:
+    # Remove locale file references (NLS disabled, locale dir removed by cleanup)
+    - pattern: "%files -f %{name}.lang"
+      replacement: "%files"
+    # Remove cat of conf.lang into main lang file (both disabled)
+    - pattern: "cat %{name}-conf.lang >> %{name}.lang"
+      replacement: ": # skip lang file merge (NLS disabled)"
     # Remove dependencies not available on IRIX (original line is multi-dep with tab)
     - pattern: "Requires:\tfonts-filesystem freetype"
       replacement: "# fonts-filesystem and freetype handled by sysroot"
@@ -37,19 +46,15 @@ rules:
     # Define fontconfig macros (normally from fontpackages-devel)
     - pattern: "%global freetype_version 2.9.1"
       replacement: "%global freetype_version 2.9.1\n%global _fontconfig_templatedir %{_datadir}/fontconfig/conf.avail\n%global _fontconfig_confdir %{_sysconfdir}/fonts/conf.d\n%global _fontconfig_masterdir %{_sysconfdir}/fonts"
-    # Fix bash-ism: ${i//.fncs/.sgml} → use sh-compatible sed
+    # Fix bash-ism: ${i//.fncs/.sgml} -> use sh-compatible sed
     - pattern: "for i in doc/*.fncs; do\n  touch -r $i ${i//.fncs/.sgml}\ndone"
       replacement: "for i in doc/*.fncs; do\n  j=$(echo $i | sed 's/\\.fncs$/.sgml/')\n  touch -r $i $j\ndone"
     # Run autoreconf with AUTOPOINT=true (gettext binaries are for IRIX, not host)
-    # Remove test from SUBDIRS — tests use setenv() which IRIX lacks, and they
+    # Remove test from SUBDIRS -- tests use setenv() which IRIX lacks, and they
     # compile during 'make all' not just 'make check'
     - pattern: "autoreconf"
       replacement: "sed -i 's/ test$//' Makefile.am\nAUTOPOINT=true autoreconf -fi"
     # Pre-generate gperf hash table using HOST cpp+gperf before make runs.
-    # The tarball does NOT ship fcobjshash.gperf or fcobjshash.h — they're generated
-    # during build. The Makefile uses $(CPP) which is the cross-compiler preprocessor,
-    # and it injects 'typedef __builtin_va_list va_list;' corrupting the gperf input.
-    # Using /usr/bin/cpp (host) avoids this. Touch files so make doesn't regenerate.
     - pattern: "make %{?_smp_mflags}"
       replacement: "/usr/bin/cpp -I. src/fcobjshash.gperf.h 2>/dev/null | sed 's/^ *//;s/ *, */,/' | awk 'BEGIN{nw=0}/CUT_OUT_BEGIN/{nw=1;next}/CUT_OUT_END/{nw=0;next}/^$/||/^#/{next}{if(nw==0)print}' > src/fcobjshash.gperf\n/usr/bin/gperf --pic -m 100 src/fcobjshash.gperf > src/fcobjshash.h\ntouch src/stamp-fcobjshash.gperf src/fcobjshash.gperf src/fcobjshash.h\nmake %{?_smp_mflags}"
     # Use expat instead of libxml2 (SAX1 detection fails in cross-compile)
@@ -60,15 +65,18 @@ rules:
       replacement: "--with-add-fonts=%{_datadir}/fonts"
     - pattern: "--with-cache-dir=/usr/lib/fontconfig/cache"
       replacement: "--with-cache-dir=%{_localstatedir}/cache/fontconfig"
-    # Fix bash-ism in %post: [[ ]] → [ ]
+    # Fix bash-ism in %post: [[ ]] -> [ ]
     - pattern: "[[ -d %{_localstatedir}/cache/fontconfig ]]"
       replacement: "[ -d %{_localstatedir}/cache/fontconfig ]"
+    # Fix duplicate symlink creation
+    - pattern: "ln -s %{_fontconfig_templatedir}/25-unhint-nonlatin.conf $RPM_BUILD_ROOT%{_fontconfig_confdir}/"
+      replacement: "ln -sf %{_fontconfig_templatedir}/25-unhint-nonlatin.conf $RPM_BUILD_ROOT%{_fontconfig_confdir}/"
     # Fix hardcoded paths in %post
     - pattern: "mkdir -p /usr/lib/fontconfig/cache"
       replacement: "mkdir -p %{_localstatedir}/cache/fontconfig"
     - pattern: "%dir /usr/lib/fontconfig/cache"
       replacement: "%dir %{_localstatedir}/cache/fontconfig"
-    # fc-cache rename uses __isa_bits — set to 32 for IRIX n32
+    # fc-cache rename uses __isa_bits -- set to 32 for IRIX n32
     - pattern: "fc-cache-%{__isa_bits}"
       replacement: "fc-cache-32"
       replace_all: true
@@ -87,4 +95,3 @@ rules:
       replacement: "if [ -x %{_bindir}/fc-cache ] && %{_bindir}/fc-cache --version"
     - pattern: "HOME=/root /usr/bin/fc-cache -f"
       replacement: "HOME=/root %{_bindir}/fc-cache -f"
-

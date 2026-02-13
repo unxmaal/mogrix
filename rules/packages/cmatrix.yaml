@@ -2,13 +2,28 @@
 package: cmatrix
 
 rules:
+  inject_compat_functions:
+    - setenv
+
   drop_buildrequires:
     - help2man
     - console-setup
     - xorg-x11-fonts-misc
 
+  # AC_CHECK_FILES can't cross-compile — provide cache overrides
+  ac_cv_overrides:
+    ac_cv_file__usr_lib_kbd_consolefonts: "no"
+    ac_cv_file__usr_share_consolefonts: "no"
+    ac_cv_file__usr_lib_X11_fonts_misc: "no"
+    ac_cv_file__usr_X11R6_lib_X11_fonts_misc: "no"
+    ac_cv_file__usr_share_X11_fonts_misc: "no"
+
   drop_subpackages:
     - "x11-fonts"
+
+  install_cleanup:
+    # Remove man page (help2man disabled, but make install still installs the pre-existing one)
+    - "rm -f %{buildroot}%{_mandir}/man1/%{name}.1"
 
   spec_replacements:
     # Remove help2man call (not available for cross-build)
@@ -33,3 +48,10 @@ rules:
 
     - pattern: "%{_mandir}/man1/%{name}.1*"
       replacement: ""
+
+    # Remove orphaned %post/%postun for dropped x11-fonts subpackage
+    # (drop_subpackages doesn't handle scriptlets)
+    - pattern: "%post x11-fonts\nmkfontdir %{_x11fontdir}/misc"
+      replacement: "# x11-fonts scriptlets disabled (subpackage dropped)"
+    - pattern: "%postun x11-fonts\nif [ \"$1\" = \"0\" -a -d %{_x11fontdir}/misc ]; then\n  mkfontdir %{_x11fontdir}/misc\nfi"
+      replacement: "# x11-fonts postun disabled (subpackage dropped)"

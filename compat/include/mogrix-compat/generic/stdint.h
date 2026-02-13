@@ -66,4 +66,17 @@
 #define UINTMAX_C(c) c ## ULL
 #endif
 
+/*
+ * sig_atomic_t limits - IRIX defines these in <stdint.h> but gnulib's
+ * #include_next chain can cause them to be lost (gnulib blocks IRIX
+ * system stdint.h via __STDINT_H__ guard before reaching these defs).
+ * On IRIX, sig_atomic_t is int (32-bit, signed).
+ */
+#ifndef SIG_ATOMIC_MIN
+#define SIG_ATOMIC_MIN  (-2147483647-1)  /* INT32_MIN */
+#endif
+#ifndef SIG_ATOMIC_MAX
+#define SIG_ATOMIC_MAX  2147483647       /* INT32_MAX */
+#endif
+
 #endif /* _MOGRIX_COMPAT_STDINT_H */
