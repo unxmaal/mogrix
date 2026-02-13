@@ -13,13 +13,14 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Linux-only build deps | `drop_buildrequires` | systemd, systemd-devel, libselinux-devel, kernel-headers, systemtap-sdt-devel, libcap-devel, libcap-ng-devel, libacl-devel, libattr-devel, audit-libs-devel, alsa-lib-devel, gnupg2, gcc-c++, libdicl, libdicl-devel |
 | Linux-only runtime deps | `drop_requires` | libdicl, libdicl-devel |
 | libdicl removal | `remove_lines` | CPPFLAGS/LIBS exports, %gpgverify, %ldconfig_scriptlets, systemd scriptlets |
-| Common compat functions | `inject_compat_functions` | strdup, strndup, getline, getopt_long, asprintf, vasprintf (+ dlmalloc auto) |
+| Common compat functions | `inject_compat_functions` | strdup, strndup, strnlen, getline, getopt_long, asprintf, vasprintf (+ dlmalloc auto) |
 | malloc(0) cross-detect | `ac_cv_overrides` | ac_cv_func_malloc_0_nonnull, ac_cv_func_realloc_0_nonnull, gl_cv_func_select_* |
 | SGUG prefix paths | `rpm_macros` | _prefix=/usr/sgug, _libdir=/usr/sgug/lib32, _bindir, _includedir, etc. |
 | Path translation | `rewrite_paths` | /usr/lib64 → /usr/sgug/lib32, /usr/lib → /usr/sgug/lib32, /usr/include → /usr/sgug/include |
 | Linux-only features | `configure_disable` | selinux, systemd, udev, inotify, epoll, fanotify, timerfd, libcap, audit |
 | Header stubs | `header_overlays: generic` | execinfo.h, malloc.h, error.h, etc. |
-| Install cleanup | `install_cleanup` | Fix /usr/bin paths, rm *.la, rm infodir/dir |
+| Install cleanup | `install_cleanup` | Fix /usr/bin paths, rm *.la, rm infodir/dir, rm locale |
+| Skip %find_lang | `skip_find_lang: true` | Comments out %find_lang, strips `-f *.lang` from %files (locale files always removed) |
 | Subpackage bloat | `drop_subpackages` | debuginfo, debugsource, langpack-* |
 
 **Only add to a package YAML** when the package needs something beyond the above.
@@ -51,7 +52,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Path conventions | /etc vs /usr/sgug/etc | spec_replacements | rules/packages/* | SGUG uses /usr/sgug prefix |
 | Scriptlet failures | ldconfig, systemd macros | spec_replacements | rules/packages/* | Make ldconfig no-op via macros.ldconfig |
 | Man page compression | .1.gz vs .1 in %files | spec_replacements | rules/packages/* | Cross-build doesn't compress |
-| NLS/gettext | %find_lang fails | skip_find_lang: true | rules/packages/* | Often disable NLS entirely |
+| NLS/gettext | %find_lang fails | skip_find_lang: true | **generic.yaml** | Now generic — all packages skip %find_lang (locale files removed by cleanup) |
 | Missing runtime deps | tdnf install says "not found" | add_requires | rules/packages/* | AutoReq disabled for cross-compile |
 | Disable features | ldap, nls, tests not needed | configure_disable | rules/packages/* | Only features NOT in generic.yaml |
 | Add configure flags | Need --with-X or custom flags | configure_flags: add | rules/packages/* | Adds flags to %configure |
@@ -114,6 +115,13 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | libretls exports compat functions | configure falsely detects `reallocarray`, `strlcpy`, `strlcat` as available | ac_cv_overrides | rules/packages/* | libretls.so exports these functions; configure links against it and thinks system libc has them. Fix: `ac_cv_func_reallocarray: "no"`, `ac_cv_func_strlcpy: "no"`, etc. to force internal implementations. |
 | Cross-compile HOSTCC pattern | Build fails running MIPS binary on build host | spec_replacements or make_env | rules/packages/* | Build-time code generators (pagebundler, etc.) need host compiler. Pass `HOSTCC=gcc` to configure. Build system must use `BUILD_CC`/`HOSTCC` for generators and `CC` for target objects. See telescope.yaml. |
 | Bundled library cross-compilation | Bundled library compiles for host instead of target | spec_replacements or prep_commands | rules/packages/* | Libraries bundled in source (e.g. libgrapheme in telescope) default to host CC. Must fix their config.mk/Makefile to use cross-compiler for target objects and host compiler for generators. |
+| AC_CHECK_FILES cross-compile | `cannot check for file existence when cross compiling` | ac_cv_overrides | rules/packages/* | AC_CHECK_FILES checks host filesystem; provide `ac_cv_file_<path>: "no"` for each file (underscores for path separators). See cmatrix.yaml |
+| C++ va_list type mismatch | `conflicting types for 'vfprintf'`, ambiguous overload in C++ | **GLOBAL: dicl-clang-compat/stdarg.h** | cross/include/dicl-clang-compat/stdarg.h | IRIX declares va_list as `char*`; clang `__builtin_va_list` is `void*`. C++ doesn't allow implicit void*→char*. Fix: stdarg.h defines `va_list = char*` in C++ mode with type-punning va_* macros |
+| Static select() duplicate symbol | `duplicate symbol: select` in static archives | **GLOBAL: dicl-clang-compat/sys/time.h** | cross/include/dicl-clang-compat/sys/time.h | IRIX sys/time.h provides `static int select()` wrapper when XOPEN flags active. Each .o gets a copy → lld duplicate symbol. Fix: force `_NO_XOPEN4=1 _NO_XOPEN5=1` before including real header |
+| gnulib SIG_ATOMIC_MAX missing | `SIG_ATOMIC_MAX undeclared` in gnulib-generated code | **GLOBAL: compat stdint.h** | compat/include/mogrix-compat/generic/stdint.h | gnulib's include_next chain blocks IRIX stdint.h via `__STDINT_H__` guard. Fix: define SIG_ATOMIC_MIN/MAX in compat header |
+| `%{__global_ldflags}` undefined | Literal `%{__global_ldflags}` string passed to compiler/linker | spec_replacements | rules/packages/* | Not defined in rpmmacros.irix. Remove from any Makefile build commands. See figlet.yaml, sl.yaml |
+| GnuPG --with-lib*-prefix | `gpg-error-config: not found` during configure | configure_flags: add | rules/packages/* | GnuPG ecosystem uses `*-config` scripts not in build PATH. Add `--with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug` etc. Do NOT use `--with-npth-prefix` (FC40 npth lacks npth-config; use NPTH_CONFIG export_var) |
+| drop_subpackages orphaned scriptlets | `%post <subpkg>` / `%postun <subpkg>` left behind after subpackage dropped | spec_replacements | rules/packages/* | drop_subpackages removes %package/%description/%files but NOT scriptlets. Manually remove %post/%postun for dropped subpackages. See cmatrix.yaml |
 
 ## Invariants (Settled Facts)
 
@@ -190,6 +198,14 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | IRIX has no getentropy/getrandom | `/dev/urandom` available as fallback | rules/packages/*.yaml |
 | libretls exports compat symbols | `reallocarray`, `strlcpy`, `strlcat` in libretls.so fool configure; override with ac_cv | rules/packages/*.yaml |
 | HOSTCC needed for code generators | Build-time generators must use host compiler; target objects use cross-compiler | rules/packages/telescope.yaml |
+| C++ va_list = char* on IRIX | stdarg.h defines `va_list = char*` in C++ mode to match IRIX header declarations; type-punning macros bridge to __builtin_va_list | cross/include/dicl-clang-compat/stdarg.h |
+| IRIX static select() in sys/time.h | XOPEN4/XOPEN5 flags trigger `static int select()` wrapper; force `_NO_XOPEN4=1 _NO_XOPEN5=1` to get extern declaration | cross/include/dicl-clang-compat/sys/time.h |
+| gnulib stdint.h loses SIG_ATOMIC_MAX | gnulib's include_next blocks IRIX stdint.h via __STDINT_H__ guard; compat stdint.h restores SIG_ATOMIC_MIN/MAX | compat/include/mogrix-compat/generic/stdint.h |
+| strnlen NOT in IRIX libc | gnulib fnmatch.c/mbsstr.c use strnlen(); now in generic.yaml inject_compat_functions | rules/generic.yaml |
+| `%{__global_ldflags}` undefined | rpmmacros.irix doesn't define it; literal string passed to compiler if used | rpmmacros.irix |
+| skip_find_lang is generic | All packages skip %find_lang; locale files removed by generic install_cleanup | rules/generic.yaml |
+| batch.py rule passthrough | batch converter must pass export_vars, skip_find_lang, skip_check, install_cleanup, spec_replacements to writer | mogrix/batch.py |
+| drop_subpackages ignores scriptlets | Engine removes %package/%description/%files but NOT %post/%postun for dropped subpackages; use spec_replacements | mogrix/emitter/spec.py |
 
 ## File Locations
 

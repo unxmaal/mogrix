@@ -4,9 +4,9 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-02-12)
 
-**96+ source packages cross-compiled for IRIX (270+ RPMs). 7 suite bundles shipped and verified on live IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". All Qt5 modules verified: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin.
+**96+ source packages cross-compiled for IRIX (270+ RPMs). 13 bundles rebuilt from scratch and verified on IRIX (536 tests, 534 passed — 99.6%).** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". All Qt5 modules verified: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin.
 
-All phases through 4c complete (41 packages). Phase 5+ complete with 55+ library/app packages including Qt5 (the boss fight). `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX. `mogrix test` verifies bundles work on live IRIX. 115+ package rule files. Bundles shipped: weechat, nano, groff, st, bitlbee (+discord), mogrix-smallweb (telescope, gmi100, lynx, snownews), mogrix-fun (cmatrix, figlet, sl), mogrix-essentials (14 RPMs, 120+ commands), mogrix-net (curl, rsync, gnupg2) — all tested on IRIX.
+All phases through 4c complete (41 packages). Phase 5+ complete with 55+ library/app packages including Qt5 (the boss fight). `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX. `mogrix test` verifies bundles work on live IRIX. 115+ package rule files. All 13 bundles shipped: 9 individual (weechat, groff, st, bitlbee, telescope, gmi100, lynx, snownews, tinc) + 4 suite (mogrix-smallweb, mogrix-fun, mogrix-essentials, mogrix-net) — all tested on IRIX.
 
 ---
 
@@ -277,7 +277,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Rule scoring (`mogrix score-rules`) | Done |
 | Batch build (`mogrix batch-build`) | Done |
 | Dependency roadmap (`mogrix roadmap`) | Done |
-| 170 tests, all passing | Done |
+| 536 IRIX bundle tests, 534 passing (99.6%) | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
 | App bundles (`mogrix bundle`) | Done |
@@ -285,6 +285,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Upstream package support (`mogrix create-srpm`) | Done |
 | Suite bundles (`mogrix bundle pkg1 pkg2 --name`) | Done |
 | 96+ source packages cross-compiled for IRIX | Done |
+| 13 bundles rebuilt and verified on IRIX | Done |
 | Qt5 5.15.13 running on IRIX (Core+Gui+Widgets+XcbQpa) | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
