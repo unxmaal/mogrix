@@ -29,6 +29,10 @@ rules:
     # No doxygen docs generated — prevent mv failure in %install
     - pattern: "mv $RPM_BUILD_ROOT/%{_docdir}/%{name} $RPM_BUILD_ROOT/%{develdocdir}"
       replacement: "mkdir -p $RPM_BUILD_ROOT/%{develdocdir}"
+    # Skip multilib event-config.h dispatch — %{__isa_bits} not set for cross-build.
+    # We only target n32 (one arch) so the original event-config.h is fine as-is.
+    - pattern: "# Fix multilib install of devel (bug #477685)\nmv $RPM_BUILD_ROOT%{_includedir}/event2/event-config.h \\\n   $RPM_BUILD_ROOT%{_includedir}/event2/event-config-%{__isa_bits}.h\ncat > $RPM_BUILD_ROOT%{_includedir}/event2/event-config.h << EOF\n#include <bits/wordsize.h>\n\n#if __WORDSIZE == 32\n#include <event2/event-config-32.h>\n#elif __WORDSIZE == 64\n#include <event2/event-config-64.h>\n#else\n#error \"Unknown word size\"\n#endif\nEOF"
+      replacement: "# Multilib event-config.h fixup skipped — single-arch cross-build (n32)"
     # Major version symlinks (e.g. libevent-2.1.so) not covered by *.so.* glob
     - pattern: "-2.1.so.*"
       replacement: "-2.1.so*"

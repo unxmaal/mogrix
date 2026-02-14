@@ -8,6 +8,7 @@
 	.section .ctors,"aw",@progbits
 	.p2align 2
 	.globl __CTOR_END__
+	.hidden __CTOR_END__
 	.type __CTOR_END__,@object
 __CTOR_END__:
 	.4byte	0
@@ -16,6 +17,7 @@ __CTOR_END__:
 	.section .dtors,"aw",@progbits
 	.p2align 2
 	.globl __DTOR_END__
+	.hidden __DTOR_END__
 	.type __DTOR_END__,@object
 __DTOR_END__:
 	.4byte	0

@@ -192,6 +192,11 @@ class RuleEngine:
             result.skip_check = True
             result.applied_rules.append("skip_check: true")
 
+        # Skip find_lang (locale files removed by install_cleanup)
+        if rules.get("skip_find_lang"):
+            result.skip_find_lang = True
+            result.applied_rules.append("skip_find_lang: true")
+
         # AC_CV overrides for autoconf (generic)
         if "ac_cv_overrides" in rules:
             result.ac_cv_overrides.update(rules["ac_cv_overrides"])
@@ -248,12 +253,16 @@ class RuleEngine:
             result.compat_functions.extend(funcs)
             result.applied_rules.append(f"inject_compat_functions: {funcs}")
 
-        # Always include mmap-based malloc when compat functions are used.
-        # IRIX brk() heap is limited to 176MB by libpthread at 0x0C080000.
-        # dlmalloc uses mmap instead, accessing 1.2GB of free address space.
-        if result.compat_functions and "dlmalloc" not in result.compat_functions:
-            result.compat_functions.append("dlmalloc")
-            result.applied_rules.append("auto-inject dlmalloc (IRIX mmap malloc)")
+        # dlmalloc is NO LONGER auto-injected into compat archives.
+        # It's linked by irix-ld for executables only (dlmalloc.o in staging).
+        # Shared libraries leave malloc/free undefined so rld resolves them
+        # to the executable's single dlmalloc, preventing cross-heap corruption.
+        # See rules/INDEX.md "dlmalloc shared library crash".
+        if "dlmalloc" in result.compat_functions:
+            result.compat_functions.remove("dlmalloc")
+            result.applied_rules.append(
+                "removed dlmalloc from compat (linked by irix-ld for exe only)"
+            )
 
         # Add additional BuildRequires
         if "add_buildrequires" in rules:

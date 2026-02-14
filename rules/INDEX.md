@@ -43,7 +43,9 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Libtool cross-detect | libtool says "unknown platform" | spec_replacements | rules/packages/* | Use fix-libtool-irix.sh after configure |
 | CMake cross-compile | find_package fails, wrong paths | spec_replacements | rules/packages/* | Set CMAKE_FIND_ROOT_PATH, disable tests |
 | RPM macro pollution | %configure clobbers cross flags | configure_flags: remove | rules/packages/* | Or use spec_replacements to fix |
-| TLS not supported | __thread / _Thread_local, rld Fatal Error `__tls_get_addr` | prep_commands | rules/packages/* | Sed `#define _Thread_local __thread` → `#define _Thread_local` in headers. `-D` from CFLAGS WON'T WORK (source `#define` overrides). See gnutls.yaml |
+| TLS not supported | __thread / _Thread_local, rld Fatal Error `__tls_get_addr` | prep_commands | rules/packages/* | Sed `#define _Thread_local __thread` → `#define _Thread_local` in headers. `-D` from CFLAGS WON'T WORK (source `#define` overrides). For autoconf `__thread` detection, some configure scripts (e.g. gdbm) unconditionally overwrite cache vars — `ac_cv_overrides` won't help; must sed configure directly. See gnutls.yaml, gdbm.yaml |
+| Missing forkpty / PTY | forkpty undefined, tmux "server exited" immediately | prep_commands (create compat file) | rules/packages/tmux.yaml | IRIX has `_getpty()` not `forkpty()`. Must re-open PTY slave after `setsid()` WITHOUT `O_NOCTTY` — on SVR4/IRIX the first terminal open after setsid() sets controlling terminal. Without this, spawned shell has no ctty → exits → server exits cleanly (status 0). See tmux.yaml forkpty-unknown.c |
+| libevent devpoll crash | Server crashes silently, log ends abruptly, `using libevent ... devpoll` | bundle wrapper env | mogrix/bundle.py | IRIX `/dev/poll` backend in libevent is broken — crashes inside event loop. Auto-detected: if `libevent*.so` in `_lib32/`, wrapper sets `EVENT_NODEVPOLL=1` to force `poll()` backend. Confirmed working with tmux. |
 | Plugin dlopen path | App has plugins in non-standard path, commands missing | bundle wrapper env | mogrix/bundle.py | Set `WEECHAT_EXTRA_LIBDIR` etc. via `{extra_env_block}` in wrapper |
 | gnutls CA certs | "certificate issuer unknown", TLS handshake fails | bundle `-r` flag | mogrix/bundle.py | Bundle auto-includes CA certs; weechat wrapper passes `-r "/set weechat.network.gnutls_ca_user ..."` |
 | extra_cflags dead code | Rule validated but never applied | use prep_commands or export_vars | rules/packages/* | `extra_cflags` in validator.py but NOT in engine.py. Workaround: `prep_commands` sed or `export_vars: CFLAGS` |
@@ -69,6 +71,9 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | X11 path detection | configure AC_PATH_XTRA fails cross | spec_replacements | rules/packages/* | Remove --x-includes/--x-libraries, sysroot autodetects |
 | IRIX X11R6.3 missing APIs | XICCallback, XSetIMValues, Xutf8TextListToTextProperty, XUTF8StringStyle undeclared | prep_commands | rules/packages/* | XICCallback→XIMCallback, XSetIMValues→no-op macro, Xutf8→Xmb, XUTF8→XCompound. See st.yaml |
 | _XOPEN_SOURCE hides IRIX defs | struct winsize, TIOCSWINSZ, TIOCGWINSZ missing | prep_commands | rules/packages/* | Remove `-D_XOPEN_SOURCE=600`; `_SGI_SOURCE` provides all POSIX/XSI |
+| _XOPEN_SOURCE hides wprintf | Bare `#define _XOPEN_SOURCE` (no value) → `_XOPEN_SOURCE+0` = 0 → wprintf/fwprintf hidden by `_WCHAR_CORE_EXTENSIONS_1` | prep_commands | rules/packages/lolcat.yaml | Change to `#define _XOPEN_SOURCE 500` to unlock C99 wide-char I/O. Bare define evaluates as 0 in IRIX preprocessor math. |
+| Host build-tool cross-compile | `./fbc: cannot execute binary file` — build generates MIPS helper that must run on x86 host | spec_replacements | rules/packages/bc.yaml | Build fbc with host gcc + stub readline headers before cross-compile, neuter Makefile rule with sed. Pattern: create host-stubs dir, compile with `gcc -I host-stubs`, link with -lm only. |
+| XA_UTF8_STRING missing (X11R6.3) | `XA_UTF8_STRING` undeclared — IRIX Xmu/Atoms.h is X11R6.3, lacks UTF8 atom | prep_commands | rules/packages/xclip.yaml | `#define XA_UTF8_STRING(dpy) XInternAtom(dpy, "UTF8_STRING", False)` after `#include <X11/Xmu/Atoms.h>`. Functionally identical to X11R6.4+ definition. |
 | Makefile compat ordering | compat undefined symbols in plain Makefile builds | spec_replacements | rules/packages/* | Build compat archive BEFORE make, pass via LDFLAGS. Autotools injects between configure/make; Makefile must be explicit. See st.yaml, figlet.yaml |
 | PKG_CONFIG_SYSROOT_DIR | pkg-config returns IRIX paths, not host staging paths | spec_replacements | rules/packages/* | `export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"` — already in `%configure` macro but NOT in custom Makefile builds |
 | No TrueType fonts on IRIX | Xft/fontconfig apps fail "can't open font" | bundle fonts | mogrix/bundle.py | `_include_fonts()` copies TTFs from `fonts/`, adds relative `<dir>` to fonts.conf, creates monospace alias conf.d, sets FONTCONFIG_FILE in wrapper |
@@ -90,7 +95,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | bcond flipping | Spec has inline %if/%else/%endif inside %configure continuation | spec_replacements | rules/packages/* | `%bcond_without X` → `%bcond_with X`; RPM resolves conditionals to %else branches. configure_flags:remove can't handle these. See gnutls.yaml |
 | PRIdMAX/SCNd64 macros | Compile error: implicit/undeclared PRIdMAX, SCNd64, etc. | compat header | compat/include/mogrix-compat/generic/inttypes.h | 18 macros: PRId/PRIu/PRIx/PRIX/PRIoMAX, PRId/PRIu/PRIx/PRIXPTR, SCNd/SCNu/SCNx64, SCNd/SCNu/SCNxMAX |
 | cmake %cmake3 macro | FC40 spec uses %cmake3/%cmake3_build/%cmake3_install | spec_replacements | rules/packages/* | Replace with raw cmake + make. Set CMAKE_SYSTEM_NAME=IRIX, cross tools, staging paths. See weechat.yaml, tdnf.yaml |
-| select() duplicate symbol | dicl-clang-compat `extern select()` vs IRIX `static select()` | header guard | cross/include/dicl-clang-compat/sys/select.h | Guard with `#ifndef _SYS_TIME_H` to prevent conflict when _XOPEN_SOURCE set |
+| select() duplicate symbol / struct timeval incomplete | dicl-clang-compat sys/select.h: forward-declared `struct timeval` caused incomplete-type errors | header include | cross/include/dicl-clang-compat/sys/select.h | Now includes `<sys/time.h>` directly when not yet included, providing full struct timeval + select() declaration. Fixes xclip and any code using `struct timeval tv;` after sys/select.h. |
 | rld symbol resolution debug | Binary crashes silently or ldd SIGSEGV | `_RLD_ARGS="-log /tmp/rld.log"` | methods/irix-testing.md | Shows unresolvable symbols, soname mismatches. Check NEEDED sonames match installed .so files |
 | ncurses ext-colors terminfo | SIGBUS on MIPS, garbage cols/lines values | spec_replacements | rules/packages/ncurses.yaml | `--disable-ext-colors`; ext-colors reads 16-bit terminfo fields as 32-bit |
 | Explicit Provides required | rpm -Uvh fails with unresolved deps | spec_replacements | rules/packages/* | rpmmacros.irix sets AutoProv:no; add `Provides: libfoo.so.N` for each .so |
@@ -99,6 +104,9 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | .init_array ignored by rld | Static constructors silently don't run in shared libs | custom linker script + CRT objects | cross/irix-shared.lds, cross/crt/ | `.ctors` preserved by linker script; crtbeginS.o provides `_init` that walks .ctors array. All .so linked via GNU ld now uses this |
 | rld re-encounter GOT crash | SIGBUS when DSO with large GOT is loaded as NEEDED after dlopen | `beqz` guard in crtbeginS.o | cross/crt/crtbeginS.S | rld re-runs DT_INIT on re-encounter, zeros global GOT entries above LOCAL_GOTNO ~128. Guard checks `__CTOR_END__` for NULL before deref. Threshold: LOCAL_GOTNO ≤103 OK, ≥140 crashes. |
 | rld global GOT entry limit | SIGSEGV/SIGBUS in rld (PC=0x0FB6AA44) loading .so with large symbol table | `-Bsymbolic-functions` in irix-ld | cross/bin/irix-ld | rld has ~4370 global GOT entry limit per shared library. Global GOT = SYMTABNO - GOTSYM. Qt5Gui (5364) and Qt5Widgets (8567) exceed it. `-Bsymbolic-functions` moves defined FUNC symbols to local GOT, reducing count by 50-65%. Added unconditionally to irix-ld for all shared libraries. |
+| dlmalloc shared lib crash | ABORT/SIGSEGV cross-heap corruption when .so uses malloc/free across library boundaries | dlmalloc in exe only, not .so | mogrix/engine.py, cross/bin/irix-ld | `-Bsymbolic-functions` binds each .so's dlmalloc locally → private heaps → cross-heap free() abort. Fix: dlmalloc.o linked into executables only; .so leaves malloc undefined → rld resolves to exe's single heap. See [detailed section below](#dlmalloc-shared-library-crash-cross-heap-corruption) |
+| CRT symbol visibility | .so picks up wrong `__CTOR_END__` / `_init` from other .so | `.hidden` in crtbeginS.S/crtendS.S | cross/crt/crtbeginS.S, cross/crt/crtendS.S | `__CTOR_END__`, `__DTOR_END__`, `__do_global_ctors_aux`, `_init` now `.hidden` to prevent cross-library OBJECT symbol interposition |
+| gnutls CA trust store | "peer's certificate issuer is unknown" / TLS handshake fails | configure_flags: add | rules/packages/gnutls.yaml | `--with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt`. Without it, gnutls has no compiled-in CA path. See [detailed section below](#gnutls-ca-trust-store) |
 | Circular NEEDED crashes rld | SIGSEGV (PC=0x0) during dependency resolution with circular NEEDED entries | Break the cycle | rules/packages/freetype.yaml | freetype↔harfbuzz circular dep (freetype NEEDED harfbuzz, harfbuzz NEEDED freetype) crashes rld during single-pass resolution combined with deep dep trees. Fix: `--without-harfbuzz` for freetype. Harfbuzz still works standalone. |
 | rld deep dependency tree crash | dlopen of library with 10+ transitive deps crashes rld | Sequential preloading | Bundle wrappers | Pre-load heavy deps (Qt5Core, harfbuzz) individually via sequential dlopen before loading the leaf library (Qt5Gui). Bundle wrappers implement the preload chain. |
 | IRIX rld strict UND resolution | "unresolvable symbol" even when symbol exists in already-loaded DSO | Add explicit NEEDED | rules/packages/libxcb.yaml | IRIX rld does NOT search already-loaded DSOs for UND symbols unless there's a direct NEEDED chain. libxcb had UND `_XLockMutex_fn` from libX11 but no NEEDED libX11. Fix: `-lX11` in LDFLAGS. |
@@ -122,6 +130,30 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | `%{__global_ldflags}` undefined | Literal `%{__global_ldflags}` string passed to compiler/linker | spec_replacements | rules/packages/* | Not defined in rpmmacros.irix. Remove from any Makefile build commands. See figlet.yaml, sl.yaml |
 | GnuPG --with-lib*-prefix | `gpg-error-config: not found` during configure | configure_flags: add | rules/packages/* | GnuPG ecosystem uses `*-config` scripts not in build PATH. Add `--with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug` etc. Do NOT use `--with-npth-prefix` (FC40 npth lacks npth-config; use NPTH_CONFIG export_var) |
 | drop_subpackages orphaned scriptlets | `%post <subpkg>` / `%postun <subpkg>` left behind after subpackage dropped | spec_replacements | rules/packages/* | drop_subpackages removes %package/%description/%files but NOT scriptlets. Manually remove %post/%postun for dropped subpackages. See cmatrix.yaml |
+
+### dlmalloc shared library crash (cross-heap corruption)
+
+**Symptom**: ABORT/SIGSEGV when loading shared libraries that use malloc/free across library boundaries (e.g., weechat + libgcrypt + gnutls).
+
+**Root cause**: `-Bsymbolic-functions` (used in irix-ld for shared libs to stay under rld's ~4370 global GOT entry limit) binds each library's dlmalloc calls locally. When dlmalloc was auto-injected into every compat archive, each .so got its own private heap. Library A allocates, library B frees → dlmalloc detects cross-heap pointer → abort().
+
+**Fix (session 37)**:
+- `engine.py`: Removed dlmalloc auto-injection into compat archives. Actively strips dlmalloc if present.
+- `irix-ld`: Links `dlmalloc.o` into executables only (after $DSOHANDLE in LLD command).
+- Shared libraries leave malloc/free undefined → rld resolves them to the executable's single dlmalloc.
+- Pre-compiled `dlmalloc.o` deployed to `/opt/sgug-staging/usr/sgug/lib32/dlmalloc.o`.
+
+**Also fixed**: CRT symbol visibility — `__CTOR_END__`, `__DTOR_END__`, `__do_global_ctors_aux`, `_init` now `.hidden` in crtbeginS.S/crtendS.S to prevent cross-library OBJECT symbol interposition.
+
+### gnutls CA trust store
+
+**Symptom**: "peer's certificate issuer is unknown" / "certificate is NOT trusted" during TLS handshake.
+
+**Root cause**: gnutls was built without `--with-default-trust-store-file`, so it has no compiled-in path to the CA bundle.
+
+**Fix**: Added `--with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt` to gnutls.yaml configure_flags:add. Bundles include the CA bundle at this relative path.
+
+---
 
 ## Invariants (Settled Facts)
 
@@ -148,6 +180,9 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | C++ static ctors in .so require CRT | Without crtbeginS.o/crtendS.o, static constructors silently don't run → NULL d_ptr in STL containers, crashes on first use | cross/crt/crtbeginS.S, cross/crt/crtendS.S |
 | rld re-runs DT_INIT on re-encounter | Loading DSO A, then DSO B that NEEDS A, triggers A's .init again. Global GOT entries zeroed → SIGBUS. Fixed with beqz guard in crtbeginS.o | cross/crt/crtbeginS.S |
 | rld global GOT limit ~4370 | Shared libs with >4370 global GOT entries crash rld (SIGSEGV at rld internal PC). Not total GOT, specifically global entries. `-Bsymbolic-functions` reduces by moving defined FUNC symbols from global→local GOT | cross/bin/irix-ld |
+| dlmalloc in exe only, not .so | `-Bsymbolic-functions` + per-library dlmalloc = cross-heap corruption. dlmalloc.o linked into executables only; .so inherits via rld symbol resolution | mogrix/engine.py, cross/bin/irix-ld |
+| CRT symbols must be .hidden in .so | `__CTOR_END__`, `__DTOR_END__`, `__do_global_ctors_aux`, `_init` without `.hidden` causes cross-library OBJECT symbol interposition | cross/crt/crtbeginS.S, cross/crt/crtendS.S |
+| gnutls needs explicit CA trust path | Without `--with-default-trust-store-file`, gnutls has no compiled-in CA bundle path → TLS fails | rules/packages/gnutls.yaml |
 | X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 | rules/packages/aterm.yaml |
 | IRIX X11R6.3 API limits | XICCallback→XIMCallback, XSetIMValues→no-op, Xutf8→Xmb, XUTF8→XCompound | rules/packages/st.yaml |
 | Bundle wrapper shell recursion | Wrappers use `dirname`/`pwd`/`basename`; if those are also bundled commands, `$PATH` causes infinite loop fork bomb. Use `/bin/dirname`, `/bin/pwd`, `/bin/basename` (absolute paths) in all shell templates | mogrix/bundle.py |
@@ -160,6 +195,10 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | rld strict UND resolution | IRIX rld doesn't search already-loaded DSOs for UND symbols unless there's a NEEDED edge. Must add explicit `-l` linkage | rules/packages/libxcb.yaml |
 | Qt5 needs preload chain | rld can't handle Qt5Gui's full dep tree in one dlopen. Must preload Qt5Core + harfbuzz first. Bundle wrappers implement this | rules/packages/qt5-qtbase.yaml |
 | Old /opt/cross/bin/irix-ld broken | Simple GNU ld wrapper produces MIPS_OPTIONS tags → rld crash. Always use staging irix-ld (LLD 18 for executables) | /opt/sgug-staging/usr/sgug/bin/irix-ld |
+| Bare `_XOPEN_SOURCE` hides C99 on IRIX | `#define _XOPEN_SOURCE` (no value) → `_XOPEN_SOURCE+0 = 0`, fails `>= 500` test for wprintf/fwprintf in wchar_core.h | rules/packages/lolcat.yaml |
+| XA_UTF8_STRING not in IRIX X11R6.3 | Xmu/Atoms.h missing UTF8 atom macro. Define as `XInternAtom(dpy, "UTF8_STRING", False)` | rules/packages/xclip.yaml |
+| sys/select.h includes sys/time.h | compat sys/select.h now includes sys/time.h for full struct timeval (was forward-decl only → incomplete type) | cross/include/dicl-clang-compat/sys/select.h |
+| rpmbuild uses /bin/sh not bash | No pushd/popd, ${var:0:7}, [[ ]], {a,b} brace expansion. Use cd, sed, [ ], explicit paths | All spec_replacements |
 | AUTOPOINT=true for NLS-disabled | Packages with autoreconf + nls-disabled class need `AUTOPOINT=true` | rules/packages/*.yaml |
 | C++ uses GCC 9 libstdc++ | clang++ with SGUG-RSE libstdc++ headers + custom CRT (.ctors) | cross/bin/irix-cxx |
 | IRIX libm lacks C99 math | Must disable _GLIBCXX_USE_C99_MATH_TR1 in c++config.h | staging c++config.h |
@@ -174,6 +213,8 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | _RLD_ARGS="-log" for debugging | IRIX rld logging shows unresolvable symbols, wrong sonames, load order | methods/irix-testing.md |
 | IRIX inttypes.h lacks MAX/PTR macros | PRIdMAX, SCNd64, etc. not defined; mogrix-compat inttypes.h provides them | compat/include/mogrix-compat/generic/inttypes.h |
 | Source `#define` overrides `-D` | CFLAGS `-D_Thread_local=` won't work if source has `#define _Thread_local __thread` | rules/packages/gnutls.yaml |
+| IRIX native tar `-C` flag | IRIX `/bin/tar` silently ignores `-C dir` during extraction; also cannot handle symlinks in any tar format. Fix: bundle tarballs use `--format=ustar -h` (dereference symlinks to hard links), extraction on IRIX should use GNU tar from chroot: `tar xf bundle.tar -C /path` via sgug-exec | mogrix/bundle.py |
+| Bundle wrapper LD_LIBRARYN32_PATH contamination | Bundle trampolines used to prepend to existing `LD_LIBRARYN32_PATH`, causing old bundle paths to contaminate new runs. Fixed: wrappers now set `LD_LIBRARYN32_PATH` fresh (bundles are self-contained) | mogrix/bundle.py |
 | `extra_cflags` rule is dead code | Validated in validator.py but never applied by engine.py; use prep_commands or export_vars | mogrix/rules/validator.py |
 | `skip_manpages` rule is dead code | Validated but never applied by engine. Use prep_commands to touch man pages | mogrix/rules/validator.py |
 | `make_env` rule is dead code | Validated but never applied by engine. Use spec_replacements instead | mogrix/rules/validator.py |
@@ -206,6 +247,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | skip_find_lang is generic | All packages skip %find_lang; locale files removed by generic install_cleanup | rules/generic.yaml |
 | batch.py rule passthrough | batch converter must pass export_vars, skip_find_lang, skip_check, install_cleanup, spec_replacements to writer | mogrix/batch.py |
 | drop_subpackages ignores scriptlets | Engine removes %package/%description/%files but NOT %post/%postun for dropped subpackages; use spec_replacements | mogrix/emitter/spec.py |
+| gnutls `set_default_priority` fails | `GNUTLS_E_INVALID_REQUEST` / "The request is invalid" from `gnutls_set_default_priority()` | spec_replacements | rules/packages/gnutls.yaml | Fedora compiles gnutls with `--with-system-priority-file` and `--with-default-priority-string="@SYSTEM"`. On IRIX the crypto-policies file doesn't exist, so `@SYSTEM` fails. Fix: remove `--with-system-priority-file`, change default priority to `"NORMAL"`. |
 
 ## File Locations
 

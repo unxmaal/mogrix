@@ -1,0 +1,97 @@
+# rxvt-unicode - Unicode terminal emulator (FC40: 9.31)
+# Autoconf build. Deps: libptytty, ncurses, fontconfig, freetype, libXft (all staged).
+# Disable perl, pixbuf, startup-notification for IRIX.
+# Uses bundled libev (Fedora symlinks to libev-source, but we skip that).
+# IRIX X11R6.3 compatibility: XICCallback, XSetIMValues, Xutf8* functions.
+package: rxvt-unicode
+
+rules:
+  inject_compat_functions:
+    - getline
+    - strdup
+    - strndup
+    - setenv
+    - unsetenv
+
+  drop_buildrequires:
+    - desktop-file-utils
+    - fontconfig-devel
+    - freetype-devel
+    - gdk-pixbuf2-devel
+    - git
+    - glib2-devel
+    - gnupg2
+    - libev-source
+    - libptytty-devel
+    - libX11-devel
+    - libXext-devel
+    - libXft-devel
+    - libXrender-devel
+    - libXt-devel
+    - signify
+    - startup-notification-devel
+    - xorg-x11-proto-devel
+
+  drop_requires:
+    - startup-notification
+
+  prep_commands:
+    # IRIX X11R6.3: XICCallback → XIMCallback (XICCallback added in X11R6.4)
+    - "find src -name '*.C' -o -name '*.h' | xargs sed -i 's/XICCallback/XIMCallback/g'"
+    # IRIX X11R6.3: Xutf8TextListToTextProperty → XmbTextListToTextProperty
+    - "find src -name '*.C' -o -name '*.h' | xargs sed -i 's/Xutf8TextListToTextProperty/XmbTextListToTextProperty/g'"
+    # IRIX X11R6.3: XUTF8StringStyle → XCompoundTextStyle
+    - "find src -name '*.C' -o -name '*.h' | xargs sed -i 's/XUTF8StringStyle/XCompoundTextStyle/g'"
+    # IRIX X11R6.3: XSetIMValues not available — define as no-op in rxvt.h (included by all .C files)
+    - "sed -i '1i#define XSetIMValues(...) 0  /* IRIX X11R6.3: not available */' src/rxvt.h"
+    # Remove _XOPEN_SOURCE — it hides struct winsize, TIOCSWINSZ on IRIX
+    - "sed -i 's/-D_XOPEN_SOURCE[^ ]*//' configure configure.ac"
+
+  configure_flags:
+    add:
+      - --disable-pixbuf
+
+  spec_replacements:
+    # Remove GPG/signify verification and change to plain setup (no git patches needed)
+    - pattern: "%{gpgverify} --keyring='%{SOURCE4}' --signature='%{SOURCE3}' --data='%{SOURCE2}'\nsignify -V -p '%{SOURCE2}' -m '%{SOURCE0}'\n%autosetup -S git"
+      replacement: "%setup -q"
+    # Remove perl BuildRequires line (comma-separated, can't use drop_buildrequires)
+    - pattern: "BuildRequires:  perl-devel, perl-generators, perl(ExtUtils::Embed)\n"
+      replacement: ""
+    # Flip configure flags: utmp/wtmp/lastlog → disabled (IRIX utmp incompatible)
+    - pattern: " --enable-utmp \\\n --enable-wtmp \\\n --enable-lastlog \\\n"
+      replacement: " --disable-utmp \\\n --disable-wtmp \\\n --disable-lastlog \\\n"
+    # Flip configure: perl → disabled (no perl on IRIX)
+    - pattern: " --enable-perl \\\n"
+      replacement: " --disable-perl \\\n"
+    # Flip configure: startup-notification → disabled
+    - pattern: " --enable-startup-notification \\\n"
+      replacement: " --disable-startup-notification \\\n"
+    # urclock is a perl script still installed by make install even with --disable-perl
+    # Original spec has bare rm that fails if install_cleanup already removed it — use rm -f
+    - pattern: "# This isn't something we need\nrm %{buildroot}%{_bindir}/urclock\nrm %{buildroot}%{_mandir}/man1/urclock.1*"
+      replacement: "# urclock cleanup (perl script, not useful on IRIX)\nrm -f %{buildroot}%{_bindir}/urclock\nrm -f %{buildroot}%{_mandir}/man1/urclock.1*"
+    # Remove desktop-file-install block (contains %if/%endif for vendor flag)
+    - pattern: "# install desktop files\ndesktop-file-install \\\n%if (0%{?fedora} && 0%{?fedora} < 19) || (0%{?rhel} && 0%{?rhel} < 7)\n  --vendor=fedora \\\n%endif\n  --dir=%{buildroot}%{_datadir}/applications \\\n  %{SOURCE5}"
+      replacement: "# desktop file install skipped for IRIX"
+    # Remove compat symlink creation block
+    - pattern: "# create compat symlinks\npushd $RPM_BUILD_ROOT/%{_bindir}\nln -s urxvt rxvt\nln -s urxvt urxvt-ml\nln -s urxvtc urxvt-mlc\nln -s urxvtd urxvt-mld\nln -s urxvt urxvt256c\nln -s urxvtc urxvt256cc\nln -s urxvtd urxvt256cd\nln -s urxvt urxvt256c-ml\nln -s urxvtc urxvt256c-mlc\nln -s urxvtd urxvt256c-mld\npopd"
+      replacement: "# compat symlinks skipped for IRIX"
+    # Remove symlink binaries from %files
+    - pattern: "%{_bindir}/rxvt\n"
+      replacement: ""
+    - pattern: "%{_bindir}/urxvt-ml\n%{_bindir}/urxvt-mlc\n%{_bindir}/urxvt-mld\n"
+      replacement: ""
+    - pattern: "%{_bindir}/urxvt256c\n%{_bindir}/urxvt256cc\n%{_bindir}/urxvt256cd\n"
+      replacement: ""
+    - pattern: "%{_bindir}/urxvt256c-ml\n%{_bindir}/urxvt256c-mlc\n%{_bindir}/urxvt256c-mld\n"
+      replacement: ""
+    # Remove perl extension man pages from %files (not built without perl)
+    - pattern: "%{_mandir}/man1/urxvt-background.1*\n%{_mandir}/man1/urxvt-bell-command.1*\n%{_mandir}/man1/urxvt-block-graphics-to-ascii.1*\n%{_mandir}/man1/urxvt-clipboard-osc.1*\n%{_mandir}/man1/urxvt-clickthrough.1*\n%{_mandir}/man1/urxvt-confirm-paste.1*\n%{_mandir}/man1/urxvt-digital-clock.1*\n%{_mandir}/man1/urxvt-eval.1*\n%{_mandir}/man1/urxvt-example-refresh-hooks.1*\n%{_mandir}/man1/urxvt-extensions.1*\n%{_mandir}/man1/urxvt-keysym-list.1*\n%{_mandir}/man1/urxvt-kuake.1*\n%{_mandir}/man1/urxvt-matcher.1*\n%{_mandir}/man1/urxvt-option-popup.1*\n%{_mandir}/man1/urxvt-overlay-osc.1*\n%{_mandir}/man1/urxvt-readline.1*\n%{_mandir}/man1/urxvt-remote-clipboard.1*\n%{_mandir}/man1/urxvt-searchable-scrollback.1*\n%{_mandir}/man1/urxvt-selection-autotransform.1*\n%{_mandir}/man1/urxvt-selection-pastebin.1*\n%{_mandir}/man1/urxvt-selection-popup.1*\n%{_mandir}/man1/urxvt-selection-to-clipboard.1*\n%{_mandir}/man1/urxvt-selection.1*\n%{_mandir}/man1/urxvt-tabbed.1*\n%{_mandir}/man1/urxvt-xim-onthespot.1*\n%{_mandir}/man3/urxvtperl.3*\n"
+      replacement: ""
+    # Remove desktop file and perl extension directory from %files
+    - pattern: "%{_datadir}/applications/*rxvt-unicode.desktop\n%{_libdir}/urxvt\n"
+      replacement: ""
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_datadir}/applications/*rxvt-unicode.desktop"

@@ -35,6 +35,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -62,11 +63,7 @@ case "$dir" in
     /*) ;;
     *)  dir="`/bin/pwd`/$dir" ;;
 esac
-if [ -n "$LD_LIBRARYN32_PATH" ]; then
-    LD_LIBRARYN32_PATH="$dir/_lib32:$LD_LIBRARYN32_PATH"
-else
-    LD_LIBRARYN32_PATH="$dir/_lib32"
-fi
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}"
 export LD_LIBRARYN32_PATH
 {terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
 """
@@ -78,11 +75,7 @@ case "$dir" in
     /*) ;;
     *)  dir="`/bin/pwd`/$dir" ;;
 esac
-if [ -n "$LD_LIBRARYN32_PATH" ]; then
-    LD_LIBRARYN32_PATH="$dir/_lib32:$LD_LIBRARYN32_PATH"
-else
-    LD_LIBRARYN32_PATH="$dir/_lib32"
-fi
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}"
 export LD_LIBRARYN32_PATH
 {terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
 """
@@ -107,7 +100,9 @@ esac
 dir=`cd "$dir" && /bin/pwd`
 bundle=`/bin/basename "$dir"`
 bindir=`/bin/dirname "$dir"`/bin
+registry="$bindir/.bundle-owners"
 mkdir -p "$bindir"
+touch "$registry"
 echo "Installing {package} commands into $bindir"
 {trampoline_commands}
 echo ""
@@ -127,9 +122,17 @@ case "$dir" in
     *)  dir="`/bin/pwd`/$dir" ;;
 esac
 dir=`cd "$dir" && /bin/pwd`
+bundle=`/bin/basename "$dir"`
 bindir=`/bin/dirname "$dir"`/bin
+registry="$bindir/.bundle-owners"
 echo "Removing {package} commands from $bindir"
 {unlink_commands}
+# Clean registry entries for this bundle
+if [ -f "$registry" ]; then
+    tmp="$registry.tmp"
+    grep -v "=$bundle\$" "$registry" > "$tmp" 2>/dev/null
+    mv "$tmp" "$registry"
+fi
 echo ""
 echo "To remove the bundle directory, run:"
 echo "  rm -rf $dir"
@@ -656,28 +659,24 @@ class BundleBuilder:
             )
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Find next revision letter by scanning existing bundles
-        suffix = "a"
+        # Clean up old bundles for this package (letter-suffix or date-serial)
+        bundle_prefix = f"{base_name}-irix-bundle"
         for existing in sorted(output_dir.iterdir()):
             name = existing.name
-            prefix = f"{base_name}-irix-bundle"
-            if existing.is_dir():
-                # Match unsuffixed (legacy) or suffixed bundles
-                if name == prefix:
-                    shutil.rmtree(existing)
-                elif name.startswith(base_name) and name.endswith("-irix-bundle"):
-                    middle = name[len(base_name):-len("-irix-bundle")]
-                    if len(middle) == 1 and middle.isalpha():
-                        next_letter = chr(ord(middle) + 1)
-                        if next_letter > suffix:
-                            suffix = next_letter
-                        shutil.rmtree(existing)
-            elif existing.is_file() and name.endswith("-irix-bundle.tar.gz"):
-                # Clean up old tarballs for this package
-                if name.startswith(base_name):
-                    existing.unlink()
+            if existing.is_dir() and name.startswith(base_name) and (
+                name.endswith("-irix-bundle")
+                or "-irix-bundle." in name
+            ):
+                shutil.rmtree(existing)
+            elif existing.is_file() and name.startswith(base_name) and (
+                name.endswith("-irix-bundle.tar.gz")
+                or "-irix-bundle." in name and name.endswith(".tar.gz")
+            ):
+                existing.unlink()
 
-        bundle_name = f"{base_name}{suffix}-irix-bundle"
+        # Date-serial suffix: MMDDYYHHmm
+        date_serial = datetime.now().strftime("%m%d%y%H%M")
+        bundle_name = f"{bundle_prefix}.{date_serial}"
         manifest.bundle_name = bundle_name
         bundle_dir = output_dir / bundle_name
         bundle_dir.mkdir(parents=True)
@@ -751,6 +750,20 @@ class BundleBuilder:
         has_terminfo = (bundle_dir / "share" / "terminfo").is_dir()
         terminfo_block = TERMINFO_BLOCK if has_terminfo else ""
 
+        # Detect _lib32/ subdirectories that contain .so files (private lib dirs).
+        # e.g., man-db installs libs in lib32/man-db/ which rld can't find
+        # unless we add the directory to LD_LIBRARYN32_PATH.
+        extra_lib_paths = ""
+        lib_dir = bundle_dir / "_lib32"
+        if lib_dir.is_dir():
+            for subdir in sorted(lib_dir.iterdir()):
+                if subdir.is_dir() and any(
+                    f.name.endswith(".so") or ".so." in f.name
+                    for f in subdir.iterdir()
+                    if f.is_file() or f.is_symlink()
+                ):
+                    extra_lib_paths += f":$dir/_lib32/{subdir.name}"
+
         # Detect app-specific env vars needed for plugin loading etc.
         extra_env_lines = []
         extra_args_map = {}  # binary name -> extra CLI args string
@@ -781,13 +794,13 @@ class BundleBuilder:
                 'SSL_CERT_FILE="$dir/etc/pki/tls/certs/ca-bundle.crt"'
             )
             extra_env_lines.append("export SSL_CERT_FILE")
-            # weechat uses gnutls, not openssl — needs -r to set CA path
-            if weechat_plugins.is_dir():
-                ca_cmd = '/set weechat.network.gnutls_ca_user $dir/etc/pki/tls/certs/ca-bundle.crt'
-                for wc_bin in ("weechat", "weechat-curses"):
-                    extra_args_map[wc_bin] = (
-                        f'-r "{ca_cmd}" '
-                    )
+        # libevent: IRIX /dev/poll backend crashes — force poll() instead
+        lib32_dir = bundle_dir / "_lib32"
+        if lib32_dir.is_dir() and any(
+            f.name.startswith("libevent") for f in lib32_dir.iterdir()
+        ):
+            extra_env_lines.append("EVENT_NODEVPOLL=1")
+            extra_env_lines.append("export EVENT_NODEVPOLL")
         extra_env_block = (
             "\n".join(extra_env_lines) + "\n" if extra_env_lines else ""
         )
@@ -816,6 +829,7 @@ class BundleBuilder:
                     binary=binary,
                     terminfo_block=terminfo_block,
                     extra_env_block=extra_env_block,
+                    extra_lib_paths=extra_lib_paths,
                     extra_args=extra_args_map.get(binary, ""),
                 )
             )
@@ -828,6 +842,7 @@ class BundleBuilder:
                     binary=binary,
                     terminfo_block=terminfo_block,
                     extra_env_block=extra_env_block,
+                    extra_lib_paths=extra_lib_paths,
                     extra_args=extra_args_map.get(binary, ""),
                 )
             )
@@ -878,7 +893,7 @@ class BundleBuilder:
             subprocess.run(
                 [
                     "tar",
-                    "--format=v7",
+                    "--format=ustar",
                     "--owner=0",
                     "--group=0",
                     "-czf",
@@ -915,6 +930,19 @@ class BundleBuilder:
         trampoline_lines = []
         unlink_lines = []
         for cmd in commands:
+            # Check registry for existing owner — warn on conflict
+            trampoline_lines.append(
+                f'prev_owner=`grep "^{cmd}=" "$registry" 2>/dev/null | sed "s/^{cmd}=//"`'
+            )
+            trampoline_lines.append(
+                f'if [ -n "$prev_owner" ] && [ "$prev_owner" != "$bundle" ]; then'
+            )
+            trampoline_lines.append(
+                f'  echo "  {cmd} (was: $prev_owner)"'
+            )
+            trampoline_lines.append("else")
+            trampoline_lines.append(f'  echo "  {cmd}"')
+            trampoline_lines.append("fi")
             trampoline_lines.append(
                 f'echo \'#!/bin/sh\' > "$bindir/{cmd}"'
             )
@@ -928,11 +956,30 @@ class BundleBuilder:
                 f'echo "exec \\"\\$dir/../$bundle/{cmd}\\" \\"\\$@\\"" >> "$bindir/{cmd}"'
             )
             trampoline_lines.append(
-                f'chmod 755 "$bindir/{cmd}" && echo "  {cmd}"'
+                f'chmod 755 "$bindir/{cmd}"'
+            )
+            # Update registry: remove old entry, add new
+            trampoline_lines.append(
+                f'grep -v "^{cmd}=" "$registry" > "$registry.tmp" 2>/dev/null; mv "$registry.tmp" "$registry"'
+            )
+            trampoline_lines.append(
+                f'echo "{cmd}=$bundle" >> "$registry"'
+            )
+            # Uninstall: only remove if this bundle still owns the trampoline
+            unlink_lines.append(
+                f'owner=`grep "^{cmd}=" "$registry" 2>/dev/null | sed "s/^{cmd}=//"`'
             )
             unlink_lines.append(
-                f'rm -f "$bindir/{cmd}" && echo "  {cmd}"'
+                f'if [ "$owner" = "$bundle" ] || [ -z "$owner" ]; then'
             )
+            unlink_lines.append(
+                f'  rm -f "$bindir/{cmd}" && echo "  {cmd}"'
+            )
+            unlink_lines.append("else")
+            unlink_lines.append(
+                f'  echo "  {cmd} (kept — owned by $owner)"'
+            )
+            unlink_lines.append("fi")
 
         install_path = bundle_dir / "install"
         install_path.write_text(

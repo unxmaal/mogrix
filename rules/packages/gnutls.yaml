@@ -52,6 +52,9 @@ rules:
       - --disable-libdane
       - --disable-valgrind-tests
       - --without-p11-kit
+      # Point gnutls to the CA bundle in staging (%{_sysconfdir} = /usr/sgug/etc)
+      # Bundles copy this file; weechat/curl find it automatically via gnutls
+      - --with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt
 
   # Disable Linux-specific features
   configure_disable:
@@ -82,6 +85,13 @@ rules:
       replacement: ""
     - pattern: "           --with-default-trust-store-pkcs11=\"pkcs11:\" \\\n"
       replacement: ""
+    # IRIX has no crypto-policies — system priority file doesn't exist.
+    # gnutls_set_default_priority() reads this file; missing = GNUTLS_E_INVALID_REQUEST.
+    - pattern: "           --with-system-priority-file=%{_sysconfdir}/crypto-policies/back-ends/gnutls.config \\\n"
+      replacement: ""
+    # @SYSTEM reads the system priority file — use NORMAL as hardcoded fallback
+    - pattern: '--with-default-priority-string="@SYSTEM"'
+      replacement: '--with-default-priority-string="NORMAL"'
     # Bashisms: pushd/popd not available in /bin/sh
     - pattern: "pushd native_build"
       replacement: "cd native_build"

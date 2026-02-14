@@ -1,0 +1,17 @@
+# libpipeline - Pipeline manipulation library (FC40: 1.5.7)
+# Simple autoconf build. No external deps. Required by man-db.
+# IRIX fix: clearenv() not available — provide compat implementation.
+package: libpipeline
+
+rules:
+  drop_buildrequires:
+    - check-devel
+
+  prep_commands:
+    # IRIX has no clearenv() — provide inline implementation
+    - |
+      sed -i '/#include "pipeline-private.h"/a\
+      #ifndef clearenv\
+      extern char **environ;\
+      static inline int clearenv(void) { environ = NULL; return 0; }\
+      #endif' lib/pipeline.c
