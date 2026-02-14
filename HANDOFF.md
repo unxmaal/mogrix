@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-12 (session 30)
-**Status**: 96+ source packages cross-compiled (270+ RPMs). 7 suite bundles shipped and verified on live IRIX. `mogrix test` command validates bundles automatically.
+**Last Updated**: 2026-02-14 (session 37, continued)
+**Status**: 100+ source packages cross-compiled (280+ RPMs). Weechat TLS WORKING on IRIX. All 23 bundles rebuilt with dlmalloc fix + gnutls CA trust store. wget2 strnlen fix done.
 
 ---
 
@@ -17,70 +17,78 @@
 
 ## Current State
 
-All primary deliverables are working. No active blockers.
+**Weechat TLS**: SOLVED. Connected to irc.libera.chat:6697 on real IRIX hardware. See session 37 notes for the dlmalloc fix.
+
+**dlmalloc architecture change**: dlmalloc is now linked into executables only (via `irix-ld`). Shared libraries leave malloc/free undefined so rld resolves them to the executable's single allocator. This eliminates cross-heap corruption when library A allocates and library B frees.
+
+**All bundles rebuilt** (session 37 continued): All 23 bundles (16 individual + 5 suites + weechat + gmi100) re-bundled with dlmalloc-free shared libraries. gnutls rebuilt with `--with-default-trust-store-file`. wget2 rebuilt with strnlen compat fix. Key bundles deployed to IRIX host.
 
 **Bundles deployed on IRIX** (`/usr/people/edodd/apps/`):
 
-| Bundle | Size | Key Apps | Tests |
-|--------|------|----------|-------|
-| mogrix-smallweb | 11.1 MB | telescope, gmi100, lynx, snownews | 34/34 |
-| mogrix-essentials | 24 MB | nano, grep, sed, gawk, less, coreutils, findutils, diffutils, tar, tree | 134/134 |
-| mogrix-net | 20.8 MB | curl, rsync, gnupg2 | 41/41 |
-| mogrix-fun | 0.6 MB | cmatrix, figlet, sl | 16/16 |
-| weechat | 21.7 MB | IRC client (TLS verified on Libera.Chat) | — |
-| st | 10.2 MB | Suckless terminal (Xft + Iosevka font) | — |
-| bitlbee | — | IRC gateway + discord plugin | — |
-
-**Key capabilities**: `mogrix fetch/convert/build/stage/bundle/test/create-srpm`, suite bundles, upstream git/tarball packages, MCP server v2.1.0 with `irix_host_exec`.
+| Bundle | Key Apps | Tests |
+|--------|----------|-------|
+| mogrix-smallweb | telescope, gmi100, lynx, snownews | 34/34 |
+| mogrix-essentials | nano, grep, sed, gawk, less, coreutils, findutils, diffutils, tar, tree | 134/134 |
+| mogrix-net | curl, rsync, gnupg2 | 41/41 |
+| mogrix-fun | cmatrix, figlet, sl | 16/16 |
+| weechat | IRC client (TLS working!) | 19/19 + TLS verified |
+| groff | Document formatter | 12/12 |
+| st | Suckless terminal (Xft + Iosevka font) | 7/7 |
+| bitlbee | IRC gateway + discord plugin | 6/6 |
+| telescope | Gemini browser | 6/6 |
+| gmi100 | Gemini client | 6/6 |
+| lynx | Web browser | 6/6 |
+| snownews | RSS reader | 6/6 |
+| tinc | VPN daemon | 8/6 (2 non-critical fails) |
+| man-db | man, whatis, mandb, lexgrog | NEW — not yet in a deployed bundle |
 
 ---
 
 ## Next Steps
 
-**Pending ultralist tasks:**
-- **#37**: Build cairo (meson, deps: pixman+freetype+fontconfig+libpng — all ready)
-- **#38**: Build pango (meson, deps: cairo+harfbuzz+fribidi+fontconfig)
-- **#46**: Build qtermwidget5 + qterminal (Qt5 verified on IRIX)
-
-**Optional builds (no ultralist task yet):**
-- gmid (Gemini server), gophernicus (Gopher server)
-- vim, tmux, man-db, jq
-- Ship bitlbee + weechat + st tarballs to community
+1. **Test X11 bundles from real terminal**: dmenu, rxvt-unicode, st
+2. **Clean up old bundles on IRIX**: Remove stale weechat bundles (0214260152, 0214260152-real, 0213262143, 0213262214, old tmux/vim bundles)
+3. **Pending tasks:**
+   - Build qtermwidget5 + qterminal
+   - Add convert-time lint for duplicated rules
+   - Implement mogrix elevate command
+   - htop: BLOCKED (needs IRIX /proc platform backend)
+4. **Low priority**: apropos segfault
 
 ---
 
 ## Recent Work
 
-### Session 30: Housekeeping
+### Session 37: SOLVED weechat TLS ABORT — dlmalloc cross-heap corruption
 
-- Cleaned up dead Claude Code task IDs from HANDOFF.md
-- Updated plan.md status (91 → 96+ packages)
-- Merged 3 memory files into rules/INDEX.md (11 new invariant rows)
-- Slimmed MEMORY.md from 94 → 52 lines
-- Rewrote handoff command + precompact hook with 200-line limit and trim rules
+**Root cause**: `-Bsymbolic-functions` + dlmalloc linked into every .so = each shared library gets its own private malloc heap. When library A allocates memory and library B calls free() on it, dlmalloc detects a foreign pointer and calls abort(). This is exactly what happens during TLS: gnutls allocates, nettle frees (or vice versa).
 
-### Session 29: `mogrix test` + Three New Bundles
+**Fix — dlmalloc moved to executables only**:
+- `mogrix/rules/engine.py` — removed automatic dlmalloc injection into all builds; actively strips dlmalloc from link commands
+- `cross/bin/irix-ld` — now adds `dlmalloc.o` only when linking executables (not shared libraries). Pre-compiled object at `/opt/sgug-staging/usr/sgug/lib32/dlmalloc.o`
+- `cross/crt/crtbeginS.S` — `.hidden` on `__do_global_ctors_aux`, `_init`
+- `cross/crt/crtendS.S` — `.hidden` on `__CTOR_END__`, `__DTOR_END__`
+- `rules/packages/gnutls.yaml` — added `--with-default-trust-store-file=/usr/sgug/etc/pki/tls/certs/ca-bundle.crt`
 
-**`mogrix test <bundle-dir>`** — automated bundle smoke testing on IRIX:
-- Auto-generates `--version` test for every wrapper script
-- Runs YAML `smoke_test` entries (23 packages have them)
-- Detects: unresolved symbols, SIGSEGV, SIGBUS, missing data files
-- All 4 suite bundles pass (225 total tests)
-- Files: `mogrix/test.py` (new), `mogrix/cli.py` (added test command)
+**Batch rebuild**: All 12 shared library packages rebuilt without dlmalloc in .so files: libgpg-error, gmp, libtasn1, libunistring, xz, zstd, ncurses, nettle, gettext, openssl, curl, gnutls. Then weechat rebuilt on top. Then ALL 23 bundles re-created. gnutls rebuilt again with CA trust store fix. wget2 rebuilt with strnlen compat.
 
-**bundle.py fixes:**
-- Symlink crash in chmod loop (broken symlinks in `os.walk`)
-- FIGLET_FONTDIR auto-detection for figlet font path
+**Result**: Weechat connected to irc.libera.chat:6697 with TLS on real IRIX hardware. The longest-standing bug is fixed.
 
-**Bundles created**: mogrix-fun, mogrix-essentials, mogrix-net (see table above)
+**IRIX tar limitation**: IRIX native `/bin/tar` silently drops files with long paths (>100 chars). Use gtar from the chroot (`gtar xzf`) or pipe through host tar for short-path archives. For deployment: symlink from `/usr/people/edodd/apps/` to `/opt/chroot/tmp/<bundle>` when host tar fails.
 
-### Session 28: Telescope Fixes + Tinc Guide
+### Session 36: Bundle testing + weechat TLS debugging
 
-- Telescope `%zu` SIGSEGV — real fix (session 27 was false positive). Sed all `%zu/%zd` → `%u/%d`
-- Telescope UTF-8 glyphs → ASCII equivalents for IRIX terminals
-- libretls getentropy fix — stripped `if HOST_LINUX` conditional
-- Bundle ownership (`--owner=0`), permissions (world-readable), tar format fixes
-- Created `docs/tinc-irix-guide.txt` with full IRIX setup guide
+**Chroot curl fix**: Chroot had stale libcurl linked against IRIX OpenSSL 0.9.7 (not our 3.x). Force-reinstalled correct RPM.
+
+**TLS loopback test**: `gnutls_loopback.c` — full TLS 1.3 handshake passes in chroot. Bundle still ABORTed on host during real TLS, which led to the dlmalloc discovery in session 37.
+
+**Chroot bundle tests**: vim, tmux, jq, bc, man-db pass. wget2 fails (missing strnlen).
+
+### Session 35: weechat gnutls + bundle fixes
+
+**gnutls priority fix** (`rules/packages/gnutls.yaml`): Removed `--with-system-priority-file`, changed default to "NORMAL".
+
+**Bundle wrapper fix** (`mogrix/bundle.py`): LD_LIBRARYN32_PATH set fresh (not appended). Tarball format changed to ustar (later: removed `-h` flag to fix broken symlink errors in groff/dmenu bundles).
 
 ---
 

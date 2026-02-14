@@ -35,6 +35,7 @@ rules:
   # Configure flags
   configure_flags:
     add:
+      - --with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug
       - --enable-shared
       - --disable-static
 
@@ -42,4 +43,7 @@ rules:
     # Remove info page from %files devel (may not be generated)
     - pattern: "%{_infodir}/assuan.info*\n"
       replacement: ""
+    # Add the assuan.h symlink (created by install_cleanup) to %files devel
+    - pattern: "%{_includedir}/libassuan2/"
+      replacement: "%{_includedir}/assuan.h\n%{_includedir}/libassuan2/"
 

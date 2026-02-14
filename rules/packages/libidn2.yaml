@@ -1,0 +1,70 @@
+# libidn2 - Internationalized domain name library
+# Depends on libunistring
+#
+# ---metadata---
+# complexity: low
+# build_system: autoconf
+# key_fixes: [nls_disabled, libtool, drop_idn2_binary]
+# depends: [libunistring]
+# status: BUILDING
+# ---
+
+package: libidn2
+
+rules:
+  drop_buildrequires:
+    - texinfo
+
+  inject_compat_functions:
+    - getline
+    - getopt_long
+    - strdup
+
+  configure_flags:
+    add:
+      - --disable-nls
+      - --disable-doc
+
+  skip_find_lang: true
+
+  drop_subpackages:
+    - idn2
+
+  export_vars:
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+
+  spec_replacements:
+    # Fix libtool for IRIX
+    - pattern: "%configure --disable-static"
+      replacement: |
+        %configure --disable-static
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+    # Skip building doc html (needs ronn/ruby)
+    - pattern: "%make_build -C doc html"
+      replacement: ": # skip doc html build"
+    # Remove doc html reference from devel package (not built)
+    - pattern: "%doc doc/%{name}.html examples"
+      replacement: "%doc examples"
+    # Remove man3 pages (not generated without texinfo)
+    - pattern: "%{_mandir}/man3/idn2_*.3*"
+      replacement: ""
+    # Remove gtk-doc (not generated)
+    - pattern: "%{_datadir}/gtk-doc/"
+      replacement: ""
+    # Remove info file reference from idn2 binary package
+    - pattern: "%{_infodir}/%{name}.info*"
+      replacement: ""
+    # Remove info dir deletion
+    - pattern: "rm -f $RPM_BUILD_ROOT%{_datadir}/info/dir"
+      replacement: ": # skip info dir cleanup"
+    # Remove %files -f lang reference (NLS disabled)
+    - pattern: "%files -f %{name}.lang"
+      replacement: "%files"
+
+  install_cleanup:
+    - "find $RPM_BUILD_ROOT -name '*.la' -delete"
+    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/locale"
+    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/info"
+    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/man"
+    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/gtk-doc"
+    - "rm -f $RPM_BUILD_ROOT%{_bindir}/idn2"

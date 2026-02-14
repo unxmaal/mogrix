@@ -6,14 +6,28 @@ rules:
   drop_buildrequires:
     - texinfo
 
+  configure_flags:
+    add:
+      - --disable-assembly
+    remove:
+      - --enable-fat
+
+  drop_buildrequires:
+    - fipscheck
+
   spec_replacements:
+    # Disable FIPS (fipshmac not available, not needed for IRIX)
+    - pattern: "%bcond_without fips"
+      replacement: "%bcond_with fips"
     # Switch from git-based autosetup to simple patch application
     - pattern: "%autosetup -S git -n %{name}-%{version}"
       replacement: "%autosetup -p1 -n %{name}-%{version}"
 
-    # Remove info dir cleanup (texinfo dropped)
-    - pattern: "rm -f ${RPM_BUILD_ROOT}%{_infodir}/dir"
-      replacement: "rm -rf ${RPM_BUILD_ROOT}%{_infodir}"
+    # Remove info dir cleanup — remove all info files
+    - pattern: "rm -f %{buildroot}%{_infodir}/dir"
+      replacement: "rm -rf %{buildroot}%{_infodir}"
+    - pattern: "rm -f $RPM_BUILD_ROOT%{_infodir}/dir"
+      replacement: "rm -rf $RPM_BUILD_ROOT%{_infodir}"
 
     # Remove info files from %files
     - pattern: "%{_infodir}/gmp.info*"

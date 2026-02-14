@@ -5,6 +5,11 @@ rules:
   prep_commands:
     # Remove unused #include <err.h> — IRIX doesn't have err.h
     - "sed -i '/#include <err.h>/d' lolcat.c censor.c"
+    # IRIX wchar.h hides wprintf/fwprintf behind _WCHAR_CORE_EXTENSIONS_1
+    # which requires _XOPEN_SOURCE >= 500 or __c99. The bare #define _XOPEN_SOURCE
+    # (no value) evaluates to 0 so wprintf is hidden. Set to 500 to unlock C99
+    # wide character I/O functions.
+    - "sed -i 's/^#define _XOPEN_SOURCE *$/#define _XOPEN_SOURCE 500/' lolcat.c"
 
   spec_replacements:
     # Inject CC for Makefile build (no %configure)
@@ -12,3 +17,9 @@ rules:
       replacement: |
         %set_build_flags
         export CC="%{__cc}"
+
+    # Makefile uses $(INSTALL) but doesn't define it — must pass explicitly
+    # otherwise $(INSTALL) is empty and 'lolcat DEST' tries to execute the
+    # MIPS binary on the x86 build host (error 127)
+    - pattern: "%make_install DESTDIR=$RPM_BUILD_ROOT/%{_bindir}"
+      replacement: "%make_install DESTDIR=$RPM_BUILD_ROOT/%{_bindir} INSTALL=\"/usr/bin/install -p\""

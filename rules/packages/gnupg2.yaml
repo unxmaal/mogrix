@@ -81,6 +81,12 @@ rules:
       - --disable-tofu
       - --without-libusb
       - --without-readline
+      - --with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug
+      - --with-libgcrypt-prefix=/opt/sgug-staging/usr/sgug
+      - --with-libassuan-prefix=/opt/sgug-staging/usr/sgug
+      - --with-ksba-prefix=/opt/sgug-staging/usr/sgug
+      # NOTE: npth-config is handled by NPTH_CONFIG export_var (no --with-npth-prefix
+      # because FC40 npth doesn't ship npth-config — we use a wrapper script)
     remove:
       - --enable-g13
       - --enable-large-secmem

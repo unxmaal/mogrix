@@ -16,6 +16,7 @@ rules:
   # Configure flags
   configure_flags:
     add:
+      - --with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug
       - --disable-doc
       - --disable-static
 

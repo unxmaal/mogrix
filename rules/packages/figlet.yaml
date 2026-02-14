@@ -2,7 +2,18 @@
 package: figlet
 
 rules:
+  prep_commands:
+    # figlet.c uses alloca() without including alloca.h (glibc pulls it in via stdlib.h, IRIX doesn't)
+    - "sed -i '1i#include <alloca.h>' figlet.c"
+
   spec_replacements:
+    # Fix bash-ism: ${c:0:7} substring expansion not supported in /bin/sh (dash)
+    - pattern: "%(c=%{commit0}; echo ${c:0:7})"
+      replacement: "%(echo %{commit0} | cut -c1-7)"
+    # Fix Makefile prefix: original sed changes usr/local→usr, but we need usr/sgug
+    - pattern: "'s|usr/local|usr|g'"
+      replacement: "'s|usr/local|usr/sgug|g'"
     # Inject cross-compiler CC into Makefile build (no %configure to set it)
+    # LD must also be set — Makefile uses LD=gcc for linking separately from CC
     - pattern: 'make %{?_smp_mflags} CFLAGS="%{optflags}"'
-      replacement: 'make %{?_smp_mflags} CC="%{__cc}" CFLAGS="%{optflags}" LDFLAGS="%{__global_ldflags}"'
+      replacement: 'make %{?_smp_mflags} CC="%{__cc}" LD="%{__cc}" CFLAGS="%{optflags}"'

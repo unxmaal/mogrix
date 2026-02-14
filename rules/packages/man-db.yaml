@@ -1,0 +1,99 @@
+# man-db - Tools for searching and reading man pages (FC40: 2.12.0)
+# Autoconf build. Deps: gdbm, libpipeline, zlib, groff, less (all staged).
+# IRIX fixes: remove systemd/alternatives integration, remove perl/po4a deps.
+package: man-db
+
+rules:
+  drop_buildrequires:
+    - po4a
+    - perl-interpreter
+    - perl-version
+
+  drop_subpackages:
+    - cron
+
+  prep_commands:
+    # man-db has broken __sgi code path that references argc out of scope
+    # We don't want the vendor /usr/bin/man fallback anyway
+    - "sed -i 's/#if defined _AIX || defined __sgi/#if 0 \\/* disabled for IRIX cross-build *\\//' src/man.c"
+    # IRIX iconv doesn't support GNU flags (-c, //TRANSLIT) — skip charset conversion
+    - "sed -i 's/if (source && target && !STREQ (source, target))/if (0 \\/* iconv disabled for IRIX *\\/)/' src/man.c"
+  install_cleanup:
+    # Remove cron subpackage files (subpackage dropped but install still runs)
+    - "rm -rf %{buildroot}%{_sysconfdir}/cron.daily"
+    - "rm -rf %{buildroot}%{_sysconfdir}/sysconfig"
+    # Remove translated man pages (locale dirs not under %{_datadir}/locale)
+    - "rm -rf %{buildroot}%{_mandir}/da %{buildroot}%{_mandir}/de %{buildroot}%{_mandir}/es %{buildroot}%{_mandir}/fr %{buildroot}%{_mandir}/id %{buildroot}%{_mandir}/it %{buildroot}%{_mandir}/ja %{buildroot}%{_mandir}/ko %{buildroot}%{_mandir}/nl %{buildroot}%{_mandir}/pl %{buildroot}%{_mandir}/pt %{buildroot}%{_mandir}/pt_BR %{buildroot}%{_mandir}/ro %{buildroot}%{_mandir}/ru %{buildroot}%{_mandir}/sr %{buildroot}%{_mandir}/sv %{buildroot}%{_mandir}/tr %{buildroot}%{_mandir}/zh_CN"
+
+  ac_cv_overrides:
+    # IRIX iconv doesn't support GNU flags (-c, //TRANSLIT) — disable charset conversion
+    am_cv_func_iconv: "no"
+
+  configure_flags:
+    add:
+      - "--disable-year2038"
+      - "--disable-manual"
+      - "--with-nroff=/usr/sgug/bin/nroff"
+      - "--with-pager=/usr/sgug/bin/less"
+      - "--with-col=/usr/bin/col"
+
+  spec_replacements:
+    # Use %setup -q instead of %autosetup (no patches)
+    - pattern: "%autosetup -p1"
+      replacement: "%setup -q"
+
+    # Remove --with-snapdir from configure (no snap on IRIX)
+    - pattern: "    --with-snapdir=/var/lib/snapd/snap \\\n"
+      replacement: ""
+
+    # Remove CC override from make_build — cross-compiler is set by %configure
+    - pattern: "%make_build CC=\"%{__cc} %{optflags}\""
+      replacement: "%make_build"
+
+    # Remove doc mv command — manual docs not built with --disable-manual
+    - pattern: "# move the documentation to the relevant place\nmv $RPM_BUILD_ROOT%{_datadir}/doc/man-db/* ./"
+      replacement: "# docs not generated (--disable-manual)"
+
+    # Remove alternatives renaming in %install — install binaries directly
+    - pattern: "# rename files for alternative usage\nfor f in man apropos whatis; do\n    mv %{buildroot}%{_bindir}/$f %{buildroot}%{_bindir}/$f.%{name}\n    touch %{buildroot}%{_bindir}/$f\n    mv %{buildroot}%{_mandir}/man1/$f.1 %{buildroot}%{_mandir}/man1/$f.%{name}.1\n    touch %{buildroot}%{_mandir}/man1/$f.1\ndone"
+      replacement: "# alternatives disabled for IRIX — binaries installed directly"
+
+    # Remove systemd unit and tmpfiles installations
+    - pattern: "# config for tmpfiles.d\ninstall -D -p -m 0644 init/systemd/man-db.conf $RPM_BUILD_ROOT/usr/lib/tmpfiles.d/.\n\n# man-db-cache-update.service and man-db-restart-cache-update.service\ninstall -D -p -m 0644 %{SOURCE5} $RPM_BUILD_ROOT%{_unitdir}/man-db-cache-update.service\ninstall -D -p -m 0644 %{SOURCE6} $RPM_BUILD_ROOT%{_unitdir}/man-db-restart-cache-update.service"
+      replacement: "# systemd units and tmpfiles disabled for IRIX"
+
+    # Remove Requires(post/postun/preun) for update-alternatives
+    - pattern: "Requires(post): %{_sbindir}/update-alternatives\nRequires(postun): %{_sbindir}/update-alternatives\nRequires(preun): %{_sbindir}/update-alternatives"
+      replacement: "# update-alternatives not available on IRIX"
+
+    # Remove Recommends
+    - pattern: "Recommends: glibc-gconv-extra"
+      replacement: "# glibc-gconv-extra not available on IRIX"
+
+    # Gut %pre section (alternatives/systemd cleanup)
+    - pattern: "%pre\n# remove alternativized files if they are not symlinks\nfor f in man apropos whatis; do\n    [ -L %{_bindir}/$f ] || %{__rm} -f %{_bindir}/$f >/dev/null 2>&1 || :\n    [ -L %{_mandir}/man1/$f.1.gz ] || %{__rm} -f %{_mandir}/man1/$f.1.gz >/dev/null 2>&1 || :\ndone\n\n# stop and disable timer from previous builds\nif [ -e /usr/lib/systemd/system/mandb.timer ]; then\n    if test -d /run/systemd; then\n        systemctl stop man-db.timer >/dev/null 2>&1 || :\n        systemctl -q disable man-db.timer >/dev/null 2>&1 || :\n    fi\nfi"
+      replacement: "%pre\n# no-op for IRIX"
+
+    # Gut %post section (alternatives setup + cache clear)
+    - pattern: "%post\n# set up the alternatives files\n%{_sbindir}/update-alternatives --install %{_bindir}/man man %{_bindir}/man.%{name} 300 \\\n    --slave %{_bindir}/apropos apropos %{_bindir}/apropos.%{name} \\\n    --slave %{_bindir}/whatis whatis %{_bindir}/whatis.%{name} \\\n    --slave %{_mandir}/man1/man.1.gz man.1.gz %{_mandir}/man1/man.%{name}.1.gz \\\n    --slave %{_mandir}/man1/apropos.1.gz apropos.1.gz %{_mandir}/man1/apropos.%{name}.1.gz \\\n    --slave %{_mandir}/man1/whatis.1.gz whatis.1.gz %{_mandir}/man1/whatis.%{name}.1.gz \\\n    >/dev/null 2>&1 || :\n\n# clear the old cache\n%{__rm} -rf %{cache}/* >/dev/null 2>&1 || :"
+      replacement: "%post\n# no-op for IRIX"
+
+    # Gut %preun section (alternatives remove)
+    - pattern: "%preun\nif [ $1 -eq 0 ]; then\n    %{_sbindir}/update-alternatives --remove man %{_bindir}/man.%{name} >/dev/null 2>&1 || :\nfi"
+      replacement: "%preun\n# no-op for IRIX"
+
+    # Gut %postun section (alternatives re-set)
+    - pattern: "%postun\nif [ $1 -ge 1 ]; then\n    if [ \"$(readlink %{_sysconfdir}/alternatives/man)\" == \"%{_bindir}/man.%{name}\" ]; then\n        %{_sbindir}/update-alternatives --set man %{_bindir}/man.%{name} >/dev/null 2>&1 || :\n    fi\nfi"
+      replacement: "%postun\n# no-op for IRIX"
+
+    # Remove transfiletriggerin (systemd cache update)
+    - pattern: "%transfiletriggerin -- %{_mandir}\n# update cache\nif [ -x /usr/bin/systemd-run -a -x /usr/bin/systemctl ]; then\n    /usr/bin/systemd-run /usr/bin/systemctl start man-db-cache-update >/dev/null 2>&1 || :\nfi"
+      replacement: "# transfiletriggerin disabled for IRIX"
+
+    # Remove transfiletriggerpostun (systemd cache update)
+    - pattern: "%transfiletriggerpostun -- %{_mandir}\n# update cache\nif [ -x /usr/bin/systemd-run -a -x /usr/bin/systemctl ]; then\n    /usr/bin/systemd-run /usr/bin/systemctl start man-db-cache-update >/dev/null 2>&1 || :\nfi"
+      replacement: "# transfiletriggerpostun disabled for IRIX"
+
+    # Replace %files section — remove lang files, systemd, tmpfiles, alternatives, translated man pages
+    - pattern: "%files -f %{name}.lang -f %{name}-gnulib.lang\n%{!?_licensedir:%global license %%doc}\n%license COPYING\n%doc README.md man-db-manual.txt man-db-manual.ps ChangeLog NEWS.md\n%config(noreplace) %{_sysconfdir}/man_db.conf\n%config(noreplace) %{_sysconfdir}/sysconfig/man-db\n%config(noreplace) %{_tmpfilesdir}/man-db.conf\n%{_unitdir}/man-db-cache-update.service\n%{_unitdir}/man-db-restart-cache-update.service\n%{_sbindir}/accessdb\n%ghost %{_bindir}/man\n%ghost %{_bindir}/apropos\n%ghost %{_bindir}/whatis\n%{_bindir}/man.%{name}\n%{_bindir}/apropos.%{name}\n%{_bindir}/whatis.%{name}\n%{_bindir}/man-recode\n%{_bindir}/manpath\n%{_bindir}/lexgrog\n%{_bindir}/catman\n%{_bindir}/mandb\n%dir %{_libdir}/man-db\n%{_libdir}/man-db/*.so\n%dir %{_libexecdir}/man-db\n%{_libexecdir}/man-db/globbing\n%{_libexecdir}/man-db/manconv\n%{_libexecdir}/man-db/zsoelim\n%verify(not mtime) %dir %{cache}\n# documentation and translation\n%ghost %{_mandir}/man1/man.1*\n%ghost %{_mandir}/man1/apropos.1*\n%ghost %{_mandir}/man1/whatis.1*\n%{_mandir}/man1/man.%{name}.1*\n%{_mandir}/man1/apropos.%{name}.1*\n%{_mandir}/man1/whatis.%{name}.1*\n%{_mandir}/man1/man-recode.1*\n%{_mandir}/man1/lexgrog.1*\n%{_mandir}/man1/manconv.1*\n%{_mandir}/man1/manpath.1*\n%{_mandir}/man5/manpath.5*\n%{_mandir}/man8/accessdb.8*\n%{_mandir}/man8/catman.8*\n%{_mandir}/man8/mandb.8*\n%lang(da)       %{_datadir}/man/da/man*/*\n%lang(de)       %{_datadir}/man/de/man*/*\n%lang(es)       %{_datadir}/man/es/man*/*\n%lang(fr)       %{_datadir}/man/fr/man*/*\n%lang(id)       %{_datadir}/man/id/man*/*\n%lang(it)       %{_datadir}/man/it/man*/*\n%lang(ja)       %{_datadir}/man/ja/man*/*\n%lang(ko)\t%{_datadir}/man/ko/man*/*\n%lang(nl)       %{_datadir}/man/nl/man*/*\n%lang(pl)       %{_datadir}/man/pl/man*/*\n%lang(pt)       %{_datadir}/man/pt/man*/*\n%lang(pt_BR)    %{_datadir}/man/pt_BR/man*/*\n%lang(ro)       %{_datadir}/man/ro/man*/*\n%lang(ru)       %{_datadir}/man/ru/man*/*\n%lang(sr)       %{_datadir}/man/sr/man*/*\n%lang(sv)       %{_datadir}/man/sv/man*/*\n%lang(tr)       %{_datadir}/man/tr/man*/*\n%lang(zh_CN)    %{_datadir}/man/zh_CN/man*/*"
+      replacement: "%files\n%{!?_licensedir:%global license %%doc}\n%license COPYING\n%doc README.md ChangeLog NEWS.md\n%config(noreplace) %{_sysconfdir}/man_db.conf\n%{_sbindir}/accessdb\n%{_bindir}/man\n%{_bindir}/apropos\n%{_bindir}/whatis\n%{_bindir}/man-recode\n%{_bindir}/manpath\n%{_bindir}/lexgrog\n%{_bindir}/catman\n%{_bindir}/mandb\n%dir %{_libdir}/man-db\n%{_libdir}/man-db/*.so\n%dir %{_libexecdir}/man-db\n%{_libexecdir}/man-db/globbing\n%{_libexecdir}/man-db/manconv\n%{_libexecdir}/man-db/zsoelim\n%verify(not mtime) %dir %{cache}\n%{_mandir}/man1/man.1*\n%{_mandir}/man1/apropos.1*\n%{_mandir}/man1/whatis.1*\n%{_mandir}/man1/man-recode.1*\n%{_mandir}/man1/lexgrog.1*\n%{_mandir}/man1/manconv.1*\n%{_mandir}/man1/manpath.1*\n%{_mandir}/man5/manpath.5*\n%{_mandir}/man8/accessdb.8*\n%{_mandir}/man8/catman.8*\n%{_mandir}/man8/mandb.8*"

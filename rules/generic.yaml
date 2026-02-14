@@ -111,6 +111,7 @@ generic:
   inject_compat_functions:
     - strdup
     - strndup
+    - strnlen
     - getline
     - getopt_long
     - asprintf
@@ -170,6 +171,12 @@ generic:
     - "rm -f %{buildroot}%{_libdir}/*.la"
     # Remove info dir file - rebuilt by install-info on target
     - "rm -f %{buildroot}%{_infodir}/dir"
+    # Remove locale files - IRIX bundles don't use gettext translations
+    - "rm -rf %{buildroot}%{_datadir}/locale"
+
+  # Always skip %find_lang — locale files are removed by install_cleanup above.
+  # This comments out %find_lang and strips -f *.lang from %files lines.
+  skip_find_lang: true
 
   drop_subpackages:
     - "debuginfo"

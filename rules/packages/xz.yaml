@@ -24,6 +24,7 @@ rules:
     add:
       - --disable-silent-rules
       - --disable-doc         # Don't build documentation
+      - --disable-nls         # Don't install locale files
       - --disable-scripts     # Don't install shell scripts (they need grep)
       - --disable-xz          # Don't build xz binary (saves complexity)
       - --disable-xzdec       # Don't build xzdec binary
@@ -32,7 +33,6 @@ rules:
       - --enable-shared
       - --enable-static
 
-  # Remove profile.d colorization scripts since we disabled scripts
   spec_replacements:
     # Skip autoreconf - the tarball has pre-generated configure
     - pattern: "autoreconf -fi"

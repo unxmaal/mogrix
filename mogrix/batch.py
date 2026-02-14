@@ -16,6 +16,7 @@ from mogrix.rules.loader import RuleLoader
 RULES_DIR = Path(__file__).parent.parent / "rules"
 HEADERS_DIR = Path(__file__).parent.parent / "headers"
 COMPAT_DIR = Path(__file__).parent.parent / "compat"
+PATCHES_DIR = Path(__file__).parent.parent / "patches"
 
 
 class BatchConverter:
@@ -121,22 +122,6 @@ class BatchConverter:
                     transform.compat_functions
                 )
 
-            # Generate converted spec content
-            content = self.writer.write(
-                transform,
-                drops=drops,
-                adds=adds,
-                cppflags=cppflags,
-                compat_sources=compat_sources,
-                compat_prep=compat_prep,
-                compat_build=compat_build,
-                ac_cv_overrides=transform.ac_cv_overrides or None,
-                drop_requires=transform.drop_requires or None,
-                add_requires=transform.add_requires or None,
-                remove_lines=transform.remove_lines or None,
-                rpm_macros=transform.rpm_macros or None,
-            )
-
             # Copy all files from extracted SRPM to output directory
             for src_file in extracted_dir.iterdir():
                 if src_file.is_file():
@@ -150,6 +135,73 @@ class BatchConverter:
                 for compat_file in compat_files + extra_files:
                     dest_file = pkg_output_dir / compat_file.name
                     shutil.copy2(compat_file, dest_file)
+
+            # Copy patch files from mogrix patches directory
+            patch_files = []
+            if transform.add_patches:
+                patches_pkg_dir = PATCHES_DIR / "packages" / spec.name
+                for patch_name in transform.add_patches:
+                    patch_path = patches_pkg_dir / patch_name
+                    if patch_path.exists():
+                        dest_file = pkg_output_dir / patch_name
+                        shutil.copy2(patch_path, dest_file)
+                        patch_files.append(patch_name)
+
+            # Copy extra source files
+            source_files = []
+            if transform.add_sources:
+                patches_pkg_dir = PATCHES_DIR / "packages" / spec.name
+                for source_name in transform.add_sources:
+                    source_path = patches_pkg_dir / source_name
+                    if source_path.exists():
+                        dest_file = pkg_output_dir / source_name
+                        shutil.copy2(source_path, dest_file)
+                        source_files.append(source_name)
+
+            # Generate patch/source entries for spec
+            patch_sources = None
+            patch_prep = None
+            if patch_files:
+                patch_entries = []
+                patch_cmds = []
+                for i, patch_name in enumerate(patch_files):
+                    patch_num = 500 + i
+                    patch_entries.append(f"Patch{patch_num}: {patch_name}")
+                    patch_cmds.append(f"%patch -P{patch_num} -p1")
+                patch_sources = "\n".join(patch_entries)
+                patch_prep = "\n".join(patch_cmds)
+
+            extra_sources = None
+            if source_files:
+                source_entries = []
+                for i, source_name in enumerate(source_files):
+                    source_num = 200 + i
+                    source_entries.append(f"Source{source_num}: {source_name}")
+                extra_sources = "\n".join(source_entries)
+
+            # Generate converted spec content
+            content = self.writer.write(
+                transform,
+                drops=drops,
+                adds=adds,
+                cppflags=cppflags,
+                compat_sources=compat_sources,
+                compat_prep=compat_prep,
+                compat_build=compat_build,
+                patch_sources=patch_sources,
+                patch_prep=patch_prep,
+                extra_sources=extra_sources,
+                ac_cv_overrides=transform.ac_cv_overrides or None,
+                drop_requires=transform.drop_requires or None,
+                add_requires=transform.add_requires or None,
+                remove_lines=transform.remove_lines or None,
+                rpm_macros=transform.rpm_macros or None,
+                export_vars=transform.export_vars or None,
+                skip_find_lang=transform.skip_find_lang,
+                skip_check=transform.skip_check,
+                install_cleanup=transform.install_cleanup or None,
+                spec_replacements=transform.spec_replacements or None,
+            )
 
             # Write converted spec (overwriting the original)
             converted_spec_path = pkg_output_dir / spec_path.name

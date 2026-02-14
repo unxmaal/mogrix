@@ -1,0 +1,48 @@
+# libptytty - pty/tty library for rxvt-unicode (upstream: 2.0)
+# CMake build. Has IRIX _getpty() support. No FC40 SRPM available.
+package: libptytty
+
+upstream:
+  url: http://dist.schmorp.de/libptytty/libptytty-2.0.tar.gz
+  version: "2.0"
+  type: tarball
+  build_system: cmake
+  license: GPLv2+
+  summary: "Pty/tty library with utmp/wtmp/lastlog handling"
+
+rules:
+  spec_replacements:
+    # Replace %cmake + %cmake_build with raw cmake cross-compilation
+    - pattern: "%cmake\n%cmake_build"
+      replacement: |
+        export COMPAT_DIR=$(pwd)/mogrix-compat
+        cmake -B _build -S . \
+          -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
+          -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
+          -DCMAKE_SYSTEM_NAME=IRIX \
+          -DCMAKE_C_COMPILER=%{__cc} \
+          -DCMAKE_CXX_COMPILER=%{__cxx} \
+          -DCMAKE_AR=%{__ar} \
+          -DCMAKE_RANLIB=%{__ranlib} \
+          -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+          -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
+          -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include" \
+          -DCMAKE_CXX_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include" \
+          -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
+          -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
+          -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
+          -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
+          -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+          -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=ON \
+          -DTTY_GID_SUPPORT_EXITCODE=1
+        cd _build && make %{?_smp_mflags}
+    # Replace cmake install macro
+    - pattern: "%cmake_install"
+      replacement: "cd _build && make install DESTDIR=%{buildroot}"
+    # Library goes to lib32, not just bindir
+    - pattern: "%{_bindir}/*"
+      replacement: "%{_libdir}/libptytty*\n%{_includedir}/libptytty.h\n%{_libdir}/pkgconfig/libptytty.pc\n%{_mandir}/man3/libptytty.3*"

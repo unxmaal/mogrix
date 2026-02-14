@@ -28,6 +28,7 @@ __DTOR_LIST__:
 	.text
 	.p2align 2
 	.globl	__do_global_ctors_aux
+	.hidden	__do_global_ctors_aux
 	.type	__do_global_ctors_aux,@function
 	.ent	__do_global_ctors_aux
 __do_global_ctors_aux:
@@ -75,6 +76,7 @@ __do_global_ctors_aux:
 	.section .init,"ax",@progbits
 	.set	noreorder
 	.globl	_init
+	.hidden	_init
 	.type	_init,@function
 _init:
 	/* Save ra so the caller's return works after our call */

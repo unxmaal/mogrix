@@ -166,17 +166,26 @@ else
     CRTBEGIN=$STAGING/lib32/crtbeginT.o
     CRTEND=$STAGING/lib32/crtendT.o
     DSOHANDLE=$STAGING/lib32/dso_handle.o
+    # dlmalloc: mmap-based allocator that bypasses IRIX brk heap limit (176MB).
+    # Linked ONLY into executables. Shared libraries leave malloc/free undefined
+    # so rld resolves them to the executable's single dlmalloc, preventing
+    # cross-heap corruption (each .so had its own dlmalloc → abort in free).
+    DLMALLOC=$STAGING/lib32/dlmalloc.o
 
     # --image-base=0x1000000: Move binary above rld quickstart table (0x200000)
     # Default base 0x10000 gives only 1.8MB of brk heap; 0x1000000 gives 176MB
     # See rules/methods/irix-address-space.md for full address map
+    # --disable-new-dtags: Emit DT_RPATH (0xf) instead of DT_RUNPATH (0x1d).
+    # IRIX rld only recognizes DT_RPATH; DT_RUNPATH is ignored.
     exec $LLD \
       --allow-shlib-undefined \
+      --disable-new-dtags \
       --image-base=0x1000000 \
       -dynamic-linker /lib32/rld \
       $CRT1 \
       $CRTBEGIN \
       $DSOHANDLE \
+      $DLMALLOC \
       $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \

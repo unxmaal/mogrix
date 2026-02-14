@@ -4,6 +4,11 @@ package: xclip
 
 rules:
 
+  prep_commands:
+    # IRIX X11R6.3 Xmu/Atoms.h doesn't have XA_UTF8_STRING (X11R6.4+).
+    # Define it as XInternAtom lookup — functionally identical.
+    - "sed -i '/#include <X11\\/Xmu\\/Atoms.h>/a\\#ifndef XA_UTF8_STRING\\n#define XA_UTF8_STRING(dpy) XInternAtom(dpy, \"UTF8_STRING\", False)\\n#endif' xclip.c xclib.c borked.c"
+
   spec_replacements:
     # rpmbuild uses /bin/sh — ${c:0:7} is a bash substring expansion
     # Hardcode the shortcommit value from the spec's commit hash

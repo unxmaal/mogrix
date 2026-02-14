@@ -19,6 +19,10 @@ rules:
   export_vars:
     LD: "/opt/sgug-staging/share/mogrix/irix-ld"
 
+  # Remove the bootstrap conditional so compat Source entries don't get trapped inside it
+  remove_conditionals:
+    - "bootstrap"
+
   spec_replacements:
     # Disable FIPS support (fipshmac not available, not needed on IRIX)
     - pattern: "%bcond_without fips"

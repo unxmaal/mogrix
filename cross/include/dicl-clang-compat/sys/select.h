@@ -19,24 +19,15 @@
 
 #include_next <sys/select.h>
 
-/* Only declare select() if sys/time.h hasn't been included.
- * sys/time.h provides its own select() (static wrapper or extern)
- * depending on _XOPEN_SOURCE. Adding our extern on top of that
- * static definition causes duplicate symbols. */
+/* If sys/time.h hasn't been included yet, include it now.
+ * sys/time.h provides struct timeval (full definition, not just
+ * forward declaration) and declares select().
+ * On Linux, sys/select.h provides these directly; on IRIX they
+ * live in sys/time.h. Without this, code that uses struct timeval
+ * as a value (not just pointer) after including sys/select.h
+ * gets an incomplete-type error from the forward declaration. */
 #ifndef _SYS_TIME_H
-#ifndef _DICL_SELECT_DECLARED
-#define _DICL_SELECT_DECLARED
-struct timeval;
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern int select(int, fd_set *, fd_set *, fd_set *, struct timeval *);
-
-#ifdef __cplusplus
-}
-#endif
-#endif /* _DICL_SELECT_DECLARED */
+#include <sys/time.h>
 #endif /* _SYS_TIME_H */
 
 #endif /* _CLANG_COMPAT_SYS_SELECT_H */
