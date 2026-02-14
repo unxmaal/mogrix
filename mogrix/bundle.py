@@ -85,6 +85,36 @@ TERMINFO="$dir/share/terminfo"
 export TERMINFO
 """
 
+# Self-extracting installer: shell script header + appended tar.gz payload.
+# Uses only Bourne shell builtins available on base IRIX 6.5:
+#   /bin/sh, /usr/sbin/gzcat, tail +N, tar, mkdir, echo
+SELF_EXTRACTING_TEMPLATE = """\
+#!/bin/sh
+# Mogrix self-extracting bundle: {display_name}
+# Run:  sh {filename} [install_dir]
+# Extract only:  sh {filename} --extract-only [dir]
+# install_dir defaults to current directory
+BUNDLE="{bundle_dir_name}"
+SKIP={payload_line}
+dest="$1"
+xonly=false
+case "$1" in --extract-only) xonly=true; dest="$2" ;; esac
+if [ -z "$dest" ]; then dest=`/bin/pwd`; fi
+case "$dest" in /*) ;; *) dest="`/bin/pwd`/$dest" ;; esac
+mkdir -p "$dest" 2>/dev/null
+if [ ! -d "$dest" ]; then echo "Error: cannot create $dest" >&2; exit 1; fi
+echo "Installing $BUNDLE to $dest ..."
+/bin/tail +$SKIP "$0" | /usr/sbin/gzcat | tar xf - -C "$dest"
+if [ $? -ne 0 ]; then echo "Error: extraction failed" >&2; exit 1; fi
+if [ "$xonly" = "true" ]; then echo "Extracted to $dest/$BUNDLE"; exit 0; fi
+cd "$dest/$BUNDLE"
+./install
+echo ""
+echo "Done. Add to PATH:"
+echo "  PATH=$dest/bin:\\$PATH; export PATH"
+exit 0
+"""
+
 # Install script: creates trampoline scripts in ../bin/ (Bourne shell compatible).
 # Trampolines resolve their own location at runtime via dirname "$0" and use a
 # relative path (../<bundle-name>/<cmd>) to reach the real wrapper. This works
@@ -153,6 +183,7 @@ class BundleManifest:
     bundle_name: str = ""
     bundle_dir: Path | None = None
     tarball_path: Path | None = None
+    run_path: Path | None = None
     suite_name: str | None = None
     suite_packages: list[str] = field(default_factory=list)
 
@@ -612,10 +643,13 @@ class BundleBuilder:
         target_package: str,
         output_dir: Path,
         extra_packages: list[str] | None = None,
-        create_tarball: bool = True,
+        output_format: str = "run",
         suite_name: str | None = None,
     ) -> BundleManifest:
         """Create a self-contained app bundle.
+
+        output_format: "run" (self-extracting, default), "tarball" (.tar.gz),
+                       or "directory" (no packaging).
 
         If suite_name is provided, creates a suite bundle combining multiple
         packages under a single name (e.g., "mogrix-smallweb").
@@ -885,8 +919,8 @@ class BundleBuilder:
                 # Add read for all; add execute for all if owner has execute
                 p.chmod(mode | 0o444 | (0o111 if mode & 0o100 else 0))
 
-        # Create tarball
-        if create_tarball:
+        # Package the bundle
+        if output_format in ("run", "tarball"):
             tarball_name = f"{bundle_name}.tar.gz"
             tarball_path = output_dir / tarball_name
             console.print(f"\n[dim]Creating tarball: {tarball_name}[/dim]")
@@ -904,7 +938,22 @@ class BundleBuilder:
                 ],
                 check=True,
             )
-            manifest.tarball_path = tarball_path
+
+            if output_format == "run":
+                display = (
+                    manifest.suite_name
+                    or f"{manifest.target_package} {manifest.target_version}"
+                )
+                run_name = f"{bundle_name}.run"
+                run_path = output_dir / run_name
+                console.print(f"[dim]Creating installer: {run_name}[/dim]")
+                self._create_self_extracting(
+                    run_path, tarball_path, bundle_name, display
+                )
+                tarball_path.unlink()  # Remove intermediate tarball
+                manifest.run_path = run_path
+            else:
+                manifest.tarball_path = tarball_path
 
         # Print summary
         self._print_summary(manifest)
@@ -1038,7 +1087,11 @@ class BundleBuilder:
             lines.append("")
 
         lines.extend([
-            "## Install",
+            "## Quick Install (from .run file)",
+            "",
+            f"    sh {bundle_name}.run /opt/mogrix-apps",
+            "",
+            "## Manual Install (from .tar.gz)",
             "",
             f"    cd /opt/mogrix-apps",
             f"    gunzip {bundle_name}.tar.gz",
@@ -1100,6 +1153,43 @@ class BundleBuilder:
         lines.append("")
         (bundle_dir / "README").write_text("\n".join(lines))
 
+    def _create_self_extracting(
+        self,
+        run_path: Path,
+        tarball_path: Path,
+        bundle_name: str,
+        display_name: str,
+    ) -> None:
+        """Create a self-extracting .run file from a tar.gz payload.
+
+        Concatenates a Bourne shell header with the tar.gz binary data.
+        The header uses tail +N to skip itself, piping through gzcat | tar.
+        """
+        # Format template with a placeholder for SKIP line number
+        script = SELF_EXTRACTING_TEMPLATE.format(
+            display_name=display_name,
+            filename=run_path.name,
+            bundle_dir_name=bundle_name,
+            payload_line="__PLACEHOLDER__",
+        )
+        # Count lines and replace placeholder with actual line count + 1
+        line_count = script.count("\n")
+        # tail +N starts output at line N, so payload starts at line_count + 1
+        script = script.replace("__PLACEHOLDER__", str(line_count + 1))
+
+        # Write script header (text) then append binary payload
+        with open(run_path, "wb") as f:
+            f.write(script.encode("ascii"))
+            with open(tarball_path, "rb") as payload:
+                while True:
+                    chunk = payload.read(65536)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+
+        # Make executable
+        run_path.chmod(0o755)
+
     def _print_summary(self, manifest: BundleManifest) -> None:
         """Print a Rich summary table."""
         console.print()
@@ -1150,6 +1240,13 @@ class BundleBuilder:
                 if f.is_file()
             )
             table.add_row("Bundle size", f"{total_size / 1024 / 1024:.1f} MB")
+
+        if manifest.run_path and manifest.run_path.exists():
+            run_size = manifest.run_path.stat().st_size
+            table.add_row(
+                "Installer",
+                f"{manifest.run_path.name} ({run_size / 1024 / 1024:.1f} MB)",
+            )
 
         if manifest.tarball_path and manifest.tarball_path.exists():
             tarball_size = manifest.tarball_path.stat().st_size
