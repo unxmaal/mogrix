@@ -180,6 +180,7 @@ class BundleManifest:
     staging_sonames: set[str] = field(default_factory=set)
     unresolved_sonames: set[str] = field(default_factory=set)
     binaries: list[str] = field(default_factory=list)
+    target_rpms: set[Path] = field(default_factory=set)
     bundle_name: str = ""
     bundle_dir: Path | None = None
     tarball_path: Path | None = None
@@ -580,6 +581,9 @@ class BundleBuilder:
         # Deduplicate initial queue
         queue = list(dict.fromkeys(queue))
 
+        # Track which RPMs are target/explicitly-included (not deps)
+        target_rpm_set = set(queue)
+
         manifest = BundleManifest(
             target_package=target_package,
             target_version=target_version,
@@ -636,6 +640,7 @@ class BundleBuilder:
                     manifest.unresolved_sonames.add(soname)
 
         manifest.included_rpms = sorted(visited_rpms)
+        manifest.target_rpms = target_rpm_set & visited_rpms
         return manifest
 
     def create_bundle(
@@ -882,11 +887,26 @@ class BundleBuilder:
             )
             wrapper_path.chmod(0o755)
 
-        # Generate install/uninstall scripts
-        all_cmds = binaries + sbin_binaries
+        # Determine which binaries belong to the target/explicitly-included
+        # packages (not transitive dependencies). Only these get trampolines
+        # in the shared bin/ directory. Dependency binaries still have wrapper
+        # scripts in the bundle dir for direct invocation.
+        target_bins: set[str] = set()
+        for rpm_path in manifest.target_rpms:
+            for fpath in self._rpm_filelist(rpm_path):
+                fname = Path(fpath).name
+                if fpath.startswith("/usr/sgug/bin/") and fname in binaries:
+                    target_bins.add(fname)
+                elif fpath.startswith("/usr/sgug/sbin/") and fname in sbin_binaries:
+                    target_bins.add(fname)
+
+        trampoline_cmds = [b for b in binaries if b in target_bins]
+        trampoline_cmds += [b for b in sbin_binaries if b in target_bins]
+
+        # Generate install/uninstall scripts (trampolines only for target binaries)
         install_label = manifest.suite_name or manifest.target_package
         self._generate_install_scripts(
-            install_label, bundle_name, all_cmds, bundle_dir
+            install_label, bundle_name, trampoline_cmds, bundle_dir
         )
 
         # Generate README
