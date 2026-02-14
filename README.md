@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms C/C++ software into working IRIX packages. It supports Fedora 40 SRPMs, upstream git repos, and tarball downloads — handling the entire pipeline from source fetch through cross-compilation to deployable RPMs and self-contained app bundles.
 
-**Current Status:** 91+ source packages cross-compiled for IRIX (257 RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client), **rsync** (file sync), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **App bundles** (`mogrix bundle`) create optimized, self-contained tarballs that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+**Current Status:** 105+ source packages cross-compiled for IRIX (290+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **Qt5** (5.15.13), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **23 app bundles** (`mogrix bundle`) create optimized, self-contained tarballs that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -16,7 +16,7 @@ Mogrix is a complete IRIX cross-compilation system that transforms C/C++ softwar
 
 - **SRPM Conversion Engine** - YAML-based rules transform spec files for IRIX compatibility: drops unavailable dependencies, injects compat functions, applies platform-specific patches, and configures autoconf/cmake for cross-compilation.
 
-- **Compat Library** - Drop-in implementations of 30+ missing POSIX/C99 functions (openat family, posix_spawn, vasprintf, funopen, dlmalloc, explicit_bzero, etc.) automatically injected into packages that need them.
+- **Compat Library** - Drop-in implementations of 35+ missing POSIX/C99 functions (openat family, posix_spawn, vasprintf, funopen, pselect, openpty, open_memstream, explicit_bzero, etc.) automatically injected into packages that need them. dlmalloc (mmap-based allocator) is linked into executables only by the linker wrapper.
 
 - **Source Analysis** - Scans source tarballs for known IRIX-incompatible patterns (`%zu` format strings, `__thread` TLS, volatile function pointers, epoll/inotify usage) using ripgrep. Patterns defined in YAML rules — adding a new check requires no code changes.
 
@@ -545,20 +545,26 @@ rules:
 | `utimensat` | Set timestamps relative to directory fd |
 | `futimens` | Set timestamps via fd |
 | `funopen` | BSD-style cookie I/O (for transparent decompression) |
+| `open_memstream` | Dynamic memory buffer stream (POSIX.1-2008) |
+| `dprintf` / `vdprintf` | Formatted print to file descriptor |
 | `explicit_bzero` | Zero memory that won't be optimized away |
 | `secure_getenv` | Secure environment variable access |
 | `strerror_r` | Thread-safe strerror |
+| `strnlen` | Length of fixed-size string |
 | `strcasestr` | Case-insensitive substring search |
 | `strsep` | Token extraction from strings |
+| `basename` | Extract filename from path |
 | `setenv` / `unsetenv` | Environment variable manipulation |
 | `qsort_r` | Reentrant quicksort |
 | `timegm` | Inverse of gmtime |
 | `mkdtemp` | Create temporary directory |
-| `dlmalloc` | mmap-based malloc (bypasses IRIX brk heap limit) |
+| `dlmalloc` | mmap-based malloc — linked into executables only by irix-ld |
 | `strtof` | String to float conversion |
 | `getopt_long` | GNU long option parsing |
 | `reallocarray` | Overflow-checked array allocation |
-| `strerror_r` | Thread-safe strerror |
+| `openpty` | Open pseudo-terminal (wraps IRIX `_getpty()`) |
+| `pselect` | Synchronous I/O multiplexing with signal mask |
+| `err` / `errx` / `warn` / `warnx` | BSD error reporting functions |
 | `sqlite3_stub` | Stub sqlite3 for optional features |
 
 ## IRIX Bootstrap
@@ -608,7 +614,7 @@ mogrix/
 ├── rules/              # Rule definitions
 │   ├── generic.yaml    # Universal rules (applied to ALL packages)
 │   ├── classes/        # Class rules (nls-disabled, etc.)
-│   ├── packages/       # Package-specific rules (115 packages)
+│   ├── packages/       # Package-specific rules (145 packages)
 │   └── source_checks.yaml  # IRIX source pattern definitions
 ├── headers/            # Header overlay files
 │   └── generic/        # Clang/IRIX compat headers
@@ -646,7 +652,7 @@ make clean
 
 ## Package Rules Status
 
-81 source packages cross-compiled for IRIX across multiple phases:
+105+ source packages cross-compiled for IRIX across multiple phases:
 
 ### Phase 1: Bootstrap (14 packages)
 
@@ -779,7 +785,59 @@ make clean
 | 80 | libstrophe | 0.13.1 | XMPP client library |
 | 81 | groff | 1.23.0 | Document formatting system (first C++ package!) |
 
-34 additional package rule files exist for future phases.
+### Sessions 12-20: X11, Qt5, and More Apps (24 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 82 | gdbm | 1.23 | GNU database manager |
+| 83 | glib2 | 2.80.0 | GLib core library (first meson package) |
+| 84 | harfbuzz | 8.3.0 | Text shaping engine |
+| 85 | xcb-proto | 1.16.0 | X11 protocol definitions |
+| 86 | libxcb | 1.16 | X protocol C binding |
+| 87 | xcb-util | 0.4.1 | XCB utility library |
+| 88 | xcb-util-wm | 0.4.2 | XCB window manager helpers |
+| 89 | xcb-util-image | 0.4.1 | XCB image helpers |
+| 90 | xcb-util-keysyms | 0.4.1 | XCB keysym helpers |
+| 91 | xcb-util-renderutil | 0.3.10 | XCB render helpers |
+| 92 | libxkbcommon | 1.6.0 | XKB keymap library |
+| 93 | double-conversion | 3.3.0 | Binary-decimal conversion |
+| 94 | qt5-qtbase | 5.15.13 | Qt5 framework (Core+Gui+Widgets+XcbQpa) |
+| 95 | libXrender | 0.9.11 | X Render extension |
+| 96 | libXft | 2.3.8 | X FreeType library |
+| 97 | cairo | 1.18.0 | 2D graphics library |
+| 98 | pango | 1.52.0 | Text layout engine |
+| 99 | libptytty | 2.0 | PTY/TTY library |
+| 100 | dmenu | 5.2 | Dynamic X11 menu |
+| 101 | rxvt-unicode | 9.31 | Unicode terminal emulator |
+| 102 | st | 0.9 | Suckless terminal (Xft + Iosevka font) |
+| 103 | bitlbee | 3.6 | IRC gateway with Discord plugin |
+| 104 | xclip | 0.13 | X11 clipboard tool |
+| 105 | lolcat | 1.5 | Rainbow text colorizer |
+
+### Sessions 21-37: Networking, TLS, and User Apps (16 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 106 | gnutls | 3.8.3 | TLS library (CA trust store configured) |
+| 107 | libtasn1 | 4.19.0 | ASN.1 library |
+| 108 | nettle | 3.9.1 | Crypto library |
+| 109 | libidn2 | 2.3.7 | Internationalized domain names |
+| 110 | libretls | 3.8.1 | LibreTLS (libtls API) |
+| 111 | libpipeline | 1.5.7 | Pipeline manipulation library |
+| 112 | telescope | 0.11 | Gemini browser |
+| 113 | gmi100 | 3.2 | Gemini client |
+| 114 | lynx | 2.9.2 | Web browser |
+| 115 | snownews | 1.11 | RSS reader |
+| 116 | weechat | 4.3.1 | IRC client (TLS verified on real IRIX) |
+| 117 | tmux | 3.5a | Terminal multiplexer |
+| 118 | vim | 9.1.158 | Text editor |
+| 119 | wget2 | 2.1.0 | HTTP/HTTPS downloader |
+| 120 | man-db | 2.12.0 | Manual page system |
+| 121 | tinc | 1.0.36 | VPN daemon |
+
+Additional packages: bc, jq.
+
+145 package rule files exist, with 40+ pending future builds.
 
 ## Known Limitations
 
@@ -793,7 +851,11 @@ make clean
 - **Volatile function pointer initializers** - `static volatile fptr = memset;` crashes on IRIX rld due to relocation issues. Use `explicit_bzero` compat.
 - **GNU ld linker scripts** - IRIX rld can only load ELF .so files. `INPUT(-lfoo)` text files crash rld. Replace with symlinks.
 - **`--export-dynamic`** - Causes IRIX rld to SIGSEGV when dynamic symbol table is very large (468+ entries). Disable features that require it.
-- **Long tar filenames** - IRIX tar corrupts GNU long filenames. Use `createrepo_c --simple-md-filenames`.
+- **IRIX native tar** - Silently drops files with paths >100 characters. Doesn't support `-z` or pax headers. Always use `gtar` from the chroot for extraction. For deployment, use tar pipes (`tar cf - | tar xf -`) or symlinks.
+- **IRIX `cp -r`** - Breaks on relative symlinks (dereferences them, fails if target doesn't exist yet). Use tar pipe instead.
+- **dlmalloc in shared libraries** - NEVER link dlmalloc into .so files. With `-Bsymbolic-functions`, each library gets its own private heap. Cross-library free() calls abort(). dlmalloc is linked into executables only by irix-ld.
+- **`-z separate-code`** - Produces 3 LOAD segments in shared libraries, corrupting IRIX rld internal state on dlopen. Use custom linker script for standard 2-segment (RE+RW) layout.
+- **GNU symbol versioning** - `--version-script` creates `.gnu.version` tags that crash IRIX rld (predates GNU versioning). Filtered by irix-ld.
 - **pthread_sigmask** - In libpthread, not libc. Must explicitly link `-lpthread` when gnulib provides a replacement.
 - **C++ cmath/specfun** - GCC 9 c++config.h enables C99 math TR1 and specfun, but IRIX libm lacks these. Must disable in c++config.h.
 - **wchar_t in C++ mode** - IRIX stdlib.h tries to typedef wchar_t, but it's a C++ keyword. Fix: `-D_WCHAR_T`.
@@ -858,6 +920,10 @@ Also check for `--export-dynamic` in link commands — large dynamic symbol tabl
 **Binary crashes during normal operation (not at startup)**
 
 Likely dlmalloc/libc allocator mismatch. libc functions like `strdup`, `asprintf`, `getline` allocate with libc malloc, but our code frees with dlmalloc. Inject compat `strdup`/`strndup` etc. via `inject_compat_functions`.
+
+**ABORT during TLS or cross-library calls**
+
+If dlmalloc was accidentally linked into a shared library, each .so gets its own private heap (due to `-Bsymbolic-functions`). When library A allocates and library B frees, dlmalloc detects a foreign pointer and calls `abort()`. Fix: ensure dlmalloc is only in executables (check with `readelf -s foo.so | grep malloc` — should show 0 malloc exports in .so files).
 
 **Undefined symbol: pthread_sigmask**
 

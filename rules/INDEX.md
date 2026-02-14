@@ -13,7 +13,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Linux-only build deps | `drop_buildrequires` | systemd, systemd-devel, libselinux-devel, kernel-headers, systemtap-sdt-devel, libcap-devel, libcap-ng-devel, libacl-devel, libattr-devel, audit-libs-devel, alsa-lib-devel, gnupg2, gcc-c++, libdicl, libdicl-devel |
 | Linux-only runtime deps | `drop_requires` | libdicl, libdicl-devel |
 | libdicl removal | `remove_lines` | CPPFLAGS/LIBS exports, %gpgverify, %ldconfig_scriptlets, systemd scriptlets |
-| Common compat functions | `inject_compat_functions` | strdup, strndup, strnlen, getline, getopt_long, asprintf, vasprintf (+ dlmalloc auto) |
+| Common compat functions | `inject_compat_functions` | strdup, strndup, strnlen, getline, getopt_long, asprintf, vasprintf (dlmalloc NOT injected — linked by irix-ld for executables only) |
 | malloc(0) cross-detect | `ac_cv_overrides` | ac_cv_func_malloc_0_nonnull, ac_cv_func_realloc_0_nonnull, gl_cv_func_select_* |
 | SGUG prefix paths | `rpm_macros` | _prefix=/usr/sgug, _libdir=/usr/sgug/lib32, _bindir, _includedir, etc. |
 | Path translation | `rewrite_paths` | /usr/lib64 → /usr/sgug/lib32, /usr/lib → /usr/sgug/lib32, /usr/include → /usr/sgug/include |
@@ -47,7 +47,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Missing forkpty / PTY | forkpty undefined, tmux "server exited" immediately | prep_commands (create compat file) | rules/packages/tmux.yaml | IRIX has `_getpty()` not `forkpty()`. Must re-open PTY slave after `setsid()` WITHOUT `O_NOCTTY` — on SVR4/IRIX the first terminal open after setsid() sets controlling terminal. Without this, spawned shell has no ctty → exits → server exits cleanly (status 0). See tmux.yaml forkpty-unknown.c |
 | libevent devpoll crash | Server crashes silently, log ends abruptly, `using libevent ... devpoll` | bundle wrapper env | mogrix/bundle.py | IRIX `/dev/poll` backend in libevent is broken — crashes inside event loop. Auto-detected: if `libevent*.so` in `_lib32/`, wrapper sets `EVENT_NODEVPOLL=1` to force `poll()` backend. Confirmed working with tmux. |
 | Plugin dlopen path | App has plugins in non-standard path, commands missing | bundle wrapper env | mogrix/bundle.py | Set `WEECHAT_EXTRA_LIBDIR` etc. via `{extra_env_block}` in wrapper |
-| gnutls CA certs | "certificate issuer unknown", TLS handshake fails | bundle `-r` flag | mogrix/bundle.py | Bundle auto-includes CA certs; weechat wrapper passes `-r "/set weechat.network.gnutls_ca_user ..."` |
+| gnutls CA certs | "certificate issuer unknown", TLS handshake fails | configure_flags: add | rules/packages/gnutls.yaml | `--with-default-trust-store-file` compiles CA path into libgnutls. Bundles include CA bundle at `etc/pki/tls/certs/ca-bundle.crt`. See [gnutls CA trust store](#gnutls-ca-trust-store) |
 | extra_cflags dead code | Rule validated but never applied | use prep_commands or export_vars | rules/packages/* | `extra_cflags` in validator.py but NOT in engine.py. Workaround: `prep_commands` sed or `export_vars: CFLAGS` |
 | vsnprintf pre-C99 | garbled output, truncation | inject_compat_functions: vasprintf | rules/packages/* | IRIX vsnprintf(NULL,0) returns -1 |
 | Linker selection | .so crashes rld, bad relocations | export_vars: LD | rules/packages/* | GNU ld for -shared, LLD 18 for exe |
@@ -169,7 +169,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | IRIX libc has no `%zu` support | Use `%u` for size_t, `%d` for ssize_t; `%zu` corrupts varargs → SIGSEGV | methods/irix-quirks.md |
 | dlmalloc replaces malloc but not strdup | Must inject compat strdup/strndup alongside dlmalloc | methods/irix-quirks.md |
 | GNU ld linker scripts crash rld | Replace `INPUT(-lfoo)` .so files with symlinks | methods/irix-quirks.md |
-| `-z separate-code` needed for .so | Without it, GNU ld produces single-segment .so that crashes rld | methods/linker-selection.md |
+| `-z separate-code` MUST NOT be used for .so | Produces 3 LOAD segments (R+RE+RW); IRIX rld only handles 2-segment .so (RE+RW). Corrupts rld internal state on dlopen | cross/bin/irix-ld |
 | brk() heap limited to 176MB | libpthread at 0x0C080000 blocks heap growth | methods/irix-address-space.md |
 | mmap-based malloc bypasses limit | dlmalloc in compat uses mmap, 1.2GB available | compat/malloc/dlmalloc.c |
 | Volatile fptr initializers crash | `static volatile fptr = memset;` relocation fails on rld | compat/string/explicit_bzero.c |
@@ -213,7 +213,8 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | _RLD_ARGS="-log" for debugging | IRIX rld logging shows unresolvable symbols, wrong sonames, load order | methods/irix-testing.md |
 | IRIX inttypes.h lacks MAX/PTR macros | PRIdMAX, SCNd64, etc. not defined; mogrix-compat inttypes.h provides them | compat/include/mogrix-compat/generic/inttypes.h |
 | Source `#define` overrides `-D` | CFLAGS `-D_Thread_local=` won't work if source has `#define _Thread_local __thread` | rules/packages/gnutls.yaml |
-| IRIX native tar `-C` flag | IRIX `/bin/tar` silently ignores `-C dir` during extraction; also cannot handle symlinks in any tar format. Fix: bundle tarballs use `--format=ustar -h` (dereference symlinks to hard links), extraction on IRIX should use GNU tar from chroot: `tar xf bundle.tar -C /path` via sgug-exec | mogrix/bundle.py |
+| IRIX native tar limitations | IRIX `/bin/tar` silently drops files with paths >100 chars and can't handle GNU tar pax headers. Does not support `-z` flag. Fix: bundle tarballs use `--format=ustar` (no `-h`); extraction on IRIX MUST use GNU tar from chroot: `gtar xzf bundle.tar.gz -C /path`. For host deployment: `tar cf - -C /opt/chroot/tmp <bundle> \| tar xf - -C /usr/people/edodd/apps/` works for short paths; symlink to chroot for long paths | mogrix/bundle.py |
+| IRIX `cp -r` breaks on symlinks | IRIX `cp -r` dereferences relative symlinks and fails if targets don't exist yet during copy. Fix: use `tar cf - \| tar xf -` pipe to preserve symlinks | IRIX host deployment |
 | Bundle wrapper LD_LIBRARYN32_PATH contamination | Bundle trampolines used to prepend to existing `LD_LIBRARYN32_PATH`, causing old bundle paths to contaminate new runs. Fixed: wrappers now set `LD_LIBRARYN32_PATH` fresh (bundles are self-contained) | mogrix/bundle.py |
 | `extra_cflags` rule is dead code | Validated in validator.py but never applied by engine.py; use prep_commands or export_vars | mogrix/rules/validator.py |
 | `skip_manpages` rule is dead code | Validated but never applied by engine. Use prep_commands to touch man pages | mogrix/rules/validator.py |

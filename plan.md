@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-12)
+## Current Status (2026-02-14)
 
-**96+ source packages cross-compiled for IRIX (270+ RPMs). 13 bundles rebuilt from scratch and verified on IRIX (536 tests, 534 passed — 99.6%).** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". All Qt5 modules verified: Core, Gui, Widgets, XcbQpa, Network + libqxcb.so plugin.
+**105+ source packages cross-compiled for IRIX (290+ RPMs). 23 bundles rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc architecture finalized: exe-only linking via irix-ld.
 
-All phases through 4c complete (41 packages). Phase 5+ complete with 55+ library/app packages including Qt5 (the boss fight). `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX. `mogrix test` verifies bundles work on live IRIX. 115+ package rule files. All 13 bundles shipped: 9 individual (weechat, groff, st, bitlbee, telescope, gmi100, lynx, snownews, tinc) + 4 suite (mogrix-smallweb, mogrix-fun, mogrix-essentials, mogrix-net) — all tested on IRIX.
+All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX. 145 package rule files. All 23 bundles shipped: 16 individual (weechat, groff, st, bitlbee, telescope, gmi100, lynx, snownews, tinc, tmux, vim, wget2, man-db, bc, jq, dmenu) + 5 suite (mogrix-smallweb, mogrix-fun, mogrix-essentials, mogrix-net, mogrix-extras) + rxvt-unicode + cmatrix — all tested on IRIX.
 
 ---
 
@@ -97,7 +97,7 @@ Validated: `rpm -Uvh`, `rpm -qa`, `tdnf repolist`, `tdnf makecache`, `tdnf insta
 | Package | Status | Notes |
 |---------|--------|-------|
 | m4 1.4.19 | ✅ Verified on IRIX | - |
-| perl 5.38.2 | ✅ Verified on IRIX | image-base fix, explicit Provides, -z separate-code |
+| perl 5.38.2 | ✅ Verified on IRIX | image-base fix, explicit Provides |
 | autoconf 2.71 | ✅ Verified on IRIX | Generates configure + autom4te cache |
 | automake 1.16.5 | ✅ Verified on IRIX | shebang + FindBin fixes |
 | bash 5.2.26 | ✅ Verified on IRIX | System readline, libtinfo for termcap, wchar.h overlay |
@@ -272,20 +272,20 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
 | Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
 | Roadmap: glob pattern drops for impossible ecosystems | Done |
-| 129 package rules + 1 class rule | Done |
+| 145 package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
 | Batch build (`mogrix batch-build`) | Done |
 | Dependency roadmap (`mogrix roadmap`) | Done |
-| 536 IRIX bundle tests, 534 passing (99.6%) | Done |
+| IRIX bundle tests passing across 23 bundles | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
 | App bundles (`mogrix bundle`) | Done |
 | Bundle smoke testing (`mogrix test`) | Done |
 | Upstream package support (`mogrix create-srpm`) | Done |
 | Suite bundles (`mogrix bundle pkg1 pkg2 --name`) | Done |
-| 96+ source packages cross-compiled for IRIX | Done |
-| 13 bundles rebuilt and verified on IRIX | Done |
+| 105+ source packages cross-compiled for IRIX | Done |
+| 23 bundles rebuilt and verified on IRIX | Done |
 | Qt5 5.15.13 running on IRIX (Core+Gui+Widgets+XcbQpa) | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
@@ -298,10 +298,10 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 
 | Decision | Rationale |
 |----------|-----------|
-| LLD 18 for executables, GNU ld + `-z separate-code` for shared libs | LLD for correct relocations; GNU ld with forced 3-segment layout for rld |
+| LLD 18 for executables, GNU ld + custom linker script for shared libs | LLD for correct relocations; GNU ld with 2-segment (RE+RW) layout for rld |
 | `--image-base=0x1000000` for all executables | Default 0x10000 gives only 1.8MB brk heap; 0x1000000 gives 176MB |
 | `/lib32/rld` as dynamic linker | IRIX requires this interpreter, not `/usr/lib32/libc.so.1` |
-| dlmalloc via mmap (auto-injected) | IRIX brk() heap limited to 176MB; mmap accesses 1.2GB |
+| dlmalloc via mmap (exe-only, linked by irix-ld) | IRIX brk() heap limited to 176MB; mmap accesses 1.2GB. Never in .so files — causes cross-heap corruption with `-Bsymbolic-functions` |
 | funopen instead of fopencookie | fopencookie crashes on IRIX |
 | Iterative vasprintf | IRIX vsnprintf(NULL,0) returns -1 (pre-C99) |
 | Per-package compat injection | No shared libdicl dependency; each SRPM is self-contained |

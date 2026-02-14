@@ -6,24 +6,29 @@ The `cross/bin/irix-ld` wrapper selects linkers based on output type:
 
 | Output Type | Linker | Why |
 |-------------|--------|-----|
-| Shared libraries (`-shared`) | GNU ld + `-z separate-code` | Forces 3 LOAD segments (R/RE/RW) for IRIX rld |
-| Executables | LLD 18 with patches | Correct relocations, correct segment layout |
+| Shared libraries (`-shared`) | GNU ld + custom linker script + `-Bsymbolic-functions` | Standard 2-segment layout (RE+RW) for IRIX rld |
+| Executables | LLD 18 with patches + `dlmalloc.o` | Correct relocations, mmap-based malloc |
 
-### Shared Library Segment Layout (2026-02-05)
+### Shared Library Segment Layout (updated 2026-02-14)
 
-Without `-z separate-code`, GNU ld produces a **single RWE LOAD segment** for small
-shared libraries (those with no `.data` section, only `.got`). This crashes IRIX rld
-immediately after `elfmap()` with SIGSEGV. Affects all Perl XS modules (Dumper.so, etc.).
+IRIX rld expects shared libraries with exactly 2 LOAD segments: RE (text) + RW (data/got).
 
-With `-z separate-code`, GNU ld produces 3 LOAD segments:
-- `R` — headers, dynamic, hash, symtab, strtab
-- `RE` — .text, .MIPS.stubs
-- `RW` — .rodata, .got
+**DO NOT use `-z separate-code`**: Produces 3 LOAD segments (R+RE+RW) which corrupts rld
+internal state on dlopen. Previously used (2026-02-05) but found to cause crashes.
 
-IRIX rld handles this correctly (tested with `DynaLoader::dl_load_file`).
+The custom linker script (`cross/irix-shared.lds`) produces the correct 2-segment layout.
+GNU ld uses it via `-T irix-shared.lds`.
 
-SGUG-RSE avoided this issue because their patched binutils + GCC produced compatible
-single-segment layout. Our unpatched GNU ld + clang needs the explicit flag.
+### dlmalloc Architecture (2026-02-14)
+
+dlmalloc is linked into **executables only** via `irix-ld` (as `dlmalloc.o` in the LLD
+command). Shared libraries do NOT contain dlmalloc — they leave malloc/free/calloc/realloc
+undefined so IRIX rld resolves them to the executable's single allocator.
+
+**Why**: `-Bsymbolic-functions` (needed for rld's ~4370 global GOT entry limit) binds each
+.so's function calls locally. If dlmalloc was in every .so, each library would get its own
+private heap. When library A allocates and library B frees, dlmalloc detects a foreign
+pointer and calls abort(). This was the root cause of the weechat TLS ABORT bug (session 37).
 
 ### C++ Static Constructors in Shared Libraries (2026-02-10)
 
@@ -131,7 +136,7 @@ The patches fix the relocation bug. Correct output looks like:
 If you suspect a linker problem:
 
 1. **Check relocations**: `readelf -r binary | grep -E "(popt|rpm)"`
-2. **Check segment layout**: `readelf -l binary` (shared libs need 3 LOAD segments: R/RE/RW)
+2. **Check segment layout**: `readelf -l binary` (shared libs need 2 LOAD segments: RE/RW; NOT 3)
 3. **Check which linker is used**: Add `echo "Using: $GNULD" >&2` or `echo "Using: $LLD" >&2` to irix-ld
 
 ## See Also

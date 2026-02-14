@@ -294,6 +294,11 @@ functions:
     description: IRIX rld interface stub for cross-compilation
 
   # mmap-based malloc (bypasses IRIX brk heap ceiling)
+  # NOTE: dlmalloc is NO LONGER injected into compat archives.
+  # It is linked by irix-ld into executables only (dlmalloc.o in staging).
+  # Shared libraries leave malloc/free undefined so rld resolves them to
+  # the executable's single dlmalloc, preventing cross-heap corruption.
+  # See rules/INDEX.md "dlmalloc shared library crash".
   dlmalloc:
     file: malloc/dlmalloc.c
     header: stdlib.h
@@ -304,6 +309,9 @@ functions:
       Uses dlmalloc 2.8.6 (MIT-0) configured with HAVE_MORECORE=0.
       All allocations go through mmap, bypassing the brk() ceiling at
       libpthread (0x0C080000). See rules/methods/irix-address-space.md.
+      IMPORTANT: Linked into executables only via irix-ld (dlmalloc.o).
+      Never inject into shared libraries — causes cross-heap corruption
+      with -Bsymbolic-functions (each .so gets private heap).
 
   # PTY functions (IRIX uses _getpty instead of openpty)
   openpty:
