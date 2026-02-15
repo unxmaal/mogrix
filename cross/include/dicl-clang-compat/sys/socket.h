@@ -13,17 +13,19 @@
 
 /*
  * Temporarily undefine _SGI_SOURCE to avoid the old BSD msghdr
- * and get the XPG version with msg_control/msg_flags instead
+ * and get the XPG version with msg_control/msg_flags instead.
+ *
+ * IMPORTANT: _SGIAPI is a complex expression-macro from standards.h
+ * (uses defined() operators). We MUST use push_macro/pop_macro to
+ * preserve its full definition. Simple #undef/#define _SGIAPI 1
+ * destroys the expression and makes _SGIAPI always TRUE, which
+ * breaks _LFAPI gating (exposes struct stat64/blkcnt64_t when it
+ * shouldn't be visible).
  */
-#ifdef _SGI_SOURCE
+#pragma push_macro("_SGI_SOURCE")
+#pragma push_macro("_SGIAPI")
 #undef _SGI_SOURCE
-#define _DICL_RESTORE_SGI_SOURCE 1
-#endif
-
-#ifdef _SGIAPI
 #undef _SGIAPI
-#define _DICL_RESTORE_SGIAPI 1
-#endif
 
 /* Define _XOPEN_SOURCE to get modern msghdr */
 #ifndef _XOPEN_SOURCE
@@ -57,15 +59,8 @@ struct sockaddr_storage {
 #endif
 
 /* Restore original defines */
-#ifdef _DICL_RESTORE_SGI_SOURCE
-#define _SGI_SOURCE 1
-#undef _DICL_RESTORE_SGI_SOURCE
-#endif
-
-#ifdef _DICL_RESTORE_SGIAPI
-#define _SGIAPI 1
-#undef _DICL_RESTORE_SGIAPI
-#endif
+#pragma pop_macro("_SGIAPI")
+#pragma pop_macro("_SGI_SOURCE")
 
 #ifdef _DICL_DEFINED_XOPEN_SOURCE
 #undef _XOPEN_SOURCE

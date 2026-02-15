@@ -8,17 +8,23 @@
 /* Ensure types are defined before including IRIX sys/stat.h */
 #include <sys/types.h>
 
-/* Force struct timespec to be defined when IRIX sys/stat.h includes sys/timespec.h.
- * IRIX timespec.h defines "struct __timespec" unconditionally, but only maps
- * __timespec -> timespec under _POSIX93 || _ABIAPI. This #define must come BEFORE
- * #include_next so it's active when IRIX headers parse sys/timespec.h. */
-#ifndef __TIMESPEC_DEFINED
-#define __timespec timespec
-#define __TIMESPEC_DEFINED
-#endif
+/* Include <time.h> to ensure struct timespec is properly defined.
+ * IRIX sys/timespec.h only maps __timespec→timespec under certain feature
+ * macros (_POSIX93 || _ABIAPI || (_XOPEN5 && __TIME_H__)). Including <time.h>
+ * sets __TIME_H__ and ensures the mapping is active, so the struct is defined
+ * as "struct timespec" rather than the IRIX-internal "struct __timespec". */
+#include <time.h>
 
 /* Include IRIX sys/stat.h (which includes sys/timespec.h internally) */
 #include_next <sys/stat.h>
+
+/* Undo IRIX time_core.h's reverse mapping (#define timespec __timespec).
+ * After <time.h> defines the struct as "struct timespec", time_core.h maps
+ * timespec back to __timespec. This #undef ensures "struct timespec" in our
+ * declarations below resolves directly to the defined struct. */
+#ifdef timespec
+#undef timespec
+#endif
 
 #ifdef __cplusplus
 extern "C" {

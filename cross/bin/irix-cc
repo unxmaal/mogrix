@@ -27,6 +27,11 @@ CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
 # IRIX's stdio_core.h defines va_list as char* which conflicts with clang builtins
 CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
+# Force-include time.h to ensure struct timespec is defined as "struct timespec"
+# (not "struct __timespec"). IRIX sys/timespec.h only maps __timespec→timespec
+# when __TIME_H__ is set. Without this, signal.h (and other headers) can include
+# sys/timespec.h before time.h, leaving the struct with the wrong name.
+CLANG_FLAGS="$CLANG_FLAGS -include $SYSROOT/usr/include/time.h"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"

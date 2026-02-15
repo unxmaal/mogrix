@@ -3,29 +3,39 @@
  *
  * Wrapper that includes the real stdlib.h and adds missing C99 functions
  * for IRIX compatibility.
+ *
+ * IRIX gates C99 long long declarations (lldiv_t, llabs, strtoll, etc.)
+ * behind: #if defined(__c99) || ((_SGIAPI || _ABIAPI) && _NO_ANSIMODE)
+ * Since _SGIAPI uses defined() in macro expansion (UB in clang), it
+ * evaluates unpredictably. Force the gate open so IRIX always provides
+ * these declarations, avoiding typedef conflicts from our own copies.
  */
 
 #ifndef _MOGRIX_COMPAT_STDLIB_H
 #define _MOGRIX_COMPAT_STDLIB_H
 
-/* Include the real IRIX stdlib.h */
+/*
+ * Force IRIX stdlib_core.h to expose C99 long long declarations.
+ * Pre-include standards.h so its include guard prevents it from
+ * re-defining _SGIAPI inside #include_next (which would override
+ * our forced value).
+ */
+#include <standards.h>
+
+#pragma push_macro("_SGIAPI")
+#pragma push_macro("_NO_ANSIMODE")
+#undef _SGIAPI
+#define _SGIAPI 1
+#undef _NO_ANSIMODE
+#define _NO_ANSIMODE 1
+
 #include_next <stdlib.h>
+
+#pragma pop_macro("_NO_ANSIMODE")
+#pragma pop_macro("_SGIAPI")
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-/* C99 functions missing from IRIX 6.5 */
-
-/*
- * llabs - absolute value of long long (C99)
- *
- * IRIX 6.5 may not expose llabs depending on feature macros.
- * IRIX libc doesn't have llabs, but Clang provides it as a builtin.
- * Provide a declaration that Clang can resolve.
- */
-#ifndef llabs
-long long llabs(long long);
 #endif
 
 /* strtof - convert string to float */

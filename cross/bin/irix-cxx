@@ -41,6 +41,9 @@ CLANG_FLAGS="$CLANG_FLAGS -nostdlibinc -nostdinc++"
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
 # In C++ mode, va_list = char* to match IRIX declarations
 CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
+# Force-include time.h to ensure struct timespec is defined as "struct timespec"
+# (not "struct __timespec"). See irix-cc for full explanation.
+CLANG_FLAGS="$CLANG_FLAGS -include $SYSROOT/usr/include/time.h"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/c++/9"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/c++/9/mips-sgi-irix6.5"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"

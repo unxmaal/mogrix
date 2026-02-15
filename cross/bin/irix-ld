@@ -170,7 +170,17 @@ else
     # Linked ONLY into executables. Shared libraries leave malloc/free undefined
     # so rld resolves them to the executable's single dlmalloc, preventing
     # cross-heap corruption (each .so had its own dlmalloc → abort in free).
-    DLMALLOC=$STAGING/lib32/dlmalloc.o
+    if [ "$MOGRIX_NO_DLMALLOC" = "1" ]; then
+        DLMALLOC=""
+    else
+        DLMALLOC=$STAGING/lib32/dlmalloc.o
+    fi
+    # safe_mem: Byte-safe memory/string functions (memcmp, strcmp, _Hash_bytes).
+    # IRIX libc/libstdc++ optimized versions use word-aligned reads that overread
+    # past buffer end into unmapped pages, causing SIGSEGV. These byte-by-byte
+    # implementations avoid overreads. Linked into executables so dynamic symbol
+    # resolution overrides the library versions for all code in the process.
+    SAFEMEM=$STAGING/lib32/safe_mem.o
 
     # --image-base=0x1000000: Move binary above rld quickstart table (0x200000)
     # Default base 0x10000 gives only 1.8MB of brk heap; 0x1000000 gives 176MB
@@ -186,6 +196,7 @@ else
       $CRTBEGIN \
       $DSOHANDLE \
       $DLMALLOC \
+      $SAFEMEM \
       $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \

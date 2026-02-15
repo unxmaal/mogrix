@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-15 (session 42)
-**Status**: 116+ source packages cross-compiled (310+ RPMs). All 35 bundle packages rebuilt with dlmalloc spin locks + high-fd fix. 20 bundles (.run installers) created. Essentials, bash, and extras verified on IRIX.
+**Last Updated**: 2026-02-15 (session 46)
+**Status**: cmake-blocked packages all built (json-c, brotli, libwebp, ninja-build). 130+ source packages cross-compiled. Next: meson (needs ninja), remaining dev tools, GTK3 stack.
 
 ---
 
@@ -17,50 +17,52 @@
 
 ## Current State
 
-### Session 42: Alpine email client (completed)
+### cmake ecosystem is DONE
 
-**Completed this session** (built, MIPS N32 verified, staged, copied to outputs):
-- **alpine** 2.26 — console email client with built-in IMAP c-client library.
-  11 distinct build issues resolved iteratively. Key fixes in `rules/packages/alpine.yaml`:
-  - CC_FOR_BUILD LIBS cross-contamination (sed $LIBS out of ac_link)
-  - IRIX case added to host detection in configure
-  - c-client target slx with flocksim.c instead of flocklnx.c (IRIX has no fstatfs)
-  - scandir/alphasort prototypes guarded with `#if !_SGIAPI` (not `#ifndef` -- _SGIAPI is a macro expression)
-  - HOSTCC pattern for help_h_gen/help_c_gen code generators
-  - vfork -> fork define (pith/osdep/pipe.c), %zu -> %u, mkdtemp compat
-  - os_slx.h patched with flocksim.h + ustat.h includes
+- **cmake 3.28.2**: Built, staged, verified on IRIX. Tarball at `mogrix_outputs/rpms/cmake/cmake-3.28.2-irix.tar.gz`.
+- **json-c 0.17**: Built, staged to sysroot, installed on IRIX. RPMs at `~/rpmbuild/RPMS/mips/json-c-*.rpm`.
+- **brotli 1.1.0**: Built, staged to sysroot, installed on IRIX. RPMs at `~/mogrix_outputs/rpms/brotli/`.
+- **libwebp 1.3.2**: Built, staged to sysroot, installed on IRIX. RPMs at `~/mogrix_outputs/rpms/libwebp/`.
+- **ninja-build 1.11.1**: Built, installed on IRIX, `ninja --version` works. RPMs at `~/mogrix_outputs/rpms/ninja-build/`.
 
-### Session 41: Batch building
+### Staging sysroot updated
 
-**Completed** (built, MIPS N32 verified, staged, copied to outputs):
-- **recode** 3.7.14 — character set converter. -lgen for dirname, Python/NLS disabled.
-- **mpg123** 1.32.6 — MPEG audio player. Dummy output only, network disabled.
-- **lame** 3.100 — MP3 encoder. -ltinfo for termcap, nasm/ix86 blocks removed.
-- **libpsl** 0.21.5 — Public Suffix List library. libidn2 backend (no ICU), bundled PSL data.
-- **opus** 1.5.1 — audio codec. In-tree build (no pushd/popd), libtool IRIX fix.
-- **libssh2** 1.11.0 — SSH2 client library. openssl+zlib backend, libtool fix.
-- **lcms2** 2.16 — Color management engine. Meson build, replaced %meson macros with raw meson commands.
-- **imlib2** 1.11.1 — Image rendering library. Autotools, memmem compat, CLOCK_MONOTONIC disabled.
-- **mksh** 59c — MirBSD Korn Shell. Custom Build.sh, TARGET_OS=IRIX. Verified on IRIX.
-- **libao** 1.2.0, **libsndfile** 1.2.2, **libcaca** 0.99-beta20, **ksh** 1.0.8 — agent-built.
+`/opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.a` now contains: mkdtemp.o, setenv.o, pselect.o, spawn.o.
+
+New compat header: `compat/include/mogrix-compat/generic/sys/select.h` (pselect declaration).
+
+### cmake build pattern established
+
+Use `CMAKE_SYSTEM_NAME=Linux` (NOT IRIX). See INDEX.md "cmake %cmake/%cmake3 macro" and json-c.yaml / brotli.yaml / libwebp.yaml for the standard pattern.
+
+---
+
+## Next Steps
+
+1. **Build meson** — needs ninja (now done). Unblocks many packages.
+2. **Build remaining #202 tools** — gdb, doxygen.
+3. **Build remaining dev tools** — fossil, mercurial.
+4. **Build #201 GTK3 stack** — image libs now ready (libwebp, lcms2, libtiff, imlib2 all staged).
+5. **Build #204 IPC/heavy** — dbus, dbus-glib, icu, cyrus-sasl.
+6. **Low priority**: `drop_buildrequires_if_unavailable` engine feature, ksh build system.
 
 ### Batch Progress
 
-| Batch | Task | Status | Details |
-|-------|------|--------|---------|
+| Batch | Status | Details |
+|-------|--------|---------|
 | #191 Quick-win CLI | COMPLETED | screen, zsh, ed, dtach, pwgen, rlwrap, units, diffstat, most |
 | #192 Fun/trivial | COMPLETED | cowsay, banner, neofetch, screenfetch, boxes, sl |
 | #193 Sysadmin | COMPLETED | dos2unix, ncdu, dash, lrzsz |
 | #194 Dev tools pt1 | COMPLETED | ctags, patchutils, enscript, mandoc, help2man, recode |
-| #195 Alt shells | IN_PROGRESS | mksh DONE (verified on IRIX), ksh checking build sys |
-| #196 Foundation libs | IN_PROGRESS | slang/jansson/libyaml/libev done; json-c BLOCKED(cmake); libcaca building |
-| #197 Compression/net | COMPLETING | lz4/lzo done; brotli BLOCKED(cmake); libpsl+libssh2 DONE this session |
-| #199 Audio | IN_PROGRESS | libogg/libvorbis/flac done; opus+lame+mpg123 DONE this session; libao+libsndfile building |
-| #198 User apps | IN_PROGRESS | alpine DONE; mc, irssi, joe, vile, frotz pending |
-| #200 Image libs | IN_PROGRESS | libtiff done; lcms2+imlib2 DONE this session; libwebp BLOCKED(cmake); openjpeg2 BLOCKED(cmake) |
-| #201 GTK3 stack | PENDING | blocked on image libs |
-| #202 Build tools | PENDING | cmake, ninja, meson, gdb, doxygen |
-| #203 Dev tools pt2 | PENDING | fossil, mercurial, quilt, re2c, yasm |
+| #195 Alt shells | COMPLETED | mksh verified on IRIX; ksh BLOCKED (complex build sys) |
+| #196 Foundation libs | COMPLETED | slang/jansson/libyaml/libev/libcaca/json-c done |
+| #197 Compression/net | COMPLETED | lz4/lzo/libpsl/libssh2/brotli done |
+| #198 User apps | COMPLETED | alpine/vile/frotz/stow/sox/mc/irssi/joe done |
+| #199 Audio | COMPLETED | libogg/libvorbis/flac/opus/lame/mpg123/libao/libsndfile done |
+| #200 Image libs | COMPLETED | libtiff/lcms2/imlib2/libwebp done; openjpeg2 no SRPM |
+| #201 GTK3 stack | PENDING | image libs now ready |
+| #202 Build tools | MOSTLY DONE | cmake + ninja done; meson, gdb, doxygen pending |
+| #203 Dev tools pt2 | MOSTLY DONE | re2c/yasm/quilt done; fossil/mercurial pending |
 | #204 IPC/heavy | PENDING | dbus, dbus-glib, icu, cyrus-sasl |
 | #205 GUI apps | PENDING | hexchat, geany, pidgin, nedit |
 
@@ -68,21 +70,27 @@
 
 | Package | Reason |
 |---------|--------|
-| json-c | cmake build system |
-| brotli | cmake build system |
-| libwebp | cmake build system |
-| ninja-build | cmake build system |
-| SDL2 | cmake build system |
-| p11-kit | meson build system (now unblocked — lcms2 proved meson works) |
+| ksh | ~3400-line custom build system |
 | htop | needs IRIX /proc backend |
+| openjpeg2 | no SRPM available |
 
 ---
 
-## Previous State (session 40)
+## Recent Work
 
-**All bundles rebuilt**: 35 packages rebuilt, 20 bundles created with hardened dlmalloc.
-**Deployed on IRIX**: mogrix-essentials, bash, mogrix-extras verified.
-**Trampoline exclusions working**: bash bundle correctly excludes sh and builtins.
+### Session 46: cmake-blocked packages
+
+- Built json-c, brotli, ninja-build, libwebp — all verified on IRIX
+- Created `sys/select.h` compat header for pselect declaration
+- Added pselect.o and spawn.o to staging `libmogrix_compat.a`
+- Discovered cmake cross-compile pattern: `CMAKE_SYSTEM_NAME=Linux`, `-DBUILD_SHARED_LIBS=ON`, `make -C _build install`
+- Ninja needed link-order fix (sed configure.py link rule to put -l flags after objects)
+- All patterns added to INDEX.md
+
+### Session 45: cmake runtime SIGSEGV fix + safe_mem infrastructure
+
+- Fixed cmake crash: IRIX libc memcmp word-aligned overread past buffer
+- Created `cross/lib/safe_mem.c`, auto-linked into all executables via `irix-ld`
 
 ---
 
@@ -90,10 +98,12 @@
 
 | What | Where |
 |------|-------|
-| Technical patterns & fixes | `rules/INDEX.md` |
+| Generic rules summary | `rules/GENERIC_SUMMARY.md` (read this first) |
+| Problem lookup | `rules/INDEX.md` (grep, don't read whole file) |
+| Agent orchestration | `rules/methods/task-tracking.md` |
 | Package rules | `rules/packages/<name>.yaml` |
 | Project architecture | `plan.md` |
 | Build methods | `rules/methods/*.md` |
 | Compat functions | `compat/catalog.yaml` |
 | Workspace paths & workflow | `CLAUDE.md` |
-| dlmalloc test suite | `tests/dlmalloc-test.c` |
+| safe_mem source | `cross/lib/safe_mem.c` |

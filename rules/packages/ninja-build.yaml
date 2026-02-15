@@ -1,0 +1,28 @@
+# ninja-build - Small build system with a focus on speed
+# Uses its own Python bootstrap build system (not cmake/autotools)
+# configure.py --bootstrap directly invokes CXX for each source file
+package: ninja-build
+rules:
+  drop_buildrequires:
+  - re2c
+  - asciidoc
+  - gtest-devel
+  drop_requires:
+  - emacs-filesystem
+  - vim-filesystem
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+  spec_replacements:
+  # Enable bootstrap mode (skip docs, tests, extras)
+  - pattern: '%bcond_with bootstrap'
+    replacement: '%bcond_without bootstrap'
+  # Replace build section: set cross-compile env, use pselect (no ppoll on IRIX)
+  # Note: -l flags go in link rule (after $libs), not LDFLAGS (before objects)
+  - pattern: "%set_build_flags\n%python3 configure.py --bootstrap --verbose\n./ninja -v all"
+    replacement: "export CXX=\"%{__cxx}\"\nexport AR=\"%{__ar}\"\nexport CXXFLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\"\nexport LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 -L$(pwd)/mogrix-compat\"\n# Patch link rule: compat/gen libs must come AFTER $in/$libs (link order)\nsed -i \"s|\\$cxx \\$ldflags -o \\$out \\$in \\$libs|\\$cxx \\$ldflags -o \\$out \\$in \\$libs -lmogrix-compat -lmogrix_compat -lgen|\" configure.py\npython3 configure.py --bootstrap --verbose --force-pselect\n# Skip ./ninja -v all — can't run MIPS binary on build host"
+  prep_commands:
+  # Stub out getloadavg (not available on IRIX) — just return -1 (load unknown)
+  - "sed -i 's/if (getloadavg(loadavg, 3) < 0)/if (1)/' src/util.cc"
+  # Skip bootstrap rebuild step — can't run MIPS binary on build host
+  - "sed -i 's/subprocess.check_call(rebuild_args)/pass  # skip: cross-compiled binary/' configure.py"

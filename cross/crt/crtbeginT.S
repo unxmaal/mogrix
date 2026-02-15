@@ -30,6 +30,7 @@ __DTOR_LIST__:
 /* ---- Constructor processing function (normal .text) ---- */
 	.text
 	.p2align 2
+	.weak	__do_global_ctors_aux
 	.type	__do_global_ctors_aux,@function
 __do_global_ctors_aux:
 	/* Prologue */
