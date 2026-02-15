@@ -14,7 +14,8 @@
  * Configuration:
  *   HAVE_MORECORE=0   - Don't use sbrk/brk
  *   HAVE_MMAP=1       - Use mmap for all allocations
- *   USE_LOCKS=0       - Single-threaded (IRIX rld doesn't support TLS)
+ *   USE_LOCKS=1        - Thread-safe via spin locks (MIPS ll/sc atomics)
+ *   USE_SPIN_LOCKS=1   - Use GCC atomics, no libpthread dependency
  *   MMAP_CLEARS=1     - IRIX mmap returns zeroed pages
  *   malloc_getpagesize=16384 - IRIX page size
  *
@@ -22,12 +23,17 @@
  *   - No MAP_ANONYMOUS: dlmalloc falls back to /dev/zero (built-in)
  *   - MIPS is big-endian: no endianness issues with dlmalloc
  *   - n32 ABI: 32-bit pointers, 32-bit size_t
+ *   - Thread safety: IRIX pthreads (sproc-based) can call malloc from
+ *     any thread. Without locking, concurrent mallocs corrupt the heap
+ *     (confirmed: 6/10 runs crash). Spin locks add ~2 ll/sc instructions
+ *     per malloc/free call with zero libpthread overhead.
  */
 
 /* Configuration - must come before dlmalloc source */
 #define HAVE_MORECORE 0
 #define HAVE_MMAP 1
-#define USE_LOCKS 0
+#define USE_LOCKS 1
+#define USE_SPIN_LOCKS 1
 #define MMAP_CLEARS 1
 #define malloc_getpagesize 16384
 

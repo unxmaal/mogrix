@@ -86,6 +86,7 @@ VALID_PACKAGE_TOP_KEYS = {
     "classes",
     "smoke_test",
     "upstream",
+    "bundle_trampoline_exclude",
 }
 
 # Valid keys inside the upstream: block

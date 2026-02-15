@@ -1,0 +1,171 @@
+# tcsh - Enhanced C shell for IRIX
+package: tcsh
+
+smoke_test:
+  - command: "/usr/sgug/bin/tcsh -c 'echo $version'"
+    expect: "6.24"
+
+bundle_trampoline_exclude:
+  - csh   # would shadow /bin/csh on IRIX
+
+rules:
+  drop_buildrequires:
+    - git            # spec uses git-based autosetup, we replace it
+    - gettext-devel  # NLS disabled for IRIX
+    - ncurses-devel  # headers in staging sysroot
+    - autoconf       # available on host but not RPM-registered
+    - gcc
+    - make
+
+  drop_requires:
+    - coreutils
+    - grep
+    - "sed"
+
+  skip_find_lang: true
+  skip_check: true
+
+  spec_replacements:
+    # Remove %if rhel/%endif block entirely — mogrix compat sources get
+    # injected after the last Source/Patch which is inside this conditional.
+    # Patch200 doesn't exist in Fedora, only in RHEL.
+    - pattern: |
+        %if %{defined rhel} || %{defined centos}
+        Patch200: tcsh-6.20.00-tcsh-posix-status.patch
+        %endif
+      replacement: ""
+    # Replace git-based autosetup with plain setup
+    - pattern: "%autosetup -N -S git"
+      replacement: "%setup -q"
+
+    # Remove git operations (iconv + git amend + autopatch)
+    - pattern: |
+        # NOTE: If more files needs to be converted, add them here:
+        for file in Fixes; do
+          iconv -f iso-8859-1 -t utf-8 "$file" > "${file}.converted" && \
+          touch -r "$file" "${file}.converted" && \
+          mv "${file}.converted" "$file"
+        done
+
+        # Also, rename the Copyright so we comply with more generally accepted name:
+        mv Copyright COPYING
+
+        # Amend the converted files to the initial commit, and patch the source code:
+        git add --all --force
+        git commit --all --amend --no-edit > /dev/null
+        %autopatch -p1
+      replacement: |
+        # Convert encoding
+        for file in Fixes; do
+          iconv -f iso-8859-1 -t utf-8 "$file" > "${file}.converted" && \
+          touch -r "$file" "${file}.converted" && \
+          mv "${file}.converted" "$file"
+        done
+
+        # Rename Copyright
+        mv Copyright COPYING
+
+        # Apply patches without git
+        %patch -P 100 -p1
+
+    # Remove /etc/shells scriptlets (IRIX doesn't use /etc/shells this way)
+    - pattern: |
+        %post
+        # Add login shell entries to /etc/shells only when installing the package
+        # for the first time (see 'man 5 SHELLS' for more info):
+        if [[ "$1" -eq 1 ]]; then
+          if [[ ! -f %{_sysconfdir}/shells ]]; then
+            echo "/bin/csh"        >> %{_sysconfdir}/shells
+            echo "/bin/tcsh"       >> %{_sysconfdir}/shells
+            echo "%{_bindir}/csh"  >> %{_sysconfdir}/shells
+            echo "%{_bindir}/tcsh" >> %{_sysconfdir}/shells
+          else
+            grep -q "^/bin/csh$"        %{_sysconfdir}/shells || echo "/bin/csh"        >> %{_sysconfdir}/shells
+            grep -q "^/bin/tcsh$"       %{_sysconfdir}/shells || echo "/bin/tcsh"       >> %{_sysconfdir}/shells
+            grep -q "^%{_bindir}/csh$"  %{_sysconfdir}/shells || echo "%{_bindir}/csh"  >> %{_sysconfdir}/shells
+            grep -q "^%{_bindir}/tcsh$" %{_sysconfdir}/shells || echo "%{_bindir}/tcsh" >> %{_sysconfdir}/shells
+          fi
+        fi
+      replacement: |
+        %post
+        # No /etc/shells management on IRIX
+
+    - pattern: |
+        %postun
+        # Remove the login shell lines from /etc/shells only when uninstalling:
+        if [[ "$1" -eq 0 && -f %{_sysconfdir}/shells ]]; then
+          sed -i -e '\!^/bin/csh$!d'        %{_sysconfdir}/shells
+          sed -i -e '\!^/bin/tcsh$!d'       %{_sysconfdir}/shells
+          sed -i -e '\!^%{_bindir}/csh$!d'  %{_sysconfdir}/shells
+          sed -i -e '\!^%{_bindir}/tcsh$!d' %{_sysconfdir}/shells
+        fi
+      replacement: |
+        %postun
+        # No /etc/shells management on IRIX
+
+    # Completely replace %check — cross-compiled binaries can't run on host
+    - pattern: |
+        %check
+        # Tests skipped for cross-compilation (binaries can't run on host)
+        # %make_build check
+
+        # # ---------------
+      replacement: |
+        %check
+        # Tests skipped for cross-compilation
+
+    # Remove locale install (NLS disabled)
+    - pattern: |
+        # NOTE: We have to construct tcsh.lang by ourselves, since upstream does not use
+        #       standard naming/placing of localization files for the gettext...
+        while read lang language; do
+          dest="%{buildroot}%{_datadir}/locale/$lang/LC_MESSAGES"
+          if [[ -f "nls/$language.cat" ]]; then
+            mkdir -p "$dest"
+            install -p -m 644 "nls/$language.cat" "$dest/tcsh"
+            echo "%lang($lang) %{_datadir}/locale/$lang/LC_MESSAGES/tcsh"
+          fi
+        done > %{name}.lang << _EOF
+        de german
+        el greek
+        en C
+        es spanish
+        et et
+        fi finnish
+        fr french
+        it italian
+        ja ja
+        pl pl
+        ru russian
+        uk ukrainian
+        _EOF
+      replacement: |
+        # NLS disabled for IRIX
+
+    # Remove lang from %files
+    - pattern: "%files"
+      replacement: "%files"
+
+  # Force tinfo for termcap functions — configure finds IRIX libtermlib first
+  # but we need our ncurses-based libtinfo for the bundled libs to work
+  ac_cv_overrides:
+    ac_cv_search_tgetent: "-ltinfo"
+
+  prep_commands:
+    # configure matches *-sgi-iri* for IRIX; rpmmacros.irix passes
+    # --host=mips-irix6.5 which config.sub canonicalizes to mips-unknown-irix6.5.
+    # Widen the vendor match so "unknown" also works.
+    - "sed -i 's/\\*-sgi-iri\\*/\\*-*-iri\\*/' configure"
+    # Fix %zu format specifiers — IRIX n32 size_t is unsigned int, use %u
+    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' sh.h tc.alloc.c ed.defns.c"
+    # IRIX defines TIOCGLTC but has no struct ltchars, and defines NTTYDISC
+    # but struct termios has no c_line. Patch source files directly.
+    # ed.term.h has a conditional undef for TIOCGLTC (hpux/linux/glibc).
+    # Add __sgi to the condition so IRIX also undefs it.
+    - "sed -i 's/defined(__QNXNTO__)/defined(__QNXNTO__) || defined(__sgi)/' ed.term.h"
+    # IRIX 6.5 is SVR4 — define _SYSTYPE_SVR4 so SYSVREL=4 and the
+    # IRIX3_3 && SYSVREL<4 code (c_line/NTTYDISC) is skipped
+    - "sed -i '1i\\#define _SYSTYPE_SVR4 1' system/irix62"
+
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_datadir}/locale"

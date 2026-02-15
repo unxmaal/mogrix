@@ -1,6 +1,9 @@
 # bash package rules for IRIX cross-compilation
 package: bash
 
+bundle_trampoline_exclude:
+  - bashbug-32
+
 smoke_test:
   - command: "/usr/sgug/bin/bash -c 'echo $BASH_VERSION'"
     expect: "5.2.26"
@@ -89,6 +92,12 @@ rules:
   # Fix bugs where HAVE_PSELECT guards code also needed by HAVE_SELECT.
   # IRIX has select() but not pselect(), exposing these latent bugs.
   prep_commands:
+    # bash externs.h declares dprintf as void, but POSIX (and our compat header)
+    # declares it as int. The bash implementation also returns int. Fix the decl.
+    - "sed -i 's/^extern void dprintf/extern int dprintf/' externs.h"
+    # support/Makefile.in sets LIBS_FOR_BUILD=${LIBS} — leaks cross-compiled
+    # -lmogrix-compat into host-native man2html build. Clear it.
+    - "sed -i 's/^LIBS_FOR_BUILD = ${LIBS}/LIBS_FOR_BUILD =/' support/Makefile.in"
     # bundled readline input.c: only matters if --without-installed-readline (kept for safety)
     - "sed -i '808s/#if defined (HAVE_PSELECT)$/#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)/' lib/readline/input.c"
     # bash's own input_avail.c: signal.h included under HAVE_PSELECT but sigprocmask used under HAVE_SELECT

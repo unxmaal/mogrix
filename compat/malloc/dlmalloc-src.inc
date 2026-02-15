@@ -1662,8 +1662,19 @@ unsigned char _BitScanReverse(unsigned long *index, unsigned long mask);
 */
 #define MMAP_FLAGS           (MAP_PRIVATE)
 static int dev_zero_fd = -1; /* Cached file descriptor for /dev/zero. */
+/* IRIX fix: dup /dev/zero fd to high number (>=128) so programs that
+   close low-numbered fds (e.g. tcsh fd cleanup) don't invalidate it. */
+static int dlmalloc_open_dev_zero(void) {
+  int fd = open("/dev/zero", O_RDWR);
+  if (fd >= 0) {
+    int high_fd = fcntl(fd, F_DUPFD, 128);
+    if (high_fd >= 0) { close(fd); fd = high_fd; }
+    fcntl(fd, F_SETFD, 1); /* FD_CLOEXEC */
+  }
+  return fd;
+}
 #define MMAP_DEFAULT(s) ((dev_zero_fd < 0) ? \
-           (dev_zero_fd = open("/dev/zero", O_RDWR), \
+           (dev_zero_fd = dlmalloc_open_dev_zero(), \
             mmap(0, (s), MMAP_PROT, MMAP_FLAGS, dev_zero_fd, 0)) : \
             mmap(0, (s), MMAP_PROT, MMAP_FLAGS, dev_zero_fd, 0))
 #endif /* MAP_ANONYMOUS */

@@ -47,7 +47,7 @@ rules:
 
         # Mogrix compat sources (re-injected — emitter put them in %if branch)
         mkdir -p mogrix-compat
-        for src in %{SOURCE100} %{SOURCE101} %{SOURCE102} %{SOURCE103} %{SOURCE104} %{SOURCE105} %{SOURCE106} %{SOURCE107} %{SOURCE108}; do
+        for src in %{SOURCE100} %{SOURCE101} %{SOURCE102} %{SOURCE103} %{SOURCE104} %{SOURCE105} %{SOURCE106}; do
           cp "$src" mogrix-compat/
         done
 

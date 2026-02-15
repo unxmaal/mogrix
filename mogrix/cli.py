@@ -2659,6 +2659,18 @@ def bundle(
     else:
         output_format = "run"
 
+    # Load package-level trampoline exclusions from rules
+    trampoline_exclude: set[str] = set()
+    for pkg in packages:
+        rule_path = RULES_DIR / "packages" / f"{pkg}.yaml"
+        if rule_path.exists():
+            import yaml
+
+            with open(rule_path) as f:
+                rule_data = yaml.safe_load(f) or {}
+            pkg_exclude = rule_data.get("bundle_trampoline_exclude", [])
+            trampoline_exclude.update(pkg_exclude)
+
     builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
     builder.create_bundle(
         target_package=target_package,
@@ -2666,6 +2678,7 @@ def bundle(
         extra_packages=extra if extra else None,
         output_format=output_format,
         suite_name=suite_name,
+        trampoline_exclude=trampoline_exclude if trampoline_exclude else None,
     )
 
 

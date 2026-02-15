@@ -85,6 +85,18 @@ TERMINFO="$dir/share/terminfo"
 export TERMINFO
 """
 
+# Binaries that must NEVER get trampolines in the shared bin/ directory.
+# These would shadow critical IRIX system commands or are shell builtins
+# that are useless as standalone binaries.
+TRAMPOLINE_EXCLUDE_GLOBAL: set[str] = {
+    # Would shadow /bin/sh — breaks IRIX scripts
+    "sh",
+    # Bash shell builtins — useless as standalone binaries
+    "alias", "bg", "cd", "command", "fc", "fg", "getopts",
+    "hash", "jobs", "read", "type", "ulimit", "umask",
+    "unalias", "wait",
+}
+
 # Self-extracting installer: shell script header + appended tar.gz payload.
 # Uses only Bourne shell builtins available on base IRIX 6.5:
 #   /bin/sh, /usr/sbin/gzcat, tail +N, tar, mkdir, echo
@@ -650,6 +662,7 @@ class BundleBuilder:
         extra_packages: list[str] | None = None,
         output_format: str = "run",
         suite_name: str | None = None,
+        trampoline_exclude: set[str] | None = None,
     ) -> BundleManifest:
         """Create a self-contained app bundle.
 
@@ -900,8 +913,17 @@ class BundleBuilder:
                 elif fpath.startswith("/usr/sgug/sbin/") and fname in sbin_binaries:
                     target_bins.add(fname)
 
-        trampoline_cmds = [b for b in binaries if b in target_bins]
-        trampoline_cmds += [b for b in sbin_binaries if b in target_bins]
+        # Apply global + package-level trampoline exclusions
+        excluded = TRAMPOLINE_EXCLUDE_GLOBAL.copy()
+        if trampoline_exclude:
+            excluded |= trampoline_exclude
+
+        trampoline_cmds = [b for b in binaries if b in target_bins and b not in excluded]
+        trampoline_cmds += [b for b in sbin_binaries if b in target_bins and b not in excluded]
+
+        skipped = sorted(excluded & target_bins)
+        if skipped:
+            console.print(f"[dim]  Trampoline exclusions: {', '.join(skipped)}[/dim]")
 
         # Generate install/uninstall scripts (trampolines only for target binaries)
         install_label = manifest.suite_name or manifest.target_package
