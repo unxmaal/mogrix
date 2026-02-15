@@ -137,6 +137,8 @@ Only facts NOT already covered in the Problem Reference table above. For package
 | X11 .pc files for native libs | Handcrafted x11.pc, xext.pc, etc. in staging for pkg-config | /opt/sgug-staging/.../pkgconfig/ |
 | Old /opt/cross/bin/irix-ld broken | Produces MIPS_OPTIONS tags → rld crash. Always use staging irix-ld | /opt/sgug-staging/usr/sgug/bin/irix-ld |
 | IRIX libc/libstdc++ word-aligned overread | SIGSEGV in memcmp, strcmp, _Hash_bytes at runtime (fault addr above BSS/brk) | safe_mem.o in irix-ld | cross/lib/safe_mem.c, cross/bin/irix-ld | IRIX optimized mem functions read in 4/8-byte chunks, overread past buffer end into unmapped pages. Byte-by-byte replacements auto-linked into all executables. Discovered on cmake 3.28.2 (279 static constructors). Shared libs get the override via dynamic symbol resolution. |
+| `__rld_obj_head` must be in .dynsym | rld "unresolvable symbol" crash when loading libC.so.2 or libGLcore.so | cross/bin/irix-ld `--export-dynamic-symbol=__rld_obj_head` | crt1.o defines it as COMMON but LLD doesn't export COMMON to .dynsym by default. Any binary loading libC.so.2 or libGLcore.so (GL apps, C++ apps) needs this. Fixed in irix-ld for all executables. Use `par -a 300` to capture full rld error messages. |
+| IRIX GL architecture | libGL.so exports GLX + `__glx_dispatch` table; libGLcore.so (hw-specific) exports all gl* functions as 12-byte dispatch stubs | `/usr/lib32/libGL.so`, `/usr/lib32/libGLcore.so` |
 | Clang 16 `.cpsetup` N32 bug | Fixed in LLVM 18; use `-fno-integrated-as` if stuck on 16 | rules/packages/libffi.yaml |
 
 ### Engine Bugs & Gotchas
@@ -160,6 +162,7 @@ Only facts NOT already covered in the Problem Reference table above. For package
 | Shell wrapper recursion | Bundled dirname/pwd/basename cause fork bomb via $PATH. Use absolute `/bin/` paths | mogrix/bundle.py |
 | LD_LIBRARYN32_PATH contamination | Wrappers must set fresh, not prepend to existing | mogrix/bundle.py |
 | SSL_CERT_FILE is OpenSSL-only | gnutls ignores it; use app-specific CA config | mogrix/bundle.py |
+| Bundle must include libz.so | IRIX ships zlib 1.1.4; modern libpng (1.6+) needs zlib 1.2+. "libpng error: bad parameters to zlib" → abort. Bundle libz.so from staging | xscreensaver-gl-hacks bundle |
 
 ## Anti-Patterns
 

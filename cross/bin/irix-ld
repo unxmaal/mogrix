@@ -187,9 +187,14 @@ else
     # See rules/methods/irix-address-space.md for full address map
     # --disable-new-dtags: Emit DT_RPATH (0xf) instead of DT_RUNPATH (0x1d).
     # IRIX rld only recognizes DT_RPATH; DT_RUNPATH is ignored.
+    # --export-dynamic-symbol=__rld_obj_head: IRIX rld symbol that the executable
+    # must define. crt1.o provides it as COMMON, but LLD doesn't export COMMON
+    # symbols to .dynsym by default. libC.so.2 and libGLcore.so reference it;
+    # without this, any binary loading those libraries gets "unresolvable symbol".
     exec $LLD \
       --allow-shlib-undefined \
       --disable-new-dtags \
+      --export-dynamic-symbol=__rld_obj_head \
       --image-base=0x1000000 \
       -dynamic-linker /lib32/rld \
       $CRT1 \

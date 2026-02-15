@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-15 (session 46)
-**Status**: cmake-blocked packages all built (json-c, brotli, libwebp, ninja-build). 130+ source packages cross-compiled. Next: meson (needs ninja), remaining dev tools, GTK3 stack.
+**Last Updated**: 2026-02-15 (session 48)
+**Status**: Fixed `__rld_obj_head` crash — all executables loading libC.so.2/libGLcore.so now work. XScreenSaver GL hacks rebuilt and redeployed. Awaiting user testing with X display.
 
 ---
 
@@ -78,19 +78,27 @@ Use `CMAKE_SYSTEM_NAME=Linux` (NOT IRIX). See INDEX.md "cmake %cmake/%cmake3 mac
 
 ## Recent Work
 
+### Session 48: `__rld_obj_head` fix + GL hacks rebuild
+
+- **Root cause of GL hacks crash**: `__rld_obj_head` missing from .dynsym. IRIX rld requires executables to export this symbol; libC.so.2 and libGLcore.so both reference it. crt1.o defines it as COMMON, but LLD doesn't export COMMON symbols to .dynsym.
+- **Fix**: Added `--export-dynamic-symbol=__rld_obj_head` to LLD invocation in `cross/bin/irix-ld` (line ~197). Deployed to staging.
+- **This fix applies to ALL executables** — not just GL hacks. Any binary loading libC.so.2 (C++ apps) or libGLcore.so (GL apps) now works.
+- Rebuilt all 129 GL hack binaries, rebundled, deployed to IRIX
+- **IRIX GL architecture documented**: libGL.so = GLX dispatch + `__glx_dispatch` table; libGLcore.so = all gl* functions as 12-byte stubs
+- **Bundled libz.so** (zlib-ng 1.3.0): IRIX ships zlib 1.1.4, too old for libpng 1.6. "libpng error: bad parameters to zlib" → abort. Fixed by adding libz.so to bundle `_lib32/`.
+- **User confirmed working** — zlib fix resolved libpng crashes. Some GL hacks (glplanet) crash 4dwm — likely IRIX GL driver limits, not fixable from our side.
+- Debugging tip: `par -a 300` needed to capture full rld error messages (default truncates)
+
+### Session 47: XScreenSaver GL hacks compilation
+
+- 129 GL hacks compiled from xscreensaver 6.08 (hand-built, not mogrix SRPM pipeline)
+- Created GL/GLU stub libraries for cross-compilation
+- Source patches: `<X11/keysym.h>`, `strcasestr` compat, disabled `glGenerateMipmap`, GLSL guards
+- Added `strcasestr.o` to `libmogrix_compat.a`
+
 ### Session 46: cmake-blocked packages
 
 - Built json-c, brotli, ninja-build, libwebp — all verified on IRIX
-- Created `sys/select.h` compat header for pselect declaration
-- Added pselect.o and spawn.o to staging `libmogrix_compat.a`
-- Discovered cmake cross-compile pattern: `CMAKE_SYSTEM_NAME=Linux`, `-DBUILD_SHARED_LIBS=ON`, `make -C _build install`
-- Ninja needed link-order fix (sed configure.py link rule to put -l flags after objects)
-- All patterns added to INDEX.md
-
-### Session 45: cmake runtime SIGSEGV fix + safe_mem infrastructure
-
-- Fixed cmake crash: IRIX libc memcmp word-aligned overread past buffer
-- Created `cross/lib/safe_mem.c`, auto-linked into all executables via `irix-ld`
 
 ---
 
