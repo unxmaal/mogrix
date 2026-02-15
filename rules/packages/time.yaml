@@ -7,7 +7,6 @@ rules:
 
   drop_buildrequires:
     - texinfo
-    - gnupg2
 
   spec_replacements:
     # Remove GPG verification (gnupg2 not available for build host verify)

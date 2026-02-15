@@ -4,20 +4,12 @@
 package: wget2
 
 rules:
-  inject_compat_functions:
-    - getline
-    - strdup
-    - strndup
-    - strnlen
-    - getopt_long
-
   drop_buildrequires:
     - doxygen
     - git-core
     - pandoc
     - lcov
     - lzip
-    - gnupg2
     - python3
     - rsync
     - texinfo
@@ -26,8 +18,6 @@ rules:
     - "pkgconfig(libmicrohttpd)"
     - "pkgconfig(libnghttp2)"
     - "pkgconfig(libpsl)"
-
-  skip_find_lang: true
 
   spec_replacements:
     # Disable bcond as_wget — don't provide /usr/bin/wget alias on IRIX.

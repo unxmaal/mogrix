@@ -9,11 +9,7 @@ upstream:
   source_dir: lynx2.9.2
 rules:
   inject_compat_functions:
-    - getopt_long
-    - strdup
-    - strndup
     - setenv
-    - getline
   explicit_provides:
     - "lynx"
   export_vars:

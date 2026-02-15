@@ -91,5 +91,3 @@ rules:
     - pattern: "%files tools\n%{_bindir}/cairo-trace\n%{_libdir}/cairo/"
       replacement: "# tools files removed (MIPS binaries)"
 
-  skip_check: true
-

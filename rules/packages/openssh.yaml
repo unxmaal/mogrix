@@ -110,11 +110,6 @@ rules:
   # === Systemd scriptlet removal ===
   remove_lines:
     - "%sysusers_create_compat"
-    - "%systemd_post"
-    - "%systemd_preun"
-    - "%systemd_postun_with_restart"
-    - "%systemd_user_post"
-    - "%systemd_user_preun"
 
   # === Spec replacements ===
   spec_replacements:

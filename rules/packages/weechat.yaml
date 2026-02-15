@@ -154,6 +154,4 @@ rules:
     - "rm -rf %{buildroot}%{_datadir}/icons"
     - "rm -rf %{buildroot}%{_datadir}/applications"
 
-  # NLS disabled, skip find_lang
-  skip_find_lang: true
 

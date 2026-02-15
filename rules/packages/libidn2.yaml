@@ -15,17 +15,10 @@ rules:
   drop_buildrequires:
     - texinfo
 
-  inject_compat_functions:
-    - getline
-    - getopt_long
-    - strdup
-
   configure_flags:
     add:
       - --disable-nls
       - --disable-doc
-
-  skip_find_lang: true
 
   drop_subpackages:
     - idn2

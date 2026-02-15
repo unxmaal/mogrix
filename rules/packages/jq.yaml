@@ -81,8 +81,6 @@ rules:
     ac_cv_lib_m_hypot: "yes"
     ac_cv_lib_m_fmod: "yes"
 
-  skip_check: true
-
   # Remove .la files, static libs, and duplicate docs
   install_cleanup:
     - "find $RPM_BUILD_ROOT -name '*.la' -delete"

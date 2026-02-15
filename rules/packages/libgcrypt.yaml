@@ -16,9 +16,6 @@ rules:
   ac_cv_overrides:
     gcry_cv_gcc_has_platform_cflags: "no"
 
-  skip_find_lang: true
-  skip_check: true
-
   # Remove static library (libtool builds it despite --disable-static)
   install_cleanup:
     - "rm -f %{buildroot}%{_libdir}/*.a"

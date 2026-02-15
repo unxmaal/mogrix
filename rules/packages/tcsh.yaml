@@ -22,9 +22,6 @@ rules:
     - grep
     - "sed"
 
-  skip_find_lang: true
-  skip_check: true
-
   spec_replacements:
     # Remove %if rhel/%endif block entirely — mogrix compat sources get
     # injected after the last Source/Patch which is inside this conditional.

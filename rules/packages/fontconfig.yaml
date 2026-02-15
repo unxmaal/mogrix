@@ -13,8 +13,6 @@ rules:
     - "font"
     - "freetype"
 
-  skip_check: true
-
   ac_cv_overrides:
     # Use __sync builtins (not C11 stdatomic.h which pulls in bits/wordsize.h)
     fc_cv_have_stdatomic_atomic_primitives: "false"

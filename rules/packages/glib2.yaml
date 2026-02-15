@@ -11,9 +11,6 @@ add_patch:
   - glib2.sgifixes.patch
 
 rules:
-  inject_compat_functions:
-    - strnlen
-
   # NOTE: systemtap-sdt-devel, libselinux-devel, libattr-devel handled by generic.yaml
   drop_buildrequires:
     - libmount-devel

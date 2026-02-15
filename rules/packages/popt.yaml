@@ -22,7 +22,6 @@ rules:
   # Compat functions needed (replaces libdicl-devel dependency)
   inject_compat_functions:
     - stpcpy     # IRIX libc lacks stpcpy; popt's internal version disabled by patch
-    - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
 
   # Configure options for cross-compilation
   configure_flags:

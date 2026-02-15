@@ -10,7 +10,6 @@ rules:
     - texinfo
     - file-devel
     - git
-    - gnupg2
     - groff
     - gettext-devel
 

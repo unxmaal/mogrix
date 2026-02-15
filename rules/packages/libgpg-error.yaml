@@ -15,11 +15,6 @@ add_source:
   - lock-obj-pub.irix6.5.h
 
 rules:
-  # Compat functions needed
-
-  skip_find_lang: true
-  skip_check: true
-
   # Remove static library (libtool builds it even with --disable-static)
   install_cleanup:
     - "rm -f %{buildroot}%{_libdir}/*.a"

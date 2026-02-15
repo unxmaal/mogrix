@@ -13,12 +13,6 @@ upstream:
   summary: "Gemini, Gopher and Finger browser for the terminal"
   source_dir: telescope-0.11
 rules:
-  inject_compat_functions:
-    - getopt_long
-    - getline
-    - strdup
-    - strndup
-    - strnlen
   explicit_provides:
     - "telescope"
   ac_cv_overrides:

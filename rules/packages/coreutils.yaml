@@ -38,7 +38,6 @@ rules:
     - openssl-devel
     - strace
     - texinfo
-    - gnupg2
     - "glibc-langpack-en"
     - "glibc-langpack-fr"
     - "glibc-langpack-ko"

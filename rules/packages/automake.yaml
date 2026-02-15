@@ -7,9 +7,6 @@ smoke_test:
     expect: "1.16.5"
 
 rules:
-  skip_find_lang: true
-  # NOTE: skip_check is inherited from generic.yaml
-
   # Automake's configure tries to run perl/autoconf from staging PATH, but
   # those are cross-compiled MIPS binaries. Force host versions.
   export_vars:

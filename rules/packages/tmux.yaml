@@ -16,11 +16,6 @@ upstream:
   summary: "Terminal multiplexer"
 
 rules:
-  inject_compat_functions:
-    - getline
-    - strdup
-    - strndup
-
   prep_commands:
     # Git repo doesn't include pre-generated configure — generate it
     - "sh autogen.sh"

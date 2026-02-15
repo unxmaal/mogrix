@@ -4,9 +4,6 @@ package: dmenu
 
 rules:
 
-  inject_compat_functions:
-    - getline
-
   prep_commands:
     # Disable Xinerama (not available on IRIX)
     - "sed -i 's/^XINERAMALIBS.*/#XINERAMALIBS =/' config.mk"

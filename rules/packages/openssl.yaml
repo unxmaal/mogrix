@@ -20,7 +20,6 @@ rules:
   # Drop Linux-specific dependencies
   drop_buildrequires:
     - lksctp-tools-devel
-    - systemtap-sdt-devel
 
   # Drop Linux-specific runtime deps (not available on IRIX)
   drop_requires:

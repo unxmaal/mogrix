@@ -122,7 +122,9 @@ class RuleValidator:
         self.rules_dir = Path(rules_dir)
         self.compat_dir = Path(compat_dir) if compat_dir else None
         self.valid_compat_functions: set[str] = set()
+        self._generic_rules: dict = {}
         self._load_compat_catalog()
+        self._load_generic_rules()
 
     def _load_compat_catalog(self) -> None:
         """Load the compat catalog to get valid function names."""
@@ -136,6 +138,15 @@ class RuleValidator:
                 catalog = yaml.safe_load(f)
                 if catalog and "functions" in catalog:
                     self.valid_compat_functions = set(catalog["functions"].keys())
+
+    def _load_generic_rules(self) -> None:
+        """Load generic.yaml to detect package rules that duplicate it."""
+        generic_path = self.rules_dir / "generic.yaml"
+        if generic_path.exists():
+            with open(generic_path) as f:
+                data = yaml.safe_load(f)
+            if data and "generic" in data:
+                self._generic_rules = data["generic"]
 
     def validate_all(self) -> ValidationResult:
         """Validate all rule files.
@@ -446,6 +457,9 @@ class RuleValidator:
         # Check for conflicts within the rule
         self._check_rule_conflicts(path, rules, result)
 
+        # Check for rules that duplicate generic.yaml
+        self._check_generic_duplicates(path, rules, result)
+
         # Check for inline C code in prep_commands
         self._check_inline_c_code(path, rules, result)
 
@@ -504,6 +518,78 @@ class RuleValidator:
                         file=str(path.name),
                         severity="warning",
                         message=f"Conflicting configure_flags (both add and remove): {sorted(conflicts)}",
+                    )
+                )
+
+    def _check_generic_duplicates(
+        self, path: Path, rules: dict, result: ValidationResult
+    ) -> None:
+        """Check for rules that duplicate what generic.yaml already provides."""
+        if not self._generic_rules:
+            return
+
+        g = self._generic_rules
+
+        # Check boolean flags
+        if rules.get("skip_check") and g.get("skip_check"):
+            result.issues.append(
+                ValidationIssue(
+                    file=str(path.name),
+                    severity="warning",
+                    message="skip_check: true duplicates generic.yaml (remove it)",
+                )
+            )
+        if rules.get("skip_find_lang") and g.get("skip_find_lang"):
+            result.issues.append(
+                ValidationIssue(
+                    file=str(path.name),
+                    severity="warning",
+                    message="skip_find_lang: true duplicates generic.yaml (remove it)",
+                )
+            )
+
+        # Check list-type rules for individual value overlap
+        generic_sets = {
+            "drop_buildrequires": set(g.get("drop_buildrequires", [])),
+            "drop_requires": set(g.get("drop_requires", [])),
+            "configure_disable": set(g.get("configure_disable", [])),
+            "inject_compat_functions": set(g.get("inject_compat_functions", [])),
+            "remove_lines": set(g.get("remove_lines", [])),
+        }
+
+        for key, generic_vals in generic_sets.items():
+            pkg_vals = rules.get(key, [])
+            if not isinstance(pkg_vals, list):
+                continue
+            dupes = [v for v in pkg_vals if v in generic_vals]
+            if dupes:
+                result.issues.append(
+                    ValidationIssue(
+                        file=str(path.name),
+                        severity="warning",
+                        message=(
+                            f"{key}: {dupes} already in generic.yaml (remove from package)"
+                        ),
+                    )
+                )
+
+        # Check ac_cv_overrides for duplicate key=value pairs
+        generic_ac = g.get("ac_cv_overrides", {})
+        pkg_ac = rules.get("ac_cv_overrides", {})
+        if isinstance(pkg_ac, dict) and generic_ac:
+            dupes = [
+                f"{k}={v}"
+                for k, v in pkg_ac.items()
+                if generic_ac.get(k) == v
+            ]
+            if dupes:
+                result.issues.append(
+                    ValidationIssue(
+                        file=str(path.name),
+                        severity="warning",
+                        message=(
+                            f"ac_cv_overrides: {dupes} already in generic.yaml (remove from package)"
+                        ),
                     )
                 )
 

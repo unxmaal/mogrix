@@ -43,5 +43,3 @@ rules:
   install_cleanup:
     - "rm -f %{buildroot}%{_libdir}/libdouble-conversion.a || true"
 
-  skip_check: true
-

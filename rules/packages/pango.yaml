@@ -118,5 +118,3 @@ rules:
     - pattern: "%files tests\n%{_libexecdir}/installed-tests/%{name}\n%{_datadir}/installed-tests"
       replacement: "# tests files removed"
 
-  skip_check: true
-

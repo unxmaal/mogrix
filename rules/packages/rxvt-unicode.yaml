@@ -7,9 +7,6 @@ package: rxvt-unicode
 
 rules:
   inject_compat_functions:
-    - getline
-    - strdup
-    - strndup
     - setenv
     - unsetenv
 
@@ -20,7 +17,6 @@ rules:
     - gdk-pixbuf2-devel
     - git
     - glib2-devel
-    - gnupg2
     - libev-source
     - libptytty-devel
     - libX11-devel

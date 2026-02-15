@@ -16,8 +16,6 @@ upstream:
 rules:
   inject_compat_functions:
     - err
-    - strndup
-    - strnlen
   explicit_provides:
     - "libtls.so.28"
     - "pkgconfig(libtls)"

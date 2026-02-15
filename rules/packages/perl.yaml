@@ -30,9 +30,6 @@ add_source:
   - perl.irix6_clang_config.sh
 
 rules:
-  skip_find_lang: true
-  # NOTE: skip_check is inherited from generic.yaml
-
   # Drop all 188 subpackages - cross-compiled perl uses monolithic packaging.
   # Subpackage %files sections reference wrong paths (archlib vs privlib).
   # We use a file manifest (%files -f) to capture everything installed.

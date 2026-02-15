@@ -30,5 +30,4 @@ rules:
     - pattern: "execstack lib/libzstd.so.1"
       replacement: "# execstack check disabled for IRIX"
 
-  skip_check: true
 

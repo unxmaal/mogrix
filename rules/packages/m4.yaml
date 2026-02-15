@@ -24,6 +24,4 @@ rules:
     # our compat getrandom. Let gnulib provide its own replacement.
     ac_cv_func_getrandom: "no"
 
-  # No NLS in cross-compilation
-  skip_find_lang: true
 

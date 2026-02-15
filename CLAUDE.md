@@ -26,12 +26,23 @@ When you hit an obstacle:
 
 If you edit `/opt/sgug-staging/` directly, apply a sed command during debugging, or fix anything manually - and that fix is NOT stored in mogrix rules - **you have failed**.
 
+### No Inline C in YAML
+
+**NEVER put C source code in prep_commands.** No heredocs generating .c/.h files, no printf chains writing C code. If you need a C file:
+
+1. Create it in `patches/packages/<package>/filename.c`
+2. Add `add_source: [filename.c]` to the package YAML (top-level, not under `rules:`)
+3. In `prep_commands`, use `cp %{_sourcedir}/filename.c destination.c`
+
+The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl that *modifies* existing C code is fine — the rule is about *generating* new C files inline.
+
 ### Where Fixes Go
 
 | Fix Type | Location |
 |----------|----------|
 | Missing compat function | `compat/catalog.yaml` + `compat/` |
 | Package-specific fix | `rules/packages/<package>.yaml` |
+| Package-specific C file | `patches/packages/<package>/` + `add_source` |
 | Common pattern | `rules/generic.yaml` |
 | Header fix | `compat/include/` then `mogrix sync-headers` |
 

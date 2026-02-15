@@ -9,9 +9,6 @@ smoke_test:
 # Old libtool.sgifixes.patch no longer needed
 
 rules:
-  # No NLS in cross-compilation
-  skip_find_lang: true
-
   # Libtool's Makefile regenerates autotools files when timestamps are off.
   # The PATH includes staging which has cross-compiled MIPS autotools binaries.
   # Force host autotools and prevent regeneration.

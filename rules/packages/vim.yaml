@@ -5,12 +5,7 @@
 package: vim
 
 rules:
-  inject_compat_functions:
-    - getline
-    - strdup
-
   drop_buildrequires:
-    - libselinux-devel
     - perl-generators
     - "perl(ExtUtils::Embed)"
     - "perl(ExtUtils::ParseXS)"
@@ -30,7 +25,6 @@ rules:
     - desktop-file-utils
     - gpm-devel
     - libsodium-devel
-    - libacl-devel
     - glibc-gconv-extra
 
   drop_subpackages:

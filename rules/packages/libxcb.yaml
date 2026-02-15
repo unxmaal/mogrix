@@ -88,5 +88,3 @@ rules:
   install_cleanup:
     - "rm -rf %{buildroot}%{_pkgdocdir}"
 
-  skip_check: true
-

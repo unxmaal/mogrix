@@ -15,8 +15,6 @@ rules:
     - -D_SGI_SOURCE
     - -DSCM_RIGHTS=0x01
 
-  skip_check: true
-
   # Remove static library and .la files
   # Symlink assuan.h from libassuan2/ subdirectory to top-level include dir
   # so cross-compiled packages can find it (libassuan-config returns the

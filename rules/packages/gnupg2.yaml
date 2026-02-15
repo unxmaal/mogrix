@@ -92,8 +92,6 @@ rules:
       - --enable-large-secmem
       - --with-tss=intel
 
-  skip_find_lang: true
-
   spec_replacements:
     # Remove lang file reference from %files (NLS disabled, no .lang file)
     - pattern: "%files -f %{name}.lang"

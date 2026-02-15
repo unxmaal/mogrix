@@ -13,8 +13,6 @@ smoke_test:
     expect: "1"
 
 rules:
-  skip_find_lang: true
-
   drop_buildrequires:
     - glibc-all-langpacks   # test-only
 

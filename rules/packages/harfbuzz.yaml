@@ -75,5 +75,3 @@ rules:
   prep_commands:
     - "sed -i 's/^SUBDIRS = src util test perf docs/SUBDIRS = src util docs/' Makefile.in"
 
-  skip_check: true
-

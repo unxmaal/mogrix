@@ -8,11 +8,9 @@ package: git
 rules:
 
   drop_buildrequires:
-    - systemd
     - libsecret-devel
     - perl-generators
     - httpd
-    - gnupg2
 
   spec_replacements:
     # Expand brace expansion — rpmbuild uses /bin/sh which doesn't support {a,b}

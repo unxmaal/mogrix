@@ -9,9 +9,6 @@ upstream:
   source_dir: snownews-1.11
 rules:
   inject_compat_functions:
-    - getopt_long
-    - strdup
-    - strndup
     - setenv
     - strsep
     - timegm
