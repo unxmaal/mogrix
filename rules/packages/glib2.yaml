@@ -1,190 +1,263 @@
-# glib2 - GLib library (FC40: 2.80.0)
-# First meson-based package in mogrix. Uses rebased SGUG-RSE sgifixes patch.
-# Build chain: libffi + pcre2 + zlib (all available) → glib2
-
 package: glib2
-
-# IRIX-specific patches rebased from SGUG-RSE (2.62.6 → 2.80.0)
-# Covers: XPG5 msghdr, CLOCK_SGI_CYCLE, SCM_RIGHTS, pthread,
-#         FPU control, path rewrites, CMSG macros
 add_patch:
-  - glib2.sgifixes.patch
-
+- glib2.sgifixes.patch
 rules:
-  inject_compat_functions:
-    - strnlen
-
-  # NOTE: systemtap-sdt-devel, libselinux-devel, libattr-devel handled by generic.yaml
   drop_buildrequires:
-    - libmount-devel
-    - "pkgconfig(mount)"
-    - "pkgconfig(sysprof-capture-4)"
-    - "pkgconfig(gi-docgen)"
-    - "pkgconfig(libelf)"
-    - "/usr/bin/g-ir-scanner"
-    - "/usr/bin/marshalparser"
-    - "/usr/bin/rst2man"
-    - python3-devel
-    - meson
-
+  - libmount-devel
+  - pkgconfig(mount)
+  - pkgconfig(sysprof-capture-4)
+  - pkgconfig(gi-docgen)
+  - pkgconfig(libelf)
+  - /usr/bin/g-ir-scanner
+  - /usr/bin/marshalparser
+  - /usr/bin/rst2man
+  - meson
   drop_requires:
-    - "libgnutls.so.30()(64bit)"
-    - "libgnutls.so.30"
-    - python3-packaging
-
-  # Drop subpackages we don't need
+  - libgnutls.so.30()(64bit)
+  - libgnutls.so.30
+  - python3-packaging
   drop_subpackages:
-    - doc
-    - static
-    - tests
-
+  - doc
+  - static
+  - tests
   spec_replacements:
-    # ---- %build: Replace %meson + %meson_build with raw meson commands ----
-    - pattern: "%meson \\\n    -Dman=true \\\n    -Ddtrace=true \\\n    -Dsystemtap=true \\\n    -Dsysprof=enabled \\\n    -Dglib_debug=disabled \\\n    -Dgtk_doc=true \\\n    -Dinstalled_tests=true \\\n    -Dgnutls=true \\\n    --default-library=both \\\n    %{nil}\n\n%meson_build"
-      replacement: |
-        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
-        /home/edodd/.local/bin/meson setup _build \
-          --cross-file=$MOGRIX_CROSS \
-          --prefix=%{_prefix} \
-          --libdir=%{_libdir} \
-          -Dman=false \
-          -Ddtrace=false \
-          -Dsystemtap=false \
-          -Dsysprof=disabled \
-          -Dglib_debug=disabled \
-          -Dgtk_doc=false \
-          -Dinstalled_tests=false \
-          -Dgnutls=true \
-          -Dlibmount=disabled \
-          -Dselinux=disabled \
-          -Dlibelf=disabled \
-          -Dintrospection=disabled \
-          -Dnls=disabled \
-          -Dxattr=false \
-          -Dtests=false \
-          --default-library=shared \
-          -Dc_link_args="-L$COMPAT_DIR -lmogrix-compat"
-        /home/edodd/.local/bin/meson compile -C _build
+  - pattern: "%meson \\\n    -Dman=true \\\n    -Ddtrace=true \\\n    -Dsystemtap=true \\\n    -Dsysprof=enabled \\\n    -Dglib_debug=disabled \\\n    -Dgtk_doc=true \\\n    -Dinstalled_tests=true \\\n\
+      \    -Dgnutls=true \\\n    --default-library=both \\\n    %{nil}\n\n%meson_build"
+    replacement: "MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --prefix=%{_prefix}\
+      \ \\\n  --libdir=%{_libdir} \\\n  -Dman=false \\\n  -Ddtrace=false \\\n  -Dsystemtap=false \\\n  -Dsysprof=disabled \\\n  -Dglib_debug=disabled \\\n  -Dgtk_doc=false \\\n  -Dinstalled_tests=false\
+      \ \\\n  -Dgnutls=true \\\n  -Dlibmount=disabled \\\n  -Dselinux=disabled \\\n  -Dlibelf=disabled \\\n  -Dintrospection=disabled \\\n  -Dnls=disabled \\\n  -Dxattr=false \\\n  -Dtests=false \\\n  --default-library=shared\
+      \ \\\n  -Dc_link_args=\"-L$COMPAT_DIR -lmogrix-compat\"\n/home/edodd/.local/bin/meson compile -C _build\n"
+  - pattern: '%meson_install
 
-    # ---- %install: Replace %meson_install + all the post-install processing ----
-    # Skip Python byte compilation (no python on IRIX), gio-querymodules
-    # renaming (runs MIPS binary), giomodule.cache creation, and %find_lang
-    - pattern: "%meson_install\n\n# We need reproducible .pyc files across architectures to support multilib installations\n# https://bugzilla.redhat.com/show_bug.cgi?id=2008912\n# https://docs.fedoraproject.org/en-US/packaging-guidelines/Python_Appendix/#_byte_compilation_reproducibility\n%global py_reproducible_pyc_path %{buildroot}%{_datadir}\n\n# Since this is a generated .py file, set it to a known timestamp\n# because the source timestamp is baked into the .pyc file\n# Also copy the timestamp for other .py files, because meson doesn't\n# do this, see https://github.com/mesonbuild/meson/issues/5027.\ntouch -r gio/gdbus-2.0/codegen/config.py.in %{buildroot}%{_datadir}/glib-2.0/codegen/*.py\n\n# Perform byte compilation manually to avoid issues with\n# irreproducibility of the default invalidation mode, see\n# https://www.python.org/dev/peps/pep-0552/ and\n# https://bugzilla.redhat.com/show_bug.cgi?id=1686078\n%py_byte_compile %{python3} %{buildroot}%{_datadir}\n\nmv %{buildroot}%{_bindir}/gio-querymodules %{buildroot}%{_bindir}/gio-querymodules-%{__isa_bits}\nsed -i -e \"/^gio_querymodules=/s/gio-querymodules/gio-querymodules-%{__isa_bits}/\" %{buildroot}%{_libdir}/pkgconfig/gio-2.0.pc\n\nmkdir -p %{buildroot}%{_libdir}/gio/modules\ntouch %{buildroot}%{_libdir}/gio/modules/giomodule.cache\n\n%find_lang glib20"
-      replacement: |
-        DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild
-        # Create gio modules directory
-        mkdir -p %{buildroot}%{_libdir}/gio/modules
-        # Remove Python bytecode (no python on IRIX)
-        find %{buildroot} -name '*.pyc' -delete
-        find %{buildroot} -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || :
 
-    # ---- Remove file trigger scriptlets (gio-querymodules, glib-compile-schemas) ----
-    # These run MIPS binaries on the build host
-    - pattern: "%transfiletriggerin -- %{_libdir}/gio/modules\ngio-querymodules-%{__isa_bits} %{_libdir}/gio/modules &> /dev/null || :\n\n%transfiletriggerpostun -- %{_libdir}/gio/modules\ngio-querymodules-%{__isa_bits} %{_libdir}/gio/modules &> /dev/null || :\n\n%transfiletriggerin -- %{_datadir}/glib-2.0/schemas\nglib-compile-schemas %{_datadir}/glib-2.0/schemas &> /dev/null || :\n\n%transfiletriggerpostun -- %{_datadir}/glib-2.0/schemas\nglib-compile-schemas %{_datadir}/glib-2.0/schemas &> /dev/null || :"
-      replacement: "# File triggers removed for cross-compilation (cannot run MIPS binaries on build host)"
+      # We need reproducible .pyc files across architectures to support multilib installations
 
-    # ---- Fix %files: remove -f glib20.lang (no %find_lang), remove girepository ----
-    - pattern: "%files -f glib20.lang"
-      replacement: "%files"
+      # https://bugzilla.redhat.com/show_bug.cgi?id=2008912
 
-    # Remove girepository files (introspection disabled)
-    - pattern: "%{_libdir}/libgirepository-2.0.so.0*\n%dir %{_libdir}/girepository-1.0\n%{_libdir}/girepository-1.0/GIRepository-3.0.typelib\n%{_libdir}/girepository-1.0/GLib-2.0.typelib\n%{_libdir}/girepository-1.0/GLibUnix-2.0.typelib\n%{_libdir}/girepository-1.0/GModule-2.0.typelib\n%{_libdir}/girepository-1.0/GObject-2.0.typelib\n%{_libdir}/girepository-1.0/Gio-2.0.typelib\n%{_libdir}/girepository-1.0/GioUnix-2.0.typelib"
-      replacement: "# girepository disabled for cross-compilation"
+      # https://docs.fedoraproject.org/en-US/packaging-guidelines/Python_Appendix/#_byte_compilation_reproducibility
 
-    # Remove gio-querymodules-%{__isa_bits} reference (we didn't rename it)
-    - pattern: "%{_bindir}/gio-querymodules*"
-      replacement: "%{_bindir}/gio-querymodules"
+      %global py_reproducible_pyc_path %{buildroot}%{_datadir}
 
-    # Remove ghost giomodule.cache if modules dir doesn't have it
-    - pattern: "%ghost %{_libdir}/gio/modules/giomodule.cache"
-      replacement: "# giomodule.cache not generated during cross-build"
 
-    # Remove gio-launch-desktop (may not build for cross-compilation)
-    - pattern: "%{_libexecdir}/gio-launch-desktop"
-      replacement: "# gio-launch-desktop removed for cross-build"
+      # Since this is a generated .py file, set it to a known timestamp
 
-    # Remove man pages (man generation disabled)
-    - pattern: "%{_mandir}/man1/gio.1*\n%{_mandir}/man1/gio-querymodules.1*\n%{_mandir}/man1/glib-compile-schemas.1*\n%{_mandir}/man1/gsettings.1*\n%{_mandir}/man1/gdbus.1*\n%{_mandir}/man1/gapplication.1*"
-      replacement: "# man pages disabled for cross-build"
+      # because the source timestamp is baked into the .pyc file
 
-    # Remove devel man pages
-    - pattern: "%{_mandir}/man1/glib-genmarshal.1*\n%{_mandir}/man1/glib-gettextize.1*\n%{_mandir}/man1/glib-mkenums.1*\n%{_mandir}/man1/gi-compile-repository.1*\n%{_mandir}/man1/gi-decompile-typelib.1*\n%{_mandir}/man1/gi-inspect-typelib.1*\n%{_mandir}/man1/gobject-query.1*\n%{_mandir}/man1/gtester-report.1*\n%{_mandir}/man1/gtester.1*\n%{_mandir}/man1/gdbus-codegen.1*\n%{_mandir}/man1/glib-compile-resources.1*\n%{_mandir}/man1/gresource.1*"
-      replacement: "# devel man pages disabled for cross-build"
+      # Also copy the timestamp for other .py files, because meson doesn''t
 
-    # Remove gir files from devel (introspection disabled)
-    - pattern: "%dir %{_datadir}/gir-1.0\n%{_datadir}/gir-1.0/GIRepository-3.0.gir\n%{_datadir}/gir-1.0/GLib-2.0.gir\n%{_datadir}/gir-1.0/GLibUnix-2.0.gir\n%{_datadir}/gir-1.0/GModule-2.0.gir\n%{_datadir}/gir-1.0/GObject-2.0.gir\n%{_datadir}/gir-1.0/Gio-2.0.gir\n%{_datadir}/gir-1.0/GioUnix-2.0.gir"
-      replacement: "# gir files disabled for cross-build"
+      # do this, see https://github.com/mesonbuild/meson/issues/5027.
 
-    # Remove systemtap data from devel
-    - pattern: "%{_datadir}/systemtap/"
-      replacement: "# systemtap disabled for cross-build"
+      touch -r gio/gdbus-2.0/codegen/config.py.in %{buildroot}%{_datadir}/glib-2.0/codegen/*.py
 
-    # Remove gi-compile-repository and related gi- tools from devel (introspection disabled)
-    - pattern: "%{_bindir}/gi-compile-repository\n%{_bindir}/gi-decompile-typelib\n%{_bindir}/gi-inspect-typelib"
-      replacement: "# gi tools disabled (introspection off)"
 
-    # Remove glib-2.0/gdb support files from devel (not needed on IRIX)
-    - pattern: "%{_datadir}/gdb/"
-      replacement: "# gdb support files removed for cross-build"
+      # Perform byte compilation manually to avoid issues with
 
-    # Remove gettext files from devel (NLS disabled)
-    - pattern: "%{_datadir}/glib-2.0/gettext"
-      replacement: "# glib-2.0/gettext removed (NLS disabled)"
+      # irreproducibility of the default invalidation mode, see
 
-    - pattern: "%{_bindir}/glib-gettextize"
-      replacement: "# glib-gettextize removed (NLS disabled)"
+      # https://www.python.org/dev/peps/pep-0552/ and
 
-    - pattern: "%{_datadir}/gettext/"
-      replacement: "# gettext data removed (NLS disabled)"
+      # https://bugzilla.redhat.com/show_bug.cgi?id=1686078
 
-    # Remove Conflicts on gobject-introspection (not relevant)
-    - pattern: "Conflicts: gobject-introspection < 1.79.1"
-      replacement: "# Conflicts removed for cross-build"
-    - pattern: "Conflicts: gobject-introspection-devel < 1.79.1"
-      replacement: "# Conflicts removed for cross-build"
+      %py_byte_compile %{python3} %{buildroot}%{_datadir}
 
-    # Remove Requires on python3-packaging from devel
-    - pattern: "Requires: python3-packaging"
-      replacement: "# python3-packaging not needed on IRIX"
 
-    # Remove pcre2-static and sysprof-capture-static requires (subpackages dropped)
-    - pattern: "Requires: pcre2-static\nRequires: sysprof-capture-static"
-      replacement: "# static deps removed"
+      mv %{buildroot}%{_bindir}/gio-querymodules %{buildroot}%{_bindir}/gio-querymodules-%{__isa_bits}
 
-    # Add explicit Provides (rpmmacros.irix sets AutoProv: no)
-    - pattern: "Provides: bundled(gvdb)\nProvides: bundled(libcharset)\nProvides: bundled(xdgmime)"
-      replacement: |
-        Provides: bundled(gvdb)
-        Provides: bundled(libcharset)
-        Provides: bundled(xdgmime)
-        Provides: glib2(mips-32) = %{version}-%{release}
-        Provides: libglib-2.0.so.0
-        Provides: libgobject-2.0.so.0
-        Provides: libgio-2.0.so.0
-        Provides: libgmodule-2.0.so.0
-        Provides: libgthread-2.0.so.0
+      sed -i -e "/^gio_querymodules=/s/gio-querymodules/gio-querymodules-%{__isa_bits}/" %{buildroot}%{_libdir}/pkgconfig/gio-2.0.pc
 
-    # Remove %if __isa_bits conditional around gnutls Requires
-    - pattern: "# For gnutls-hmac.patch. We now dlopen libgnutls.so.30 so that we can build a\n# static glib2 without depending on a static build of GnuTLS as well. This will\n# ensure we notice if the GnuTLS soname bumps, so that we can update our patch.\n%if 0%{?__isa_bits} == 64\nRequires: libgnutls.so.30()(64bit)\n%else\nRequires: libgnutls.so.30\n%endif"
-      replacement: "# gnutls dlopen requirement handled by bundling"
 
+      mkdir -p %{buildroot}%{_libdir}/gio/modules
+
+      touch %{buildroot}%{_libdir}/gio/modules/giomodule.cache
+
+
+      %find_lang glib20'
+    replacement: 'DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild
+
+      # Create gio modules directory
+
+      mkdir -p %{buildroot}%{_libdir}/gio/modules
+
+      # Remove Python bytecode (no python on IRIX)
+
+      find %{buildroot} -name ''*.pyc'' -delete
+
+      find %{buildroot} -name ''__pycache__'' -type d -exec rm -rf {} + 2>/dev/null || :
+
+      '
+  - pattern: '%transfiletriggerin -- %{_libdir}/gio/modules
+
+      gio-querymodules-%{__isa_bits} %{_libdir}/gio/modules &> /dev/null || :
+
+
+      %transfiletriggerpostun -- %{_libdir}/gio/modules
+
+      gio-querymodules-%{__isa_bits} %{_libdir}/gio/modules &> /dev/null || :
+
+
+      %transfiletriggerin -- %{_datadir}/glib-2.0/schemas
+
+      glib-compile-schemas %{_datadir}/glib-2.0/schemas &> /dev/null || :
+
+
+      %transfiletriggerpostun -- %{_datadir}/glib-2.0/schemas
+
+      glib-compile-schemas %{_datadir}/glib-2.0/schemas &> /dev/null || :'
+    replacement: '# File triggers removed for cross-compilation (cannot run MIPS binaries on build host)'
+  - pattern: '%files -f glib20.lang'
+    replacement: '%files'
+  - pattern: '%{_libdir}/libgirepository-2.0.so.0*
+
+      %dir %{_libdir}/girepository-1.0
+
+      %{_libdir}/girepository-1.0/GIRepository-3.0.typelib
+
+      %{_libdir}/girepository-1.0/GLib-2.0.typelib
+
+      %{_libdir}/girepository-1.0/GLibUnix-2.0.typelib
+
+      %{_libdir}/girepository-1.0/GModule-2.0.typelib
+
+      %{_libdir}/girepository-1.0/GObject-2.0.typelib
+
+      %{_libdir}/girepository-1.0/Gio-2.0.typelib
+
+      %{_libdir}/girepository-1.0/GioUnix-2.0.typelib'
+    replacement: '# girepository disabled for cross-compilation'
+  - pattern: '%{_bindir}/gio-querymodules*'
+    replacement: '%{_bindir}/gio-querymodules'
+  - pattern: '%ghost %{_libdir}/gio/modules/giomodule.cache'
+    replacement: '# giomodule.cache not generated during cross-build'
+  - pattern: '%{_libexecdir}/gio-launch-desktop'
+    replacement: '# gio-launch-desktop removed for cross-build'
+  - pattern: '%{_mandir}/man1/gio.1*
+
+      %{_mandir}/man1/gio-querymodules.1*
+
+      %{_mandir}/man1/glib-compile-schemas.1*
+
+      %{_mandir}/man1/gsettings.1*
+
+      %{_mandir}/man1/gdbus.1*
+
+      %{_mandir}/man1/gapplication.1*'
+    replacement: '# man pages disabled for cross-build'
+  - pattern: '%{_mandir}/man1/glib-genmarshal.1*
+
+      %{_mandir}/man1/glib-gettextize.1*
+
+      %{_mandir}/man1/glib-mkenums.1*
+
+      %{_mandir}/man1/gi-compile-repository.1*
+
+      %{_mandir}/man1/gi-decompile-typelib.1*
+
+      %{_mandir}/man1/gi-inspect-typelib.1*
+
+      %{_mandir}/man1/gobject-query.1*
+
+      %{_mandir}/man1/gtester-report.1*
+
+      %{_mandir}/man1/gtester.1*
+
+      %{_mandir}/man1/gdbus-codegen.1*
+
+      %{_mandir}/man1/glib-compile-resources.1*
+
+      %{_mandir}/man1/gresource.1*'
+    replacement: '# devel man pages disabled for cross-build'
+  - pattern: '%dir %{_datadir}/gir-1.0
+
+      %{_datadir}/gir-1.0/GIRepository-3.0.gir
+
+      %{_datadir}/gir-1.0/GLib-2.0.gir
+
+      %{_datadir}/gir-1.0/GLibUnix-2.0.gir
+
+      %{_datadir}/gir-1.0/GModule-2.0.gir
+
+      %{_datadir}/gir-1.0/GObject-2.0.gir
+
+      %{_datadir}/gir-1.0/Gio-2.0.gir
+
+      %{_datadir}/gir-1.0/GioUnix-2.0.gir'
+    replacement: '# gir files disabled for cross-build'
+  - pattern: '%{_datadir}/systemtap/'
+    replacement: '# systemtap disabled for cross-build'
+  - pattern: '%{_bindir}/gi-compile-repository
+
+      %{_bindir}/gi-decompile-typelib
+
+      %{_bindir}/gi-inspect-typelib'
+    replacement: '# gi tools disabled (introspection off)'
+  - pattern: '%{_datadir}/gdb/'
+    replacement: '# gdb support files removed for cross-build'
+  - pattern: '%{_datadir}/glib-2.0/gettext'
+    replacement: '# glib-2.0/gettext removed (NLS disabled)'
+  - pattern: '%{_bindir}/glib-gettextize'
+    replacement: '# glib-gettextize removed (NLS disabled)'
+  - pattern: '%{_datadir}/gettext/'
+    replacement: '# gettext data removed (NLS disabled)'
+  - pattern: 'Conflicts: gobject-introspection < 1.79.1'
+    replacement: '# Conflicts removed for cross-build'
+  - pattern: 'Conflicts: gobject-introspection-devel < 1.79.1'
+    replacement: '# Conflicts removed for cross-build'
+  - pattern: 'Requires: python3-packaging'
+    replacement: '# python3-packaging not needed on IRIX'
+  - pattern: 'Requires: pcre2-static
+
+      Requires: sysprof-capture-static'
+    replacement: '# static deps removed'
+  - pattern: 'Provides: bundled(gvdb)
+
+      Provides: bundled(libcharset)
+
+      Provides: bundled(xdgmime)'
+    replacement: 'Provides: bundled(gvdb)
+
+      Provides: bundled(libcharset)
+
+      Provides: bundled(xdgmime)
+
+      Provides: glib2(mips-32) = %{version}-%{release}
+
+      Provides: libglib-2.0.so.0
+
+      Provides: libgobject-2.0.so.0
+
+      Provides: libgio-2.0.so.0
+
+      Provides: libgmodule-2.0.so.0
+
+      Provides: libgthread-2.0.so.0
+
+      '
+  - pattern: '# For gnutls-hmac.patch. We now dlopen libgnutls.so.30 so that we can build a
+
+      # static glib2 without depending on a static build of GnuTLS as well. This will
+
+      # ensure we notice if the GnuTLS soname bumps, so that we can update our patch.
+
+      %if 0%{?__isa_bits} == 64
+
+      Requires: libgnutls.so.30()(64bit)
+
+      %else
+
+      Requires: libgnutls.so.30
+
+      %endif'
+    replacement: '# gnutls dlopen requirement handled by bundling'
   install_cleanup:
-    # Remove gettext files since NLS is disabled
-    - "rm -rf %{buildroot}%{_datadir}/locale"
-    - "rm -rf %{buildroot}%{_datadir}/gettext"
-    - "rm -f %{buildroot}%{_bindir}/glib-gettextize"
-    # Remove gdb support files
-    - "rm -rf %{buildroot}%{_datadir}/gdb"
-    # Remove girepository directories and libraries
-    - "rm -rf %{buildroot}%{_libdir}/girepository-1.0"
-    - "rm -rf %{buildroot}%{_datadir}/gir-1.0"
-    - "rm -f %{buildroot}%{_libdir}/libgirepository-2.0.so*"
-    # Remove gi tools (introspection disabled)
-    - "rm -f %{buildroot}%{_bindir}/gi-compile-repository"
-    - "rm -f %{buildroot}%{_bindir}/gi-decompile-typelib"
-    - "rm -f %{buildroot}%{_bindir}/gi-inspect-typelib"
-    # Remove gio-launch-desktop
-    - "rm -f %{buildroot}%{_libexecdir}/gio-launch-desktop"
-    # Remove systemtap files
-    - "rm -rf %{buildroot}%{_datadir}/systemtap"
-
+  - rm -rf %{buildroot}%{_datadir}/locale
+  - rm -rf %{buildroot}%{_datadir}/gettext
+  - rm -f %{buildroot}%{_bindir}/glib-gettextize
+  - rm -rf %{buildroot}%{_datadir}/gdb
+  - rm -rf %{buildroot}%{_libdir}/girepository-1.0
+  - rm -rf %{buildroot}%{_datadir}/gir-1.0
+  - rm -f %{buildroot}%{_libdir}/libgirepository-2.0.so*
+  - rm -f %{buildroot}%{_bindir}/gi-compile-repository
+  - rm -f %{buildroot}%{_bindir}/gi-decompile-typelib
+  - rm -f %{buildroot}%{_bindir}/gi-inspect-typelib
+  - rm -f %{buildroot}%{_libexecdir}/gio-launch-desktop
+  - rm -rf %{buildroot}%{_datadir}/systemtap

@@ -1,0 +1,19 @@
+package: enscript
+rules:
+  configure_disable:
+  - nls
+  add_patch:
+  - makefile-in-add-885913-885915.patch
+  spec_replacements:
+  - pattern: autoreconf -fiv
+    replacement: 'true # skip autoreconf (no autopoint)'
+  - pattern: '%patch -P 16 -p1 -b .newencodings'
+    replacement: '%patch -P 16 -p1 -b .newencodings
+
+      # Fix _NL_CTYPE_CODESET_NAME -> CODESET (POSIX, works on IRIX)
+
+      sed -i ''s/_NL_CTYPE_CODESET_NAME/CODESET/'' src/util.c
+
+      '
+  - pattern: '%configure'
+    replacement: LIBS="$LIBS -lgen" %configure

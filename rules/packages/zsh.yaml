@@ -1,0 +1,37 @@
+package: zsh
+rules:
+  drop_buildrequires:
+  - glibc-langpack-ja
+  - hostname
+  - libcap-devel
+  - texi2html
+  configure_flags:
+    add:
+    - --enable-cap=no
+    - --with-tcsetpgrp
+    - --disable-pcre
+    - --libdir=%{_libdir}
+    remove:
+    - --enable-pcre
+  configure_disable:
+  - dynamic
+  prep_commands:
+  - sed -i '/PR_SET_NAME/d' Src/jobs.c
+  - sed -i '/prctl/d' Src/jobs.c
+  spec_replacements:
+  - pattern: zsh{path,xmod}s.h
+    replacement: zshpaths.h zshxmods.h
+  - pattern: test-repo-git-rebase-{apply,merge}
+    replacement: test-repo-git-rebase-apply test-repo-git-rebase-merge
+  - pattern: '%make_build all html'
+    replacement: '%make_build all'
+  - pattern: '%make_install install.info'
+    replacement: '%make_install'
+  - pattern: rm -f $RPM_BUILD_ROOT%{_infodir}/dir
+    replacement: rm -rf $RPM_BUILD_ROOT%{_infodir}
+  - pattern: '%{_infodir}/*'
+    replacement: '# %{_infodir}/* — info files not built'
+  - pattern: '%{_libdir}/zsh'
+    replacement: '# %{_libdir}/zsh — dynamic modules disabled'
+  drop_subpackages:
+  - html

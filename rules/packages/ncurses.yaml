@@ -17,10 +17,6 @@ rules:
     - with_gpm
     - with compat_libs
 
-  # Remove gpgverify - we don't have gnupg2 during cross-compile
-  remove_lines:
-    - "%{gpgverify}"
-
   # Drop c++-libs - C++ bindings don't build on IRIX cross-compile
   drop_subpackages:
     - c++-libs

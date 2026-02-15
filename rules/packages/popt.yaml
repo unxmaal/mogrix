@@ -1,69 +1,36 @@
-# popt - command line option parsing library
-# Requires compat functions previously provided by libdicl
-# Successfully cross-compiled for IRIX N32
-#
-# ---metadata---
-# complexity: medium
-# build_system: autoconf
-# key_fixes: [vasprintf_irix_vsnprintf_bug, stpcpy_conflict, libtool_shared]
-# similar_to: [libxml2, xz]
-# depends: []
-# status: WORKING
-# ---
-
 package: popt
-
-# Use patch files instead of sed
 add_patch:
-  - popt-disable-stpcpy.patch
-  - popt-disable-mbsrtowcs.patch
-
+- popt-disable-stpcpy.patch
+- popt-disable-mbsrtowcs.patch
 rules:
-  # Compat functions needed (replaces libdicl-devel dependency)
-  inject_compat_functions:
-    - stpcpy     # IRIX libc lacks stpcpy; popt's internal version disabled by patch
-    - vasprintf  # IRIX vsnprintf(NULL,0,...) returns -1, need working vasprintf
-
-  # Configure options for cross-compilation
   configure_flags:
     add:
-      - --disable-nls
-
-  # Export LD for libtool - use GNU ld for IRIX-compatible shared libraries
-  # GNU ld produces correct 2-LOAD-segment layout; LLD's 3-segment layout crashes IRIX
+    - --disable-nls
   export_vars:
-    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-
-  # Remove .la files (popt installs to subdirs, need recursive find)
+    LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
   install_cleanup:
-    - "find $RPM_BUILD_ROOT -name '*.la' -delete"
-
-  # Remove %files -f lang reference
+  - find $RPM_BUILD_ROOT -name '*.la' -delete
   files_no_lang: true
-
-  # Package-specific autoconf cache overrides
   ac_cv_overrides:
-    ac_cv_func_strerror_r_char_p: "no"
-    # IRIX doesn't have these wide character functions
-    ac_cv_func_mbsnrtowcs: "no"
-    ac_cv_func_mbsrtowcs: "no"
-    # Tell configure we have these functions (via mogrix-compat)
-    ac_cv_func_vasprintf: "yes"
-    ac_cv_func_stpcpy: "yes"
-
-  # Libtool needs help finding the right linker - the wrapper handles this
+    ac_cv_func_strerror_r_char_p: 'no'
+    ac_cv_func_mbsnrtowcs: 'no'
+    ac_cv_func_mbsrtowcs: 'no'
+    ac_cv_func_vasprintf: 'yes'
+    ac_cv_func_stpcpy: 'yes'
   spec_replacements:
-    # Fix libtool linker detection - use irix-cc which internally uses correct linker
-    - pattern: "export LD=\"/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\""
-      replacement: |
-        export LD="/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-        # Tell libtool to use our CC for linking (handles linker selection internally)
-        export lt_cv_prog_compiler_static_works=no
+  - pattern: export LD="/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+    replacement: 'export LD="/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
 
-    # Fix libtool to build shared libraries for IRIX using generic script
-    - pattern: "%configure"
-      replacement: |
-        %configure
-        # Fix libtool to build shared libraries for IRIX
-        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+      # Tell libtool to use our CC for linking (handles linker selection internally)
 
+      export lt_cv_prog_compiler_static_works=no
+
+      '
+  - pattern: '%configure'
+    replacement: '%configure
+
+      # Fix libtool to build shared libraries for IRIX
+
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+
+      '

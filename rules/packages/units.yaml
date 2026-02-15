@@ -1,0 +1,25 @@
+package: units
+rules:
+  drop_buildrequires:
+  - python3-requests
+  configure_flags:
+    add:
+    - --without-python
+    - --sharedstatedir=%{_sharedstatedir}
+  export_vars:
+    CPPFLAGS: -include sys/ioctl.h -include strings.h $CPPFLAGS
+  ac_cv_overrides:
+    ac_cv_func_strtok: 'yes'
+    ac_cv_func_strpbrk: 'yes'
+    ac_cv_func_strspn: 'yes'
+    ac_cv_func_strchr: 'yes'
+  prep_commands:
+  - sed -i '/#define strchr/d' units.h
+  - sed -i '/#define strrchr/d' units.h
+  install_cleanup:
+  - mkdir -p %{buildroot}%{_sharedstatedir}/units
+  spec_replacements:
+  - pattern: gzip %{buildroot}%{_infodir}/units.info
+    replacement: gzip -f %{buildroot}%{_infodir}/units.info
+  - pattern: ln -s units.1 %{buildroot}%{_mandir}/man1/units_cur.1
+    replacement: ln -sf units.1 %{buildroot}%{_mandir}/man1/units_cur.1

@@ -1,151 +1,89 @@
-# coreutils - GNU core utilities (ls, cp, mv, cat, head, tail, etc.)
-# FC40: coreutils-9.4-6.fc40
-# Analysis: 5 errors (%zu in gnulib-tests + dynarray), 6 warnings, 151 infos
-# Builds TWICE: "separate" (individual binaries) and "single" (multicall)
-# Uses out-of-tree builds (mkdir separate; cd separate; ../configure)
-# Has many bash-isms in spec that need fixing for /bin/sh
-
 package: coreutils
-classes: [nls-disabled]
-
+classes:
+- nls-disabled
 smoke_test:
-  - command: "/usr/sgug/bin/ls --version"
-    expect: "9.4"
-  - command: "/usr/sgug/bin/cat --version"
-    expect: "9.4"
-  - command: "echo hello | /usr/sgug/bin/head -1"
-    expect: "hello"
-
+- command: /usr/sgug/bin/ls --version
+  expect: '9.4'
+- command: /usr/sgug/bin/cat --version
+  expect: '9.4'
+- command: echo hello | /usr/sgug/bin/head -1
+  expect: hello
 rules:
-  # Compat functions needed for IRIX
-  # strdup/strndup: dlmalloc/libc allocator mismatch
-  # getopt_long: option parsing
-  # getline: line reading
-  # asprintf: formatted string allocation
-  # reallocarray: gnulib xmalloc
-  # strerror_r: error reporting
   inject_compat_functions:
-    - reallocarray
-    - strerror_r
-    - strcasestr
-
-  # Drop build deps we don't have
+  - strcasestr
   drop_buildrequires:
-    - attr
-    - gmp-devel
-    - hostname
-    - libselinux-utils
-    - openssl-devel
-    - strace
-    - texinfo
-    - gnupg2
-    - "glibc-langpack-en"
-    - "glibc-langpack-fr"
-    - "glibc-langpack-ko"
-    - "perl-interpreter"
-    - "perl(FileHandle)"
-
-  # Drop runtime deps not available on IRIX
+  - attr
+  - hostname
+  - libselinux-utils
+  - strace
+  - glibc-langpack-fr
+  - glibc-langpack-ko
+  - perl-interpreter
+  - perl(FileHandle)
   drop_requires:
-    - "%{name}-common = %{version}-%{release}"
-
-  # Drop the single (multicall) and common subpackages — we just want separate binaries
+  - '%{name}-common = %{version}-%{release}'
   drop_subpackages:
-    - single
-    - common
-
-  # NOTE: configure_flags:add doesn't work here because %configure is indented
-  # (inside a for loop). Must use spec_replacements instead.
-
-  # Fix ac_cv for cross-compilation
+  - single
+  - common
   ac_cv_overrides:
-    ac_cv_func_lchmod: "no"
-    # IRIX has closefrom in libc
-    gl_cv_func_closefrom: "yes"
-    # IRIX lacks posix_memalign entirely — tell gnulib to provide full replacement
-    ac_cv_func_posix_memalign: "no"
-    gl_cv_func_posix_memalign_works: "no"
-    # IRIX select() works fine — prevent gnulib from building broken replacement
-    # IRIX lacks strcasestr — compat library provides it
-    ac_cv_func_strcasestr: "no"
-    gl_cv_func_strcasestr_linear: "no"
-    # IRIX has pthread_sigmask in libpthread — tell gnulib not to replace it
-    ac_cv_func_pthread_sigmask: "yes"
-    gl_cv_func_pthread_sigmask_macro: "no"
-    gl_cv_func_pthread_sigmask_in_libc_works: "yes"
-    # Provide the pthread library link flag for gnulib's replacement
-    gl_cv_func_pthread_sigmask_in_LIBMULTITHREAD: "yes"
-
-  # Fix bash-isms and simplify the build:
-  # 1. Only build "separate" (skip "single" multicall binary)
-  # 2. Fix brace expansion: {c,y} and {%_bindir,%_sbindir}
-  # 3. AUTOPOINT=true for autoreconf with NLS disabled
-  # 4. Remove --enable-systemd (no systemd on IRIX)
-  # 5. Skip %find_lang (nls-disabled class handles this)
-  # 6. Remove gnulib-tests from SUBDIRS after autoreconf
-  # 7. Fix %zu in dynarray
+    ac_cv_func_lchmod: 'no'
+    gl_cv_func_closefrom: 'yes'
+    ac_cv_func_posix_memalign: 'no'
+    gl_cv_func_posix_memalign_works: 'no'
+    ac_cv_func_strcasestr: 'no'
+    gl_cv_func_strcasestr_linear: 'no'
+    ac_cv_func_pthread_sigmask: 'yes'
+    gl_cv_func_pthread_sigmask_macro: 'no'
+    gl_cv_func_pthread_sigmask_in_libc_works: 'yes'
+    gl_cv_func_pthread_sigmask_in_LIBMULTITHREAD: 'yes'
   spec_replacements:
-    # Renumber sources that conflict with compat injection (Source100+)
-    - pattern: "Source105:  coreutils-colorls.sh"
-      replacement: "Source51:   coreutils-colorls.sh"
-    - pattern: "Source106:  coreutils-colorls.csh"
-      replacement: "Source52:   coreutils-colorls.csh"
-    - pattern: "%SOURCE105"
-      replacement: "%{SOURCE51}"
-    - pattern: "%SOURCE106"
-      replacement: "%{SOURCE52}"
-    # AUTOPOINT for autoreconf
-    - pattern: "autoreconf -fiv"
-      replacement: "AUTOPOINT=true autoreconf -fiv\nsed -i 's/gnulib-tests//' Makefile.in || true\nsed -i 's/gnulib-tests//' Makefile.am || true"
-    # Add IRIX-specific configure flags (can't use configure_flags:add — %configure is indented)
-    - pattern: "%configure $config_single"
-      replacement: "LIBS=\"$LIBS -lpthread\" %configure --disable-year2038 --disable-xattr --without-selinux --without-openssl --without-libgmp $config_single"
-    # Override --enable-no-install-program to skip IRIX-incompatible utilities
-    - pattern: "--enable-no-install-program=kill,uptime"
-      replacement: "--enable-no-install-program=kill,uptime,stdbuf,pinky,who,users,seq"
-    # Fix brace expansion in ln command
-    - pattern: "ln -fv ../lib/parse-datetime.{c,y} ."
-      replacement: "ln -fv ../lib/parse-datetime.c ../lib/parse-datetime.y ."
-    # Remove --enable-systemd
-    - pattern: "--enable-systemd"
-      replacement: "--disable-systemd"
-    # Fix brace expansion in mkdir
-    - pattern: "mkdir -p $RPM_BUILD_ROOT/$subdir/{%{_bindir},%{_sbindir}}"
-      replacement: "mkdir -p $RPM_BUILD_ROOT/$subdir/%{_bindir} $RPM_BUILD_ROOT/$subdir/%{_sbindir}"
-    # Fix brace expansion in mv
-    - pattern: "mv $RPM_BUILD_ROOT/$subdir/{%_bindir,%_sbindir}/chroot"
-      replacement: "mv $RPM_BUILD_ROOT/$subdir/%{_bindir}/chroot $RPM_BUILD_ROOT/$subdir/%{_sbindir}/chroot"
-    # Fix brace expansion in DIR_COLORS install
-    - pattern: "install -p -c -m644 DIR_COLORS{,.lightbgcolor}"
-      replacement: "install -p -c -m644 DIR_COLORS DIR_COLORS.lightbgcolor"
-    # Remove info dir file cleanup (no info pages)
-    - pattern: "rm -f $RPM_BUILD_ROOT%{_infodir}/dir"
-      replacement: "rm -rf $RPM_BUILD_ROOT%{_infodir}"
-    # Remove coreutils-single build entirely — only build "separate"
-    - pattern: "for type in separate single; do"
-      replacement: "for type in separate; do"
-    # Remove multicall %files entries (we only build "separate")
-    - pattern: "%exclude %{_bindir}/*.single"
-      replacement: "# (removed — no single/multicall build)"
-    - pattern: "%dir %{_libexecdir}/coreutils"
-      replacement: "# (removed — no multicall libexec)"
-    - pattern: "%{_libexecdir}/coreutils/*.so"
-      replacement: "# (removed — no multicall .so files)"
-    # Remove skipped binaries from supported_utils after copying
-    - pattern: "cp %SOURCE50 ."
-      replacement: "cp %SOURCE50 .\nsed -i '/pinky/d; /stdbuf/d; /\\/users$/d; /\\/who$/d; /\\/seq$/d' supported_utils"
+  - pattern: 'Source105:  coreutils-colorls.sh'
+    replacement: 'Source51:   coreutils-colorls.sh'
+  - pattern: 'Source106:  coreutils-colorls.csh'
+    replacement: 'Source52:   coreutils-colorls.csh'
+  - pattern: '%SOURCE105'
+    replacement: '%{SOURCE51}'
+  - pattern: '%SOURCE106'
+    replacement: '%{SOURCE52}'
+  - pattern: autoreconf -fiv
+    replacement: 'AUTOPOINT=true autoreconf -fiv
 
-  # Fix %zu in dynarray (only non-test %zu)
-  # Remove gnulib-tests from SUBDIRS (gets regenerated by autoreconf)
+      sed -i ''s/gnulib-tests//'' Makefile.in || true
+
+      sed -i ''s/gnulib-tests//'' Makefile.am || true'
+  - pattern: '%configure $config_single'
+    replacement: LIBS="$LIBS -lpthread" %configure --disable-year2038 --disable-xattr --without-selinux --without-openssl --without-libgmp $config_single
+  - pattern: --enable-no-install-program=kill,uptime
+    replacement: --enable-no-install-program=kill,uptime,stdbuf,pinky,who,users,seq
+  - pattern: ln -fv ../lib/parse-datetime.{c,y} .
+    replacement: ln -fv ../lib/parse-datetime.c ../lib/parse-datetime.y .
+  - pattern: --enable-systemd
+    replacement: --disable-systemd
+  - pattern: mkdir -p $RPM_BUILD_ROOT/$subdir/{%{_bindir},%{_sbindir}}
+    replacement: mkdir -p $RPM_BUILD_ROOT/$subdir/%{_bindir} $RPM_BUILD_ROOT/$subdir/%{_sbindir}
+  - pattern: mv $RPM_BUILD_ROOT/$subdir/{%_bindir,%_sbindir}/chroot
+    replacement: mv $RPM_BUILD_ROOT/$subdir/%{_bindir}/chroot $RPM_BUILD_ROOT/$subdir/%{_sbindir}/chroot
+  - pattern: install -p -c -m644 DIR_COLORS{,.lightbgcolor}
+    replacement: install -p -c -m644 DIR_COLORS DIR_COLORS.lightbgcolor
+  - pattern: rm -f $RPM_BUILD_ROOT%{_infodir}/dir
+    replacement: rm -rf $RPM_BUILD_ROOT%{_infodir}
+  - pattern: for type in separate single; do
+    replacement: for type in separate; do
+  - pattern: '%exclude %{_bindir}/*.single'
+    replacement: '# (removed — no single/multicall build)'
+  - pattern: '%dir %{_libexecdir}/coreutils'
+    replacement: '# (removed — no multicall libexec)'
+  - pattern: '%{_libexecdir}/coreutils/*.so'
+    replacement: '# (removed — no multicall .so files)'
+  - pattern: cp %SOURCE50 .
+    replacement: 'cp %SOURCE50 .
+
+      sed -i ''/pinky/d; /stdbuf/d; /\/users$/d; /\/who$/d; /\/seq$/d'' supported_utils'
   prep_commands:
-    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/malloc/dynarray_at_failure.c || true"
-    # Remove skipped binaries from supported_utils file list (done via spec_replacement on cp line)
-
-  # Remove unpackaged files
+  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/malloc/dynarray_at_failure.c || true
   install_cleanup:
-    - "rm -rf %{buildroot}%{_infodir}"
-    - "rm -rf %{buildroot}%{_mandir}"
-    - "rm -rf %{buildroot}%{_sysconfdir}/DIR_COLORS*"
-    - "rm -rf %{buildroot}%{_sysconfdir}/profile.d"
-    - "rm -f %{buildroot}%{_libdir}/charset.alias"
-
+  - rm -rf %{buildroot}%{_infodir}
+  - rm -rf %{buildroot}%{_mandir}
+  - rm -rf %{buildroot}%{_sysconfdir}/DIR_COLORS*
+  - rm -rf %{buildroot}%{_sysconfdir}/profile.d
+  - rm -f %{buildroot}%{_libdir}/charset.alias

@@ -1,0 +1,51 @@
+package: libssh2
+rules:
+  drop_buildrequires:
+  - openssh-server
+  - groff
+  - /usr/bin/man
+  drop_subpackages:
+  - docs
+  export_vars:
+    LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    CPPFLAGS: -I/opt/sgug-staging/usr/sgug/include $CPPFLAGS
+    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS
+  configure_flags:
+    add:
+    - --disable-static
+    - --disable-docker-tests
+    - --enable-shared
+  spec_replacements:
+  - pattern: "%configure \\\n\t--disable-silent-rules \\\n\t--enable-shared \\\n\t--disable-docker-tests"
+    replacement: '%configure'
+  - pattern: '%{make_build}'
+    replacement: '# Fix libtool to build shared libraries for IRIX
+
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+
+      %{make_build}
+
+      '
+  - pattern: rm -v %{buildroot}%{_libdir}/libssh2.a
+    replacement: '# Static library not built (--disable-static)'
+  - pattern: make -C example clean
+    replacement: '# make -C example clean # skipped for cross-build'
+  - pattern: "find example/ -type f \\\n\t'(' -name '*.am' -o -name '*.in' -o -name CMakeLists.txt ')' \\\n\t-print -delete"
+    replacement: '# example file cleanup skipped for cross-build'
+  - pattern: "sed -i\t-e 's|-L%{_libdir} ||g' \\\n\t-e 's|-L[$]{libdir} ||g' %{buildroot}%{_libdir}/pkgconfig/libssh2.pc"
+    replacement: '# pkgconfig libdir cleanup skipped for cross-build'
+  - pattern: '%doc example.%{_arch}/'
+    replacement: '# %doc example.%{_arch}/ # examples not packaged for cross-build'
+  - pattern: mv -v example example.%{_arch}
+    replacement: '# mv -v example example.%{_arch} # skipped for cross-build'
+  - pattern: "Summary:\tA library implementing the SSH2 protocol"
+    replacement: "Summary:\tA library implementing the SSH2 protocol\nProvides:\tlibssh2.so.1"
+  - pattern: sed -i s/4711/47%{?__isa_bits}/ tests/{openssh_fixture.c,test_ssh{2.c,d.test}}
+    replacement: '# Test port replacement skipped for cross-build'
+  install_cleanup:
+  - rm -rf %{buildroot}%{_mandir}/man3
+  ac_cv_overrides:
+    lt_cv_prog_compiler_static_works: 'no'

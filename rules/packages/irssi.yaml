@@ -1,0 +1,38 @@
+package: irssi
+rules:
+  drop_buildrequires:
+  - perl-ExtUtils-Embed
+  - libotr-devel
+  - perl-devel
+  drop_requires:
+  - perl(lib)
+  - perl(Symbol)
+  configure_disable:
+  - perl
+  drop_subpackages:
+  - devel
+  spec_replacements:
+  - pattern: --with-perl=module
+    replacement: --without-perl
+  - pattern: --with-perl-lib=vendor
+    replacement: --without-perl
+  - pattern: '%{?with_otr:--with-otr=yes}'
+    replacement: --with-otr=no
+  - pattern: '%{!?with_otr:--with-otr=no}'
+    replacement: --with-otr=no
+  - pattern: find $RPM_BUILD_ROOT%{perl_vendorarch} -type f -a -name '*.bs' -a -empty -exec rm -f {} ';'
+    replacement: 'true # perl disabled'
+  - pattern: find $RPM_BUILD_ROOT%{perl_vendorarch} -type f -a -name .packlist -exec rm {} ';'
+    replacement: 'true # perl disabled'
+  - pattern: chmod -R u+w $RPM_BUILD_ROOT%{perl_vendorarch}
+    replacement: 'true # perl disabled'
+  - pattern: rm -f $RPM_BUILD_ROOT%{perl_archlib}/perllocal.pod
+    replacement: 'true # perl disabled'
+  - pattern: rm -Rf $RPM_BUILD_ROOT/%{_docdir}/%{name}
+    replacement: 'rm -Rf $RPM_BUILD_ROOT/%{_docdir}/%{name}
+
+      rm -rf $RPM_BUILD_ROOT%{_includedir}/irssi $RPM_BUILD_ROOT%{_libdir}/pkgconfig/irssi-1.pc'
+  - pattern: '%{perl_vendorarch}/Irssi*'
+    replacement: '# perl modules not built'
+  - pattern: '%{perl_vendorarch}/auto/Irssi'
+    replacement: '# perl auto not built'

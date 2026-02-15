@@ -1,0 +1,15 @@
+# most - pager program (uses slang)
+package: most
+
+rules:
+  spec_replacements:
+    # Tell configure where to find slang in cross-compilation sysroot
+    - pattern: "%configure"
+      replacement: "%configure --with-slanglib=/opt/sgug-staging/usr/sgug/lib32 --with-slanginc=/opt/sgug-staging/usr/sgug/include"
+    # make install puts docs in %{_docdir}/%{name} which conflicts with %doc's %{_pkgdocdir}
+    - pattern: "%make_install"
+      replacement: "%make_install\nrm -rf %{buildroot}%{_docdir}/%{name}"
+  prep_commands:
+    # chkslang is a cross-compiled binary that can't run on build host.
+    # Replace the slangversion target with a no-op (we know slang 2.3.3 >= 2.0)
+    - "sed -i 's|$(OBJDIR)/chkslang $(EXEC)|true # chkslang skipped for cross-build|' src/Makefile.in"

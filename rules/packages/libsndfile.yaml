@@ -1,0 +1,62 @@
+package: libsndfile
+rules:
+  drop_buildrequires:
+  - gsm-devel
+  - autogen
+  drop_requires:
+  - pkgconfig
+  export_vars:
+    LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
+  install_cleanup:
+  - rm -f %{buildroot}%{_bindir}/sndfile-play
+  - rm -f %{buildroot}%{_mandir}/man1/sndfile-play.1
+  spec_replacements:
+  - pattern: '%patch -P0 -p1 -b .system-gsm
+
+      rm -r src/GSM610'
+    replacement: '# system-gsm patch skipped — using bundled GSM610 (no gsm-devel staged)'
+  - pattern: "%configure \\\n\t--disable-dependency-tracking \\\n\t--enable-sqlite \\\n\t--enable-alsa \\\n\t--enable-largefile \\\n\t--enable-mpeg \\\n\t--disable-static\n"
+    replacement: "%configure \\\n\t--disable-dependency-tracking \\\n\t--disable-sqlite \\\n\t--disable-alsa \\\n\t--enable-largefile \\\n\t--disable-mpeg \\\n\t--disable-static\n"
+  - pattern: '# Get rid of rpath
+
+      sed -i ''s|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g'' libtool
+
+      sed -i ''s|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g'' libtool
+
+      '
+    replacement: '# Fix libtool for IRIX shared library building
+
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+
+      '
+  - pattern: "# fix multilib issues\nmv %{buildroot}%{_includedir}/sndfile.h \\\n   %{buildroot}%{_includedir}/sndfile-%{__isa_bits}.h\n\ncat > %{buildroot}%{_includedir}/sndfile.h <<EOF\n#include <bits/wordsize.h>\n\
+      \n#if __WORDSIZE == 32\n# include \"sndfile-32.h\"\n#elif __WORDSIZE == 64\n# include \"sndfile-64.h\"\n#else\n# error \"unexpected value for __WORDSIZE macro\"\n#endif\nEOF\n"
+    replacement: '# Multilib wrapper skipped — IRIX MIPS n32 is always 32-bit
+
+      '
+  - pattern: '%{_includedir}/sndfile-%{__isa_bits}.h'
+    replacement: '# multilib header not generated (IRIX is always 32-bit)'
+  - pattern: '%description
+
+      libsndfile is a C library'
+    replacement: 'Provides: libsndfile.so.1
+
+
+      %description
+
+      libsndfile is a C library
+
+      '
+  - pattern: '%{_bindir}/sndfile-play'
+    replacement: '# sndfile-play removed (no ALSA on IRIX)'
+  - pattern: '%{_mandir}/man1/sndfile-play.1*'
+    replacement: '# sndfile-play man page removed'
+  - pattern: '%{_libdir}/%{name}.so.1{,.*}'
+    replacement: '%{_libdir}/%{name}.so.1
+
+      %{_libdir}/%{name}.so.1.*
+
+      '
+smoke_test:
+- command: ls /usr/sgug/lib32/libsndfile.so.1
+  expect: libsndfile.so.1

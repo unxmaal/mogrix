@@ -1,0 +1,14 @@
+# stow - GNU Stow, symlink farm manager (FC40: 2.3.1)
+# Perl-based noarch package with autotools build system.
+# Needs perl_vendorlib macro defined for module installation path.
+package: stow
+
+rules:
+  spec_replacements:
+    # Define perl_vendorlib macro - not set in rpmmacros.irix
+    - pattern: "AutoReq: no"
+      replacement: "AutoReq: no\n%define perl_vendorlib /usr/sgug/share/perl5"
+
+smoke_test:
+  - command: "/usr/sgug/bin/stow --version"
+    expect: "2.3.1"

@@ -1,0 +1,27 @@
+# ed - line-oriented text editor
+# Custom (non-autoconf) configure script; uses %set_build_flags for CC.
+# Source is .tar.lz — need lzip on PATH for tar to decompress.
+package: ed
+
+rules:
+  drop_buildrequires:
+    - lzip
+    - gnupg2
+  spec_replacements:
+    # Skip GPG signature verification — gnupg2 not available in cross build
+    - pattern: "%{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data='%{SOURCE0}'"
+      replacement: "# gpgverify skipped for cross build"
+    # Remove the entire %if rhel / %else / %endif block in %prep.
+    # The RHEL branch uses bsdtar; the Fedora branch uses %autosetup (which
+    # needs lzip on PATH). Replace both with a single manual lzip path.
+    # This also eliminates a spurious %setup that confused mogrix's compat-prep
+    # injection (it matched the FIRST %setup, in the dead RHEL branch, leaving
+    # the actual code path without compat sources).
+    - pattern: "%if 0%{?rhel}\n# no lzip in RHEL; bsdtar can handle it but not from within %%setup.\n%setup -q -c -T\nbsdtar -xf %{SOURCE0} -C %{_builddir}\n%else\n%autosetup\n%endif"
+      replacement: "%setup -q -c -T\n/home/edodd/.local/bin/lzip -dc %{SOURCE0} | tar xf - --strip-components=1"
+    # ed's custom (non-autoconf) configure passes CC="${CC-gcc}" which defaults
+    # to host gcc because %set_build_flags doesn't export CC.  The %configure
+    # macro would set CC=%{__cc} (irix-cc), but ed doesn't use %configure.
+    # Fix: point CC at the cross compiler via RPM macro expansion.
+    - pattern: 'CC="${CC-gcc}"'
+      replacement: 'CC="%{__cc}"'

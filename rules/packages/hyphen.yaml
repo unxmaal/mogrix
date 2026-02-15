@@ -1,13 +1,7 @@
-# hyphen - text hyphenation library (FC40: 2.8.8)
 package: hyphen
-
 rules:
-  drop_buildrequires:
-    - valgrind
-
   spec_replacements:
-    # rpmbuild uses /bin/sh — pushd/popd are bashisms
-    - pattern: "pushd $RPM_BUILD_ROOT/%{_datadir}/hyphen/"
-      replacement: "cd $RPM_BUILD_ROOT/%{_datadir}/hyphen/"
-    - pattern: "popd"
-      replacement: "cd -"
+  - pattern: pushd $RPM_BUILD_ROOT/%{_datadir}/hyphen/
+    replacement: cd $RPM_BUILD_ROOT/%{_datadir}/hyphen/
+  - pattern: popd
+    replacement: cd -

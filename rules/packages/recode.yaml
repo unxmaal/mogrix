@@ -1,0 +1,38 @@
+package: recode
+rules:
+  drop_buildrequires:
+  - python3-Cython
+  - autoconf
+  - automake
+  - libtool
+  configure_disable:
+  - nls
+  drop_subpackages:
+  - devel
+  spec_replacements:
+  - pattern: autoreconf -fi
+    replacement: 'true # skip autoreconf (no autopoint)'
+  - pattern: export PYTHON=%{__python3}
+    replacement: 'export PYTHON=:
+
+      # Patch configure: don''t error on missing Python (cross-compile, no Python bindings)
+
+      sed -i ''s/as_fn_error \$? "no suitable Python interpreter found"/true # mogrix: skip Python requirement/'' configure
+
+      '
+  - pattern: '    --enable-nls \'
+    replacement: '    --disable-nls \'
+  - pattern: '%configure \'
+    replacement: 'export LIBS="$LIBS -lgen"
+
+      %configure \'
+  - pattern: rm $RPM_BUILD_ROOT%{_libdir}/*.la
+    replacement: 'rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+
+      # Remove devel files (devel subpackage dropped)
+
+      rm -f $RPM_BUILD_ROOT%{_libdir}/librecode.so
+
+      rm -rf $RPM_BUILD_ROOT%{_includedir}'
+  - pattern: rm -r $RPM_BUILD_ROOT%{_infodir}/dir
+    replacement: rm -rf $RPM_BUILD_ROOT%{_infodir}/dir

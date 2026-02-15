@@ -1,0 +1,80 @@
+package: tcsh
+smoke_test:
+- command: /usr/sgug/bin/tcsh -c 'echo $version'
+  expect: '6.24'
+bundle_trampoline_exclude:
+- csh
+rules:
+  drop_buildrequires:
+  - autoconf
+  - make
+  drop_requires:
+  - coreutils
+  - grep
+  - sed
+  spec_replacements:
+  - pattern: '%if %{defined rhel} || %{defined centos}
+
+      Patch200: tcsh-6.20.00-tcsh-posix-status.patch
+
+      %endif
+
+      '
+    replacement: ''
+  - pattern: '%autosetup -N -S git'
+    replacement: '%setup -q'
+  - pattern: "# NOTE: If more files needs to be converted, add them here:\nfor file in Fixes; do\n  iconv -f iso-8859-1 -t utf-8 \"$file\" > \"${file}.converted\" && \\\n  touch -r \"$file\" \"${file}.converted\"\
+      \ && \\\n  mv \"${file}.converted\" \"$file\"\ndone\n\n# Also, rename the Copyright so we comply with more generally accepted name:\nmv Copyright COPYING\n\n# Amend the converted files to the initial\
+      \ commit, and patch the source code:\ngit add --all --force\ngit commit --all --amend --no-edit > /dev/null\n%autopatch -p1\n"
+    replacement: "# Convert encoding\nfor file in Fixes; do\n  iconv -f iso-8859-1 -t utf-8 \"$file\" > \"${file}.converted\" && \\\n  touch -r \"$file\" \"${file}.converted\" && \\\n  mv \"${file}.converted\"\
+      \ \"$file\"\ndone\n\n# Rename Copyright\nmv Copyright COPYING\n\n# Apply patches without git\n%patch -P 100 -p1\n"
+  - pattern: "%post\n# Add login shell entries to /etc/shells only when installing the package\n# for the first time (see 'man 5 SHELLS' for more info):\nif [[ \"$1\" -eq 1 ]]; then\n  if [[ ! -f %{_sysconfdir}/shells\
+      \ ]]; then\n    echo \"/bin/csh\"        >> %{_sysconfdir}/shells\n    echo \"/bin/tcsh\"       >> %{_sysconfdir}/shells\n    echo \"%{_bindir}/csh\"  >> %{_sysconfdir}/shells\n    echo \"%{_bindir}/tcsh\"\
+      \ >> %{_sysconfdir}/shells\n  else\n    grep -q \"^/bin/csh$\"        %{_sysconfdir}/shells || echo \"/bin/csh\"        >> %{_sysconfdir}/shells\n    grep -q \"^/bin/tcsh$\"       %{_sysconfdir}/shells\
+      \ || echo \"/bin/tcsh\"       >> %{_sysconfdir}/shells\n    grep -q \"^%{_bindir}/csh$\"  %{_sysconfdir}/shells || echo \"%{_bindir}/csh\"  >> %{_sysconfdir}/shells\n    grep -q \"^%{_bindir}/tcsh$\"\
+      \ %{_sysconfdir}/shells || echo \"%{_bindir}/tcsh\" >> %{_sysconfdir}/shells\n  fi\nfi\n"
+    replacement: '%post
+
+      # No /etc/shells management on IRIX
+
+      '
+  - pattern: "%postun\n# Remove the login shell lines from /etc/shells only when uninstalling:\nif [[ \"$1\" -eq 0 && -f %{_sysconfdir}/shells ]]; then\n  sed -i -e '\\!^/bin/csh$!d'        %{_sysconfdir}/shells\n\
+      \  sed -i -e '\\!^/bin/tcsh$!d'       %{_sysconfdir}/shells\n  sed -i -e '\\!^%{_bindir}/csh$!d'  %{_sysconfdir}/shells\n  sed -i -e '\\!^%{_bindir}/tcsh$!d' %{_sysconfdir}/shells\nfi\n"
+    replacement: '%postun
+
+      # No /etc/shells management on IRIX
+
+      '
+  - pattern: '%check
+
+      # Tests skipped for cross-compilation (binaries can''t run on host)
+
+      # %make_build check
+
+
+      # # ---------------
+
+      '
+    replacement: '%check
+
+      # Tests skipped for cross-compilation
+
+      '
+  - pattern: "# NOTE: We have to construct tcsh.lang by ourselves, since upstream does not use\n#       standard naming/placing of localization files for the gettext...\nwhile read lang language; do\n \
+      \ dest=\"%{buildroot}%{_datadir}/locale/$lang/LC_MESSAGES\"\n  if [[ -f \"nls/$language.cat\" ]]; then\n    mkdir -p \"$dest\"\n    install -p -m 644 \"nls/$language.cat\" \"$dest/tcsh\"\n    echo\
+      \ \"%lang($lang) %{_datadir}/locale/$lang/LC_MESSAGES/tcsh\"\n  fi\ndone > %{name}.lang << _EOF\nde german\nel greek\nen C\nes spanish\net et\nfi finnish\nfr french\nit italian\nja ja\npl pl\nru russian\n\
+      uk ukrainian\n_EOF\n"
+    replacement: '# NLS disabled for IRIX
+
+      '
+  - pattern: '%files'
+    replacement: '%files'
+  ac_cv_overrides:
+    ac_cv_search_tgetent: -ltinfo
+  prep_commands:
+  - sed -i 's/\*-sgi-iri\*/\*-*-iri\*/' configure
+  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' sh.h tc.alloc.c ed.defns.c
+  - sed -i 's/defined(__QNXNTO__)/defined(__QNXNTO__) || defined(__sgi)/' ed.term.h
+  - sed -i '1i\#define _SYSTYPE_SVR4 1' system/irix62
+  install_cleanup:
+  - rm -rf %{buildroot}%{_datadir}/locale

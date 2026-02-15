@@ -1,68 +1,44 @@
-# giflib - GIF image library (FC40: 5.2.2)
-# Uses cmake; replace cmake macros with raw cmake commands for cross-compilation.
-# CMAKE_SYSTEM_NAME left unset so cmake uses Linux-style versioned .so naming.
-# CMAKE_C_COMPILER_WORKS=TRUE skips try_compile (IRIX binaries can't run on host).
 package: giflib
-
 rules:
-  inject_compat_functions:
-    - reallocarray
-
   drop_subpackages:
-    - "mingw32-*"
-    - "mingw64-*"
-
+  - mingw32-*
+  - mingw64-*
   drop_buildrequires:
-    - xmlto
-    - mingw32-filesystem
-    - mingw32-gcc
-    - mingw64-filesystem
-    - mingw64-gcc
-
+  - xmlto
+  - mingw32-filesystem
+  - mingw32-gcc
+  - mingw64-filesystem
+  - mingw64-gcc
   spec_replacements:
-    # Replace %cmake + %cmake_build with raw cmake for cross-compilation
-    - pattern: "%cmake\n%cmake_build"
-      replacement: |
-        mkdir -p _build && cd _build
-        cmake .. \
-          -DCMAKE_INSTALL_PREFIX=%{_prefix} \
-          -DCMAKE_INSTALL_LIBDIR=lib32 \
-          -DCMAKE_C_COMPILER=%{__cc} \
-          -DCMAKE_AR=%{__ar} \
-          -DCMAKE_RANLIB=%{__ranlib} \
-          -DCMAKE_C_FLAGS="%{optflags}" \
-          -DCMAKE_EXE_LINKER_FLAGS="-L$COMPAT_DIR -lmogrix-compat" \
-          -DCMAKE_SHARED_LINKER_FLAGS="-L$COMPAT_DIR -lmogrix-compat" \
-          -DCMAKE_C_COMPILER_WORKS=TRUE \
-          -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
-          -DBUILD_STATIC_LIBS=OFF \
-          -DLIB_SUFFIX=32
-        make %{?_smp_mflags} -C .
+  - pattern: '%cmake
 
-    # Remove MinGW build section
-    - pattern: "# MinGW build\n%mingw_cmake\n%mingw_make_build"
-      replacement: "# MinGW build disabled for IRIX cross-compilation"
+      %cmake_build'
+    replacement: "mkdir -p _build && cd _build\ncmake .. \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=lib32 \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib}\
+      \ \\\n  -DCMAKE_C_FLAGS=\"%{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_C_COMPILER_WORKS=TRUE\
+      \ \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DBUILD_STATIC_LIBS=OFF \\\n  -DLIB_SUFFIX=32\nmake %{?_smp_mflags} -C .\n"
+  - pattern: '# MinGW build
 
-    # Replace %cmake_install
-    - pattern: "%cmake_install"
-      replacement: "make -C _build DESTDIR=$RPM_BUILD_ROOT install"
+      %mingw_cmake
 
-    # Remove MinGW install lines
-    - pattern: "%mingw_make_install\nrm -rf %{buildroot}%{mingw32_mandir}\nrm -rf %{buildroot}%{mingw64_mandir}"
-      replacement: "# MinGW install disabled"
+      %mingw_make_build'
+    replacement: '# MinGW build disabled for IRIX cross-compilation'
+  - pattern: '%cmake_install'
+    replacement: make -C _build DESTDIR=$RPM_BUILD_ROOT install
+  - pattern: '%mingw_make_install
 
-    # Remove mingw debug install
-    - pattern: "%mingw_debug_install_post"
-      replacement: "# mingw debug disabled"
+      rm -rf %{buildroot}%{mingw32_mandir}
 
-    # Remove mingw debug package macro (undefined in cross env)
-    - pattern: "%{?mingw_debug_package}"
-      replacement: "# mingw_debug_package disabled"
+      rm -rf %{buildroot}%{mingw64_mandir}'
+    replacement: '# MinGW install disabled'
+  - pattern: '%mingw_debug_install_post'
+    replacement: '# mingw debug disabled'
+  - pattern: '%{?mingw_debug_package}'
+    replacement: '# mingw_debug_package disabled'
+  - pattern: '^Name:           giflib'
+    replacement: 'Name:           giflib
 
-    # Explicit Provides for shared libraries (AutoProv disabled in rpmmacros.irix)
-    - pattern: "^Name:           giflib"
-      replacement: |
-        Name:           giflib
-        Provides: giflib(mips-32) = %{version}-%{release}
-        Provides: libgif.so.7
+      Provides: giflib(mips-32) = %{version}-%{release}
 
+      Provides: libgif.so.7
+
+      '

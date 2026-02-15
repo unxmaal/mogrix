@@ -5,8 +5,6 @@
 package: npth
 
 rules:
-  skip_check: true
-
   # IRIX puts pthread_atfork in unistd.h, not pthread.h
   # Add include so the declaration is visible
   prep_commands:

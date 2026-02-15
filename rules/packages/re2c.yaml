@@ -1,0 +1,11 @@
+# re2c - regex-to-C/C++ compiler (C++ codebase)
+# -Werror=return-type: configure auto-enables it, but clang flags UNREACHABLE()
+# macro (CHECK(false) → exit) as non-returning path in non-void function.
+package: re2c
+
+rules:
+  spec_replacements:
+    # Disable -Werror=return-type: re2c's UNREACHABLE() macro uses exit() inside
+    # do...while(0), which clang doesn't recognize as [[noreturn]] control flow.
+    - pattern: "%configure"
+      replacement: "export CXXFLAGS=\"${CXXFLAGS} -Wno-error=return-type\"\n%configure"

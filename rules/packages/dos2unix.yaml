@@ -1,0 +1,17 @@
+# dos2unix - line ending converter
+# Uses make directly (no autoconf). Skip gettext/po compilation.
+# The spec does its own make invocations — we patch the Makefile directly.
+package: dos2unix
+
+rules:
+  prep_commands:
+    # Disable NLS (gettext) — cross-compile has no msgfmt
+    - "sed -i 's/^ENABLE_NLS.*/ENABLE_NLS =/' Makefile"
+    # Force prefix to /usr/sgug — use override-style assignment
+    - "sed -i 's|^prefix.*=.*/usr$|prefix = /usr/sgug|' Makefile"
+  spec_replacements:
+    # Override prefix, CC, and add -lgen for dirname() (IRIX has dirname in libgen, not libc)
+    - pattern: 'LDFLAGS="%{build_ldflags}"'
+      replacement: 'CC=%{__cc} prefix=%{_prefix} LDFLAGS="%{build_ldflags} -lgen"'
+    - pattern: "%make_install"
+      replacement: "make install DESTDIR=%{buildroot} prefix=%{_prefix}"

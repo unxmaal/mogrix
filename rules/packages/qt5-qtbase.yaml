@@ -1,764 +1,851 @@
-# qt5-qtbase - Qt5 base components (FC40: 5.15.13)
-# Build system: custom ./configure + qmake (not autotools/cmake/meson)
-# Cross-compilation via -xplatform flag with custom IRIX mkspec
-# Build chain: xcb + xkbcommon + fontconfig + freetype + harfbuzz + pcre2 +
-#              zlib + libpng + libjpeg + openssl (all in staging) → qt5-qtbase
-#
-# This is the most complex package in mogrix. Expect multiple build iterations.
-
 package: qt5-qtbase
-
 rules:
   add_patch:
-    - "qt5-qtbase-irix-no-elf-tls.patch"
-
+  - qt5-qtbase-irix-no-elf-tls.patch
   inject_compat_functions:
-    - strerror_r
-    - secure_getenv
-
+  - secure_getenv
   drop_buildrequires:
-    - perl-generators
-    - python3
-    - qt5-rpm-macros
-    - make
-    - cups-devel
-    - desktop-file-utils
-    - double-conversion-devel
-    - findutils
-    - libjpeg-devel
-    - libmng-devel
-    - libtiff-devel
-    - "pkgconfig(alsa)"
-    - "pkgconfig(atspi-2)"
-    - "pkgconfig(dbus-1)"
-    - "pkgconfig(libdrm)"
-    - "pkgconfig(gl)"
-    - "pkgconfig(gtk+-3.0)"
-    - "pkgconfig(libproxy-1.0)"
-    - "pkgconfig(libsctp)"
-    - "pkgconfig(ice)"
-    - "pkgconfig(sm)"
-    - "pkgconfig(libudev)"
-    - "pkgconfig(libpulse)"
-    - "pkgconfig(libpulse-mainloop-glib)"
-    - "pkgconfig(libinput)"
-    - "pkgconfig(libsystemd)"
-    - "pkgconfig(vulkan)"
-    - libEGL-devel
-    - "pkgconfig(gbm)"
-    - "pkgconfig(glesv2)"
-    - "pkgconfig(icu-i18n)"
-    - "pkgconfig(sqlite3)"
-    - mariadb-connector-c-devel
-    - mysql-devel
-    - unixODBC-devel
-    - libpq-devel
-    - freetds-devel
-    - firebird-devel
-    - "pkgconfig(xcb-util)"
-    - dbus-x11
-    - mesa-dri-drivers
-    - time
-    - xorg-x11-server-Xvfb
-
+  - qt5-rpm-macros
+  - make
+  - cups-devel
+  - findutils
+  - libjpeg-devel
+  - libmng-devel
+  - pkgconfig(alsa)
+  - pkgconfig(atspi-2)
+  - pkgconfig(dbus-1)
+  - pkgconfig(libdrm)
+  - pkgconfig(gl)
+  - pkgconfig(gtk+-3.0)
+  - pkgconfig(libproxy-1.0)
+  - pkgconfig(libsctp)
+  - pkgconfig(ice)
+  - pkgconfig(sm)
+  - pkgconfig(libudev)
+  - pkgconfig(libpulse)
+  - pkgconfig(libpulse-mainloop-glib)
+  - pkgconfig(libinput)
+  - pkgconfig(libsystemd)
+  - pkgconfig(vulkan)
+  - libEGL-devel
+  - pkgconfig(gbm)
+  - pkgconfig(glesv2)
+  - pkgconfig(icu-i18n)
+  - pkgconfig(sqlite3)
+  - mariadb-connector-c-devel
+  - mysql-devel
+  - unixODBC-devel
+  - libpq-devel
+  - freetds-devel
+  - firebird-devel
+  - pkgconfig(xcb-util)
+  - dbus-x11
+  - mesa-dri-drivers
+  - time
+  - xorg-x11-server-Xvfb
   drop_subpackages:
-    - common
-    - private-devel
-    - static
-    - examples
-    - ibase
-    - mysql
-    - odbc
-    - postgresql
-    - tds
-
+  - common
+  - private-devel
+  - static
+  - examples
+  - ibase
+  - mysql
+  - odbc
+  - postgresql
+  - tds
   drop_requires:
-    - qt-settings
-    - glx-utils
-    - "mesa-dri-drivers"
-    - "qt5-qtwayland"
-    - qt5-qttranslations
-    - cups-devel
-    - "pkgconfig(gl)"
-    - "pkgconfig(vulkan)"
-    - qt5-rpm-macros
-    - libEGL-devel
-
+  - qt-settings
+  - glx-utils
+  - mesa-dri-drivers
+  - qt5-qtwayland
+  - qt5-qttranslations
+  - cups-devel
+  - pkgconfig(gl)
+  - pkgconfig(vulkan)
+  - qt5-rpm-macros
+  - libEGL-devel
   spec_replacements:
-    # ---- 1. Inject Qt5 path macros (qt5-rpm-macros not available on Ubuntu build host) ----
-    - pattern: "%global platform linux-g++\n\n%if 0%{?use_clang}\n%global platform linux-clang\n%endif"
-      replacement: |
-        %global platform linux-g++
-        # Qt5 path macros for IRIX cross-compilation (normally from qt5-rpm-macros)
-        %global _qt5_prefix %{_libdir}/qt5
-        %global _qt5_archdatadir %{_qt5_prefix}
-        %global _qt5_bindir %{_qt5_prefix}/bin
-        %global _qt5_libdir %{_libdir}
-        %global _qt5_libexecdir %{_qt5_prefix}/libexec
-        %global _qt5_datadir %{_datadir}/qt5
-        %global _qt5_docdir %{_datadir}/doc/qt5
-        %global _qt5_examplesdir %{_qt5_prefix}/examples
-        %global _qt5_headerdir %{_includedir}/qt5
-        %global _qt5_importdir %{_qt5_prefix}/imports
-        %global _qt5_plugindir %{_qt5_prefix}/plugins
-        %global _qt5_settingsdir %{_sysconfdir}/xdg
-        %global _qt5_sysconfdir %{_sysconfdir}/xdg
-        %global _qt5_translationdir %{_datadir}/qt5/translations
-
-    # ---- 2. Disable EGL, Vulkan, sqlite macros ----
-    - pattern: "%global egl 1"
-      replacement: "# EGL disabled for IRIX"
-
-    - pattern: "%global vulkan 1"
-      replacement: "# Vulkan disabled for IRIX"
-
-    - pattern: "%global sqlite -system-sqlite"
-      replacement: "# SQLite disabled for IRIX"
-
-    # ---- 3. Remove duplicate Source100 (Fedora hack that breaks spec parser) ----
-    - pattern: "# HACK to make 'fedpkg sources' consider it 'used\"\nSource100: kde-5.15-rollup-20240314.patch.gz"
-      replacement: "# Source100 removed (duplicate of Patch100)"
-
-    # ---- 4. Skip problematic patches in %prep ----
-    # libglvnd patch — OpenGL-specific, we disable OpenGL
-    - pattern: "%patch -P56 -p1 -b .libglvnd"
-      replacement: "# Patch56 (libglvnd) skipped — OpenGL disabled for IRIX"
-
-    # Firebird patch — SQL-specific, we disable all SQL drivers
-    - pattern: "%if 0%{?fedora} < 35\n%patch -P58 -p1 -b .firebird\n%else\n%patch -P59 -p1 -b .firebird\n%endif"
-      replacement: "# Firebird patches skipped — SQL drivers disabled for IRIX"
-
-    # QGnomePlatform — not relevant for IRIX
-    - pattern: "%if 0%{?fedora} < 39\n# Use QGnomePlatform by default\n%patch -P200 -p1\n%endif"
-      replacement: "# QGnomePlatform patch skipped — not relevant for IRIX"
-
-    # Fix bundled lib move (sqlite/xcb conditionals use undefined macros)
-    - pattern: "# move some bundled libs to ensure they're not accidentally used\npushd src/3rdparty\nmkdir UNUSED\nmv freetype libjpeg libpng zlib UNUSED/\n%if \"%{?sqlite}\" == \"-system-sqlite\"\nmv sqlite UNUSED/\n%endif\n%if \"%{?xcb}\" != \"-qt-xcb\"\nmv xcb UNUSED/\n%endif\npopd"
-      replacement: |
-        # move bundled libs to ensure system libs are used
-        # Keep zlib — bootstrap qmake statically links bundled zlib on host
-        cd src/3rdparty
-        mkdir UNUSED
-        mv freetype libjpeg libpng UNUSED/
-        cd ../..
-
-    # ---- 4. Replace entire %build section ----
-    - pattern: "%build\n# QT is known not to work properly with LTO at this point.  Some of the issues\n# are being worked on upstream and disabling LTO should be re-evaluated as\n# we update this change.  Until such time...\n# Disable LTO\n# https://bugzilla.redhat.com/1900527\n%define _lto_cflags %{nil}\n\n## FIXME/TODO:\n# * for %%ix86, add sse2 enabled builds for Qt5Gui, Qt5Core, QtNetwork, see also:\n#   http://anonscm.debian.org/cgit/pkg-kde/qt/qtbase.git/tree/debian/rules (234-249)\n\n## adjust $RPM_OPT_FLAGS\n# remove -fexceptions\nRPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed 's|-fexceptions||g'`\nRPM_OPT_FLAGS=\"$RPM_OPT_FLAGS %{?qt5_arm_flag} %{?qt5_deprecated_flag} %{?qt5_null_flag}\"\n\n%if 0%{?use_clang}\nRPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed 's|-fno-delete-null-pointer-checks||g'`\n%endif\n\nexport CFLAGS=\"$CFLAGS $RPM_OPT_FLAGS\"\nexport CXXFLAGS=\"$CXXFLAGS $RPM_OPT_FLAGS\"\nexport LDFLAGS=\"$LDFLAGS $RPM_LD_FLAGS\"\nexport MAKEFLAGS=\"%{?_smp_mflags}\"\n\n./configure \\\n  -verbose \\\n  -confirm-license \\\n  -opensource \\\n  -prefix %{_qt5_prefix} \\\n  -archdatadir %{_qt5_archdatadir} \\\n  -bindir %{_qt5_bindir} \\\n  -libdir %{_qt5_libdir} \\\n  -libexecdir %{_qt5_libexecdir} \\\n  -datadir %{_qt5_datadir} \\\n  -docdir %{_qt5_docdir} \\\n  -examplesdir %{_qt5_examplesdir} \\\n  -headerdir %{_qt5_headerdir} \\\n  -importdir %{_qt5_importdir} \\\n  -plugindir %{_qt5_plugindir} \\\n  -sysconfdir %{_qt5_sysconfdir} \\\n  -translationdir %{_qt5_translationdir} \\\n  -platform %{platform} \\\n  -release \\\n  -shared \\\n  -accessibility \\\n  -dbus-linked \\\n  %{?egl:-egl -eglfs} \\\n  -fontconfig \\\n  -glib \\\n  -gtk \\\n  %{?ibase} \\\n  -icu \\\n  -journald \\\n  -optimized-qmake \\\n  -openssl-linked \\\n  -libproxy \\\n  -sctp \\\n  %{!?examples:-nomake examples} \\\n  %{!?tests:-nomake tests} \\\n  -no-pch \\\n  -no-reduce-relocations \\\n  -no-rpath \\\n  -no-separate-debug-info \\\n  %{?no_sse2} \\\n  -no-strip \\\n  -system-libjpeg \\\n  -system-libpng \\\n  %{?harfbuzz} \\\n  %{?pcre} \\\n  %{?sqlite} \\\n  %{?tds} \\\n  %{?xcb} \\\n  %{?xkbcommon} \\\n  -system-zlib \\\n  %{?use_gold_linker} \\\n  -no-directfb \\\n  -no-feature-relocatable \\\n  %{?no_feature_renameat2} \\\n  %{?no_feature_statx} \\\n  %{?no_feature_getentropy} \\\n  QMAKE_CFLAGS_RELEASE=\"${CFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_CXXFLAGS_RELEASE=\"${CXXFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_LFLAGS_RELEASE=\"${LDFLAGS:-$RPM_LD_FLAGS}\"\n\n# Validate config results\n%if \"%{?ibase}\" != \"-no-sql-ibase\"\nfor config_test in egl-x11 ibase ; do\n%else\nfor config_test in egl-x11 ; do\n%endif\nconfig_result=\"$(grep ^cache.${config_test}.result config.cache | cut -d= -f2 | tr -d ' ')\"\nif [ \"${config_result}\" != \"true\" ]; then\n  echo \"${config_test} detection failed\"\n  config_failed=1\nfi\ndone\nif [ ${config_failed} -eq 1 ]; then exit 1; fi\n\n# ensure qmake build using optflags (which can happen if not munging qmake.conf defaults)\nmake clean -C qmake\n%make_build -C qmake all binary \\\n  QMAKE_CFLAGS_RELEASE=\"${CFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_CXXFLAGS_RELEASE=\"${CXXFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_LFLAGS_RELEASE=\"${LDFLAGS:-$RPM_LD_FLAGS}\" \\\n  QMAKE_STRIP=\n\n%make_build"
-      replacement: |
-        %build
-        %define _lto_cflags %{nil}
-
-        # Inject compat library into mkspec for linking
-        export COMPAT_DIR=$(pwd)/mogrix-compat
-        echo "QMAKE_LIBS += -L${COMPAT_DIR} -lmogrix-compat" >> mkspecs/irix-n32-clang/qmake.conf
-
-        # PKG_CONFIG must find staged libraries
-        export PKG_CONFIG_LIBDIR="/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig"
-        export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
-
-        ./configure \
-          -verbose \
-          -confirm-license \
-          -opensource \
-          -prefix %{_qt5_prefix} \
-          -archdatadir %{_qt5_archdatadir} \
-          -bindir %{_qt5_bindir} \
-          -libdir %{_qt5_libdir} \
-          -libexecdir %{_qt5_libexecdir} \
-          -datadir %{_qt5_datadir} \
-          -docdir %{_qt5_docdir} \
-          -headerdir %{_qt5_headerdir} \
-          -importdir %{_qt5_importdir} \
-          -plugindir %{_qt5_plugindir} \
-          -sysconfdir %{_qt5_sysconfdir} \
-          -translationdir %{_qt5_translationdir} \
-          -platform %{platform} \
-          -xplatform irix-n32-clang \
-          -release \
-          -shared \
-          -no-accessibility \
-          -no-dbus \
-          -no-egl \
-          -no-eglfs \
-          -fontconfig \
-          -no-glib \
-          -no-gtk \
-          -no-icu \
-          -no-journald \
-          -openssl-linked \
-          -no-libproxy \
-          -no-sctp \
-          -nomake examples \
-          -nomake tests \
-          -no-pch \
-          -no-reduce-relocations \
-          -no-rpath \
-          -no-separate-debug-info \
-          -no-strip \
-          -system-libjpeg \
-          -system-libpng \
-          -system-harfbuzz \
-          -system-pcre \
-          -no-sql-sqlite \
-          -no-sql-mysql \
-          -no-sql-psql \
-          -no-sql-odbc \
-          -no-sql-tds \
-          -no-sql-ibase \
-          -xcb \
-          -xkbcommon \
-          -system-zlib \
-          -no-use-gold-linker \
-          -no-directfb \
-          -no-feature-relocatable \
-          -no-feature-renameat2 \
-          -no-feature-statx \
-          -no-feature-getentropy \
-          -no-vulkan \
-          -no-opengl \
-          -no-linuxfb \
-          -no-kms
-
-        %make_build
-
-    # ---- 5. Replace %install section ----
-    # The FC40 install has qtchooser, multilib qconfig.h, rpm macros, prl cleanup,
-    # private xcb headers, etc. Replace with minimal cross-build install.
-    - pattern: "%install\nmake install INSTALL_ROOT=%{buildroot}\n\ninstall -m644 -p -D %{SOURCE1} %{buildroot}%{_qt5_datadir}/qtlogging.ini"
-      replacement: |
-        %install
-        make install INSTALL_ROOT=%{buildroot}
-
-    # Remove Qt5.pc creation and everything through the end of prl cleanup
-    # (will create a minimal Qt5.pc ourselves in install_cleanup)
-    - pattern: "# Qt5.pc\ncat >%{buildroot}%{_libdir}/pkgconfig/Qt5.pc<<EOF\nprefix=%{_qt5_prefix}\narchdatadir=%{_qt5_archdatadir}\nbindir=%{_qt5_bindir}\ndatadir=%{_qt5_datadir}"
-      replacement: |
-        # Create minimal Qt5.pc
-        cat >%{buildroot}%{_libdir}/pkgconfig/Qt5.pc<<EOF
-        prefix=%{_qt5_prefix}
-        libdir=%{_qt5_libdir}
-        includedir=%{_qt5_headerdir}
-
-    # Remove rpm macros install
-    - pattern: "# rpm macros\ninstall -p -m644 -D %{SOURCE10} \\\n  %{buildroot}%{rpm_macros_dir}/macros.qt5-qtbase\nsed -i \\\n  -e \"s|@@NAME@@|%{name}|g\" \\\n  -e \"s|@@EPOCH@@|%{?epoch}%{!?epoch:0}|g\" \\\n  -e \"s|@@VERSION@@|%{version}|g\" \\\n  -e \"s|@@EVR@@|%{?epoch:%{epoch:}}%{version}-%{release}|g\" \\\n  %{buildroot}%{rpm_macros_dir}/macros.qt5-qtbase"
-      replacement: "# rpm macros skipped for cross-build"
-
-    # Remove qtchooser, hardlink creation, multilib qconfig.h
-    - pattern: "# create/own dirs\nmkdir -p %{buildroot}{%{_qt5_archdatadir}/mkspecs/modules,%{_qt5_importdir},%{_qt5_libexecdir},%{_qt5_plugindir}/{designer,iconengines,script,styles},%{_qt5_translationdir}}\nmkdir -p %{buildroot}%{_sysconfdir}/xdg/QtProject"
-      replacement: |
-        # create standard dirs
-        mkdir -p %{buildroot}%{_qt5_archdatadir}/mkspecs/modules
-        mkdir -p %{buildroot}%{_qt5_importdir}
-        mkdir -p %{buildroot}%{_qt5_libexecdir}
-        mkdir -p %{buildroot}%{_qt5_plugindir}/designer
-        mkdir -p %{buildroot}%{_qt5_plugindir}/iconengines
-        mkdir -p %{buildroot}%{_qt5_plugindir}/script
-        mkdir -p %{buildroot}%{_qt5_plugindir}/styles
-        mkdir -p %{buildroot}%{_qt5_translationdir}
-
-    # Remove hardlink creation to %{_bindir}
-    - pattern: "# hardlink files to {_bindir}, add -qt5 postfix to not conflict\nmkdir %{buildroot}%{_bindir}\npushd %{buildroot}%{_qt5_bindir}\nfor i in * ; do\n  case \"${i}\" in\n    moc|qdbuscpp2xml|qdbusxml2cpp|qmake|rcc|syncqt|uic)\n      ln -v  ${i} %{buildroot}%{_bindir}/${i}-qt5\n      ln -sv ${i} ${i}-qt5\n      ;;\n    *)\n      ln -v  ${i} %{buildroot}%{_bindir}/${i}\n      ;;\n  esac\ndone\npopd"
-      replacement: "# Hardlinks to %{_bindir} skipped for cross-build"
-
-    # Remove multilib qconfig.h section
-    - pattern: "%ifarch %{multilib_archs}\n# multilib: qconfig.h\n  mv %{buildroot}%{_qt5_headerdir}/QtCore/qconfig.h %{buildroot}%{_qt5_headerdir}/QtCore/qconfig-%{__isa_bits}.h\n  install -p -m644 -D %{SOURCE5} %{buildroot}%{_qt5_headerdir}/QtCore/qconfig.h\n%endif"
-      replacement: "# multilib qconfig.h skipped for cross-build"
-
-    # Remove qtchooser conf section
-    - pattern: "# qtchooser conf\n%if 0%{?qtchooser}\n  mkdir -p %{buildroot}%{_sysconfdir}/xdg/qtchooser\n  pushd    %{buildroot}%{_sysconfdir}/xdg/qtchooser\n  echo \"%{_qt5_bindir}\" >  5-%{__isa_bits}.conf\n## FIXME/TODO: verify qtchooser (still) happy if _qt5_prefix uses %%_prefix instead of %%_libdir/qt5\n  echo \"%{_qt5_prefix}\" >> 5-%{__isa_bits}.conf\n  # alternatives targets\n  touch default.conf 5.conf\n  popd\n%endif"
-      replacement: "# qtchooser skipped for IRIX"
-
-    # Remove prl cleanup (we'll do it simpler)
-    - pattern: "## .prl/.la file love\n# nuke .prl reference(s) to %%buildroot, excessive (.la-like) libs\npushd %{buildroot}%{_qt5_libdir}\nfor prl_file in libQt5*.prl ; do\n  sed -i -e \"/^QMAKE_PRL_BUILD_DIR/d\" ${prl_file}\n  if [ -f \"$(basename ${prl_file} .prl).so\" ]; then\n    rm -fv \"$(basename ${prl_file} .prl).la\"\n    sed -i -e \"/^QMAKE_PRL_LIBS/d\" ${prl_file}\n  fi\ndone\npopd"
-      replacement: |
-        # Clean up .prl files
-        cd %{buildroot}%{_qt5_libdir}
-        for prl_file in libQt5*.prl ; do
-          [ -f "$prl_file" ] || continue
-          sed -i -e "/^QMAKE_PRL_BUILD_DIR/d" ${prl_file}
-          rm -fv "$(basename ${prl_file} .prl).la" 2>/dev/null || :
-          sed -i -e "/^QMAKE_PRL_LIBS/d" ${prl_file}
-        done
-        cd -
-
-    # Remove opengl check script install
-    - pattern: "install -p -m755 -D %{SOURCE6} %{buildroot}%{_sysconfdir}/X11/xinit/xinitrc.d/10-qt5-check-opengl2.sh"
-      replacement: "# OpenGL check script skipped for IRIX"
-
-    # Remove SSE2 private header patching
-    - pattern: "# f29+ enables sse2 unconditionally on ix86 -- rex\n%if 0%{?fedora} < 29 && 0%{?rhel} < 9\n# fix bz#1442553 multilib issue\nprivat_header_file=%{buildroot}%{_qt5_headerdir}/QtCore/%{version}/QtCore/private/qconfig_p.h\ngrep -v QT_FEATURE_sse2 $privat_header_file > ${privat_header_file}.me\nmv ${privat_header_file}.me ${privat_header_file}\ncat >>${privat_header_file}<<EOF\n#if defined(__x86_64__)\n#define QT_FEATURE_sse2 1\n#elif defined(__i386__)\n#define QT_FEATURE_sse2 -1\n#endif\nEOF\n%endif"
-      replacement: "# SSE2 header patching skipped for MIPS"
-
-    # Remove private xcb header install
-    - pattern: "# install privat headers for qtxcb\nmkdir -p %{buildroot}%{_qt5_headerdir}/QtXcb\ninstall -m 644 src/plugins/platforms/xcb/*.h %{buildroot}%{_qt5_headerdir}/QtXcb/"
-      replacement: "# Private xcb headers skipped for cross-build"
-
-    # Remove Qt5Bootstrap drop
-    - pattern: "# drop Qt5Bootstrap from -static (#2017661)\nrm -f %{buildroot}%{_qt5_libdir}/libQt5Bootstrap.*a\nrm -f %{buildroot}%{_qt5_libdir}/libQt5Bootstrap.prl"
-      replacement: "# Qt5Bootstrap removal handled by install_cleanup"
-
-    # ---- 6. Remove %check (can't run MIPS binaries) ----
-    - pattern: "%check\n# verify Qt5.pc\nexport PKG_CONFIG_PATH=%{buildroot}%{_libdir}/pkgconfig\ntest \"$(pkg-config --modversion Qt5)\" = \"%{version}\""
-      replacement: "# %check skipped for cross-build (can't run MIPS binaries)"
-
-    # ---- 7. Remove all scriptlets ----
-    - pattern: "%if 0%{?qtchooser}\n%pre\nif [ $1 -gt 1 ] ; then\n# remove short-lived qt5.conf alternatives\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-qt5 \\\n  %{_sysconfdir}/xdg/qtchooser/qt5-%{__isa_bits}.conf >& /dev/null ||:\n\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-default \\\n  %{_sysconfdir}/xdg/qtchooser/qt5.conf >& /dev/null ||:\nfi\n%endif\n\n%post\n%{?ldconfig}\n%if 0%{?qtchooser}\n%{_sbindir}/update-alternatives \\\n  --install %{_sysconfdir}/xdg/qtchooser/5.conf \\\n  qtchooser-5 \\\n  %{_sysconfdir}/xdg/qtchooser/5-%{__isa_bits}.conf \\\n  %{priority}\n\n%{_sbindir}/update-alternatives \\\n  --install %{_sysconfdir}/xdg/qtchooser/default.conf \\\n  qtchooser-default \\\n  %{_sysconfdir}/xdg/qtchooser/5.conf \\\n  %{priority}\n%endif\n\n%postun\n%{?ldconfig}\n%if 0%{?qtchooser}\nif [ $1 -eq 0 ]; then\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-5 \\\n  %{_sysconfdir}/xdg/qtchooser/5-%{__isa_bits}.conf\n\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-default \\\n  %{_sysconfdir}/xdg/qtchooser/5.conf\nfi\n%endif"
-      replacement: "# All scriptlets removed for IRIX cross-build"
-
-    # ---- 8. Fix %files main package ----
-    - pattern: "%files\n%license LICENSE.FDL\n%license LICENSE.GPL*\n%license LICENSE.LGPL*\n%if 0%{?qtchooser}\n%dir %{_sysconfdir}/xdg/qtchooser\n# not editable config files, so not using %%config here\n%ghost %{_sysconfdir}/xdg/qtchooser/default.conf\n%ghost %{_sysconfdir}/xdg/qtchooser/5.conf\n%{_sysconfdir}/xdg/qtchooser/5-%{__isa_bits}.conf\n%endif\n%dir %{_sysconfdir}/xdg/QtProject/\n%{_qt5_libdir}/libQt5Concurrent.so.5*\n%{_qt5_libdir}/libQt5Core.so.5*\n%{_qt5_libdir}/libQt5DBus.so.5*\n%{_qt5_libdir}/libQt5Network.so.5*\n%{_qt5_libdir}/libQt5Sql.so.5*\n%{_qt5_libdir}/libQt5Test.so.5*\n%{_qt5_libdir}/libQt5Xml.so.5*"
-      replacement: |
-        %files
-        %license LICENSE.FDL
-        %license LICENSE.GPL*
-        %license LICENSE.LGPL*
-        %{_qt5_libdir}/libQt5Concurrent.so.5*
-        %{_qt5_libdir}/libQt5Core.so.5*
-        %{_qt5_libdir}/libQt5Network.so.5*
-        %{_qt5_libdir}/libQt5Sql.so.5*
-        %{_qt5_libdir}/libQt5Test.so.5*
-        %{_qt5_libdir}/libQt5Xml.so.5*
-
-    # Remove DBus cmake dir
-    - pattern: "%dir %{_qt5_libdir}/cmake/Qt5DBus/"
-      replacement: "# Qt5DBus cmake dir removed (D-Bus disabled)"
-
-    # Remove bearer plugins (Linux-specific network bearers)
-    - pattern: "%dir %{_qt5_plugindir}/bearer/\n%{_qt5_plugindir}/bearer/libqconnmanbearer.so\n%{_qt5_plugindir}/bearer/libqgenericbearer.so\n%{_qt5_plugindir}/bearer/libqnmbearer.so\n%{_qt5_libdir}/cmake/Qt5Network/Qt5Network_QConnmanEnginePlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Network/Qt5Network_QGenericEnginePlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Network/Qt5Network_QNetworkManagerEnginePlugin.cmake"
-      replacement: "# Bearer plugins removed (Linux-specific)"
-
-    # Remove sqldrivers section
-    - pattern: "%dir %{_qt5_plugindir}/sqldrivers/\n%dir %{_qt5_plugindir}/styles/\n%{_qt5_plugindir}/sqldrivers/libqsqlite.so\n%{_qt5_libdir}/cmake/Qt5Sql/Qt5Sql_QSQLiteDriverPlugin.cmake"
-      replacement: |
-        %dir %{_qt5_plugindir}/styles/
-
-    # Remove OpenGL cmake dir from main package
-    - pattern: "%dir %{_qt5_libdir}/cmake/Qt5OpenGL/"
-      replacement: "# Qt5OpenGL cmake dir removed (OpenGL disabled)"
-
-    # Remove PrintSupport cmake dir (CUPS disabled, already removed by install_cleanup)
-    - pattern: "%dir %{_qt5_libdir}/cmake/Qt5PrintSupport/"
-      replacement: "# Qt5PrintSupport cmake dir removed (CUPS disabled)"
-
-    # Remove doc dirs (not built for cross)
-    - pattern: "%dir %{_qt5_docdir}/\n%{_qt5_docdir}/global/\n%{_qt5_docdir}/config/"
-      replacement: "# doc dirs removed for cross-build"
-
-    # Remove qtlogging.ini
-    - pattern: "%{_qt5_datadir}/qtlogging.ini"
-      replacement: "# qtlogging.ini removed for cross-build"
-
-    # ---- 9. Fix %files gui ----
-    # Remove ldconfig scriptlets for gui
-    - pattern: "%ldconfig_scriptlets gui"
-      replacement: "# ldconfig scriptlets removed for IRIX"
-
-    # Replace entire %files gui (remove X11 xinit scripts)
-    - pattern: "%files gui\n%dir %{_sysconfdir}/X11/xinit\n%dir %{_sysconfdir}/X11/xinit/xinitrc.d/\n%{_sysconfdir}/X11/xinit/xinitrc.d/10-qt5-check-opengl2.sh"
-      replacement: "%files gui"
-
-    # Remove OpenGL .so from gui
-    - pattern: "%{_qt5_libdir}/libQt5OpenGL.so.5*"
-      replacement: "# libQt5OpenGL removed (OpenGL disabled)"
-
-    # Remove PrintSupport from gui (cups disabled)
-    - pattern: "%{_qt5_libdir}/libQt5PrintSupport.so.5*"
-      replacement: "# libQt5PrintSupport removed (CUPS disabled)"
-
-    # Remove evdev plugins
-    - pattern: "%{_qt5_plugindir}/generic/libqevdevkeyboardplugin.so\n%{_qt5_plugindir}/generic/libqevdevmouseplugin.so\n%{_qt5_plugindir}/generic/libqevdevtabletplugin.so\n%{_qt5_plugindir}/generic/libqevdevtouchplugin.so"
-      replacement: "# evdev plugins removed (Linux-specific)"
-
-    # Remove libinput plugin
-    - pattern: "%{_qt5_plugindir}/generic/libqlibinputplugin.so\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLibInputPlugin.cmake"
-      replacement: "# libinput plugin removed (Linux-specific)"
-
-    # Remove tuio and evdev cmake files
-    - pattern: "%{_qt5_plugindir}/generic/libqtuiotouchplugin.so\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevKeyboardPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevMousePlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevTabletPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevTouchScreenPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QTuioTouchPlugin.cmake"
-      replacement: "# tuio/evdev cmake files removed"
-
-    # Remove ibus input context
-    - pattern: "%{_qt5_plugindir}/platforminputcontexts/libibusplatforminputcontextplugin.so"
-      replacement: "# ibus plugin removed (not available on IRIX)"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QIbusPlatformInputContextPlugin.cmake"
-      replacement: "# ibus cmake removed"
-
-    # Remove all EGL sections from gui
-    - pattern: "%if 0%{?egl}\n%{_qt5_libdir}/libQt5EglFSDeviceIntegration.so.5*\n%{_qt5_libdir}/libQt5EglFsKmsSupport.so.5*\n%{_qt5_plugindir}/platforms/libqeglfs.so\n%{_qt5_plugindir}/platforms/libqminimalegl.so\n%dir %{_qt5_plugindir}/egldeviceintegrations/\n%{_qt5_plugindir}/egldeviceintegrations/libqeglfs-kms-integration.so\n%{_qt5_plugindir}/egldeviceintegrations/libqeglfs-x11-integration.so\n%{_qt5_plugindir}/xcbglintegrations/libqxcb-egl-integration.so\n%{_qt5_plugindir}/egldeviceintegrations/libqeglfs-kms-egldevice-integration.so\n%{_qt5_plugindir}/egldeviceintegrations/libqeglfs-emu-integration.so\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QMinimalEglIntegrationPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSIntegrationPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSX11IntegrationPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSKmsGbmIntegrationPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbEglIntegrationPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSKmsEglDeviceIntegrationPlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSEmulatorIntegrationPlugin.cmake\n%endif"
-      replacement: "# EGL sections removed for IRIX"
-
-    # Remove linuxfb and vnc platforms
-    - pattern: "%{_qt5_plugindir}/platforms/libqlinuxfb.so"
-      replacement: "# linuxfb removed (Linux-specific)"
-
-    - pattern: "%{_qt5_plugindir}/platforms/libqvnc.so"
-      replacement: "# vnc removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLinuxFbIntegrationPlugin.cmake"
-      replacement: "# linuxfb cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QVncIntegrationPlugin.cmake"
-      replacement: "# vnc cmake removed"
-
-    # Remove XDG and GTK theme plugins
-    - pattern: "%{_qt5_plugindir}/platformthemes/libqxdgdesktopportal.so\n%{_qt5_plugindir}/platformthemes/libqgtk3.so\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXdgDesktopPortalThemePlugin.cmake\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QGtk3ThemePlugin.cmake"
-      replacement: "# XDG/GTK3 theme plugins removed (not relevant for IRIX)"
-
-    # Remove cups print support
-    # Remove platformthemes and printsupport dirs (contents removed by install_cleanup)
-    - pattern: "%dir %{_qt5_plugindir}/platformthemes/\n%dir %{_qt5_plugindir}/printsupport/"
-      replacement: "# platformthemes and printsupport dirs removed"
-
-    - pattern: "%{_qt5_plugindir}/printsupport/libcupsprintersupport.so\n%{_qt5_libdir}/cmake/Qt5PrintSupport/Qt5PrintSupport_QCupsPrinterSupportPlugin.cmake"
-      replacement: "# CUPS print support removed"
-
-    # Remove xcb-glx integration (OpenGL disabled)
-    - pattern: "%{_qt5_plugindir}/xcbglintegrations/libqxcb-glx-integration.so\n%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbGlxIntegrationPlugin.cmake"
-      replacement: "# XCB GLX integration removed (OpenGL disabled)"
-
-    # ---- 10. Fix %files devel ----
-    # Remove bindir entries (no hardlinks created)
-    - pattern: "%files devel\n%if \"%{_qt5_bindir}\" != \"%{_bindir}\"\n%dir %{_qt5_bindir}\n%endif\n%{_bindir}/moc*\n%{_bindir}/qdbuscpp2xml*\n%{_bindir}/qdbusxml2cpp*\n%{_bindir}/qmake*\n%{_bindir}/rcc*\n%{_bindir}/syncqt*\n%{_bindir}/uic*\n%{_bindir}/qlalr\n%{_bindir}/fixqt4headers.pl\n%{_bindir}/qvkgen\n%{_bindir}/tracegen"
-      replacement: |
-        %files devel
-        %dir %{_qt5_bindir}
-
-    # Remove D-Bus tools from devel
-    - pattern: "%{_qt5_bindir}/qdbuscpp2xml*\n%{_qt5_bindir}/qdbusxml2cpp*"
-      replacement: "# D-Bus tools removed"
-
-    # Remove qvkgen from devel (Vulkan disabled)
-    - pattern: "%{_qt5_bindir}/qvkgen"
-      replacement: "# qvkgen removed (Vulkan disabled)"
-
-    # Remove D-Bus headers and cmake
-    - pattern: "%{_qt5_headerdir}/QtDBus/"
-      replacement: "# QtDBus headers removed"
-
-    # Remove OpenGL headers and cmake from devel
-    - pattern: "%{_qt5_headerdir}/QtOpenGL/"
-      replacement: "# QtOpenGL headers removed"
-
-    # Remove PlatformHeaders (EGL/Vulkan specific)
-    - pattern: "%{_qt5_headerdir}/QtPlatformHeaders/"
-      replacement: "# QtPlatformHeaders removed"
-
-    # Remove PrintSupport headers
-    - pattern: "%{_qt5_headerdir}/QtPrintSupport/"
-      replacement: "# QtPrintSupport headers removed"
-
-    # Remove QtXcb private headers
-    - pattern: "%{_qt5_headerdir}/QtXcb/"
-      replacement: "# QtXcb private headers removed"
-
-    # Remove EglFSDeviceIntegration header
-    - pattern: "%{_qt5_headerdir}/QtEglFSDeviceIntegration"
-      replacement: "# EglFS headers removed"
-
-    # Remove InputSupport header
-    - pattern: "%{_qt5_headerdir}/QtInputSupport"
-      replacement: "# InputSupport headers removed"
-
-    # Remove EdidSupport header
-    - pattern: "%{_qt5_headerdir}/QtEdidSupport"
-      replacement: "# EdidSupport headers removed"
-
-    # Remove XkbCommonSupport header
-    - pattern: "%{_qt5_headerdir}/QtXkbCommonSupport"
-      replacement: "# XkbCommonSupport headers removed"
-
-    # Remove D-Bus .prl/.so/.pc from devel
-    - pattern: "%{_qt5_libdir}/libQt5DBus.prl\n%{_qt5_libdir}/libQt5DBus.so"
-      replacement: "# Qt5DBus devel files removed"
-
-    # Remove OpenGL devel files
-    - pattern: "%{_qt5_libdir}/libQt5OpenGL.prl\n%{_qt5_libdir}/libQt5OpenGL.so"
-      replacement: "# Qt5OpenGL devel files removed"
-
-    # Remove PrintSupport devel files
-    - pattern: "%{_qt5_libdir}/libQt5PrintSupport.prl\n%{_qt5_libdir}/libQt5PrintSupport.so"
-      replacement: "# Qt5PrintSupport devel files removed"
-
-    # Remove EglFSDeviceIntegration devel files
-    - pattern: "%{_qt5_libdir}/libQt5EglFSDeviceIntegration.prl\n%{_qt5_libdir}/libQt5EglFSDeviceIntegration.so"
-      replacement: "# EglFS devel files removed"
-
-    # Remove D-Bus cmake
-    - pattern: "%{_qt5_libdir}/cmake/Qt5DBus/Qt5DBusConfig*.cmake\n%{_qt5_libdir}/cmake/Qt5DBus/Qt5DBusMacros.cmake"
-      replacement: "# Qt5DBus cmake removed"
-
-    # Remove OpenGL cmake
-    - pattern: "%{_qt5_libdir}/cmake/Qt5OpenGL/Qt5OpenGLConfig*.cmake"
-      replacement: "# Qt5OpenGL cmake removed"
-
-    # Remove PrintSupport cmake
-    - pattern: "%{_qt5_libdir}/cmake/Qt5PrintSupport/Qt5PrintSupportConfig*.cmake"
-      replacement: "# Qt5PrintSupport cmake removed"
-
-    # Remove EGL/Vulkan/Accessibility cmake dirs from devel
-    - pattern: "%{_qt5_libdir}/cmake/Qt5AccessibilitySupport/"
-      replacement: "# AccessibilitySupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5DeviceDiscoverySupport/"
-      replacement: "# DeviceDiscoverySupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5EdidSupport/"
-      replacement: "# EdidSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5EglFSDeviceIntegration/"
-      replacement: "# EglFSDeviceIntegration cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5EglFsKmsSupport/"
-      replacement: "# EglFsKmsSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5EglSupport/"
-      replacement: "# EglSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5EventDispatcherSupport/"
-      replacement: "# EventDispatcherSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5FbSupport/"
-      replacement: "# FbSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5FontDatabaseSupport/"
-      replacement: "# FontDatabaseSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5GlxSupport/"
-      replacement: "# GlxSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5InputSupport/"
-      replacement: "# InputSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5KmsSupport/"
-      replacement: "# KmsSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5LinuxAccessibilitySupport/"
-      replacement: "# LinuxAccessibilitySupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5PlatformCompositorSupport/"
-      replacement: "# PlatformCompositorSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5ServiceSupport/"
-      replacement: "# ServiceSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5ThemeSupport/"
-      replacement: "# ThemeSupport cmake removed"
-
-    - pattern: "%{_qt5_libdir}/cmake/Qt5XkbCommonSupport/"
-      replacement: "# XkbCommonSupport cmake removed"
-
-    # Remove EGL KMS prl/so from devel (conditional section)
-    - pattern: "%if 0%{?egl}\n%{_qt5_libdir}/libQt5EglFsKmsSupport.prl\n%{_qt5_libdir}/libQt5EglFsKmsSupport.so\n%endif"
-      replacement: "# EGL KMS devel files removed"
-
-    # Remove tracegen from devel
-    - pattern: "%{_qt5_libdir}/qt5/bin/tracegen"
-      replacement: "# tracegen removed"
-
-    # Remove D-Bus .pc from devel
-    - pattern: "%{_qt5_libdir}/pkgconfig/Qt5DBus.pc"
-      replacement: "# Qt5DBus.pc removed"
-
-    # Remove OpenGL .pc from devel
-    - pattern: "%{_qt5_libdir}/pkgconfig/Qt5OpenGL.pc"
-      replacement: "# Qt5OpenGL.pc removed"
-
-    # Remove PrintSupport .pc from devel
-    - pattern: "%{_qt5_libdir}/pkgconfig/Qt5PrintSupport.pc"
-      replacement: "# Qt5PrintSupport.pc removed"
-
-    # Remove metatypes from devel (metatypes may not build for cross)
-    - pattern: "%{_qt5_libdir}/metatypes/qt5core_metatypes.json\n%{_qt5_libdir}/metatypes/qt5gui_metatypes.json\n%{_qt5_libdir}/metatypes/qt5widgets_metatypes.json"
-      replacement: "# metatypes json files removed for cross-build"
-
-    # Remove private-devel exclude from devel
-    - pattern: "%exclude %{_qt5_headerdir}/*/%{version}/"
-      replacement: "# private-devel exclude removed (subpackage dropped)"
-
-    # Remove devel Requires block (EGL/GL/Vulkan/rpm-macros/clang)
-    # NOTE: Can't use simple "Requires: pkgconfig(gl)" pattern — it's a substring
-    # of BuildRequires. Use the full conditional block as a unique anchor instead.
-    - pattern: "%if 0%{?egl}\nRequires: libEGL-devel\n%endif\nRequires: pkgconfig(gl)\n%if 0%{?vulkan}\nRequires: pkgconfig(vulkan)\n%endif\nRequires: qt5-rpm-macros\n%if 0%{?use_clang}\nRequires: clang >= 3.7.0\n%endif"
-      replacement: "# EGL/GL/Vulkan/rpm-macros/clang requires removed for IRIX cross-build"
-
-    # Add explicit Provides for main package (near License line)
-    - pattern: "License: LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0"
-      replacement: |
-        License: LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-        Provides: qt5-qtbase(mips-32) = %{version}-%{release}
-        Provides: libQt5Core.so.5
-        Provides: libQt5Network.so.5
-        Provides: libQt5Sql.so.5
-        Provides: libQt5Test.so.5
-        Provides: libQt5Xml.so.5
-        Provides: libQt5Concurrent.so.5
-
-    # Add Provides for gui subpackage
-    - pattern: "Provides:  qt5-qtbase-x11 = %{version}-%{release}"
-      replacement: |
-        Provides:  qt5-qtbase-x11 = %{version}-%{release}
-        Provides: qt5-qtbase-gui(mips-32) = %{version}-%{release}
-        Provides: libQt5Gui.so.5
-        Provides: libQt5Widgets.so.5
-        Provides: libQt5XcbQpa.so.5
-
-    # Add Provides for devel subpackage (in %package devel preamble)
-    - pattern: "# EGL/GL/Vulkan/rpm-macros/clang requires removed for IRIX cross-build"
-      replacement: |
-        Provides: qt5-qtbase-devel(mips-32) = %{version}-%{release}
-        # EGL/GL/Vulkan/rpm-macros/clang requires removed for IRIX cross-build
+  - pattern: '%global platform linux-g++
 
+
+      %if 0%{?use_clang}
+
+      %global platform linux-clang
+
+      %endif'
+    replacement: '%global platform linux-g++
+
+      # Qt5 path macros for IRIX cross-compilation (normally from qt5-rpm-macros)
+
+      %global _qt5_prefix %{_libdir}/qt5
+
+      %global _qt5_archdatadir %{_qt5_prefix}
+
+      %global _qt5_bindir %{_qt5_prefix}/bin
+
+      %global _qt5_libdir %{_libdir}
+
+      %global _qt5_libexecdir %{_qt5_prefix}/libexec
+
+      %global _qt5_datadir %{_datadir}/qt5
+
+      %global _qt5_docdir %{_datadir}/doc/qt5
+
+      %global _qt5_examplesdir %{_qt5_prefix}/examples
+
+      %global _qt5_headerdir %{_includedir}/qt5
+
+      %global _qt5_importdir %{_qt5_prefix}/imports
+
+      %global _qt5_plugindir %{_qt5_prefix}/plugins
+
+      %global _qt5_settingsdir %{_sysconfdir}/xdg
+
+      %global _qt5_sysconfdir %{_sysconfdir}/xdg
+
+      %global _qt5_translationdir %{_datadir}/qt5/translations
+
+      '
+  - pattern: '%global egl 1'
+    replacement: '# EGL disabled for IRIX'
+  - pattern: '%global vulkan 1'
+    replacement: '# Vulkan disabled for IRIX'
+  - pattern: '%global sqlite -system-sqlite'
+    replacement: '# SQLite disabled for IRIX'
+  - pattern: '# HACK to make ''fedpkg sources'' consider it ''used"
+
+      Source100: kde-5.15-rollup-20240314.patch.gz'
+    replacement: '# Source100 removed (duplicate of Patch100)'
+  - pattern: '%patch -P56 -p1 -b .libglvnd'
+    replacement: '# Patch56 (libglvnd) skipped — OpenGL disabled for IRIX'
+  - pattern: '%if 0%{?fedora} < 35
+
+      %patch -P58 -p1 -b .firebird
+
+      %else
+
+      %patch -P59 -p1 -b .firebird
+
+      %endif'
+    replacement: '# Firebird patches skipped — SQL drivers disabled for IRIX'
+  - pattern: '%if 0%{?fedora} < 39
+
+      # Use QGnomePlatform by default
+
+      %patch -P200 -p1
+
+      %endif'
+    replacement: '# QGnomePlatform patch skipped — not relevant for IRIX'
+  - pattern: '# move some bundled libs to ensure they''re not accidentally used
+
+      pushd src/3rdparty
+
+      mkdir UNUSED
+
+      mv freetype libjpeg libpng zlib UNUSED/
+
+      %if "%{?sqlite}" == "-system-sqlite"
+
+      mv sqlite UNUSED/
+
+      %endif
+
+      %if "%{?xcb}" != "-qt-xcb"
+
+      mv xcb UNUSED/
+
+      %endif
+
+      popd'
+    replacement: '# move bundled libs to ensure system libs are used
+
+      # Keep zlib — bootstrap qmake statically links bundled zlib on host
+
+      cd src/3rdparty
+
+      mkdir UNUSED
+
+      mv freetype libjpeg libpng UNUSED/
+
+      cd ../..
+
+      '
+  - pattern: "%build\n# QT is known not to work properly with LTO at this point.  Some of the issues\n# are being worked on upstream and disabling LTO should be re-evaluated as\n# we update this change.\
+      \  Until such time...\n# Disable LTO\n# https://bugzilla.redhat.com/1900527\n%define _lto_cflags %{nil}\n\n## FIXME/TODO:\n# * for %%ix86, add sse2 enabled builds for Qt5Gui, Qt5Core, QtNetwork, see\
+      \ also:\n#   http://anonscm.debian.org/cgit/pkg-kde/qt/qtbase.git/tree/debian/rules (234-249)\n\n## adjust $RPM_OPT_FLAGS\n# remove -fexceptions\nRPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed 's|-fexceptions||g'`\n\
+      RPM_OPT_FLAGS=\"$RPM_OPT_FLAGS %{?qt5_arm_flag} %{?qt5_deprecated_flag} %{?qt5_null_flag}\"\n\n%if 0%{?use_clang}\nRPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed 's|-fno-delete-null-pointer-checks||g'`\n\
+      %endif\n\nexport CFLAGS=\"$CFLAGS $RPM_OPT_FLAGS\"\nexport CXXFLAGS=\"$CXXFLAGS $RPM_OPT_FLAGS\"\nexport LDFLAGS=\"$LDFLAGS $RPM_LD_FLAGS\"\nexport MAKEFLAGS=\"%{?_smp_mflags}\"\n\n./configure \\\n\
+      \  -verbose \\\n  -confirm-license \\\n  -opensource \\\n  -prefix %{_qt5_prefix} \\\n  -archdatadir %{_qt5_archdatadir} \\\n  -bindir %{_qt5_bindir} \\\n  -libdir %{_qt5_libdir} \\\n  -libexecdir\
+      \ %{_qt5_libexecdir} \\\n  -datadir %{_qt5_datadir} \\\n  -docdir %{_qt5_docdir} \\\n  -examplesdir %{_qt5_examplesdir} \\\n  -headerdir %{_qt5_headerdir} \\\n  -importdir %{_qt5_importdir} \\\n \
+      \ -plugindir %{_qt5_plugindir} \\\n  -sysconfdir %{_qt5_sysconfdir} \\\n  -translationdir %{_qt5_translationdir} \\\n  -platform %{platform} \\\n  -release \\\n  -shared \\\n  -accessibility \\\n\
+      \  -dbus-linked \\\n  %{?egl:-egl -eglfs} \\\n  -fontconfig \\\n  -glib \\\n  -gtk \\\n  %{?ibase} \\\n  -icu \\\n  -journald \\\n  -optimized-qmake \\\n  -openssl-linked \\\n  -libproxy \\\n  -sctp\
+      \ \\\n  %{!?examples:-nomake examples} \\\n  %{!?tests:-nomake tests} \\\n  -no-pch \\\n  -no-reduce-relocations \\\n  -no-rpath \\\n  -no-separate-debug-info \\\n  %{?no_sse2} \\\n  -no-strip \\\n\
+      \  -system-libjpeg \\\n  -system-libpng \\\n  %{?harfbuzz} \\\n  %{?pcre} \\\n  %{?sqlite} \\\n  %{?tds} \\\n  %{?xcb} \\\n  %{?xkbcommon} \\\n  -system-zlib \\\n  %{?use_gold_linker} \\\n  -no-directfb\
+      \ \\\n  -no-feature-relocatable \\\n  %{?no_feature_renameat2} \\\n  %{?no_feature_statx} \\\n  %{?no_feature_getentropy} \\\n  QMAKE_CFLAGS_RELEASE=\"${CFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_CXXFLAGS_RELEASE=\"\
+      ${CXXFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_LFLAGS_RELEASE=\"${LDFLAGS:-$RPM_LD_FLAGS}\"\n\n# Validate config results\n%if \"%{?ibase}\" != \"-no-sql-ibase\"\nfor config_test in egl-x11 ibase ; do\n\
+      %else\nfor config_test in egl-x11 ; do\n%endif\nconfig_result=\"$(grep ^cache.${config_test}.result config.cache | cut -d= -f2 | tr -d ' ')\"\nif [ \"${config_result}\" != \"true\" ]; then\n  echo\
+      \ \"${config_test} detection failed\"\n  config_failed=1\nfi\ndone\nif [ ${config_failed} -eq 1 ]; then exit 1; fi\n\n# ensure qmake build using optflags (which can happen if not munging qmake.conf\
+      \ defaults)\nmake clean -C qmake\n%make_build -C qmake all binary \\\n  QMAKE_CFLAGS_RELEASE=\"${CFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_CXXFLAGS_RELEASE=\"${CXXFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_LFLAGS_RELEASE=\"\
+      ${LDFLAGS:-$RPM_LD_FLAGS}\" \\\n  QMAKE_STRIP=\n\n%make_build"
+    replacement: "%build\n%define _lto_cflags %{nil}\n\n# Inject compat library into mkspec for linking\nexport COMPAT_DIR=$(pwd)/mogrix-compat\necho \"QMAKE_LIBS += -L${COMPAT_DIR} -lmogrix-compat\" >>\
+      \ mkspecs/irix-n32-clang/qmake.conf\n\n# PKG_CONFIG must find staged libraries\nexport PKG_CONFIG_LIBDIR=\"/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig\"\n\
+      export PKG_CONFIG_SYSROOT_DIR=\"/opt/sgug-staging\"\n\n./configure \\\n  -verbose \\\n  -confirm-license \\\n  -opensource \\\n  -prefix %{_qt5_prefix} \\\n  -archdatadir %{_qt5_archdatadir} \\\n\
+      \  -bindir %{_qt5_bindir} \\\n  -libdir %{_qt5_libdir} \\\n  -libexecdir %{_qt5_libexecdir} \\\n  -datadir %{_qt5_datadir} \\\n  -docdir %{_qt5_docdir} \\\n  -headerdir %{_qt5_headerdir} \\\n  -importdir\
+      \ %{_qt5_importdir} \\\n  -plugindir %{_qt5_plugindir} \\\n  -sysconfdir %{_qt5_sysconfdir} \\\n  -translationdir %{_qt5_translationdir} \\\n  -platform %{platform} \\\n  -xplatform irix-n32-clang\
+      \ \\\n  -release \\\n  -shared \\\n  -no-accessibility \\\n  -no-dbus \\\n  -no-egl \\\n  -no-eglfs \\\n  -fontconfig \\\n  -no-glib \\\n  -no-gtk \\\n  -no-icu \\\n  -no-journald \\\n  -openssl-linked\
+      \ \\\n  -no-libproxy \\\n  -no-sctp \\\n  -nomake examples \\\n  -nomake tests \\\n  -no-pch \\\n  -no-reduce-relocations \\\n  -no-rpath \\\n  -no-separate-debug-info \\\n  -no-strip \\\n  -system-libjpeg\
+      \ \\\n  -system-libpng \\\n  -system-harfbuzz \\\n  -system-pcre \\\n  -no-sql-sqlite \\\n  -no-sql-mysql \\\n  -no-sql-psql \\\n  -no-sql-odbc \\\n  -no-sql-tds \\\n  -no-sql-ibase \\\n  -xcb \\\n\
+      \  -xkbcommon \\\n  -system-zlib \\\n  -no-use-gold-linker \\\n  -no-directfb \\\n  -no-feature-relocatable \\\n  -no-feature-renameat2 \\\n  -no-feature-statx \\\n  -no-feature-getentropy \\\n  -no-vulkan\
+      \ \\\n  -no-opengl \\\n  -no-linuxfb \\\n  -no-kms\n\n%make_build\n"
+  - pattern: '%install
+
+      make install INSTALL_ROOT=%{buildroot}
+
+
+      install -m644 -p -D %{SOURCE1} %{buildroot}%{_qt5_datadir}/qtlogging.ini'
+    replacement: '%install
+
+      make install INSTALL_ROOT=%{buildroot}
+
+      '
+  - pattern: '# Qt5.pc
+
+      cat >%{buildroot}%{_libdir}/pkgconfig/Qt5.pc<<EOF
+
+      prefix=%{_qt5_prefix}
+
+      archdatadir=%{_qt5_archdatadir}
+
+      bindir=%{_qt5_bindir}
+
+      datadir=%{_qt5_datadir}'
+    replacement: '# Create minimal Qt5.pc
+
+      cat >%{buildroot}%{_libdir}/pkgconfig/Qt5.pc<<EOF
+
+      prefix=%{_qt5_prefix}
+
+      libdir=%{_qt5_libdir}
+
+      includedir=%{_qt5_headerdir}
+
+      '
+  - pattern: "# rpm macros\ninstall -p -m644 -D %{SOURCE10} \\\n  %{buildroot}%{rpm_macros_dir}/macros.qt5-qtbase\nsed -i \\\n  -e \"s|@@NAME@@|%{name}|g\" \\\n  -e \"s|@@EPOCH@@|%{?epoch}%{!?epoch:0}|g\"\
+      \ \\\n  -e \"s|@@VERSION@@|%{version}|g\" \\\n  -e \"s|@@EVR@@|%{?epoch:%{epoch:}}%{version}-%{release}|g\" \\\n  %{buildroot}%{rpm_macros_dir}/macros.qt5-qtbase"
+    replacement: '# rpm macros skipped for cross-build'
+  - pattern: '# create/own dirs
+
+      mkdir -p %{buildroot}{%{_qt5_archdatadir}/mkspecs/modules,%{_qt5_importdir},%{_qt5_libexecdir},%{_qt5_plugindir}/{designer,iconengines,script,styles},%{_qt5_translationdir}}
+
+      mkdir -p %{buildroot}%{_sysconfdir}/xdg/QtProject'
+    replacement: '# create standard dirs
+
+      mkdir -p %{buildroot}%{_qt5_archdatadir}/mkspecs/modules
+
+      mkdir -p %{buildroot}%{_qt5_importdir}
+
+      mkdir -p %{buildroot}%{_qt5_libexecdir}
+
+      mkdir -p %{buildroot}%{_qt5_plugindir}/designer
+
+      mkdir -p %{buildroot}%{_qt5_plugindir}/iconengines
+
+      mkdir -p %{buildroot}%{_qt5_plugindir}/script
+
+      mkdir -p %{buildroot}%{_qt5_plugindir}/styles
+
+      mkdir -p %{buildroot}%{_qt5_translationdir}
+
+      '
+  - pattern: "# hardlink files to {_bindir}, add -qt5 postfix to not conflict\nmkdir %{buildroot}%{_bindir}\npushd %{buildroot}%{_qt5_bindir}\nfor i in * ; do\n  case \"${i}\" in\n    moc|qdbuscpp2xml|qdbusxml2cpp|qmake|rcc|syncqt|uic)\n\
+      \      ln -v  ${i} %{buildroot}%{_bindir}/${i}-qt5\n      ln -sv ${i} ${i}-qt5\n      ;;\n    *)\n      ln -v  ${i} %{buildroot}%{_bindir}/${i}\n      ;;\n  esac\ndone\npopd"
+    replacement: '# Hardlinks to %{_bindir} skipped for cross-build'
+  - pattern: "%ifarch %{multilib_archs}\n# multilib: qconfig.h\n  mv %{buildroot}%{_qt5_headerdir}/QtCore/qconfig.h %{buildroot}%{_qt5_headerdir}/QtCore/qconfig-%{__isa_bits}.h\n  install -p -m644 -D %{SOURCE5}\
+      \ %{buildroot}%{_qt5_headerdir}/QtCore/qconfig.h\n%endif"
+    replacement: '# multilib qconfig.h skipped for cross-build'
+  - pattern: "# qtchooser conf\n%if 0%{?qtchooser}\n  mkdir -p %{buildroot}%{_sysconfdir}/xdg/qtchooser\n  pushd    %{buildroot}%{_sysconfdir}/xdg/qtchooser\n  echo \"%{_qt5_bindir}\" >  5-%{__isa_bits}.conf\n\
+      ## FIXME/TODO: verify qtchooser (still) happy if _qt5_prefix uses %%_prefix instead of %%_libdir/qt5\n  echo \"%{_qt5_prefix}\" >> 5-%{__isa_bits}.conf\n  # alternatives targets\n  touch default.conf\
+      \ 5.conf\n  popd\n%endif"
+    replacement: '# qtchooser skipped for IRIX'
+  - pattern: "## .prl/.la file love\n# nuke .prl reference(s) to %%buildroot, excessive (.la-like) libs\npushd %{buildroot}%{_qt5_libdir}\nfor prl_file in libQt5*.prl ; do\n  sed -i -e \"/^QMAKE_PRL_BUILD_DIR/d\"\
+      \ ${prl_file}\n  if [ -f \"$(basename ${prl_file} .prl).so\" ]; then\n    rm -fv \"$(basename ${prl_file} .prl).la\"\n    sed -i -e \"/^QMAKE_PRL_LIBS/d\" ${prl_file}\n  fi\ndone\npopd"
+    replacement: "# Clean up .prl files\ncd %{buildroot}%{_qt5_libdir}\nfor prl_file in libQt5*.prl ; do\n  [ -f \"$prl_file\" ] || continue\n  sed -i -e \"/^QMAKE_PRL_BUILD_DIR/d\" ${prl_file}\n  rm -fv\
+      \ \"$(basename ${prl_file} .prl).la\" 2>/dev/null || :\n  sed -i -e \"/^QMAKE_PRL_LIBS/d\" ${prl_file}\ndone\ncd -\n"
+  - pattern: install -p -m755 -D %{SOURCE6} %{buildroot}%{_sysconfdir}/X11/xinit/xinitrc.d/10-qt5-check-opengl2.sh
+    replacement: '# OpenGL check script skipped for IRIX'
+  - pattern: '# f29+ enables sse2 unconditionally on ix86 -- rex
+
+      %if 0%{?fedora} < 29 && 0%{?rhel} < 9
+
+      # fix bz#1442553 multilib issue
+
+      privat_header_file=%{buildroot}%{_qt5_headerdir}/QtCore/%{version}/QtCore/private/qconfig_p.h
+
+      grep -v QT_FEATURE_sse2 $privat_header_file > ${privat_header_file}.me
+
+      mv ${privat_header_file}.me ${privat_header_file}
+
+      cat >>${privat_header_file}<<EOF
+
+      #if defined(__x86_64__)
+
+      #define QT_FEATURE_sse2 1
+
+      #elif defined(__i386__)
+
+      #define QT_FEATURE_sse2 -1
+
+      #endif
+
+      EOF
+
+      %endif'
+    replacement: '# SSE2 header patching skipped for MIPS'
+  - pattern: '# install privat headers for qtxcb
+
+      mkdir -p %{buildroot}%{_qt5_headerdir}/QtXcb
+
+      install -m 644 src/plugins/platforms/xcb/*.h %{buildroot}%{_qt5_headerdir}/QtXcb/'
+    replacement: '# Private xcb headers skipped for cross-build'
+  - pattern: '# drop Qt5Bootstrap from -static (#2017661)
+
+      rm -f %{buildroot}%{_qt5_libdir}/libQt5Bootstrap.*a
+
+      rm -f %{buildroot}%{_qt5_libdir}/libQt5Bootstrap.prl'
+    replacement: '# Qt5Bootstrap removal handled by install_cleanup'
+  - pattern: '%check
+
+      # verify Qt5.pc
+
+      export PKG_CONFIG_PATH=%{buildroot}%{_libdir}/pkgconfig
+
+      test "$(pkg-config --modversion Qt5)" = "%{version}"'
+    replacement: '# %check skipped for cross-build (can''t run MIPS binaries)'
+  - pattern: "%if 0%{?qtchooser}\n%pre\nif [ $1 -gt 1 ] ; then\n# remove short-lived qt5.conf alternatives\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-qt5 \\\n  %{_sysconfdir}/xdg/qtchooser/qt5-%{__isa_bits}.conf\
+      \ >& /dev/null ||:\n\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-default \\\n  %{_sysconfdir}/xdg/qtchooser/qt5.conf >& /dev/null ||:\nfi\n%endif\n\n%post\n%{?ldconfig}\n%if 0%{?qtchooser}\n\
+      %{_sbindir}/update-alternatives \\\n  --install %{_sysconfdir}/xdg/qtchooser/5.conf \\\n  qtchooser-5 \\\n  %{_sysconfdir}/xdg/qtchooser/5-%{__isa_bits}.conf \\\n  %{priority}\n\n%{_sbindir}/update-alternatives\
+      \ \\\n  --install %{_sysconfdir}/xdg/qtchooser/default.conf \\\n  qtchooser-default \\\n  %{_sysconfdir}/xdg/qtchooser/5.conf \\\n  %{priority}\n%endif\n\n%postun\n%{?ldconfig}\n%if 0%{?qtchooser}\n\
+      if [ $1 -eq 0 ]; then\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-5 \\\n  %{_sysconfdir}/xdg/qtchooser/5-%{__isa_bits}.conf\n\n%{_sbindir}/update-alternatives  \\\n  --remove qtchooser-default\
+      \ \\\n  %{_sysconfdir}/xdg/qtchooser/5.conf\nfi\n%endif"
+    replacement: '# All scriptlets removed for IRIX cross-build'
+  - pattern: '%files
+
+      %license LICENSE.FDL
+
+      %license LICENSE.GPL*
+
+      %license LICENSE.LGPL*
+
+      %if 0%{?qtchooser}
+
+      %dir %{_sysconfdir}/xdg/qtchooser
+
+      # not editable config files, so not using %%config here
+
+      %ghost %{_sysconfdir}/xdg/qtchooser/default.conf
+
+      %ghost %{_sysconfdir}/xdg/qtchooser/5.conf
+
+      %{_sysconfdir}/xdg/qtchooser/5-%{__isa_bits}.conf
+
+      %endif
+
+      %dir %{_sysconfdir}/xdg/QtProject/
+
+      %{_qt5_libdir}/libQt5Concurrent.so.5*
+
+      %{_qt5_libdir}/libQt5Core.so.5*
+
+      %{_qt5_libdir}/libQt5DBus.so.5*
+
+      %{_qt5_libdir}/libQt5Network.so.5*
+
+      %{_qt5_libdir}/libQt5Sql.so.5*
+
+      %{_qt5_libdir}/libQt5Test.so.5*
+
+      %{_qt5_libdir}/libQt5Xml.so.5*'
+    replacement: '%files
+
+      %license LICENSE.FDL
+
+      %license LICENSE.GPL*
+
+      %license LICENSE.LGPL*
+
+      %{_qt5_libdir}/libQt5Concurrent.so.5*
+
+      %{_qt5_libdir}/libQt5Core.so.5*
+
+      %{_qt5_libdir}/libQt5Network.so.5*
+
+      %{_qt5_libdir}/libQt5Sql.so.5*
+
+      %{_qt5_libdir}/libQt5Test.so.5*
+
+      %{_qt5_libdir}/libQt5Xml.so.5*
+
+      '
+  - pattern: '%dir %{_qt5_libdir}/cmake/Qt5DBus/'
+    replacement: '# Qt5DBus cmake dir removed (D-Bus disabled)'
+  - pattern: '%dir %{_qt5_plugindir}/bearer/
+
+      %{_qt5_plugindir}/bearer/libqconnmanbearer.so
+
+      %{_qt5_plugindir}/bearer/libqgenericbearer.so
+
+      %{_qt5_plugindir}/bearer/libqnmbearer.so
+
+      %{_qt5_libdir}/cmake/Qt5Network/Qt5Network_QConnmanEnginePlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Network/Qt5Network_QGenericEnginePlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Network/Qt5Network_QNetworkManagerEnginePlugin.cmake'
+    replacement: '# Bearer plugins removed (Linux-specific)'
+  - pattern: '%dir %{_qt5_plugindir}/sqldrivers/
+
+      %dir %{_qt5_plugindir}/styles/
+
+      %{_qt5_plugindir}/sqldrivers/libqsqlite.so
+
+      %{_qt5_libdir}/cmake/Qt5Sql/Qt5Sql_QSQLiteDriverPlugin.cmake'
+    replacement: '%dir %{_qt5_plugindir}/styles/
+
+      '
+  - pattern: '%dir %{_qt5_libdir}/cmake/Qt5OpenGL/'
+    replacement: '# Qt5OpenGL cmake dir removed (OpenGL disabled)'
+  - pattern: '%dir %{_qt5_libdir}/cmake/Qt5PrintSupport/'
+    replacement: '# Qt5PrintSupport cmake dir removed (CUPS disabled)'
+  - pattern: '%dir %{_qt5_docdir}/
+
+      %{_qt5_docdir}/global/
+
+      %{_qt5_docdir}/config/'
+    replacement: '# doc dirs removed for cross-build'
+  - pattern: '%{_qt5_datadir}/qtlogging.ini'
+    replacement: '# qtlogging.ini removed for cross-build'
+  - pattern: '%ldconfig_scriptlets gui'
+    replacement: '# ldconfig scriptlets removed for IRIX'
+  - pattern: '%files gui
+
+      %dir %{_sysconfdir}/X11/xinit
+
+      %dir %{_sysconfdir}/X11/xinit/xinitrc.d/
+
+      %{_sysconfdir}/X11/xinit/xinitrc.d/10-qt5-check-opengl2.sh'
+    replacement: '%files gui'
+  - pattern: '%{_qt5_libdir}/libQt5OpenGL.so.5*'
+    replacement: '# libQt5OpenGL removed (OpenGL disabled)'
+  - pattern: '%{_qt5_libdir}/libQt5PrintSupport.so.5*'
+    replacement: '# libQt5PrintSupport removed (CUPS disabled)'
+  - pattern: '%{_qt5_plugindir}/generic/libqevdevkeyboardplugin.so
+
+      %{_qt5_plugindir}/generic/libqevdevmouseplugin.so
+
+      %{_qt5_plugindir}/generic/libqevdevtabletplugin.so
+
+      %{_qt5_plugindir}/generic/libqevdevtouchplugin.so'
+    replacement: '# evdev plugins removed (Linux-specific)'
+  - pattern: '%{_qt5_plugindir}/generic/libqlibinputplugin.so
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLibInputPlugin.cmake'
+    replacement: '# libinput plugin removed (Linux-specific)'
+  - pattern: '%{_qt5_plugindir}/generic/libqtuiotouchplugin.so
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevKeyboardPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevMousePlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevTabletPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdevTouchScreenPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QTuioTouchPlugin.cmake'
+    replacement: '# tuio/evdev cmake files removed'
+  - pattern: '%{_qt5_plugindir}/platforminputcontexts/libibusplatforminputcontextplugin.so'
+    replacement: '# ibus plugin removed (not available on IRIX)'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QIbusPlatformInputContextPlugin.cmake'
+    replacement: '# ibus cmake removed'
+  - pattern: '%if 0%{?egl}
+
+      %{_qt5_libdir}/libQt5EglFSDeviceIntegration.so.5*
+
+      %{_qt5_libdir}/libQt5EglFsKmsSupport.so.5*
+
+      %{_qt5_plugindir}/platforms/libqeglfs.so
+
+      %{_qt5_plugindir}/platforms/libqminimalegl.so
+
+      %dir %{_qt5_plugindir}/egldeviceintegrations/
+
+      %{_qt5_plugindir}/egldeviceintegrations/libqeglfs-kms-integration.so
+
+      %{_qt5_plugindir}/egldeviceintegrations/libqeglfs-x11-integration.so
+
+      %{_qt5_plugindir}/xcbglintegrations/libqxcb-egl-integration.so
+
+      %{_qt5_plugindir}/egldeviceintegrations/libqeglfs-kms-egldevice-integration.so
+
+      %{_qt5_plugindir}/egldeviceintegrations/libqeglfs-emu-integration.so
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QMinimalEglIntegrationPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSIntegrationPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSX11IntegrationPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSKmsGbmIntegrationPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbEglIntegrationPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSKmsEglDeviceIntegrationPlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSEmulatorIntegrationPlugin.cmake
+
+      %endif'
+    replacement: '# EGL sections removed for IRIX'
+  - pattern: '%{_qt5_plugindir}/platforms/libqlinuxfb.so'
+    replacement: '# linuxfb removed (Linux-specific)'
+  - pattern: '%{_qt5_plugindir}/platforms/libqvnc.so'
+    replacement: '# vnc removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLinuxFbIntegrationPlugin.cmake'
+    replacement: '# linuxfb cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QVncIntegrationPlugin.cmake'
+    replacement: '# vnc cmake removed'
+  - pattern: '%{_qt5_plugindir}/platformthemes/libqxdgdesktopportal.so
+
+      %{_qt5_plugindir}/platformthemes/libqgtk3.so
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXdgDesktopPortalThemePlugin.cmake
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QGtk3ThemePlugin.cmake'
+    replacement: '# XDG/GTK3 theme plugins removed (not relevant for IRIX)'
+  - pattern: '%dir %{_qt5_plugindir}/platformthemes/
+
+      %dir %{_qt5_plugindir}/printsupport/'
+    replacement: '# platformthemes and printsupport dirs removed'
+  - pattern: '%{_qt5_plugindir}/printsupport/libcupsprintersupport.so
+
+      %{_qt5_libdir}/cmake/Qt5PrintSupport/Qt5PrintSupport_QCupsPrinterSupportPlugin.cmake'
+    replacement: '# CUPS print support removed'
+  - pattern: '%{_qt5_plugindir}/xcbglintegrations/libqxcb-glx-integration.so
+
+      %{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbGlxIntegrationPlugin.cmake'
+    replacement: '# XCB GLX integration removed (OpenGL disabled)'
+  - pattern: '%files devel
+
+      %if "%{_qt5_bindir}" != "%{_bindir}"
+
+      %dir %{_qt5_bindir}
+
+      %endif
+
+      %{_bindir}/moc*
+
+      %{_bindir}/qdbuscpp2xml*
+
+      %{_bindir}/qdbusxml2cpp*
+
+      %{_bindir}/qmake*
+
+      %{_bindir}/rcc*
+
+      %{_bindir}/syncqt*
+
+      %{_bindir}/uic*
+
+      %{_bindir}/qlalr
+
+      %{_bindir}/fixqt4headers.pl
+
+      %{_bindir}/qvkgen
+
+      %{_bindir}/tracegen'
+    replacement: '%files devel
+
+      %dir %{_qt5_bindir}
+
+      '
+  - pattern: '%{_qt5_bindir}/qdbuscpp2xml*
+
+      %{_qt5_bindir}/qdbusxml2cpp*'
+    replacement: '# D-Bus tools removed'
+  - pattern: '%{_qt5_bindir}/qvkgen'
+    replacement: '# qvkgen removed (Vulkan disabled)'
+  - pattern: '%{_qt5_headerdir}/QtDBus/'
+    replacement: '# QtDBus headers removed'
+  - pattern: '%{_qt5_headerdir}/QtOpenGL/'
+    replacement: '# QtOpenGL headers removed'
+  - pattern: '%{_qt5_headerdir}/QtPlatformHeaders/'
+    replacement: '# QtPlatformHeaders removed'
+  - pattern: '%{_qt5_headerdir}/QtPrintSupport/'
+    replacement: '# QtPrintSupport headers removed'
+  - pattern: '%{_qt5_headerdir}/QtXcb/'
+    replacement: '# QtXcb private headers removed'
+  - pattern: '%{_qt5_headerdir}/QtEglFSDeviceIntegration'
+    replacement: '# EglFS headers removed'
+  - pattern: '%{_qt5_headerdir}/QtInputSupport'
+    replacement: '# InputSupport headers removed'
+  - pattern: '%{_qt5_headerdir}/QtEdidSupport'
+    replacement: '# EdidSupport headers removed'
+  - pattern: '%{_qt5_headerdir}/QtXkbCommonSupport'
+    replacement: '# XkbCommonSupport headers removed'
+  - pattern: '%{_qt5_libdir}/libQt5DBus.prl
+
+      %{_qt5_libdir}/libQt5DBus.so'
+    replacement: '# Qt5DBus devel files removed'
+  - pattern: '%{_qt5_libdir}/libQt5OpenGL.prl
+
+      %{_qt5_libdir}/libQt5OpenGL.so'
+    replacement: '# Qt5OpenGL devel files removed'
+  - pattern: '%{_qt5_libdir}/libQt5PrintSupport.prl
+
+      %{_qt5_libdir}/libQt5PrintSupport.so'
+    replacement: '# Qt5PrintSupport devel files removed'
+  - pattern: '%{_qt5_libdir}/libQt5EglFSDeviceIntegration.prl
+
+      %{_qt5_libdir}/libQt5EglFSDeviceIntegration.so'
+    replacement: '# EglFS devel files removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5DBus/Qt5DBusConfig*.cmake
+
+      %{_qt5_libdir}/cmake/Qt5DBus/Qt5DBusMacros.cmake'
+    replacement: '# Qt5DBus cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5OpenGL/Qt5OpenGLConfig*.cmake'
+    replacement: '# Qt5OpenGL cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5PrintSupport/Qt5PrintSupportConfig*.cmake'
+    replacement: '# Qt5PrintSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5AccessibilitySupport/'
+    replacement: '# AccessibilitySupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5DeviceDiscoverySupport/'
+    replacement: '# DeviceDiscoverySupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5EdidSupport/'
+    replacement: '# EdidSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5EglFSDeviceIntegration/'
+    replacement: '# EglFSDeviceIntegration cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5EglFsKmsSupport/'
+    replacement: '# EglFsKmsSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5EglSupport/'
+    replacement: '# EglSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5EventDispatcherSupport/'
+    replacement: '# EventDispatcherSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5FbSupport/'
+    replacement: '# FbSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5FontDatabaseSupport/'
+    replacement: '# FontDatabaseSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5GlxSupport/'
+    replacement: '# GlxSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5InputSupport/'
+    replacement: '# InputSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5KmsSupport/'
+    replacement: '# KmsSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5LinuxAccessibilitySupport/'
+    replacement: '# LinuxAccessibilitySupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5PlatformCompositorSupport/'
+    replacement: '# PlatformCompositorSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5ServiceSupport/'
+    replacement: '# ServiceSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5ThemeSupport/'
+    replacement: '# ThemeSupport cmake removed'
+  - pattern: '%{_qt5_libdir}/cmake/Qt5XkbCommonSupport/'
+    replacement: '# XkbCommonSupport cmake removed'
+  - pattern: '%if 0%{?egl}
+
+      %{_qt5_libdir}/libQt5EglFsKmsSupport.prl
+
+      %{_qt5_libdir}/libQt5EglFsKmsSupport.so
+
+      %endif'
+    replacement: '# EGL KMS devel files removed'
+  - pattern: '%{_qt5_libdir}/qt5/bin/tracegen'
+    replacement: '# tracegen removed'
+  - pattern: '%{_qt5_libdir}/pkgconfig/Qt5DBus.pc'
+    replacement: '# Qt5DBus.pc removed'
+  - pattern: '%{_qt5_libdir}/pkgconfig/Qt5OpenGL.pc'
+    replacement: '# Qt5OpenGL.pc removed'
+  - pattern: '%{_qt5_libdir}/pkgconfig/Qt5PrintSupport.pc'
+    replacement: '# Qt5PrintSupport.pc removed'
+  - pattern: '%{_qt5_libdir}/metatypes/qt5core_metatypes.json
+
+      %{_qt5_libdir}/metatypes/qt5gui_metatypes.json
+
+      %{_qt5_libdir}/metatypes/qt5widgets_metatypes.json'
+    replacement: '# metatypes json files removed for cross-build'
+  - pattern: '%exclude %{_qt5_headerdir}/*/%{version}/'
+    replacement: '# private-devel exclude removed (subpackage dropped)'
+  - pattern: '%if 0%{?egl}
+
+      Requires: libEGL-devel
+
+      %endif
+
+      Requires: pkgconfig(gl)
+
+      %if 0%{?vulkan}
+
+      Requires: pkgconfig(vulkan)
+
+      %endif
+
+      Requires: qt5-rpm-macros
+
+      %if 0%{?use_clang}
+
+      Requires: clang >= 3.7.0
+
+      %endif'
+    replacement: '# EGL/GL/Vulkan/rpm-macros/clang requires removed for IRIX cross-build'
+  - pattern: 'License: LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0'
+    replacement: 'License: LGPL-3.0-only OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+      Provides: qt5-qtbase(mips-32) = %{version}-%{release}
+
+      Provides: libQt5Core.so.5
+
+      Provides: libQt5Network.so.5
+
+      Provides: libQt5Sql.so.5
+
+      Provides: libQt5Test.so.5
+
+      Provides: libQt5Xml.so.5
+
+      Provides: libQt5Concurrent.so.5
+
+      '
+  - pattern: 'Provides:  qt5-qtbase-x11 = %{version}-%{release}'
+    replacement: 'Provides:  qt5-qtbase-x11 = %{version}-%{release}
+
+      Provides: qt5-qtbase-gui(mips-32) = %{version}-%{release}
+
+      Provides: libQt5Gui.so.5
+
+      Provides: libQt5Widgets.so.5
+
+      Provides: libQt5XcbQpa.so.5
+
+      '
+  - pattern: '# EGL/GL/Vulkan/rpm-macros/clang requires removed for IRIX cross-build'
+    replacement: 'Provides: qt5-qtbase-devel(mips-32) = %{version}-%{release}
+
+      # EGL/GL/Vulkan/rpm-macros/clang requires removed for IRIX cross-build
+
+      '
   prep_commands:
-    # Add Q_OS_IRIX to OS detection (Qt5 has no IRIX support; __sgi defined by irix-cxx)
-    - "sed -i '/^#  define Q_OS_HAIKU$/a #elif defined(__sgi)\\n#  define Q_OS_IRIX' src/corelib/global/qsystemdetection.h"
-    # Copy IRIX cross-compilation mkspecs into Qt5 source tree
-    - "cp -r /home/edodd/projects/github/unxmaal/mogrix/cross/mkspecs/irix-n32-clang mkspecs/"
-    # IRIX struct flock (from fcntl.h) shadows flock() function in C++ — disable BSD locking
-    - "sed -i '/Q_OS_RTEMS/s/Q_OS_RTEMS/Q_OS_IRIX) || defined(Q_OS_RTEMS/' src/corelib/io/qlockfile_unix.cpp"
-    # Fix ambiguous QByteArray::number(perms,8) — cast mode_t to uint
-    - "sed -i 's/QByteArray::number(perms, 8)/QByteArray::number(static_cast<uint>(perms), 8)/' src/corelib/io/qstandardpaths_unix.cpp"
-    # IRIX lacks _SC_SYMLOOP_MAX — define SYMLOOP_MAX so the #ifdef branch is taken
-    - "sed -i '/#include <sys\\/param.h>/a #ifndef SYMLOOP_MAX\\n#define SYMLOOP_MAX 8\\n#endif' src/corelib/time/qtimezoneprivate_tz.cpp"
-    # IRIX has no arpa/nameser_compat.h — skip it like OpenBSD does
-    - "sed -i 's/Q_OS_OPENBSD/Q_OS_OPENBSD) \\&\\& !defined(Q_OS_IRIX/' src/network/kernel/qdnslookup_unix.cpp"
-    # IRIX resolv.h uses struct __res_state, not res_state typedef
-    - "sed -i '/#include <resolv.h>/a #ifdef Q_OS_IRIX\\ntypedef struct __res_state *res_state;\\n#endif' src/network/kernel/qdnslookup_unix.cpp"
-    # Fix %zu format specifiers in 3rd-party code (IRIX libc crashes on %z)
-    - "find src/3rdparty -name '*.c' -o -name '*.h' | xargs sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' 2>/dev/null || :"
-
+  - 'sed -i ''/^#  define Q_OS_HAIKU$/a #elif defined(__sgi)\n#  define Q_OS_IRIX'' src/corelib/global/qsystemdetection.h'
+  - cp -r /home/edodd/projects/github/unxmaal/mogrix/cross/mkspecs/irix-n32-clang mkspecs/
+  - sed -i '/Q_OS_RTEMS/s/Q_OS_RTEMS/Q_OS_IRIX) || defined(Q_OS_RTEMS/' src/corelib/io/qlockfile_unix.cpp
+  - sed -i 's/QByteArray::number(perms, 8)/QByteArray::number(static_cast<uint>(perms), 8)/' src/corelib/io/qstandardpaths_unix.cpp
+  - 'sed -i ''/#include <sys\/param.h>/a #ifndef SYMLOOP_MAX\n#define SYMLOOP_MAX 8\n#endif'' src/corelib/time/qtimezoneprivate_tz.cpp'
+  - sed -i 's/Q_OS_OPENBSD/Q_OS_OPENBSD) \&\& !defined(Q_OS_IRIX/' src/network/kernel/qdnslookup_unix.cpp
+  - 'sed -i ''/#include <resolv.h>/a #ifdef Q_OS_IRIX\ntypedef struct __res_state *res_state;\n#endif'' src/network/kernel/qdnslookup_unix.cpp'
+  - 'find src/3rdparty -name ''*.c'' -o -name ''*.h'' | xargs sed -i ''s/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g'' 2>/dev/null || :'
   install_cleanup:
-    # Remove all static libraries
-    - "rm -f %{buildroot}%{_qt5_libdir}/*.a"
-    - "rm -f %{buildroot}%{_qt5_libdir}/*.la"
-    # Remove D-Bus files
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5DBus*"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtDBus"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5DBus"
-    - "rm -f %{buildroot}%{_qt5_libdir}/pkgconfig/Qt5DBus.pc"
-    # Remove OpenGL files
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5OpenGL*"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtOpenGL"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5OpenGL"
-    - "rm -f %{buildroot}%{_qt5_libdir}/pkgconfig/Qt5OpenGL.pc"
-    # Remove PrintSupport files
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5PrintSupport*"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtPrintSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5PrintSupport"
-    - "rm -f %{buildroot}%{_qt5_libdir}/pkgconfig/Qt5PrintSupport.pc"
-    # Remove EGL/EGLFS files
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5EglFS*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5Egl*"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtEglFS*"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtEgl*"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5EglFS*"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5Egl*"
-    # Remove Linux-specific support libs
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5AccessibilitySupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5DeviceDiscoverySupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5EdidSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5EventDispatcherSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5FbSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5FontDatabaseSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5GlxSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5InputSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5KmsSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5LinuxAccessibilitySupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5PlatformCompositorSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5ServiceSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5ThemeSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5XkbCommonSupport"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5VulkanSupport"
-    # Remove Linux-specific headers
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtPlatformHeaders"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtInputSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtEdidSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtXkbCommonSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtXcb"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtVulkanSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtLinuxAccessibilitySupport"
-    # Remove SQL driver plugins
-    - "rm -rf %{buildroot}%{_qt5_plugindir}/sqldrivers"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5Sql/Qt5Sql_Q*DriverPlugin.cmake"
-    # Remove bearer plugins
-    - "rm -rf %{buildroot}%{_qt5_plugindir}/bearer"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Network/Qt5Network_Q*Plugin.cmake"
-    # Remove Linux-specific plugins
-    - "rm -f %{buildroot}%{_qt5_plugindir}/generic/libqevdev*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/generic/libqlibinput*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/generic/libqtuiotouchplugin.so"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/platforminputcontexts/libibus*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqeglfs*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqminimalegl*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqlinuxfb*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqvnc*"
-    - "rm -rf %{buildroot}%{_qt5_plugindir}/egldeviceintegrations"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/xcbglintegrations/libqxcb-egl*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/xcbglintegrations/libqxcb-glx*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/platformthemes/libqxdgdesktopportal*"
-    - "rm -f %{buildroot}%{_qt5_plugindir}/platformthemes/libqgtk3*"
-    # Remove CUPS print support plugin
-    - "rm -f %{buildroot}%{_qt5_plugindir}/printsupport/libcupsprintersupport.so"
-    - "rm -rf %{buildroot}%{_qt5_plugindir}/printsupport"
-    # Remove D-Bus related cmake files
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdev*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLibInput*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QTuio*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QIbus*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFS*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QMinimalEgl*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSX11*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSKms*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbEgl*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLinuxFb*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QVnc*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXdgDesktopPortal*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QGtk3*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbGlx*"
-    - "rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5PrintSupport/Qt5PrintSupport_QCupsPrinter*"
-    # Remove rpm macros
-    - "rm -rf %{buildroot}/etc/rpm"
-    - "rm -rf %{buildroot}%{_rpmconfigdir} 2>/dev/null || :"
-    # Remove tracegen
-    - "rm -f %{buildroot}%{_qt5_bindir}/tracegen"
-    - "rm -f %{buildroot}%{_qt5_libdir}/qt5/bin/tracegen"
-    # Remove qvkgen
-    - "rm -f %{buildroot}%{_qt5_bindir}/qvkgen"
-    # Remove D-Bus binaries
-    - "rm -f %{buildroot}%{_qt5_bindir}/qdbuscpp2xml"
-    - "rm -f %{buildroot}%{_qt5_bindir}/qdbusxml2cpp"
-    # Remove metatypes
-    - "rm -rf %{buildroot}%{_qt5_libdir}/metatypes"
-    # Remove Qt5Bootstrap
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5Bootstrap*"
-    # Remove examples
-    - "rm -rf %{buildroot}%{_qt5_examplesdir}"
-    # Remove docs
-    - "rm -rf %{buildroot}%{_qt5_docdir}"
-    # Remove qtlogging.ini
-    - "rm -f %{buildroot}%{_qt5_datadir}/qtlogging.ini"
-    # Remove internal support library headers and .prl files (from dropped private-devel subpkg)
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtDeviceDiscoverySupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtEventDispatcherSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtFbSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtFontDatabaseSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtServiceSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtThemeSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtInputSupport"
-    - "rm -rf %{buildroot}%{_qt5_headerdir}/QtZlib"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5DeviceDiscoverySupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5EdidSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5EventDispatcherSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5FbSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5FontDatabaseSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5InputSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5ServiceSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5ThemeSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5XkbCommonSupport.prl"
-    - "rm -f %{buildroot}%{_qt5_libdir}/libQt5Zlib.prl"
-    - "rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5Zlib"
-    # Remove X11 xinit scripts
-    - "rm -rf %{buildroot}%{_sysconfdir}/X11"
-    # Remove QtProject dir (created by FC40 spec)
-    - "rm -rf %{buildroot}%{_sysconfdir}/xdg/QtProject"
-
+  - rm -f %{buildroot}%{_qt5_libdir}/*.a
+  - rm -f %{buildroot}%{_qt5_libdir}/*.la
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5DBus*
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtDBus
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5DBus
+  - rm -f %{buildroot}%{_qt5_libdir}/pkgconfig/Qt5DBus.pc
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5OpenGL*
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtOpenGL
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5OpenGL
+  - rm -f %{buildroot}%{_qt5_libdir}/pkgconfig/Qt5OpenGL.pc
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5PrintSupport*
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtPrintSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5PrintSupport
+  - rm -f %{buildroot}%{_qt5_libdir}/pkgconfig/Qt5PrintSupport.pc
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5EglFS*
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5Egl*
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtEglFS*
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtEgl*
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5EglFS*
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5Egl*
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5AccessibilitySupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5DeviceDiscoverySupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5EdidSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5EventDispatcherSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5FbSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5FontDatabaseSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5GlxSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5InputSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5KmsSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5LinuxAccessibilitySupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5PlatformCompositorSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5ServiceSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5ThemeSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5XkbCommonSupport
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5VulkanSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtPlatformHeaders
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtInputSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtEdidSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtXkbCommonSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtXcb
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtVulkanSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtLinuxAccessibilitySupport
+  - rm -rf %{buildroot}%{_qt5_plugindir}/sqldrivers
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5Sql/Qt5Sql_Q*DriverPlugin.cmake
+  - rm -rf %{buildroot}%{_qt5_plugindir}/bearer
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Network/Qt5Network_Q*Plugin.cmake
+  - rm -f %{buildroot}%{_qt5_plugindir}/generic/libqevdev*
+  - rm -f %{buildroot}%{_qt5_plugindir}/generic/libqlibinput*
+  - rm -f %{buildroot}%{_qt5_plugindir}/generic/libqtuiotouchplugin.so
+  - rm -f %{buildroot}%{_qt5_plugindir}/platforminputcontexts/libibus*
+  - rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqeglfs*
+  - rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqminimalegl*
+  - rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqlinuxfb*
+  - rm -f %{buildroot}%{_qt5_plugindir}/platforms/libqvnc*
+  - rm -rf %{buildroot}%{_qt5_plugindir}/egldeviceintegrations
+  - rm -f %{buildroot}%{_qt5_plugindir}/xcbglintegrations/libqxcb-egl*
+  - rm -f %{buildroot}%{_qt5_plugindir}/xcbglintegrations/libqxcb-glx*
+  - rm -f %{buildroot}%{_qt5_plugindir}/platformthemes/libqxdgdesktopportal*
+  - rm -f %{buildroot}%{_qt5_plugindir}/platformthemes/libqgtk3*
+  - rm -f %{buildroot}%{_qt5_plugindir}/printsupport/libcupsprintersupport.so
+  - rm -rf %{buildroot}%{_qt5_plugindir}/printsupport
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEvdev*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLibInput*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QTuio*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QIbus*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFS*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QMinimalEgl*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSX11*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QEglFSKms*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbEgl*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QLinuxFb*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QVnc*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXdgDesktopPortal*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QGtk3*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5Gui/Qt5Gui_QXcbGlx*
+  - rm -f %{buildroot}%{_qt5_libdir}/cmake/Qt5PrintSupport/Qt5PrintSupport_QCupsPrinter*
+  - rm -rf %{buildroot}/etc/rpm
+  - 'rm -rf %{buildroot}%{_rpmconfigdir} 2>/dev/null || :'
+  - rm -f %{buildroot}%{_qt5_bindir}/tracegen
+  - rm -f %{buildroot}%{_qt5_libdir}/qt5/bin/tracegen
+  - rm -f %{buildroot}%{_qt5_bindir}/qvkgen
+  - rm -f %{buildroot}%{_qt5_bindir}/qdbuscpp2xml
+  - rm -f %{buildroot}%{_qt5_bindir}/qdbusxml2cpp
+  - rm -rf %{buildroot}%{_qt5_libdir}/metatypes
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5Bootstrap*
+  - rm -rf %{buildroot}%{_qt5_examplesdir}
+  - rm -rf %{buildroot}%{_qt5_docdir}
+  - rm -f %{buildroot}%{_qt5_datadir}/qtlogging.ini
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtDeviceDiscoverySupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtEventDispatcherSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtFbSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtFontDatabaseSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtServiceSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtThemeSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtInputSupport
+  - rm -rf %{buildroot}%{_qt5_headerdir}/QtZlib
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5DeviceDiscoverySupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5EdidSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5EventDispatcherSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5FbSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5FontDatabaseSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5InputSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5ServiceSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5ThemeSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5XkbCommonSupport.prl
+  - rm -f %{buildroot}%{_qt5_libdir}/libQt5Zlib.prl
+  - rm -rf %{buildroot}%{_qt5_libdir}/cmake/Qt5Zlib
+  - rm -rf %{buildroot}%{_sysconfdir}/X11
+  - rm -rf %{buildroot}%{_sysconfdir}/xdg/QtProject

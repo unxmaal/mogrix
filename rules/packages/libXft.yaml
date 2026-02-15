@@ -1,41 +1,38 @@
-# libXft - X FreeType interface library (FC40: 2.3.8)
-# Font rendering using FreeType + Fontconfig + Xrender.
-# Enables antialiased fonts for st and other X11 apps on IRIX.
 package: libXft
-
 rules:
   drop_buildrequires:
-    - xorg-x11-util-macros
-    - freetype-devel            # Already in staging
-    - fontconfig-devel          # Already in staging
-    - "pkgconfig(xrender)"     # Just built and staged
-
+  - xorg-x11-util-macros
+  - pkgconfig(xrender)
   drop_requires:
-    - "fontconfig >= 2.2-1"    # Already installed on IRIX
-
-  # X.org uses its own malloc(0) test, not the standard autoconf one
+  - fontconfig >= 2.2-1
   ac_cv_overrides:
-    xorg_cv_malloc0_returns_null: "no"
-
+    xorg_cv_malloc0_returns_null: 'no'
   configure_flags:
     add:
-      - "--disable-static"
-
+    - --disable-static
   spec_replacements:
-    # Explicit Provides (AutoProv: no in rpmmacros.irix)
-    - pattern: "%description\n"
-      replacement: |
-        Provides: libXft(mips-32) = %{version}-%{release}
-        Provides: libXft.so.2
+  - pattern: '%description
 
-        %description
+      '
+    replacement: 'Provides: libXft(mips-32) = %{version}-%{release}
 
-    # Skip autoreconf — tarball has pre-generated configure, and we lack xorg-macros
-    - pattern: "autoreconf -v --install --force\n"
-      replacement: "# autoreconf skipped — using pre-generated configure\n"
-    # Remove ldconfig scriptlet macros (not available on IRIX)
-    - pattern: "%ldconfig_post\n"
-      replacement: ""
-    - pattern: "%ldconfig_postun\n"
-      replacement: ""
+      Provides: libXft.so.2
 
+
+      %description
+
+      '
+  - pattern: 'autoreconf -v --install --force
+
+      '
+    replacement: '# autoreconf skipped — using pre-generated configure
+
+      '
+  - pattern: '%ldconfig_post
+
+      '
+    replacement: ''
+  - pattern: '%ldconfig_postun
+
+      '
+    replacement: ''

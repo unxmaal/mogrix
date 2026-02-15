@@ -1,0 +1,51 @@
+package: frotz
+rules:
+  drop_buildrequires:
+  - pkgconfig(ao)
+  - pkgconfig(libmodplug)
+  - pkgconfig(samplerate)
+  - pkgconfig(sndfile)
+  - pkgconfig(vorbisfile)
+  - pkgconfig(bzip2)
+  - pkgconfig(freetype2)
+  - pkgconfig(libpng)
+  - pkgconfig(libjpeg)
+  - pkgconfig(sdl2)
+  - pkgconfig(SDL2_mixer)
+  - pkgconfig(zlib)
+  - pkgconfig(xt)
+  - pkgconfig(fontutil)
+  - bdftopcf
+  drop_subpackages:
+  - gui
+  prep_commands:
+  - sed -i 's/^#NO_EXECINFO_H.*/NO_EXECINFO_H = yes/' Makefile
+  - sed -i 's/cell_t/frotz_cell_t/g' src/dumb/doutput.c
+  spec_replacements:
+  - pattern: '%make_build all'
+    replacement: "export PKG_CONFIG_SYSROOT_DIR=\"/opt/sgug-staging\"\nCOMPAT_DIR=$(pwd)/mogrix-compat\n%make_build CC=\"%{__cc}\" AR=\"%{__ar}\" RANLIB=\"%{__ranlib}\" \\\n  SOUND_TYPE=none NO_BLORB=yes\
+      \ NO_EXECINFO_H=yes \\\n  CFLAGS=\"%{optflags} -std=c99 -Wall\" \\\n  LDFLAGS=\"-L$COMPAT_DIR -lmogrix-compat -lgen\" \\\n  frotz dfrotz\n"
+  - pattern: '%make_install PREFIX=%{_prefix} install_all'
+    replacement: 'COMPAT_DIR=$(pwd)/mogrix-compat
+
+      %make_install PREFIX=%{_prefix} CC="%{__cc}" AR="%{__ar}" RANLIB="%{__ranlib}" SOUND_TYPE=none NO_BLORB=yes NO_EXECINFO_H=yes CFLAGS="%{optflags} -std=c99 -Wall" LDFLAGS="-L$COMPAT_DIR -lmogrix-compat
+      -lgen" install_frotz install_dfrotz
+
+      '
+  - pattern: '%files gui
+
+      %{_bindir}/sfrotz
+
+      %{_bindir}/xfrotz
+
+      %{_mandir}/man6/sfrotz.6*
+
+      %{_mandir}/man6/xfrotz.6*
+
+      '
+    replacement: '# GUI disabled for IRIX (no SDL2/X11 font deps)
+
+      '
+smoke_test:
+- command: /usr/sgug/bin/dfrotz --version 2>&1 | head -1
+  expect: Frotz

@@ -2,11 +2,11 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-14)
+## Current Status (2026-02-15)
 
-**105+ source packages cross-compiled for IRIX (290+ RPMs). 23 bundles rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc architecture finalized: exe-only linking via irix-ld.
+**105+ source packages cross-compiled for IRIX (290+ RPMs). 20 bundles (5 suites + 15 individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles.
 
-All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app tarballs for IRIX. 145 package rule files. All 23 bundles shipped: 16 individual (weechat, groff, st, bitlbee, telescope, gmi100, lynx, snownews, tinc, tmux, vim, wget2, man-db, bc, jq, dmenu) + 5 suite (mogrix-smallweb, mogrix-fun, mogrix-essentials, mogrix-net, mogrix-extras) + rxvt-unicode + cmatrix — all tested on IRIX.
+All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app bundles (.tar.gz or self-extracting .run) for IRIX. 145+ package rule files. Suites: mogrix-essentials, mogrix-extras, mogrix-net, mogrix-smallweb, mogrix-fun. Individual bundles: bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2 — all tested on IRIX.
 
 ---
 
@@ -277,15 +277,16 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Rule scoring (`mogrix score-rules`) | Done |
 | Batch build (`mogrix batch-build`) | Done |
 | Dependency roadmap (`mogrix roadmap`) | Done |
-| IRIX bundle tests passing across 23 bundles | Done |
+| IRIX bundle tests passing across 20 bundles | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
-| App bundles (`mogrix bundle`) | Done |
+| App bundles (`mogrix bundle` — .tar.gz and self-extracting .run) | Done |
 | Bundle smoke testing (`mogrix test`) | Done |
+| dlmalloc test suite (`tests/dlmalloc-test.c` — 29 tests) | Done |
 | Upstream package support (`mogrix create-srpm`) | Done |
 | Suite bundles (`mogrix bundle pkg1 pkg2 --name`) | Done |
 | 105+ source packages cross-compiled for IRIX | Done |
-| 23 bundles rebuilt and verified on IRIX | Done |
+| 20 bundles (5 suites + 15 individual) rebuilt and verified on IRIX | Done |
 | Qt5 5.15.13 running on IRIX (Core+Gui+Widgets+XcbQpa) | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
@@ -301,7 +302,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | LLD 18 for executables, GNU ld + custom linker script for shared libs | LLD for correct relocations; GNU ld with 2-segment (RE+RW) layout for rld |
 | `--image-base=0x1000000` for all executables | Default 0x10000 gives only 1.8MB brk heap; 0x1000000 gives 176MB |
 | `/lib32/rld` as dynamic linker | IRIX requires this interpreter, not `/usr/lib32/libc.so.1` |
-| dlmalloc via mmap (exe-only, linked by irix-ld) | IRIX brk() heap limited to 176MB; mmap accesses 1.2GB. Never in .so files — causes cross-heap corruption with `-Bsymbolic-functions` |
+| dlmalloc via mmap (exe-only, linked by irix-ld) | IRIX brk() heap limited to 176MB; mmap accesses 1.2GB. Never in .so files — causes cross-heap corruption with `-Bsymbolic-functions`. Thread-safe via spin locks (USE_LOCKS=1 + USE_SPIN_LOCKS=1, MIPS ll/sc atomics). /dev/zero fd duped to >=128 with FD_CLOEXEC |
 | funopen instead of fopencookie | fopencookie crashes on IRIX |
 | Iterative vasprintf | IRIX vsnprintf(NULL,0) returns -1 (pre-C99) |
 | Per-package compat injection | No shared libdicl dependency; each SRPM is self-contained |

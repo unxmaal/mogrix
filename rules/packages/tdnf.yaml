@@ -51,9 +51,6 @@ rules:
 
   # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
   # These get statically linked so we don't need libdicl at runtime
-  inject_compat_functions:
-    - asprintf      # includes vasprintf with IRIX-safe iterative implementation
-
   # Drop problematic dependencies (systemd-devel and libdicl handled by generic.yaml)
   drop_buildrequires:
     - gpgme-devel

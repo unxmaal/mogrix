@@ -1,122 +1,205 @@
-# pango 1.51.2 - Text layout/rendering library (FC40: 1.51.2-1)
-# Meson build. Needs glib2, harfbuzz, freetype, fontconfig, cairo, fribidi.
-# Built WITHOUT libthai (not ported), introspection (cross), tests.
-# Xft backend enabled (libXft is in staging).
-
 package: pango
-
 rules:
-
   prep_commands:
-    # Remove _POSIX_C_SOURCE=200809L which hides IRIX symbols (replaces old sgifixes patch)
-    - "sed -i \"s/'-D_POSIX_C_SOURCE=200809L', //\" meson.build"
-    # Remove tests subdir from build (cross-compiled tests can't run)
-    - "sed -i \"s/^subdir('tests')/#subdir('tests')/\" meson.build"
-    # Remove examples subdir (not needed)
-    - "sed -i \"s/^subdir('examples')/#subdir('examples')/\" meson.build"
-    # Remove wrap files so meson doesn't try to use subprojects
-    - "rm -rf subprojects/*.wrap"
-
+  - sed -i "s/'-D_POSIX_C_SOURCE=200809L', //" meson.build
+  - sed -i "s/^subdir('tests')/#subdir('tests')/" meson.build
+  - sed -i "s/^subdir('examples')/#subdir('examples')/" meson.build
+  - rm -rf subprojects/*.wrap
   drop_buildrequires:
-    - gcc
-    - gi-docgen
-    - help2man
-    - "pkgconfig(gobject-introspection-1.0)"
-    - "pkgconfig(libthai)"
-
+  - gi-docgen
+  - pkgconfig(gobject-introspection-1.0)
+  - pkgconfig(libthai)
   spec_replacements:
-    # Replace %meson + %meson_build with raw meson commands using cross file
-    - pattern: "%meson \\\n  -Dinstall-tests=true \\\n  -Dgtk_doc=true\n\n%meson_build"
-      replacement: |
-        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
-        export PATH=/opt/sgug-staging/usr/sgug/bin:$PATH
-        /home/edodd/.local/bin/meson setup _build \
-          --cross-file=$MOGRIX_CROSS \
-          --prefix=%{_prefix} \
-          --libdir=%{_libdir} \
-          -Dgtk_doc=false \
-          -Dintrospection=disabled \
-          -Dinstall-tests=false \
-          -Dlibthai=disabled \
-          -Dcairo=enabled \
-          -Dfreetype=enabled \
-          -Dfontconfig=enabled \
-          -Dxft=enabled \
-          -Dc_link_args="-L$COMPAT_DIR -lmogrix-compat" \
-          --wrap-mode=nodownload
-        /home/edodd/.local/bin/meson compile -C _build
+  - pattern: "%meson \\\n  -Dinstall-tests=true \\\n  -Dgtk_doc=true\n\n%meson_build"
+    replacement: "MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\nexport PATH=/opt/sgug-staging/usr/sgug/bin:$PATH\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS\
+      \ \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  -Dgtk_doc=false \\\n  -Dintrospection=disabled \\\n  -Dinstall-tests=false \\\n  -Dlibthai=disabled \\\n  -Dcairo=enabled \\\n  -Dfreetype=enabled\
+      \ \\\n  -Dfontconfig=enabled \\\n  -Dxft=enabled \\\n  -Dc_link_args=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  --wrap-mode=nodownload\n/home/edodd/.local/bin/meson compile -C _build\n"
+  - pattern: '%meson_install'
+    replacement: DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild
+  - pattern: "PANGOXFT_SO=$RPM_BUILD_ROOT%{_libdir}/libpangoxft-1.0.so\nif ! test -e $PANGOXFT_SO; then\n        echo \"$PANGOXFT_SO not found; did not build with Xft support?\"\n        ls $RPM_BUILD_ROOT%{_libdir}\n\
+      \        exit 1\nfi"
+    replacement: '# pangoxft check removed for cross-build'
+  - pattern: 'URL:     https://pango.gnome.org/'
+    replacement: 'URL:     https://pango.gnome.org/
 
-    # Replace %meson_install
-    - pattern: "%meson_install"
-      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+      Provides: libpango-1.0.so.0(mips-32)
 
-    # Remove pangoxft check (would fail before we install the RPM)
-    - pattern: "PANGOXFT_SO=$RPM_BUILD_ROOT%{_libdir}/libpangoxft-1.0.so\nif ! test -e $PANGOXFT_SO; then\n        echo \"$PANGOXFT_SO not found; did not build with Xft support?\"\n        ls $RPM_BUILD_ROOT%{_libdir}\n        exit 1\nfi"
-      replacement: "# pangoxft check removed for cross-build"
+      Provides: libpangocairo-1.0.so.0(mips-32)
 
-    # Add explicit Provides
-    - pattern: "URL:     https://pango.gnome.org/"
-      replacement: |
-        URL:     https://pango.gnome.org/
-        Provides: libpango-1.0.so.0(mips-32)
-        Provides: libpangocairo-1.0.so.0(mips-32)
-        Provides: libpangoft2-1.0.so.0(mips-32)
-        Provides: libpangoxft-1.0.so.0(mips-32)
-        Provides: pango(mips-32) = %{version}-%{release}
+      Provides: libpangoft2-1.0.so.0(mips-32)
 
-    # Fix Requires - remove %{?_isa} macros
-    - pattern: "Requires: glib2%{?_isa} >= %{glib2_version}\nRequires: freetype%{?_isa} >= %{freetype_version}\nRequires: fontconfig%{?_isa} >= %{fontconfig_version}\nRequires: cairo%{?_isa} >= %{cairo_version}\nRequires: harfbuzz%{?_isa} >= %{harfbuzz_version}\nRequires: libthai%{?_isa} >= %{libthai_version}\nRequires: libXft%{?_isa} >= %{libXft_version}\nRequires: fribidi%{?_isa} >= %{fribidi_version}"
-      replacement: |
-        Requires: glib2 >= %{glib2_version}
-        Requires: freetype >= %{freetype_version}
-        Requires: fontconfig >= %{fontconfig_version}
-        Requires: cairo >= %{cairo_version}
-        Requires: harfbuzz >= %{harfbuzz_version}
-        Requires: fribidi >= %{fribidi_version}
+      Provides: libpangoxft-1.0.so.0(mips-32)
 
-    # Fix devel Requires
-    - pattern: "Requires: pango%{?_isa} = %{version}-%{release}\nRequires: glib2-devel%{?_isa} >= %{glib2_version}\nRequires: freetype-devel%{?_isa} >= %{freetype_version}\nRequires: fontconfig-devel%{?_isa} >= %{fontconfig_version}\nRequires: cairo-devel%{?_isa} >= %{cairo_version}"
-      replacement: |
-        Requires: pango = %{version}-%{release}
-        Requires: glib2-devel >= %{glib2_version}
-        Requires: freetype-devel >= %{freetype_version}
-        Requires: fontconfig-devel >= %{fontconfig_version}
-        Requires: cairo-devel >= %{cairo_version}
+      Provides: pango(mips-32) = %{version}-%{release}
 
-    # Remove doc subpackage
-    - pattern: "%package doc\nSummary: Developer documentation for pango\nRequires: pango%{?_isa} = %{version}-%{release}\n# Because web fonts from upstream are not bundled in the gi-docgen package,\n# packages containing documentation generated with gi-docgen should depend on\n# this metapackage to ensure the proper system fonts are present.\nRecommends: gi-docgen-fonts\n\n%description doc\nThe pango-doc package contains developer documentation for the pango package."
-      replacement: "# doc subpackage removed (no gi-docgen for cross)"
+      '
+  - pattern: 'Requires: glib2%{?_isa} >= %{glib2_version}
 
-    # Remove tests subpackage
-    - pattern: "%package tests\nSummary: Tests for the %{name} package\nRequires: %{name}%{?_isa} = %{version}-%{release}\n\n%description tests\nThe %{name}-tests package contains tests that can be used to verify\nthe functionality of the installed %{name} package."
-      replacement: "# tests subpackage removed"
+      Requires: freetype%{?_isa} >= %{freetype_version}
 
-    # Fix %files - remove girepository and man page (no introspection, no help2man in cross)
-    - pattern: "%files\n%license COPYING\n%doc NEWS README.md\n%{_libdir}/libpango*-*.so.*\n%{_bindir}/pango-list\n%{_bindir}/pango-segmentation\n%{_bindir}/pango-view\n%{_mandir}/man1/pango-view.1*\n%{_libdir}/girepository-1.0/Pango-1.0.typelib\n%{_libdir}/girepository-1.0/PangoCairo-1.0.typelib\n%{_libdir}/girepository-1.0/PangoFc-1.0.typelib\n%{_libdir}/girepository-1.0/PangoFT2-1.0.typelib\n%{_libdir}/girepository-1.0/PangoOT-1.0.typelib\n%{_libdir}/girepository-1.0/PangoXft-1.0.typelib"
-      replacement: |
-        %files
-        %license COPYING
-        %doc NEWS README.md
-        %{_libdir}/libpango*-*.so.*
-        %{_bindir}/pango-list
-        %{_bindir}/pango-segmentation
-        %{_bindir}/pango-view
+      Requires: fontconfig%{?_isa} >= %{fontconfig_version}
 
-    # Fix %files devel - remove gir files
-    - pattern: "%files devel\n%{_libdir}/libpango*.so\n%{_includedir}/*\n%{_libdir}/pkgconfig/*\n%{_datadir}/gir-1.0/Pango-1.0.gir\n%{_datadir}/gir-1.0/PangoCairo-1.0.gir\n%{_datadir}/gir-1.0/PangoFc-1.0.gir\n%{_datadir}/gir-1.0/PangoFT2-1.0.gir\n%{_datadir}/gir-1.0/PangoOT-1.0.gir\n%{_datadir}/gir-1.0/PangoXft-1.0.gir"
-      replacement: |
-        %files devel
-        %{_libdir}/libpango*.so
-        %{_includedir}/*
-        %{_libdir}/pkgconfig/*
+      Requires: cairo%{?_isa} >= %{cairo_version}
 
-    # Remove doc %files
-    - pattern: "%files doc\n%{_docdir}/Pango/\n%{_docdir}/PangoCairo/\n%{_docdir}/PangoFT2/\n%{_docdir}/PangoFc/\n%{_docdir}/PangoOT/\n%{_docdir}/PangoXft/"
-      replacement: "# doc files removed"
+      Requires: harfbuzz%{?_isa} >= %{harfbuzz_version}
 
-    # Remove tests %files
-    - pattern: "%files tests\n%{_libexecdir}/installed-tests/%{name}\n%{_datadir}/installed-tests"
-      replacement: "# tests files removed"
+      Requires: libthai%{?_isa} >= %{libthai_version}
 
-  skip_check: true
+      Requires: libXft%{?_isa} >= %{libXft_version}
 
+      Requires: fribidi%{?_isa} >= %{fribidi_version}'
+    replacement: 'Requires: glib2 >= %{glib2_version}
+
+      Requires: freetype >= %{freetype_version}
+
+      Requires: fontconfig >= %{fontconfig_version}
+
+      Requires: cairo >= %{cairo_version}
+
+      Requires: harfbuzz >= %{harfbuzz_version}
+
+      Requires: fribidi >= %{fribidi_version}
+
+      '
+  - pattern: 'Requires: pango%{?_isa} = %{version}-%{release}
+
+      Requires: glib2-devel%{?_isa} >= %{glib2_version}
+
+      Requires: freetype-devel%{?_isa} >= %{freetype_version}
+
+      Requires: fontconfig-devel%{?_isa} >= %{fontconfig_version}
+
+      Requires: cairo-devel%{?_isa} >= %{cairo_version}'
+    replacement: 'Requires: pango = %{version}-%{release}
+
+      Requires: glib2-devel >= %{glib2_version}
+
+      Requires: freetype-devel >= %{freetype_version}
+
+      Requires: fontconfig-devel >= %{fontconfig_version}
+
+      Requires: cairo-devel >= %{cairo_version}
+
+      '
+  - pattern: '%package doc
+
+      Summary: Developer documentation for pango
+
+      Requires: pango%{?_isa} = %{version}-%{release}
+
+      # Because web fonts from upstream are not bundled in the gi-docgen package,
+
+      # packages containing documentation generated with gi-docgen should depend on
+
+      # this metapackage to ensure the proper system fonts are present.
+
+      Recommends: gi-docgen-fonts
+
+
+      %description doc
+
+      The pango-doc package contains developer documentation for the pango package.'
+    replacement: '# doc subpackage removed (no gi-docgen for cross)'
+  - pattern: '%package tests
+
+      Summary: Tests for the %{name} package
+
+      Requires: %{name}%{?_isa} = %{version}-%{release}
+
+
+      %description tests
+
+      The %{name}-tests package contains tests that can be used to verify
+
+      the functionality of the installed %{name} package.'
+    replacement: '# tests subpackage removed'
+  - pattern: '%files
+
+      %license COPYING
+
+      %doc NEWS README.md
+
+      %{_libdir}/libpango*-*.so.*
+
+      %{_bindir}/pango-list
+
+      %{_bindir}/pango-segmentation
+
+      %{_bindir}/pango-view
+
+      %{_mandir}/man1/pango-view.1*
+
+      %{_libdir}/girepository-1.0/Pango-1.0.typelib
+
+      %{_libdir}/girepository-1.0/PangoCairo-1.0.typelib
+
+      %{_libdir}/girepository-1.0/PangoFc-1.0.typelib
+
+      %{_libdir}/girepository-1.0/PangoFT2-1.0.typelib
+
+      %{_libdir}/girepository-1.0/PangoOT-1.0.typelib
+
+      %{_libdir}/girepository-1.0/PangoXft-1.0.typelib'
+    replacement: '%files
+
+      %license COPYING
+
+      %doc NEWS README.md
+
+      %{_libdir}/libpango*-*.so.*
+
+      %{_bindir}/pango-list
+
+      %{_bindir}/pango-segmentation
+
+      %{_bindir}/pango-view
+
+      '
+  - pattern: '%files devel
+
+      %{_libdir}/libpango*.so
+
+      %{_includedir}/*
+
+      %{_libdir}/pkgconfig/*
+
+      %{_datadir}/gir-1.0/Pango-1.0.gir
+
+      %{_datadir}/gir-1.0/PangoCairo-1.0.gir
+
+      %{_datadir}/gir-1.0/PangoFc-1.0.gir
+
+      %{_datadir}/gir-1.0/PangoFT2-1.0.gir
+
+      %{_datadir}/gir-1.0/PangoOT-1.0.gir
+
+      %{_datadir}/gir-1.0/PangoXft-1.0.gir'
+    replacement: '%files devel
+
+      %{_libdir}/libpango*.so
+
+      %{_includedir}/*
+
+      %{_libdir}/pkgconfig/*
+
+      '
+  - pattern: '%files doc
+
+      %{_docdir}/Pango/
+
+      %{_docdir}/PangoCairo/
+
+      %{_docdir}/PangoFT2/
+
+      %{_docdir}/PangoFc/
+
+      %{_docdir}/PangoOT/
+
+      %{_docdir}/PangoXft/'
+    replacement: '# doc files removed'
+  - pattern: '%files tests
+
+      %{_libexecdir}/installed-tests/%{name}
+
+      %{_datadir}/installed-tests'
+    replacement: '# tests files removed'

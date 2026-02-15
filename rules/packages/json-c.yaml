@@ -1,0 +1,3 @@
+# json-c - C JSON library
+# Uses cmake but also has autotools fallback in older versions
+package: json-c

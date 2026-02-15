@@ -1,97 +1,65 @@
-# gawk - GNU version of the AWK text processing utility
-# FC40: gawk-5.3.0-3.fc40
-# Analysis: 15 findings (5 errors %zu, 10 infos)
-# %zu errors in node.c, re.c, support/pma.c, builtin.c, support/malloc/dynarray_at_failure.c
-
 package: gawk
-classes: [nls-disabled]
-
+classes:
+- nls-disabled
 smoke_test:
-  - command: "echo 'a b c' | /usr/sgug/bin/gawk '{print $2}'"
-    expect: "b"
-  - command: "/usr/sgug/bin/gawk --version"
-    expect: "5.3.0"
-
+- command: echo 'a b c' | /usr/sgug/bin/gawk '{print $2}'
+  expect: b
+- command: /usr/sgug/bin/gawk --version
+  expect: 5.3.0
 rules:
-  # Compat functions needed for IRIX
-  # strdup: dlmalloc/libc allocator mismatch (6 locations)
-  # getopt_long: main.c uses it for option parsing
-  # getline: eval.c uses it
-
-  # Drop build deps not available or not needed
   drop_buildrequires:
-    - ghostscript         # doc building only
-    - git                 # not needed for tarball build
-    - glibc-all-langpacks # test locales
-    - texinfo-tex         # doc building only
-    - texlive-cm-super    # doc building only
-    - texlive-ec          # doc building only
-    - mpfr-devel          # not built yet, build without MPFR
-    - bison               # tarball has pre-generated parsers
-
+  - ghostscript
+  - glibc-all-langpacks
+  - texinfo-tex
+  - texlive-cm-super
+  - texlive-ec
   configure_flags:
     add:
-      - --without-mpfr
-
-  # Fix %zu format specifiers (IRIX libc doesn't support %zu)
-  # Remove test dir from SUBDIRS (runs cross-compiled gawk binary during make all)
+    - --without-mpfr
   prep_commands:
-    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' node.c re.c support/pma.c builtin.c"
-    - "sed -i 's/%zu/%u/g' support/malloc/dynarray_at_failure.c"
-    - "sed -i 's/ test$//' Makefile.am"
-
-  # Drop subpackages we don't need
+  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' node.c re.c support/pma.c builtin.c
+  - sed -i 's/%zu/%u/g' support/malloc/dynarray_at_failure.c
+  - sed -i 's/ test$//' Makefile.am
   drop_subpackages:
-    - doc           # no TeX/docs on cross-build host
-    - all-langpacks # NLS disabled
-
-  # NLS and %find_lang handled by nls-disabled class
-
-  # Remove unpackaged doc/info files
+  - doc
+  - all-langpacks
   install_cleanup:
-    - "rm -rf %{buildroot}%{_pkgdocdir}"
-    - "rm -rf %{buildroot}%{_infodir}"
-
+  - rm -rf %{buildroot}%{_pkgdocdir}
+  - rm -rf %{buildroot}%{_infodir}
   spec_replacements:
-    # gawk spec uses git for patch application — not available/needed for cross-build
-    - pattern: "%autosetup -N -S git"
-      replacement: "%autosetup -N"
-    - pattern: "git add --all --force ."
-      replacement: "# git add removed (cross-build)"
-    - pattern: "git commit --all --amend --no-edit > /dev/null"
-      replacement: "# git commit removed (cross-build)"
-    # Skip doc building (no TeX available on build host)
-    - pattern: "%make_build -C doc pdf"
-      replacement: "# doc building skipped (cross-build)"
-    - pattern: "mkdir -p html/gawk html/gawkinet"
-      replacement: "# html doc building skipped (cross-build)"
-    - pattern: "makeinfo --html -I doc -o html/gawk     doc/gawk.texi"
-      replacement: "# makeinfo skipped"
-    - pattern: "makeinfo --html -I doc -o html/gawkinet doc/gawkinet.texi"
-      replacement: "# makeinfo skipped"
-    # Skip doc install (nothing built)
-    - pattern: "install -m 0755 -d %{buildroot}%{_docdir}/%{name}/html/gawk/"
-      replacement: "# doc install skipped (cross-build)"
-    - pattern: "install -m 0755 -d %{buildroot}%{_docdir}/%{name}/html/gawkinet/"
-      replacement: "# doc install skipped"
-    - pattern: "install -m 0755 -d %{buildroot}%{_docdir}/%{name}/eg/data/"
-      replacement: "# doc install skipped"
-    - pattern: "install -m 0644 -p html/gawk/*           %{buildroot}%{_docdir}/%{name}/html/gawk/"
-      replacement: "# doc install skipped"
-    - pattern: "install -m 0644 -p html/gawkinet/*       %{buildroot}%{_docdir}/%{name}/html/gawkinet/"
-      replacement: "# doc install skipped"
-    - pattern: "install -m 0644 -p doc/gawk.{pdf,ps}     %{buildroot}%{_docdir}/%{name}"
-      replacement: "# doc install skipped"
-    - pattern: "install -m 0644 -p doc/gawkinet.{pdf,ps} %{buildroot}%{_docdir}/%{name}"
-      replacement: "# doc install skipped"
-    - pattern: "install -m 0644 -p awklib/eg/data/* %{buildroot}%{_docdir}/%{name}/eg/data/"
-      replacement: "# doc install skipped"
-    # Remove info file reference from %files (cleaned up by install_cleanup)
-    - pattern: "%{_infodir}/*awk*.info*"
-      replacement: "# infodir removed (install_cleanup)"
-    # Remove symlinks that fail on cross-build (target dir already exists)
-    - pattern: "ln -sf /usr/share/awk   %{buildroot}%{_datadir}/gawk"
-      replacement: "# symlink removed (cross-build)"
-    - pattern: "ln -sf /usr/sgug/lib32exec/awk %{buildroot}%{_libexecdir}/gawk"
-      replacement: "# symlink removed (cross-build)"
-
+  - pattern: '%autosetup -N -S git'
+    replacement: '%autosetup -N'
+  - pattern: git add --all --force .
+    replacement: '# git add removed (cross-build)'
+  - pattern: git commit --all --amend --no-edit > /dev/null
+    replacement: '# git commit removed (cross-build)'
+  - pattern: '%make_build -C doc pdf'
+    replacement: '# doc building skipped (cross-build)'
+  - pattern: mkdir -p html/gawk html/gawkinet
+    replacement: '# html doc building skipped (cross-build)'
+  - pattern: makeinfo --html -I doc -o html/gawk     doc/gawk.texi
+    replacement: '# makeinfo skipped'
+  - pattern: makeinfo --html -I doc -o html/gawkinet doc/gawkinet.texi
+    replacement: '# makeinfo skipped'
+  - pattern: install -m 0755 -d %{buildroot}%{_docdir}/%{name}/html/gawk/
+    replacement: '# doc install skipped (cross-build)'
+  - pattern: install -m 0755 -d %{buildroot}%{_docdir}/%{name}/html/gawkinet/
+    replacement: '# doc install skipped'
+  - pattern: install -m 0755 -d %{buildroot}%{_docdir}/%{name}/eg/data/
+    replacement: '# doc install skipped'
+  - pattern: install -m 0644 -p html/gawk/*           %{buildroot}%{_docdir}/%{name}/html/gawk/
+    replacement: '# doc install skipped'
+  - pattern: install -m 0644 -p html/gawkinet/*       %{buildroot}%{_docdir}/%{name}/html/gawkinet/
+    replacement: '# doc install skipped'
+  - pattern: install -m 0644 -p doc/gawk.{pdf,ps}     %{buildroot}%{_docdir}/%{name}
+    replacement: '# doc install skipped'
+  - pattern: install -m 0644 -p doc/gawkinet.{pdf,ps} %{buildroot}%{_docdir}/%{name}
+    replacement: '# doc install skipped'
+  - pattern: install -m 0644 -p awklib/eg/data/* %{buildroot}%{_docdir}/%{name}/eg/data/
+    replacement: '# doc install skipped'
+  - pattern: '%{_infodir}/*awk*.info*'
+    replacement: '# infodir removed (install_cleanup)'
+  - pattern: ln -sf /usr/share/awk   %{buildroot}%{_datadir}/gawk
+    replacement: '# symlink removed (cross-build)'
+  - pattern: ln -sf /usr/sgug/lib32exec/awk %{buildroot}%{_libexecdir}/gawk
+    replacement: '# symlink removed (cross-build)'

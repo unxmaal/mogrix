@@ -1,159 +1,96 @@
-# weechat - IRC/Matrix client
-# Build system: cmake (uses %cmake3 macros in FC40 spec)
-# First community-requested app bundle target
-#
-# Strategy: Replace %cmake3 macro block with raw cmake cross-compilation
-# command (following tdnf.yaml pattern). Disable ALL scripting languages,
-# spell checking, docs, and headless mode.
-
 package: weechat
-
 rules:
-  # Compat functions needed for IRIX
   inject_compat_functions:
-    - setenv
-    - mkdtemp
-
-  # Drop scripting language and doc BuildRequires
+  - mkdtemp
   drop_buildrequires:
-    - enchant-devel
-    - guile22-devel
-    - guile-devel
-    - lua-devel
-    - perl-ExtUtils-Embed
-    - perl-devel
-    - python3-devel
-    - ruby
-    - ruby-devel
-    - tcl-devel
-    - docbook-style-xsl
-    - source-highlight
-    - asciidoctor
-    - cpputest-devel
-    - glibc-langpack-en
-    - ca-certificates
-    - hicolor-icon-theme
-
+  - enchant-devel
+  - guile22-devel
+  - guile-devel
+  - perl-ExtUtils-Embed
+  - perl-devel
+  - docbook-style-xsl
+  - source-highlight
+  - asciidoctor
+  - cpputest-devel
+  - ca-certificates
+  - hicolor-icon-theme
   drop_requires:
-    - hicolor-icon-theme
-
-  # PKG_CONFIG paths for cross-compilation
+  - hicolor-icon-theme
   export_vars:
-    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
-
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
   spec_replacements:
-    # Flip check/docs bconds to OFF (so RPM evaluates %if blocks correctly)
-    - pattern: "%bcond_without check"
-      replacement: "%bcond_with check"
-    - pattern: "%bcond_without docs"
-      replacement: "%bcond_with docs"
-    # Replace %cmake3 macro block with raw cmake cross-compilation command
-    # Must match exact text of the original spec
-    - pattern: |
-        %cmake3 \
-          -DPREFIX=%{_prefix} \
-          -DLIBDIR=%{_libdir} \
-          -DENABLE_ENCHANT=ON \
-          -DENABLE_PHP=OFF \
-        %if %{with check}
-          -DENABLE_TESTS=ON \
-        %else
-          -DENABLE_TESTS=OFF \
-        %endif
-        %if %{with docs}
-          -DENABLE_DOC=ON \
-          -DENABLE_DOC_INCOMPLETE=ON \
-          -DENABLE_MAN=ON \
-        %else
-          -DENABLE_DOC=OFF \
-          -DENABLE_MAN=OFF \
-        %endif
-          -DCA_FILE=/etc/pki/tls/certs/ca-bundle.crt \
-          %{nil}
-        %cmake3_build
-      replacement: |
-        export COMPAT_DIR=$(pwd)/mogrix-compat
-        cmake -B _build -S . \
-          -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
-          -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
-          -DCMAKE_SYSTEM_NAME=IRIX \
-          -DCMAKE_C_COMPILER=%{__cc} \
-          -DCMAKE_CXX_COMPILER=%{__cxx} \
-          -DCMAKE_AR=%{__ar} \
-          -DCMAKE_RANLIB=%{__ranlib} \
-          -DCMAKE_INSTALL_PREFIX=%{_prefix} \
-          -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
-          -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include" \
-          -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
-          -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread" \
-          -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
-          -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
-          -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
-          -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
-          -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-          -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DICONV_INCLUDE_PATH=/opt/irix-sysroot/usr/include \
-          -DICONV_FOUND:BOOL=TRUE \
-          -DPREFIX=%{_prefix} \
-          -DLIBDIR=%{_libdir} \
-          -DENABLE_PYTHON=OFF \
-          -DENABLE_PERL=OFF \
-          -DENABLE_RUBY=OFF \
-          -DENABLE_LUA=OFF \
-          -DENABLE_TCL=OFF \
-          -DENABLE_GUILE=OFF \
-          -DENABLE_PHP=OFF \
-          -DENABLE_JAVASCRIPT=OFF \
-          -DENABLE_ENCHANT=OFF \
-          -DENABLE_SPELL=OFF \
-          -DENABLE_DOC=OFF \
-          -DENABLE_MAN=OFF \
-          -DENABLE_TESTS=OFF \
-          -DENABLE_HEADLESS=OFF \
-          -DENABLE_NLS=OFF \
-          -DENABLE_CJSON=OFF
-        cd _build && make %{?_smp_mflags}
-    # Replace cmake install macro
-    - pattern: "%cmake3_install"
-      replacement: "cd _build && make install DESTDIR=%{buildroot}"
-    # Remove headless binary from %files (disabled)
-    - pattern: "%{_bindir}/%{name}-headless\n"
-      replacement: ""
-    # Remove desktop and icon entries (IRIX has no freedesktop)
-    - pattern: "%{_datadir}/icons/hicolor/32x32/apps/%{name}.png\n"
-      replacement: ""
-    - pattern: "%{_datadir}/applications/%{name}.desktop\n"
-      replacement: ""
-    - pattern: "%{_datadir}/icons/hicolor/128x128/apps/%{name}.png\n"
-      replacement: ""
-    - pattern: "%{_datadir}/icons/hicolor/16x16/apps/%{name}.png\n"
-      replacement: ""
-    - pattern: "%{_datadir}/icons/hicolor/256x256/apps/%{name}.png\n"
-      replacement: ""
-    - pattern: "%{_datadir}/icons/hicolor/512x512/apps/%{name}.png\n"
-      replacement: ""
-    - pattern: "%{_datadir}/icons/hicolor/64x64/apps/%{name}.png\n"
-      replacement: ""
-    # Remove doc/man entries gated by %if fedora (docs generation disabled)
-    - pattern: "%{_pkgdocdir}/weechat_*.html\n"
-      replacement: ""
-    - pattern: "%{_mandir}/man1/weechat.1*\n"
-      replacement: ""
-    - pattern: "%{_mandir}/*/man1/weechat.1*\n"
-      replacement: ""
-    - pattern: "%{_mandir}/man1/%{name}-headless.1*\n"
-      replacement: ""
-    - pattern: "%{_mandir}/*/man1/%{name}-headless.1*\n"
-      replacement: ""
+  - pattern: '%bcond_without check'
+    replacement: '%bcond_with check'
+  - pattern: '%bcond_without docs'
+    replacement: '%bcond_with docs'
+  - pattern: "%cmake3 \\\n  -DPREFIX=%{_prefix} \\\n  -DLIBDIR=%{_libdir} \\\n  -DENABLE_ENCHANT=ON \\\n  -DENABLE_PHP=OFF \\\n%if %{with check}\n  -DENABLE_TESTS=ON \\\n%else\n  -DENABLE_TESTS=OFF \\\n\
+      %endif\n%if %{with docs}\n  -DENABLE_DOC=ON \\\n  -DENABLE_DOC_INCOMPLETE=ON \\\n  -DENABLE_MAN=ON \\\n%else\n  -DENABLE_DOC=OFF \\\n  -DENABLE_MAN=OFF \\\n%endif\n  -DCA_FILE=/etc/pki/tls/certs/ca-bundle.crt\
+      \ \\\n  %{nil}\n%cmake3_build\n"
+    replacement: "export COMPAT_DIR=$(pwd)/mogrix-compat\ncmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \\\n  -DCMAKE_SYSTEM_NAME=IRIX \\\
+      \n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_CXX_COMPILER=%{__cxx} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir}\
+      \ \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a\
+      \ -lgen -lpthread\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n\
+      \  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY\
+      \ \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DICONV_INCLUDE_PATH=/opt/irix-sysroot/usr/include \\\n  -DICONV_FOUND:BOOL=TRUE \\\n  -DPREFIX=%{_prefix} \\\
+      \n  -DLIBDIR=%{_libdir} \\\n  -DENABLE_PYTHON=OFF \\\n  -DENABLE_PERL=OFF \\\n  -DENABLE_RUBY=OFF \\\n  -DENABLE_LUA=OFF \\\n  -DENABLE_TCL=OFF \\\n  -DENABLE_GUILE=OFF \\\n  -DENABLE_PHP=OFF \\\n\
+      \  -DENABLE_JAVASCRIPT=OFF \\\n  -DENABLE_ENCHANT=OFF \\\n  -DENABLE_SPELL=OFF \\\n  -DENABLE_DOC=OFF \\\n  -DENABLE_MAN=OFF \\\n  -DENABLE_TESTS=OFF \\\n  -DENABLE_HEADLESS=OFF \\\n  -DENABLE_NLS=OFF\
+      \ \\\n  -DENABLE_CJSON=OFF\ncd _build && make %{?_smp_mflags}\n"
+  - pattern: '%cmake3_install'
+    replacement: cd _build && make install DESTDIR=%{buildroot}
+  - pattern: '%{_bindir}/%{name}-headless
 
-  # Remove desktop/icon files that make install still creates
+      '
+    replacement: ''
+  - pattern: '%{_datadir}/icons/hicolor/32x32/apps/%{name}.png
+
+      '
+    replacement: ''
+  - pattern: '%{_datadir}/applications/%{name}.desktop
+
+      '
+    replacement: ''
+  - pattern: '%{_datadir}/icons/hicolor/128x128/apps/%{name}.png
+
+      '
+    replacement: ''
+  - pattern: '%{_datadir}/icons/hicolor/16x16/apps/%{name}.png
+
+      '
+    replacement: ''
+  - pattern: '%{_datadir}/icons/hicolor/256x256/apps/%{name}.png
+
+      '
+    replacement: ''
+  - pattern: '%{_datadir}/icons/hicolor/512x512/apps/%{name}.png
+
+      '
+    replacement: ''
+  - pattern: '%{_datadir}/icons/hicolor/64x64/apps/%{name}.png
+
+      '
+    replacement: ''
+  - pattern: '%{_pkgdocdir}/weechat_*.html
+
+      '
+    replacement: ''
+  - pattern: '%{_mandir}/man1/weechat.1*
+
+      '
+    replacement: ''
+  - pattern: '%{_mandir}/*/man1/weechat.1*
+
+      '
+    replacement: ''
+  - pattern: '%{_mandir}/man1/%{name}-headless.1*
+
+      '
+    replacement: ''
+  - pattern: '%{_mandir}/*/man1/%{name}-headless.1*
+
+      '
+    replacement: ''
   install_cleanup:
-    - "rm -rf %{buildroot}%{_datadir}/icons"
-    - "rm -rf %{buildroot}%{_datadir}/applications"
-
-  # NLS disabled, skip find_lang
-  skip_find_lang: true
-
+  - rm -rf %{buildroot}%{_datadir}/icons
+  - rm -rf %{buildroot}%{_datadir}/applications

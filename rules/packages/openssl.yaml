@@ -1,145 +1,91 @@
-# openssl - TLS/SSL crypto library
-# Uses ./Configure (perl script), not autotools
-# Cross-compilation requires overriding the default arch detection
-#
-# ---metadata---
-# complexity: high
-# build_system: custom (./Configure perl script)
-# key_fixes: [no_asm, custom_target_irix, multiarch_headers]
-# similar_to: [curl]
-# depends: [zlib]
-# status: WORKING
-# ---
-#
-# Note: skip_check is handled globally in generic.yaml
-# Note: %{_pkgdocdir} is defined in generic.yaml rpm_macros
-
 package: openssl
-
 rules:
-  # Drop Linux-specific dependencies
   drop_buildrequires:
-    - lksctp-tools-devel
-    - systemtap-sdt-devel
-
-  # Drop Linux-specific runtime deps (not available on IRIX)
+  - lksctp-tools-devel
   drop_requires:
-    - ca-certificates
-    - crypto-policies
-
-  # Compat functions needed for IRIX
+  - ca-certificates
+  - crypto-policies
   inject_compat_functions:
-    - secure_getenv
-    - strerror_r
-    - _rld_new_interface
-
-  # Declare strerror_r in OpenSSL's internal portability header.
-  # dicl-clang-compat/string.h intentionally omits this (gnulib conflict).
-  # OpenSSL doesn't use gnulib so we inject the declaration directly.
+  - secure_getenv
+  - _rld_new_interface
   prep_commands:
-    - "sed -i '/internal\\/numbers.h/a\\extern char *strerror_r(int errnum, char *buf, size_t buflen);' include/internal/e_os.h"
-
-  # Export CC for cross-compilation (OpenSSL's Configure needs these)
+  - sed -i '/internal\/numbers.h/a\extern char *strerror_r(int errnum, char *buf, size_t buflen);' include/internal/e_os.h
   export_vars:
-    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
-    AR: "/opt/cross/bin/llvm-ar"
-    RANLIB: "/opt/cross/bin/llvm-ranlib"
-
+    CC: /opt/sgug-staging/usr/sgug/bin/irix-cc
+    AR: /opt/cross/bin/llvm-ar
+    RANLIB: /opt/cross/bin/llvm-ranlib
   spec_replacements:
-    #
-    # === OpenSSL Configure options ===
-    #
-    # Force IRIX architecture for cross-compilation
-    # Use irix-mips3-gcc target, add -mabi=n32 to ensure N32 ABI
-    # no-dgram: Disable datagram BIO (DTLS) - requires msg_control in struct msghdr
-    # no-afalgeng: Disable AF_ALG engine (Linux kernel crypto) - requires linux/version.h
-    # no-tests: Don't build test programs - requires libatomic we don't have
-    - pattern: "sslarch=%{_os}-%{_target_cpu}"
-      replacement: "sslarch=irix-mips3-gcc\nsslflags=\"no-asm no-async no-dgram no-afalgeng no-tests -mabi=n32\""
-    # Comment out the mips arch override - it sets wrong ABI for IRIX cross-compilation
-    - pattern: 'sslarch="linux-mips32 -mips32r2"'
-      replacement: '# sslarch="linux-mips32 -mips32r2" # disabled for IRIX'
-    # Disable FIPS - requires Linux-specific link.h and dladdr()
-    - pattern: "enable-fips"
-      replacement: "no-fips"
-    # Disable kTLS (kernel TLS offload) - Linux-specific
-    - pattern: "enable-ktls"
-      replacement: "no-ktls"
-    # Comment out x86_64 sslflags override
-    - pattern: "sslflags=enable-ec_nistp_64_gcc_128"
-      replacement: "# sslflags=enable-ec_nistp_64_gcc_128 # disabled for IRIX"
-    # Disable SCTP - Linux SCTP not available on IRIX
-    - pattern: "enable-sctp"
-      replacement: "no-sctp"
+  - pattern: sslarch=%{_os}-%{_target_cpu}
+    replacement: 'sslarch=irix-mips3-gcc
 
-    #
-    # === Compiler/linker flags ===
-    #
-    # Remove GCC-specific flags that clang doesn't support
-    - pattern: "-Wa,--generate-missing-build-notes=yes"
-      replacement: ""
-    # Add compat library to make command
-    - pattern: "make -s %{?_smp_mflags} all"
-      replacement: "make -s %{?_smp_mflags} EX_LIBS=\"-L$COMPAT_DIR -lmogrix-compat\" all"
+      sslflags="no-asm no-async no-dgram no-afalgeng no-tests -mabi=n32"'
+  - pattern: sslarch="linux-mips32 -mips32r2"
+    replacement: '# sslarch="linux-mips32 -mips32r2" # disabled for IRIX'
+  - pattern: enable-fips
+    replacement: no-fips
+  - pattern: enable-ktls
+    replacement: no-ktls
+  - pattern: sslflags=enable-ec_nistp_64_gcc_128
+    replacement: '# sslflags=enable-ec_nistp_64_gcc_128 # disabled for IRIX'
+  - pattern: enable-sctp
+    replacement: no-sctp
+  - pattern: -Wa,--generate-missing-build-notes=yes
+    replacement: ''
+  - pattern: make -s %{?_smp_mflags} all
+    replacement: make -s %{?_smp_mflags} EX_LIBS="-L$COMPAT_DIR -lmogrix-compat" all
+  - pattern: 'Patch42: openssl-1.1.1-fips.patch'
+    replacement: '# Patch42: openssl-1.1.1-fips.patch # disabled for IRIX'
+  - pattern: 'Patch48: openssl-1.1.1-fips-post-rand.patch'
+    replacement: '# Patch48: openssl-1.1.1-fips-post-rand.patch # disabled for IRIX'
+  - pattern: 'Patch62: openssl-1.1.1-fips-curves.patch'
+    replacement: '# Patch62: openssl-1.1.1-fips-curves.patch # disabled for IRIX'
+  - pattern: 'Patch65: openssl-1.1.1-fips-drbg-selftest.patch'
+    replacement: '# Patch65: openssl-1.1.1-fips-drbg-selftest.patch # disabled for IRIX'
+  - pattern: 'Patch66: openssl-1.1.1-fips-dh.patch'
+    replacement: '# Patch66: openssl-1.1.1-fips-dh.patch # disabled for IRIX'
+  - pattern: 'Patch70: openssl-1.1.1-rewire-fips-drbg.patch'
+    replacement: '# Patch70: openssl-1.1.1-rewire-fips-drbg.patch # disabled for IRIX'
+  - pattern: 'Patch53: openssl-1.1.1-fips-crng-test.patch'
+    replacement: '# Patch53: openssl-1.1.1-fips-crng-test.patch # disabled for IRIX'
+  - pattern: '%patch42 -p1 -b .fips'
+    replacement: '# %patch42 -p1 -b .fips # disabled for IRIX'
+  - pattern: '%patch48 -p1 -b .fips-post-rand'
+    replacement: '# %patch48 -p1 -b .fips-post-rand # disabled for IRIX'
+  - pattern: '%patch62 -p1 -b .fips-curves'
+    replacement: '# %patch62 -p1 -b .fips-curves # disabled for IRIX'
+  - pattern: '%patch65 -p1 -b .fips-drbg-selftest'
+    replacement: '# %patch65 -p1 -b .fips-drbg-selftest # disabled for IRIX'
+  - pattern: '%patch66 -p1 -b .fips-dh'
+    replacement: '# %patch66 -p1 -b .fips-dh # disabled for IRIX'
+  - pattern: '%patch70 -p1 -b .rewire-fips-drbg'
+    replacement: '# %patch70 -p1 -b .rewire-fips-drbg # disabled for IRIX'
+  - pattern: '%patch53 -p1 -b .fips-crng-test'
+    replacement: '# %patch53 -p1 -b .fips-crng-test # disabled for IRIX'
+  - pattern: '#embed HMAC into fips provider for test run
 
-    #
-    # === FIPS patches (all disabled - not building FIPS) ===
-    #
-    - pattern: "Patch42: openssl-1.1.1-fips.patch"
-      replacement: "# Patch42: openssl-1.1.1-fips.patch # disabled for IRIX"
-    - pattern: "Patch48: openssl-1.1.1-fips-post-rand.patch"
-      replacement: "# Patch48: openssl-1.1.1-fips-post-rand.patch # disabled for IRIX"
-    - pattern: "Patch62: openssl-1.1.1-fips-curves.patch"
-      replacement: "# Patch62: openssl-1.1.1-fips-curves.patch # disabled for IRIX"
-    - pattern: "Patch65: openssl-1.1.1-fips-drbg-selftest.patch"
-      replacement: "# Patch65: openssl-1.1.1-fips-drbg-selftest.patch # disabled for IRIX"
-    - pattern: "Patch66: openssl-1.1.1-fips-dh.patch"
-      replacement: "# Patch66: openssl-1.1.1-fips-dh.patch # disabled for IRIX"
-    - pattern: "Patch70: openssl-1.1.1-rewire-fips-drbg.patch"
-      replacement: "# Patch70: openssl-1.1.1-rewire-fips-drbg.patch # disabled for IRIX"
-    - pattern: "Patch53: openssl-1.1.1-fips-crng-test.patch"
-      replacement: "# Patch53: openssl-1.1.1-fips-crng-test.patch # disabled for IRIX"
-    - pattern: "%patch42 -p1 -b .fips"
-      replacement: "# %patch42 -p1 -b .fips # disabled for IRIX"
-    - pattern: "%patch48 -p1 -b .fips-post-rand"
-      replacement: "# %patch48 -p1 -b .fips-post-rand # disabled for IRIX"
-    - pattern: "%patch62 -p1 -b .fips-curves"
-      replacement: "# %patch62 -p1 -b .fips-curves # disabled for IRIX"
-    - pattern: "%patch65 -p1 -b .fips-drbg-selftest"
-      replacement: "# %patch65 -p1 -b .fips-drbg-selftest # disabled for IRIX"
-    - pattern: "%patch66 -p1 -b .fips-dh"
-      replacement: "# %patch66 -p1 -b .fips-dh # disabled for IRIX"
-    - pattern: "%patch70 -p1 -b .rewire-fips-drbg"
-      replacement: "# %patch70 -p1 -b .rewire-fips-drbg # disabled for IRIX"
-    - pattern: "%patch53 -p1 -b .fips-crng-test"
-      replacement: "# %patch53 -p1 -b .fips-crng-test # disabled for IRIX"
-    # Disable FIPS HMAC embedding in %build
-    - pattern: "#embed HMAC into fips provider for test run\nOPENSSL_CONF=/dev/null LD_LIBRARY_PATH=. apps/openssl dgst -binary -sha256 -mac HMAC -macopt hexkey:f4556650ac31d35461610bac4ed81b1a181b2d8a43ea2854cbae22ca74560813 < providers/fips.so > providers/fips.so.hmac\nobjcopy --update-section .rodata1=providers/fips.so.hmac providers/fips.so providers/fips.so.mac\nmv providers/fips.so.mac providers/fips.so"
-      replacement: "# FIPS HMAC embedding disabled for IRIX (no-fips build)"
-    # Disable FIPS __spec_install_post macro
-    - pattern: "OPENSSL_CONF=/dev/null LD_LIBRARY_PATH=. apps/openssl dgst -binary -sha256 -mac HMAC -macopt hexkey:f4556650ac31d35461610bac4ed81b1a181b2d8a43ea2854cbae22ca74560813 < $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so > $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.hmac \\\n    objcopy --update-section .rodata1=$RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.hmac $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.mac \\\n    mv $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.mac $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so \\\n    rm $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.hmac \\"
-      replacement: "# FIPS spec_install_post disabled for IRIX (no-fips build) \\"
+      OPENSSL_CONF=/dev/null LD_LIBRARY_PATH=. apps/openssl dgst -binary -sha256 -mac HMAC -macopt hexkey:f4556650ac31d35461610bac4ed81b1a181b2d8a43ea2854cbae22ca74560813 < providers/fips.so > providers/fips.so.hmac
 
-    #
-    # === Spec file shell syntax fixes ===
-    #
-    # Replace Perl rename command with shell loop
-    - pattern: "rename so.%{soversion} so.%{version} $RPM_BUILD_ROOT%{_libdir}/*.so.%{soversion}"
-      replacement: "for f in $RPM_BUILD_ROOT%{_libdir}/*.so.%{soversion}; do mv \"$f\" \"${f%.%{soversion}}.%{version}\"; done"
-    # Fix brace expansion - bash doesn't expand braces after variable substitution
-    - pattern: "install -d $RPM_BUILD_ROOT{%{_bindir},%{_includedir},%{_libdir},%{_mandir},%{_libdir}/openssl,%{_pkgdocdir}}"
-      replacement: "install -d $RPM_BUILD_ROOT%{_bindir} $RPM_BUILD_ROOT%{_includedir} $RPM_BUILD_ROOT%{_libdir} $RPM_BUILD_ROOT%{_mandir} $RPM_BUILD_ROOT%{_libdir}/openssl $RPM_BUILD_ROOT%{_pkgdocdir}"
-    # Replace bash-specific pushd/popd with POSIX-compatible subshell
-    - pattern: "pushd $RPM_BUILD_ROOT%{_mandir}\nmv man5/config.5ossl man5/openssl.cnf.5\npopd"
-      replacement: "(cd $RPM_BUILD_ROOT%{_mandir} && mv man5/config.5ossl man5/openssl.cnf.5)"
+      objcopy --update-section .rodata1=providers/fips.so.hmac providers/fips.so providers/fips.so.mac
 
-  # Fix openssl.cnf paths for IRIX - must be rooted at /usr/sgug, not /etc
-  # Also disable Fedora crypto-policies and ssl_module (not available on IRIX)
+      mv providers/fips.so.mac providers/fips.so'
+    replacement: '# FIPS HMAC embedding disabled for IRIX (no-fips build)'
+  - pattern: "OPENSSL_CONF=/dev/null LD_LIBRARY_PATH=. apps/openssl dgst -binary -sha256 -mac HMAC -macopt hexkey:f4556650ac31d35461610bac4ed81b1a181b2d8a43ea2854cbae22ca74560813 < $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so\
+      \ > $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.hmac \\\n    objcopy --update-section .rodata1=$RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.hmac $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so\
+      \ $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.mac \\\n    mv $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.mac $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so \\\n    rm $RPM_BUILD_ROOT%{_libdir}/ossl-modules/fips.so.hmac\
+      \ \\"
+    replacement: '# FIPS spec_install_post disabled for IRIX (no-fips build) \'
+  - pattern: rename so.%{soversion} so.%{version} $RPM_BUILD_ROOT%{_libdir}/*.so.%{soversion}
+    replacement: for f in $RPM_BUILD_ROOT%{_libdir}/*.so.%{soversion}; do mv "$f" "${f%.%{soversion}}.%{version}"; done
+  - pattern: install -d $RPM_BUILD_ROOT{%{_bindir},%{_includedir},%{_libdir},%{_mandir},%{_libdir}/openssl,%{_pkgdocdir}}
+    replacement: install -d $RPM_BUILD_ROOT%{_bindir} $RPM_BUILD_ROOT%{_includedir} $RPM_BUILD_ROOT%{_libdir} $RPM_BUILD_ROOT%{_mandir} $RPM_BUILD_ROOT%{_libdir}/openssl $RPM_BUILD_ROOT%{_pkgdocdir}
+  - pattern: 'pushd $RPM_BUILD_ROOT%{_mandir}
+
+      mv man5/config.5ossl man5/openssl.cnf.5
+
+      popd'
+    replacement: (cd $RPM_BUILD_ROOT%{_mandir} && mv man5/config.5ossl man5/openssl.cnf.5)
   install_cleanup:
-    # clang defines __mips64 for n32 ABI (64-bit ISA, 32-bit pointers).
-    # Fedora's multiarch configuration.h checks __mips64 before __mips,
-    # so we need configuration-mips64.h pointing to the n32 config.
-    - ln -sf configuration-mips.h $RPM_BUILD_ROOT%{_includedir}/openssl/configuration-mips64.h
-    - sed -i 's|^ssl_conf = ssl_module|# ssl_conf = ssl_module  # Disabled for IRIX|' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
-    - sed -i 's|^\.include = /etc/crypto-policies|# .include = /etc/crypto-policies  # Disabled for IRIX|' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
-    - sed -i 's|= /etc/pki/|= /usr/sgug/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
+  - ln -sf configuration-mips.h $RPM_BUILD_ROOT%{_includedir}/openssl/configuration-mips64.h
+  - sed -i 's|^ssl_conf = ssl_module|# ssl_conf = ssl_module
+  - sed -i 's|^\.include = /etc/crypto-policies|# .include = /etc/crypto-policies
+  - sed -i 's|= /etc/pki/|= /usr/sgug/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf

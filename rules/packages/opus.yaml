@@ -1,0 +1,43 @@
+package: opus
+rules:
+  drop_subpackages:
+  - mingw32-*
+  - mingw64-*
+  drop_requires:
+  - libogg-devel
+  configure_flags:
+    add:
+    - --disable-static
+    - --disable-doc
+    - --enable-custom-modes
+  export_vars:
+    LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
+  spec_replacements:
+  - pattern: '%description
+
+      The Opus codec'
+    replacement: 'Provides: libopus.so.0
+
+
+      %description
+
+      The Opus codec
+
+      '
+  - pattern: "mkdir build_native\npushd build_native\n%global _configure ../configure\n%configure --enable-custom-modes --disable-static \\\n           --enable-hardening \\\n%ifarch %{arm} %{arm64} %{power64}\n\
+      \        --enable-fixed-point\n%endif\n\n%make_build\npopd\n"
+    replacement: "%configure --enable-custom-modes --disable-static \\\n           --enable-hardening\n\n# Fix libtool to build shared libraries for IRIX\n$MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool\
+      \ || exit 1\n%make_build\n"
+  - pattern: '%make_install -C build_native'
+    replacement: '%make_install'
+  - pattern: '%{_datadir}/man/man3/opus_*.3.gz'
+    replacement: '# man pages not generated without doxygen'
+  - pattern: '%doc README build_native/doc/html rfc6716.txt rfc8251.txt'
+    replacement: '%doc README rfc6716.txt rfc8251.txt'
+  - pattern: make -C build_native check
+    replacement: make check
+  - pattern: rm %{buildroot}%{_libdir}/libopus.la
+    replacement: '# .la already removed by generic install_cleanup'
+smoke_test:
+- command: ls /usr/sgug/lib32/libopus.so.0
+  expect: libopus.so.0

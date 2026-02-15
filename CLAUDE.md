@@ -1,7 +1,8 @@
 # Claude Instructions
 
 > **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
-> ALWAYS search `rules/INDEX.md` first. Also check `compat/catalog.yaml`, `HANDOFF.md`, `plan.md`. 
+> Read `rules/GENERIC_SUMMARY.md` when starting a package. Grep `rules/INDEX.md` for specific problem keywords. Do NOT read the full INDEX.md. Expand the search with broader search terms or `-C` context lines if needed.
+> Also check `compat/catalog.yaml`, `HANDOFF.md`, `plan.md`.
 > If you don't know what to do, check `rules/methods/before-you-start.md`.
 
 ---
@@ -26,22 +27,39 @@ When you hit an obstacle:
 
 If you edit `/opt/sgug-staging/` directly, apply a sed command during debugging, or fix anything manually - and that fix is NOT stored in mogrix rules - **you have failed**.
 
+### No Inline C in YAML
+
+**NEVER put C source code in prep_commands.** No heredocs generating .c/.h files, no printf chains writing C code. If you need a C file:
+
+1. Create it in `patches/packages/<package>/filename.c`
+2. Add `add_source: [filename.c]` to the package YAML (top-level, not under `rules:`)
+3. In `prep_commands`, use `cp %{_sourcedir}/filename.c destination.c`
+
+The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl that *modifies* existing C code is fine — the rule is about *generating* new C files inline.
+
 ### Where Fixes Go
 
 | Fix Type | Location |
 |----------|----------|
 | Missing compat function | `compat/catalog.yaml` + `compat/` |
 | Package-specific fix | `rules/packages/<package>.yaml` |
+| Package-specific C file | `patches/packages/<package>/` + `add_source` |
 | Common pattern | `rules/generic.yaml` |
 | Header fix | `compat/include/` then `mogrix sync-headers` |
 
 ### Before Ending a Session
 
-0. **Use the handoff pattern.** When ending a session, update HANDOFF.md with current state, pending issues, and next steps. The next session (human o
-r AI) starts informed.
+0. **Use the handoff pattern.** When ending a session, update HANDOFF.md with current state, pending issues, and next steps. The next session (human or AI) starts informed.
 1. Did I make any fixes outside of mogrix source?
 2. Are those fixes now stored in mogrix rules?
 3. Could someone rebuild from scratch using only mogrix?
+
+---
+
+## Agent Orchestration
+
+> **Batch builds use background agents. Read `rules/methods/task-tracking.md` for the full rules.**
+> Short version: max 2-3 agents, report to `build-results/<package>.md`, only orchestrator writes INDEX.md.
 
 ---
 
@@ -49,13 +67,15 @@ r AI) starts informed.
 
 | File | Purpose |
 |------|---------|
-| `rules/INDEX.md` | Package lookup, method pointers |
+| `rules/GENERIC_SUMMARY.md` | What generic.yaml already handles (read before writing rules) |
+| `rules/INDEX.md` | Problem lookup — grep, don't read whole file |
 | `rules/methods/mogrix-workflow.md` | How to run mogrix |
 | `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging |
 | `rules/methods/compat-functions.md` | Adding compat functions |
 | `rules/methods/text-replacement.md` | safepatch vs sed |
 | `rules/methods/patch-creation.md` | Creating patches |
 | `rules/methods/upstream-packages.md` | Non-Fedora packages (git/tarball) + suite bundles |
+| `rules/methods/task-tracking.md` | Task tracking + agent orchestration for batch builds |
 | `compat/catalog.yaml` | Compat function registry |
 | `HANDOFF.md` | Current session state |
 

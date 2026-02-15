@@ -1,0 +1,30 @@
+# libtiff - Tag Image File Format library
+package: libtiff
+
+rules:
+  drop_buildrequires:
+    - jbigkit-devel
+    - liblerc-devel
+    - libwebp-devel
+  configure_disable:
+    - jbig
+    - lerc
+    - webp
+    - cxx
+  spec_replacements:
+    # .la removal — use -f to avoid failure when none exist
+    - pattern: "rm $RPM_BUILD_ROOT%{_libdir}/*.la"
+      replacement: "rm -f $RPM_BUILD_ROOT%{_libdir}/*.la"
+    # Old soname compat — no previous libtiff on IRIX, skip copy
+    - pattern: "cp %{_libdir}/libtiff.so.5* $RPM_BUILD_ROOT%{_libdir}"
+      replacement: "# cp libtiff.so.5 skipped — no prior version on IRIX"
+    - pattern: "cp %{_libdir}/libtiffxx.so.5* $RPM_BUILD_ROOT%{_libdir}"
+      replacement: "# cp libtiffxx.so.5 skipped — no prior version on IRIX"
+    # C++ library — configure --disable-cxx doesn't fully work, remove manually
+    - pattern: "%{_libdir}/libtiffxx.so.*"
+      replacement: "# libtiffxx disabled"
+    - pattern: "%{_libdir}/libtiffxx.so"
+      replacement: "# libtiffxx.so disabled"
+    # Remove C++ libs from buildroot to avoid unpackaged file errors
+    - pattern: "%make_install"
+      replacement: "%make_install\nrm -f $RPM_BUILD_ROOT%{_libdir}/libtiffxx*"

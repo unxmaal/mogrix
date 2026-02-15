@@ -1,0 +1,66 @@
+package: imlib2
+add_source:
+- memmem.h
+rules:
+  drop_buildrequires:
+  - libid3tag-devel
+  - libheif-devel
+  - libjxl-devel
+  - librsvg2-devel
+  - libspectre-devel
+  - libwebp-devel
+  - openjpeg2-devel
+  - libXext-devel
+  - libtool
+  drop_subpackages:
+  - id3tag-loader
+  ac_cv_overrides:
+    ac_cv_func_clock_gettime: 'no'
+    ac_cv_lib_rt_clock_gettime: 'no'
+  prep_commands:
+  - cp %{_sourcedir}/memmem.h src/modules/loaders/
+  - 'sed -i ''1i #include "memmem.h"'' src/modules/loaders/loader_xbm.c'
+  - 'sed -i ''1i #include "memmem.h"'' src/modules/loaders/loader_xpm.c'
+  - 'sed -i ''1i #include "memmem.h"'' src/modules/loaders/loader_svg.c'
+  configure_flags:
+    add:
+    - --disable-static
+  spec_replacements:
+  - pattern: autoreconf -ifv
+    replacement: 'AUTOPOINT=true autoreconf -ifv
+
+      # Apply IRIX libtool fix after autoreconf regenerates libtool files
+
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh configure
+
+      '
+  - pattern: " --enable-doc-build \\\n --with-pic \\"
+    replacement: " --disable-doc-build \\\n --with-pic \\"
+  - pattern: 'sed -i ''s|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g'' libtool
+
+      sed -i ''s|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g'' libtool'
+    replacement: '# libtool rpath fixes handled by IRIX libtool fix script'
+  - pattern: '%files devel
+
+      %doc doc/html'
+    replacement: '%files devel
+
+      %doc'
+  - pattern: '%exclude %{_libdir}/imlib2/loaders/id3.*'
+    replacement: '# id3tag loader not built (no libid3tag)'
+  - pattern: 'Requires:       libX11-devel
+
+      Requires:       libXext-devel
+
+      Requires:       freetype-devel >= 2.1.9-4'
+    replacement: 'Requires:       freetype-devel >= 2.1.9-4
+
+      Provides: imlib2(mips-32) = %{version}-%{release}
+
+      Provides: imlib2-devel(mips-32) = %{version}-%{release}
+
+      Provides: libImlib2.so.1
+
+      Provides: pkgconfig(imlib2)
+
+      '

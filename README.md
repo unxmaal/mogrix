@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms C/C++ software into working IRIX packages. It supports Fedora 40 SRPMs, upstream git repos, and tarball downloads — handling the entire pipeline from source fetch through cross-compilation to deployable RPMs and self-contained app bundles.
 
-**Current Status:** 105+ source packages cross-compiled for IRIX (290+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **Qt5** (5.15.13), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **23 app bundles** (`mogrix bundle`) create optimized, self-contained tarballs that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+**Current Status:** 105+ source packages cross-compiled for IRIX (290+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **tcsh** (C shell), **Qt5** (5.15.13), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **20 app bundles** (5 suites + 15 individual) created as self-extracting `.run` installers that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -652,7 +652,7 @@ make clean
 
 ## Package Rules Status
 
-105+ source packages cross-compiled for IRIX across multiple phases:
+105+ source packages cross-compiled for IRIX across multiple phases (124 packages with rules):
 
 ### Phase 1: Bootstrap (14 packages)
 
@@ -835,7 +835,13 @@ make clean
 | 120 | man-db | 2.12.0 | Manual page system |
 | 121 | tinc | 1.0.36 | VPN daemon |
 
-Additional packages: bc, jq.
+### Session 38-40: Additional Packages (3 packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 122 | tcsh | 6.24.10 | C shell |
+| 123 | bc | 1.07.1 | Arbitrary precision calculator |
+| 124 | jq | 1.7.1 | JSON processor |
 
 145 package rule files exist, with 40+ pending future builds.
 

@@ -1,51 +1,17 @@
-# bc - GNU arbitrary precision calculator (FC40: 1.07.1)
-# Links against readline (available in staging via SGUG-RSE)
 package: bc
-
 rules:
-
-  drop_buildrequires:
-    - texinfo
-
   spec_replacements:
-    # Remove info dir and files (texinfo dropped)
-    - pattern: "rm -f $RPM_BUILD_ROOT/%{_infodir}/dir"
-      replacement: "rm -rf $RPM_BUILD_ROOT/%{_infodir}"
-
-    - pattern: "%{_infodir}/*"
-      replacement: ""
-
-    # Pre-generate libmath.h with host compiler — fbc is a build-time code
-    # generator that must run on the host, not the MIPS cross-compiler target.
-    # NOTE: rpmbuild uses /bin/sh, so no pushd/popd or bash-isms.
-    - pattern: "%make_build"
-      replacement: |
-        # Build fbc (bc interpreter for code generation) with host gcc
-        _top=$(pwd)
-        # Create stub readline headers (host may lack readline-devel;
-        # fbc doesn't need readline for code generation, runs with /dev/null)
-        mkdir -p "$_top/host-stubs/readline"
-        printf '%s\n' '#include <stdio.h>' 'static char *rl_readline_name;' 'static FILE *rl_instream;' 'static char *readline(const char *p){(void)p;return 0;}' > "$_top/host-stubs/readline/readline.h"
-        printf '%s\n' 'static void add_history(const char *s){(void)s;}' 'static void using_history(void){}' 'static void stifle_history(int n){(void)n;}' 'static int unstifle_history(void){return 0;}' > "$_top/host-stubs/readline/history.h"
-        cd bc
-        # Create placeholder libmath.h (global.c includes it)
-        echo '{0}' > libmath.h
-        for f in main.c bc.c scan.c execute.c load.c storage.c util.c warranty.c global.c; do
-          gcc -DHAVE_CONFIG_H -I"$_top/host-stubs" -I. -I.. -I../h -O2 -w -c "$f" -o "$(echo $f | sed 's/\.c$/.host.o/')" || exit 1
-        done
-        cd ../lib
-        for f in number.c getopt.c getopt1.c vfprintf.c; do
-          gcc -DHAVE_CONFIG_H -I"$_top/host-stubs" -I.. -I../h -O2 -w -c "$f" -o "$(echo $f | sed 's/\.c$/.host.o/')" 2>/dev/null || true
-        done
-        ar rcs libbc.host.a *.host.o
-        cd ../bc
-        gcc -o fbc.host *.host.o ../lib/libbc.host.a -lm || exit 1
-        ./fbc.host -c libmath.b </dev/null >libmath.h
-        chmod +x fix-libmath_h 2>/dev/null || true
-        ./fix-libmath_h || true
-        rm -f fbc.host *.host.o ../lib/libbc.host.a ../lib/*.host.o
-        cd "$_top"
-        # Neuter the libmath.h Makefile rule so make doesn't try to regenerate
-        sed -i 's/^libmath\.h: .*/libmath.h:/' bc/Makefile
-        %make_build
-
+  - pattern: rm -f $RPM_BUILD_ROOT/%{_infodir}/dir
+    replacement: rm -rf $RPM_BUILD_ROOT/%{_infodir}
+  - pattern: '%{_infodir}/*'
+    replacement: ''
+  - pattern: '%make_build'
+    replacement: "# Build fbc (bc interpreter for code generation) with host gcc\n_top=$(pwd)\n# Create stub readline headers (host may lack readline-devel;\n# fbc doesn't need readline for code generation,\
+      \ runs with /dev/null)\nmkdir -p \"$_top/host-stubs/readline\"\nprintf '%s\\n' '#include <stdio.h>' 'static char *rl_readline_name;' 'static FILE *rl_instream;' 'static char *readline(const char *p){(void)p;return\
+      \ 0;}' > \"$_top/host-stubs/readline/readline.h\"\nprintf '%s\\n' 'static void add_history(const char *s){(void)s;}' 'static void using_history(void){}' 'static void stifle_history(int n){(void)n;}'\
+      \ 'static int unstifle_history(void){return 0;}' > \"$_top/host-stubs/readline/history.h\"\ncd bc\n# Create placeholder libmath.h (global.c includes it)\necho '{0}' > libmath.h\nfor f in main.c bc.c\
+      \ scan.c execute.c load.c storage.c util.c warranty.c global.c; do\n  gcc -DHAVE_CONFIG_H -I\"$_top/host-stubs\" -I. -I.. -I../h -O2 -w -c \"$f\" -o \"$(echo $f | sed 's/\\.c$/.host.o/')\" || exit\
+      \ 1\ndone\ncd ../lib\nfor f in number.c getopt.c getopt1.c vfprintf.c; do\n  gcc -DHAVE_CONFIG_H -I\"$_top/host-stubs\" -I.. -I../h -O2 -w -c \"$f\" -o \"$(echo $f | sed 's/\\.c$/.host.o/')\" 2>/dev/null\
+      \ || true\ndone\nar rcs libbc.host.a *.host.o\ncd ../bc\ngcc -o fbc.host *.host.o ../lib/libbc.host.a -lm || exit 1\n./fbc.host -c libmath.b </dev/null >libmath.h\nchmod +x fix-libmath_h 2>/dev/null\
+      \ || true\n./fix-libmath_h || true\nrm -f fbc.host *.host.o ../lib/libbc.host.a ../lib/*.host.o\ncd \"$_top\"\n# Neuter the libmath.h Makefile rule so make doesn't try to regenerate\nsed -i 's/^libmath\\\
+      .h: .*/libmath.h:/' bc/Makefile\n%make_build\n"

@@ -1,0 +1,23 @@
+# flac - lossless audio codec
+package: flac
+
+rules:
+  spec_replacements:
+    # autogen.sh not needed — source tarball already has configure
+    - pattern: "./autogen.sh -V"
+      replacement: "# autogen.sh skipped — configure already exists"
+    # .la files already removed by mogrix install_cleanup — avoid duplicate rm
+    - pattern: "rm %{buildroot}%{_libdir}/*.la"
+      replacement: "rm -f %{buildroot}%{_libdir}/*.la"
+    # doc dir removal may fail if docs not installed
+    - pattern: "rm -r %{buildroot}%{_docdir}/flac"
+      replacement: "rm -rf %{buildroot}%{_docdir}/flac"
+    # C++ libs disabled — remove from files list
+    - pattern: "%{_libdir}/libFLAC++.so.10*"
+      replacement: "# libFLAC++ disabled (no C++ support)"
+  prep_commands:
+    # microbench uses CLOCK_PROCESS_CPUTIME_ID which doesn't exist on IRIX
+    - "sed -i 's/test microbench oss-fuzz/test oss-fuzz/' Makefile.in"
+  configure_disable:
+    - cpplibs
+    - examples

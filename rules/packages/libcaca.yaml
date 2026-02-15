@@ -1,0 +1,81 @@
+package: libcaca
+rules:
+  drop_buildrequires:
+  - libX11-devel
+  - freeglut-devel
+  - mesa-libGLU-devel
+  - pkgconfig(imlib2)
+  - pkgconfig(pangoft2)
+  drop_requires:
+  - toilet
+  - imlib2-devel
+  - libX11-devel
+  - pango-devel
+  - freeglut-devel
+  - mesa-libGLU-devel
+  drop_subpackages:
+  - python3-caca
+  - ruby-caca
+  configure_disable:
+  - x11
+  - gl
+  - csharp
+  - java
+  - python
+  - ruby
+  - imlib2
+  - doc
+  - cxx
+  - network
+  install_cleanup:
+  - rm -f %{buildroot}%{_libdir}/*.a
+  - for f in %{buildroot}%{_bindir}/*; do test -f "$f" && head -1 "$f" | grep -q '/bin/bash' && bname=$(basename "$f") && for d in src/.libs tools/.libs; do if test -f "$d/$bname"; then cp "$d/$bname" "$f";
+    break; fi; done; done
+  prep_commands:
+  - sed -i '/#include "common-image.h"/a extern void *_caca_alloc2d(size_t width, size_t height, size_t elem_size);' src/common-image.c
+  export_vars:
+    LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
+  spec_replacements:
+  - pattern: '%{!?ruby_vendorlibdir: %global ruby_vendorlibdir %(ruby -r rbconfig -e ''print RbConfig::CONFIG["vendorlibdir"]'')}'
+    replacement: '# ruby globals removed for cross-build'
+  - pattern: '%{!?ruby_vendorarchdir: %global ruby_vendorarchdir %(ruby -r rbconfig -e ''print RbConfig::CONFIG["vendorarchdir"]'')}'
+    replacement: '# ruby globals removed for cross-build'
+  - pattern: '%bcond_without gl'
+    replacement: '%bcond_with gl'
+  - pattern: '%bcond_without ruby'
+    replacement: '%bcond_with ruby'
+  - pattern: 'Buildrequires: doxygen'
+    replacement: '# doxygen removed for cross-build'
+  - pattern: 'Buildrequires: texlive-dvips'
+    replacement: '# texlive removed for cross-build'
+  - pattern: 'Buildrequires: texlive-latex'
+    replacement: '# texlive removed for cross-build'
+  - pattern: '%define _lto_cflags -flto=auto -ffat-lto-objects'
+    replacement: '# LTO disabled for cross-build'
+  - pattern: export LDFLAGS="$(pkg-config --libs gio-2.0) $LDFLAGS"
+    replacement: export LIBS="$LIBS -lm"
+  - pattern: sed -i -e 's/sitearchdir/vendorarchdir/g' -e 's/sitelibdir/vendorlibdir/g' configure
+    replacement: '# ruby vendorarch sed removed for cross-build'
+  - pattern: " \\\n  --disable-static \\\n  --disable-csharp \\\n  --disable-java\n\n%make_build"
+    replacement: '
+
+
+      /opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
+
+      %make_build'
+  - pattern: mv %{buildroot}%{_docdir}/libcaca-dev libcaca-dev-docs
+    replacement: '# Doc move skipped -- docs not built'
+  - pattern: '%doc libcaca-dev-docs/html/'
+    replacement: '# docs not built'
+  - pattern: '%{_mandir}/man3/*
+
+      '
+    replacement: ''
+  - pattern: 'URL: http://caca.zoy.org/wiki/libcaca
+
+      '
+    replacement: 'URL: http://caca.zoy.org/wiki/libcaca
+
+      Provides: libcaca.so.0
+
+      '

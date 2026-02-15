@@ -1,0 +1,23 @@
+# ctags - universal ctags source code indexer
+package: ctags
+
+rules:
+  drop_buildrequires:
+    - libseccomp-devel
+    - python3-docutils
+  configure_disable:
+    - seccomp
+  prep_commands:
+    # Fix missing errno include in acutest test header
+    - "sed -i '1i #include <errno.h>' extra-cmds/acutest.h"
+  spec_replacements:
+    # IRIX scandir uses non-const dirent* — suppress pointer type mismatch
+    - pattern: "./autogen.sh"
+      replacement: "./autogen.sh\nexport CFLAGS=\"${CFLAGS} -Wno-incompatible-function-pointer-types\""
+    # Man pages not built (no python3-docutils/rst2man)
+    - pattern: "%{_mandir}/man1/*"
+      replacement: "# man pages not available in cross-build"
+    - pattern: "%{_mandir}/man5/*"
+      replacement: "# man5 pages not available in cross-build"
+    - pattern: "%{_mandir}/man7/*"
+      replacement: "# man7 pages not available in cross-build"

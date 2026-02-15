@@ -1,0 +1,21 @@
+# lrzsz - X/Y/ZMODEM file transfer tools
+package: lrzsz
+
+rules:
+  # The Makefile has rules to regenerate autotools outputs (aclocal.m4, configure,
+  # Makefile.in, config.h.in) when inputs (configure.in, Makefile.am) are newer.
+  # Patches modify configure.in, triggering this chain. Modern automake (1.16)
+  # rejects the ancient AM_C_PROTOTYPES/ANSI2KNR macros in this 1998-era package.
+  # Fix: override AUTOMAKE/AUTOCONF/ACLOCAL/AUTOHEADER to "true" (no-op) so make
+  # skips regeneration entirely. Applied to both %make_build and %make_install.
+  spec_replacements:
+    - pattern: "%make_build"
+      replacement: "%make_build AUTOMAKE=true AUTOCONF=true ACLOCAL=true AUTOHEADER=true"
+    - pattern: "%make_install"
+      replacement: "%make_install AUTOMAKE=true AUTOCONF=true ACLOCAL=true AUTOHEADER=true"
+
+  # Disable NLS - the bundled intl/ directory has ancient K&R C code that declares
+  # stpcpy as static, conflicting with mogrix compat header's non-static stpcpy.
+  # We strip locale files anyway (generic.yaml), so NLS is pointless.
+  configure_disable:
+    - nls

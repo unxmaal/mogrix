@@ -1,0 +1,146 @@
+package: mksh
+smoke_test:
+- command: /usr/sgug/bin/mksh -c 'echo hello'
+  expect: hello
+- command: /usr/sgug/bin/mksh -c 'print -r -- $KSH_VERSION'
+  expect: MIRBSD
+rules:
+  drop_buildrequires:
+  - util-linux
+  - ed
+  - perl-interpreter
+  - perl(Getopt::Std)
+  - sed
+  drop_requires:
+  - grep
+  - sed
+  - '%{_sbindir}/alternatives'
+  spec_replacements:
+  - pattern: 'CFLAGS="$RPM_OPT_FLAGS -DMKSH_DISABLE_EXPERIMENTAL" LDFLAGS="$RPM_LD_FLAGS" sh Build.sh -r
+
+      cp test.sh test_mksh.sh
+
+      HAVE_PERSISTENT_HISTORY=0; export HAVE_PERSISTENT_HISTORY
+
+      CFLAGS="$RPM_OPT_FLAGS -DMKSH_DISABLE_EXPERIMENTAL" LDFLAGS="$RPM_LD_FLAGS" sh Build.sh -L -r
+
+      cp -f test.sh test_lksh.sh
+
+      ./mksh FAQ2HTML.sh
+
+      '
+    replacement: '# Build mksh with cross-compiler
+
+      COMPAT_DIR=$(pwd)/mogrix-compat
+
+      export CC="%{__cc}"
+
+      # -Wno-int-conversion: clang 18 hard-errors on NULL (0L) in comma
+
+      #   expressions returning pointers: return (maybe_errorf(...), NULL);
+
+      # -Wno-format: suppress sign mismatch warnings from %zu->%u sed fix
+
+      export CFLAGS="%{optflags} -DMKSH_DISABLE_EXPERIMENTAL -Wno-int-conversion -Wno-format"
+
+      export LDFLAGS="$LDFLAGS -L$COMPAT_DIR -lmogrix-compat"
+
+      export TARGET_OS=IRIX
+
+      sh Build.sh -r
+
+      cp test.sh test_mksh.sh
+
+
+      # Build lksh (legacy mode)
+
+      export HAVE_PERSISTENT_HISTORY=0
+
+      sh Build.sh -L -r
+
+      cp -f test.sh test_lksh.sh
+
+
+      # Skip FAQ2HTML.sh — it tries to run the MIPS mksh binary on x86 host
+
+      '
+  - pattern: '%if 0%{?fedora} || 0%{?rhel} > 8
+
+      Provides:         /bin/rksh
+
+      %endif
+
+      '
+    replacement: ''
+  - pattern: 'Requires(post):   grep'
+    replacement: ''
+  - pattern: 'Requires(post):   %{_sbindir}/alternatives'
+    replacement: ''
+  - pattern: 'Requires(preun):  %{_sbindir}/alternatives'
+    replacement: ''
+  - pattern: 'Requires(postun): sed'
+    replacement: ''
+  - pattern: "%post\nfor d in /bin %{_bindir}; do\n%if 0%{?fedora} || 0%{?rhel} > 8\n  for s in ksh %{name} rksh rmksh; do\n%else\n  for s in ksh %{name} rmksh; do\n%endif\n    grep -q '^'\"$d/$s\"'$' %{_sysconfdir}/shells\
+      \ 2>/dev/null || echo \"$d/$s\" >> /etc/shells\n  done\ndone\n\n%{_sbindir}/alternatives --install %{_bindir}/ksh ksh %{_bindir}/%{name} 10 \\\n%if 0%{?fedora} || 0%{?rhel} > 8\n  --slave %{_bindir}/rksh\
+      \ rksh %{_bindir}/%{name} \\\n%endif\n  --slave %{_mandir}/man1/ksh.1.gz ksh-man %{_mandir}/man1/%{name}.1.gz \\\n%if 0%{?fedora} || 0%{?rhel} > 8\n  --slave %{_mandir}/man1/rksh.1.gz rksh-man %{_mandir}/man1/%{name}.1.gz\n\
+      %endif\n"
+    replacement: '%post
+
+      # No /etc/shells or alternatives management on IRIX
+
+      '
+  - pattern: "%preun\nif [ $1 -eq 0 ]; then\n  %{_sbindir}/alternatives --remove ksh %{_bindir}/%{name}\nfi\n"
+    replacement: '%preun
+
+      # No alternatives management on IRIX
+
+      '
+  - pattern: "%postun\nfor d in /bin %{_bindir}; do\n  for s in ksh %{name} rksh rmksh; do\n    [ ! -x \"$d/$s\" ] && sed -e 's@^'\"$d/$s\"'$@POSTUNREMOVE@' -e '/^POSTUNREMOVE$/d' -i %{_sysconfdir}/shells\n\
+      \  done\ndone\n"
+    replacement: '%postun
+
+      # No /etc/shells management on IRIX
+
+      '
+  - pattern: '%if 0%{?fedora} || 0%{?rhel} > 8
+
+      touch $RPM_BUILD_ROOT{%{_bindir}/{ksh,rksh},%{_mandir}/man1/{ksh,rksh}.1}
+
+      %else
+
+      touch $RPM_BUILD_ROOT{%{_bindir}/ksh,%{_mandir}/man1/ksh.1}
+
+      %endif
+
+      '
+    replacement: 'touch $RPM_BUILD_ROOT%{_bindir}/ksh
+
+      touch $RPM_BUILD_ROOT%{_mandir}/man1/ksh.1
+
+      '
+  - pattern: '%if 0%{?fedora} || 0%{?rhel} > 8
+
+      %ghost %{_bindir}/rksh
+
+      %endif
+
+      '
+    replacement: ''
+  - pattern: '%if 0%{?fedora} || 0%{?rhel} > 8
+
+      %ghost %{_mandir}/man1/rksh.1*
+
+      %endif
+
+      '
+    replacement: ''
+  - pattern: '%doc dot.mkshrc FAQ.htm'
+    replacement: '%doc dot.mkshrc'
+  - pattern: '%ghost %{_mandir}/man1/ksh.1*'
+    replacement: '%ghost %{_mandir}/man1/ksh.1'
+  - pattern: 'Conflicts:        filesystem < 3'
+    replacement: ''
+  prep_commands:
+  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lalloc.c misc.c shf.c sh.h
+  install_cleanup:
+  - rm -rf %{buildroot}%{_datadir}/locale

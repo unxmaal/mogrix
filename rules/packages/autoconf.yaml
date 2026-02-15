@@ -9,9 +9,6 @@ smoke_test:
 # No compilation needed, just packaging fixes.
 
 rules:
-  # No NLS in cross-compilation
-  skip_find_lang: true
-
   # Autoconf's configure checks for perl by running it. The PATH includes
   # staging (/opt/sgug-staging/usr/sgug/bin) which has our cross-compiled MIPS
   # perl that can't execute on x86_64. Force configure to use host perl.

@@ -1,115 +1,74 @@
-# curl - URL transfer library and tool
-# Critical for network operations
-#
-# ---metadata---
-# complexity: high
-# build_system: autoconf
-# key_fixes: [out_of_tree_build, LD_export, __mips64_undef, complex_env_setup]
-# similar_to: [openssl]
-# depends: [openssl, zlib]
-# status: WORKING
-# ---
-
 package: curl
-
 rules:
-  # Compat functions that may be needed
-
-  # Drop problematic dependencies
   drop_buildrequires:
-    - libssh2-devel
-    - libpsl-devel
-    - libidn2-devel
-    - krb5-devel
-    - openssl-devel
-
-  # Drop runtime deps for features disabled at configure time
+  - krb5-devel
   drop_requires:
-    - libnghttp2
-    - libpsl
-    - libssh
-
-  # Use cross-compiled OpenSSL from staging
-  # Export LD for libtool - use GNU ld (LLD doesn't support -print-search-dirs)
+  - libnghttp2
+  - libpsl
+  - libssh
   export_vars:
-    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
-    CPPFLAGS: "-I/opt/sgug-staging/usr/sgug/include $CPPFLAGS"
-    LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS"
-    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-
-  # Package-specific autoconf cache overrides
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    CPPFLAGS: -I/opt/sgug-staging/usr/sgug/include $CPPFLAGS
+    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS
+    LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
   ac_cv_overrides:
-    curl_cv_func_recv_args: "int,void *,size_t,int"
-    curl_cv_func_send_args: "int,const void *,size_t,int"
-    # Override libtool's LD detection - force GNU ld.bfd (LLD doesn't support -print-search-dirs)
-    lt_cv_path_LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-
-  # Configure flags - only add, don't remove (removal mangles line continuations)
+    curl_cv_func_recv_args: int,void *,size_t,int
+    curl_cv_func_send_args: int,const void *,size_t,int
+    lt_cv_path_LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
   configure_flags:
     add:
-      - --disable-silent-rules
-      - --enable-ipv6
-      - --disable-ldap
-      - --disable-ldaps
-
+    - --enable-ipv6
+    - --disable-ldap
+    - --disable-ldaps
   configure_disable:
-    - ldap
-    - ldaps
-
-  # Remove unpackaged minimal library files
+  - ldap
+  - ldaps
   install_cleanup:
-    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurl.la.minimal"
-    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libcurl.so.minimal"
-
-  # Shell syntax fixes and cross-compilation adjustments
+  - rm -f $RPM_BUILD_ROOT%{_libdir}/libcurl.la.minimal
+  - rm -f $RPM_BUILD_ROOT%{_libdir}/libcurl.so.minimal
   spec_replacements:
-    # Fix brace expansion - mkdir
-    - pattern: "mkdir build-{full,minimal}"
-      replacement: "mkdir build-full build-minimal"
-    # Fix brace expansion - sed
-    - pattern: "build-{full,minimal}/libtool"
-      replacement: "build-full/libtool build-minimal/libtool"
-    # Disable LDAP in full build (we don't have cross-compiled LDAP)
-    - pattern: "--enable-ldap"
-      replacement: "--disable-ldap"
-    - pattern: "--enable-ldaps"
-      replacement: "--disable-ldaps"
-    # Disable other features we don't have for cross-compilation
-    - pattern: "--with-libpsl"
-      replacement: "--without-libpsl"
-    - pattern: "--with-libssh"
-      replacement: "--without-libssh"
-    # Disable threaded resolver (pthreads issues on IRIX)
-    - pattern: "--enable-threaded-resolver"
-      replacement: "--disable-threaded-resolver"
-    # Remove missing files from %files section (disabled features)
-    - pattern: "%{_datadir}/zsh"
-      replacement: "# %{_datadir}/zsh # zsh completions not built"
-    # Fix brace expansion in mv commands - shell doesn't support {a,b} expansion
-    - pattern: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl{,.minimal}"
-      replacement: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl ${RPM_BUILD_ROOT}%{_bindir}/curl.minimal"
-    - pattern: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl{,-%{version}}"
-      replacement: "mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl ${RPM_BUILD_ROOT}%{_bindir}/curl-%{version}"
-    # curl uses out-of-tree builds - add CC/CPPFLAGS/LDFLAGS exports inside subshells
-    - pattern: "# configure minimal build\n("
-      replacement: "# configure minimal build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
-    - pattern: "# configure full build\n("
-      replacement: "# configure full build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
-    # Replace %configure with ../configure for out-of-tree builds
-    - pattern: "    %configure $common_configure_opts   \\"
-      replacement: "    ../configure --prefix=/usr/sgug --exec-prefix=/usr/sgug --bindir=/usr/sgug/bin --sbindir=/usr/sgug/sbin --libdir=/usr/sgug/lib32 --includedir=/usr/sgug/include --datadir=/usr/sgug/share --mandir=/usr/sgug/share/man --infodir=/usr/sgug/share/info --sysconfdir=/usr/sgug/etc --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu $common_configure_opts \\"
-    # Explicitly tell curl where to find cross-compiled OpenSSL
-    - pattern: "--with-ssl --with-ca-bundle"
-      replacement: "--with-openssl=/opt/sgug-staging/usr/sgug --with-ca-bundle"
-    # Disable features we don't have cross-compiled libraries for
-    - pattern: "--with-gssapi"
-      replacement: "--without-gssapi"
-    - pattern: "--with-libidn2"
-      replacement: "--without-libidn2"
-    - pattern: "--with-nghttp2"
-      replacement: "--without-nghttp2"
-    - pattern: "--with-brotli"
-      replacement: "--without-brotli"
+  - pattern: mkdir build-{full,minimal}
+    replacement: mkdir build-full build-minimal
+  - pattern: build-{full,minimal}/libtool
+    replacement: build-full/libtool build-minimal/libtool
+  - pattern: --enable-ldap
+    replacement: --disable-ldap
+  - pattern: --enable-ldaps
+    replacement: --disable-ldaps
+  - pattern: --with-libpsl
+    replacement: --without-libpsl
+  - pattern: --with-libssh
+    replacement: --without-libssh
+  - pattern: --enable-threaded-resolver
+    replacement: --disable-threaded-resolver
+  - pattern: '%{_datadir}/zsh'
+    replacement: '# %{_datadir}/zsh # zsh completions not built'
+  - pattern: mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl{,.minimal}
+    replacement: mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl ${RPM_BUILD_ROOT}%{_bindir}/curl.minimal
+  - pattern: mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl{,-%{version}}
+    replacement: mv -v ${RPM_BUILD_ROOT}%{_bindir}/curl ${RPM_BUILD_ROOT}%{_bindir}/curl-%{version}
+  - pattern: '# configure minimal build
 
+      ('
+    replacement: "# configure minimal build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export\
+      \ RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+  - pattern: '# configure full build
+
+      ('
+    replacement: "# configure full build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export\
+      \ RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+  - pattern: '    %configure $common_configure_opts   \'
+    replacement: '    ../configure --prefix=/usr/sgug --exec-prefix=/usr/sgug --bindir=/usr/sgug/bin --sbindir=/usr/sgug/sbin --libdir=/usr/sgug/lib32 --includedir=/usr/sgug/include --datadir=/usr/sgug/share
+      --mandir=/usr/sgug/share/man --infodir=/usr/sgug/share/info --sysconfdir=/usr/sgug/etc --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu $common_configure_opts \'
+  - pattern: --with-ssl --with-ca-bundle
+    replacement: --with-openssl=/opt/sgug-staging/usr/sgug --with-ca-bundle
+  - pattern: --with-gssapi
+    replacement: --without-gssapi
+  - pattern: --with-libidn2
+    replacement: --without-libidn2
+  - pattern: --with-nghttp2
+    replacement: --without-nghttp2
+  - pattern: --with-brotli
+    replacement: --without-brotli

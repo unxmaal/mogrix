@@ -1,22 +1,12 @@
-# libjpeg-turbo - JPEG library with SIMD acceleration (FC40: 3.0.2)
-# Uses cmake; SIMD disabled for MIPS, sgifixes patch from FC31 likely stale
 package: libjpeg-turbo
-
 rules:
-  inject_compat_functions:
-    - setenv
-
   spec_replacements:
-    # Replace cmake macros with raw cmake commands for cross-compilation
-    # %{cmake} macro not available; build manually with our cross-compiler
-    - pattern: "%{cmake} -DCMAKE_SKIP_RPATH:BOOL=YES \\\n         -DCMAKE_SKIP_INSTALL_RPATH:BOOL=YES \\\n%ifarch s390x\n         -DFLOATTEST:STRING=\"fp-contract\" \\\n%endif\n         -DENABLE_STATIC:BOOL=NO\n\n%cmake_build"
-      replacement: "mkdir -p _build && cd _build\ncmake .. \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=lib32 \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_C_FLAGS=\"%{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SKIP_RPATH:BOOL=YES \\\n  -DCMAKE_SKIP_INSTALL_RPATH:BOOL=YES \\\n  -DENABLE_STATIC:BOOL=NO \\\n  -DWITH_SIMD:BOOL=OFF \\\n  -DWITH_JAVA:BOOL=OFF\nmake %{?_smp_mflags} -C ."
-
-    # Replace cmake_install macro
-    - pattern: "%cmake_install"
-      replacement: "make -C _build DESTDIR=$RPM_BUILD_ROOT install"
-
-    # Skip multilib header hack (uname -i doesn't work for cross)
-    - pattern: "case `uname -i` in"
-      replacement: "case \"mips\" in"
-
+  - pattern: "%{cmake} -DCMAKE_SKIP_RPATH:BOOL=YES \\\n         -DCMAKE_SKIP_INSTALL_RPATH:BOOL=YES \\\n%ifarch s390x\n         -DFLOATTEST:STRING=\"fp-contract\" \\\n%endif\n         -DENABLE_STATIC:BOOL=NO\n\
+      \n%cmake_build"
+    replacement: "mkdir -p _build && cd _build\ncmake .. \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=lib32 \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_C_FLAGS=\"%{optflags}\"\
+      \ \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SKIP_RPATH:BOOL=YES \\\n  -DCMAKE_SKIP_INSTALL_RPATH:BOOL=YES\
+      \ \\\n  -DENABLE_STATIC:BOOL=NO \\\n  -DWITH_SIMD:BOOL=OFF \\\n  -DWITH_JAVA:BOOL=OFF\nmake %{?_smp_mflags} -C ."
+  - pattern: '%cmake_install'
+    replacement: make -C _build DESTDIR=$RPM_BUILD_ROOT install
+  - pattern: case `uname -i` in
+    replacement: case "mips" in

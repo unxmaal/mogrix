@@ -1,79 +1,144 @@
-# harfbuzz - Text shaping library (FC40: 8.3.0-5)
-# C++ library using autotools. Needs freetype + glib2.
-# First build WITHOUT cairo/icu (circular dep with cairo; icu not yet built).
-# Will rebuild with cairo support after cairo is built.
-
 package: harfbuzz
-
 rules:
-
   drop_buildrequires:
-    - cairo-devel
-    - gobject-introspection-devel
-    - libicu-devel
-    - graphite2-devel
-    - gtk-doc
-
+  - gobject-introspection-devel
+  - libicu-devel
+  - graphite2-devel
+  - gtk-doc
   spec_replacements:
-    # Export CXX for C++ compilation (harfbuzz is C++)
-    - pattern: "%configure --disable-static --with-graphite2 --with-gobject --enable-introspection"
-      replacement: |
-        export CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx"
-        export CXXFLAGS="%{optflags}"
-        %configure --disable-static --without-graphite2 --without-gobject --without-glib --disable-introspection --without-cairo --without-icu
+  - pattern: '%configure --disable-static --with-graphite2 --with-gobject --enable-introspection'
+    replacement: 'export CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx"
 
-    # Add explicit Provides (rpmmacros.irix sets AutoProv: no)
-    - pattern: "License:        MIT-Modern-Variant"
-      replacement: |
-        License:        MIT-Modern-Variant
-        Provides: libharfbuzz.so.0(mips-32)
-        Provides: libharfbuzz-subset.so.0(mips-32)
-        Provides: harfbuzz(mips-32) = %{version}-%{release}
+      export CXXFLAGS="%{optflags}"
 
-    # Remove devel Requires on ISA and icu subpackage (no icu built)
-    - pattern: "Requires:       %{name}%{?_isa} = %{version}-%{release}\nRequires:       %{name}-icu%{?_isa} = %{version}-%{release}"
-      replacement: "Requires:       %{name} = %{version}-%{release}"
+      %configure --disable-static --without-graphite2 --without-gobject --without-glib --disable-introspection --without-cairo --without-icu
 
-    # Remove icu subpackage entirely
-    - pattern: "%package        icu\nSummary:        Harfbuzz ICU support library\nRequires:       %{name}%{?_isa} = %{version}-%{release}\n\n%description    icu\nThis package contains Harfbuzz ICU support library."
-      replacement: "# icu subpackage removed (ICU not available on IRIX yet)"
+      '
+  - pattern: 'License:        MIT-Modern-Variant'
+    replacement: 'License:        MIT-Modern-Variant
 
-    # Remove ldconfig scriptlets
-    - pattern: "%ldconfig_scriptlets\n\n%ldconfig_scriptlets icu"
-      replacement: "# ldconfig scriptlets removed for IRIX"
+      Provides: libharfbuzz.so.0(mips-32)
 
-    # Fix %files - remove cairo, gobject, girepository, gir, icu
-    - pattern: "%files\n%license COPYING\n%doc NEWS AUTHORS README\n%{_libdir}/libharfbuzz.so.0*\n%{_libdir}/libharfbuzz-cairo.so.*\n%{_libdir}/libharfbuzz-gobject.so.0*\n%{_libdir}/libharfbuzz-subset.so.0*\n%dir %{_libdir}/girepository-1.0\n%{_libdir}/girepository-1.0/HarfBuzz-0.0.typelib"
-      replacement: |
-        %files
-        %license COPYING
-        %doc NEWS AUTHORS README
-        %{_libdir}/libharfbuzz.so.0*
-        %{_libdir}/libharfbuzz-cairo.so.*
-        %{_libdir}/libharfbuzz-subset.so.0*
+      Provides: libharfbuzz-subset.so.0(mips-32)
 
-    # Fix %files devel - remove cairo, gobject, icu, gir references
-    - pattern: "%files devel\n%doc %{_datadir}/gtk-doc\n%{_bindir}/hb-info\n%{_bindir}/hb-view\n%{_bindir}/hb-ot-shape-closure\n%{_bindir}/hb-shape\n%{_bindir}/hb-subset\n%{_includedir}/harfbuzz/\n%{_libdir}/libharfbuzz.so\n%{_libdir}/libharfbuzz-gobject.so\n%{_libdir}/libharfbuzz-cairo.so\n%{_libdir}/libharfbuzz-icu.so\n%{_libdir}/libharfbuzz-subset.so\n%{_libdir}/pkgconfig/harfbuzz.pc\n%{_libdir}/pkgconfig/harfbuzz-cairo.pc\n%{_libdir}/pkgconfig/harfbuzz-gobject.pc\n%{_libdir}/pkgconfig/harfbuzz-icu.pc\n%{_libdir}/pkgconfig/harfbuzz-subset.pc\n%{_libdir}/cmake/harfbuzz/\n%dir %{_datadir}/gir-1.0\n%{_datadir}/gir-1.0/HarfBuzz-0.0.gir"
-      replacement: |
-        %files devel
-        %doc %{_datadir}/gtk-doc
-        %{_includedir}/harfbuzz/
-        %{_libdir}/libharfbuzz.so
-        %{_libdir}/libharfbuzz-cairo.so
-        %{_libdir}/libharfbuzz-subset.so
-        %{_libdir}/pkgconfig/harfbuzz.pc
-        %{_libdir}/pkgconfig/harfbuzz-cairo.pc
-        %{_libdir}/pkgconfig/harfbuzz-subset.pc
-        %{_libdir}/cmake/harfbuzz/
+      Provides: harfbuzz(mips-32) = %{version}-%{release}
 
-    # Remove icu %files section
-    - pattern: "%files icu\n%{_libdir}/libharfbuzz-icu.so.*"
-      replacement: "# icu files removed"
+      '
+  - pattern: 'Requires:       %{name}%{?_isa} = %{version}-%{release}
 
-  # Remove test/perf from SUBDIRS in top-level Makefile.in (test-blob.c needs
-  # MAP_ANON which IRIX lacks; building tests is wasteful for cross-compilation)
+      Requires:       %{name}-icu%{?_isa} = %{version}-%{release}'
+    replacement: 'Requires:       %{name} = %{version}-%{release}'
+  - pattern: '%package        icu
+
+      Summary:        Harfbuzz ICU support library
+
+      Requires:       %{name}%{?_isa} = %{version}-%{release}
+
+
+      %description    icu
+
+      This package contains Harfbuzz ICU support library.'
+    replacement: '# icu subpackage removed (ICU not available on IRIX yet)'
+  - pattern: '%ldconfig_scriptlets
+
+
+      %ldconfig_scriptlets icu'
+    replacement: '# ldconfig scriptlets removed for IRIX'
+  - pattern: '%files
+
+      %license COPYING
+
+      %doc NEWS AUTHORS README
+
+      %{_libdir}/libharfbuzz.so.0*
+
+      %{_libdir}/libharfbuzz-cairo.so.*
+
+      %{_libdir}/libharfbuzz-gobject.so.0*
+
+      %{_libdir}/libharfbuzz-subset.so.0*
+
+      %dir %{_libdir}/girepository-1.0
+
+      %{_libdir}/girepository-1.0/HarfBuzz-0.0.typelib'
+    replacement: '%files
+
+      %license COPYING
+
+      %doc NEWS AUTHORS README
+
+      %{_libdir}/libharfbuzz.so.0*
+
+      %{_libdir}/libharfbuzz-cairo.so.*
+
+      %{_libdir}/libharfbuzz-subset.so.0*
+
+      '
+  - pattern: '%files devel
+
+      %doc %{_datadir}/gtk-doc
+
+      %{_bindir}/hb-info
+
+      %{_bindir}/hb-view
+
+      %{_bindir}/hb-ot-shape-closure
+
+      %{_bindir}/hb-shape
+
+      %{_bindir}/hb-subset
+
+      %{_includedir}/harfbuzz/
+
+      %{_libdir}/libharfbuzz.so
+
+      %{_libdir}/libharfbuzz-gobject.so
+
+      %{_libdir}/libharfbuzz-cairo.so
+
+      %{_libdir}/libharfbuzz-icu.so
+
+      %{_libdir}/libharfbuzz-subset.so
+
+      %{_libdir}/pkgconfig/harfbuzz.pc
+
+      %{_libdir}/pkgconfig/harfbuzz-cairo.pc
+
+      %{_libdir}/pkgconfig/harfbuzz-gobject.pc
+
+      %{_libdir}/pkgconfig/harfbuzz-icu.pc
+
+      %{_libdir}/pkgconfig/harfbuzz-subset.pc
+
+      %{_libdir}/cmake/harfbuzz/
+
+      %dir %{_datadir}/gir-1.0
+
+      %{_datadir}/gir-1.0/HarfBuzz-0.0.gir'
+    replacement: '%files devel
+
+      %doc %{_datadir}/gtk-doc
+
+      %{_includedir}/harfbuzz/
+
+      %{_libdir}/libharfbuzz.so
+
+      %{_libdir}/libharfbuzz-cairo.so
+
+      %{_libdir}/libharfbuzz-subset.so
+
+      %{_libdir}/pkgconfig/harfbuzz.pc
+
+      %{_libdir}/pkgconfig/harfbuzz-cairo.pc
+
+      %{_libdir}/pkgconfig/harfbuzz-subset.pc
+
+      %{_libdir}/cmake/harfbuzz/
+
+      '
+  - pattern: '%files icu
+
+      %{_libdir}/libharfbuzz-icu.so.*'
+    replacement: '# icu files removed'
   prep_commands:
-    - "sed -i 's/^SUBDIRS = src util test perf docs/SUBDIRS = src util docs/' Makefile.in"
-
-  skip_check: true
-
+  - sed -i 's/^SUBDIRS = src util test perf docs/SUBDIRS = src util docs/' Makefile.in

@@ -1,0 +1,34 @@
+package: libyaml
+rules:
+  drop_buildrequires:
+  - autoconf
+  - automake
+  - libtool
+  drop_subpackages:
+  - mingw32-libyaml
+  - mingw64-libyaml
+  force_conditionals:
+    0%{?fedora}: false
+  spec_replacements:
+  - pattern: pushd build
+    replacement: cd build
+  - pattern: popd
+    replacement: cd ..
+  - pattern: rm -f %{buildroot}%{_libdir}/*.{la,a}
+    replacement: rm -f %{buildroot}%{_libdir}/*.a
+  - pattern: '%make_build all html'
+    replacement: '%make_build'
+  - pattern: soname=$(readelf
+    replacement: 'true # soname rewrite skipped for IRIX cross-compile
+
+      #soname=$(readelf'
+  - pattern: rm -f %{buildroot}%{_libdir}/libyaml.so
+    replacement: '#rm -f %{buildroot}%{_libdir}/libyaml.so'
+  - pattern: echo "INPUT($soname)"
+    replacement: '#echo "INPUT($soname)"'
+  - pattern: rm -f %{buildroot}%{_libdir}/*.a
+    replacement: 'rm -f %{buildroot}%{_libdir}/*.a
+
+      rm -rf %{buildroot}%{_docdir}/libyaml-devel-*/html'
+  - pattern: '%doc doc/html'
+    replacement: '# doc html removed (doxygen output cleaned up)'

@@ -1,0 +1,47 @@
+package: vile
+rules:
+  drop_buildrequires:
+  - libXpm-devel
+  - libXaw-devel
+  - libXt-devel
+  drop_requires:
+  - xorg-x11-fonts-misc
+  drop_subpackages:
+  - xvile
+  - common
+  - -n xvile
+  configure_flags:
+    add:
+    - --without-loadable-filters
+  spec_replacements:
+  - pattern: "Requires:\t%{name}-common = %{version}-%{release}"
+    replacement: ''
+  - pattern: "DESKTOP_FLAGS=--vendor='' \\\n%configure --with-loadable-filters \\\n\t   --disable-rpath-hack \\\n\t   --disable-stripping \\\n\t   --with-app-defaults=%{_datadir}/X11/app-defaults \\\n\t\
+      \   --with-screen=Xaw \\\n\t   --with-icon-theme \\\n\t   --with-icondir=%{_datadir}/icons/ \\\n\t   --with-pixmapdir=%{_datadir}/pixmaps/ \\\n\t   --with-xpm\n\nmake %{?_smp_mflags} xvile\ntouch\
+      \ vile"
+    replacement: '# xvile build removed for IRIX (terminal vile only)'
+  - pattern: "--with-loadable-filters \\\n\t   --disable-rpath-hack"
+    replacement: --disable-rpath-hack
+  - pattern: make install DESTDIR=%{buildroot} INSTALL='install -p' TARGET='xvile'
+    replacement: '# xvile install removed'
+  - pattern: make install-desktop DESKTOP_FLAGS=--vendor='' DESKTOP_DIR=%{buildroot}%{_datadir}/applications
+    replacement: '# desktop install removed'
+  - pattern: 'rm -v -f %{buildroot}%{_datadir}/applications/lxvile.desktop
+
+      rm -v -f %{buildroot}%{_datadir}/applications/uxvile.desktop'
+    replacement: '# desktop file cleanup removed'
+  - pattern: "pushd %{buildroot}%{_mandir}/man1 \nln -s xvile.1 uxvile.1\nln -s xvile.1 lxvile.1\npopd"
+    replacement: '# xvile man symlinks removed'
+  - pattern: '%{_mandir}/man1/vile*.1.gz'
+    replacement: '%{_mandir}/man1/vile*.1*'
+  - pattern: '%{_bindir}/vile-to-html'
+    replacement: '%{_bindir}/vile-to-html
+
+      %doc AUTHORS COPYING CHANGES README doc/*doc
+
+      %{_datadir}/vile/'
+  install_cleanup:
+  - rm -rf %{buildroot}%{_libdir}/vile
+smoke_test:
+- command: /usr/sgug/bin/vile --version
+  expect: 9.8z

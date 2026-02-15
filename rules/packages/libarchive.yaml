@@ -1,32 +1,17 @@
-# libarchive - Multi-format archive and compression library
-# Has sgifixes patches
-
 package: libarchive
-
-# IRIX-specific patches from SGUG-RSE
 add_patch:
-  - libarchive.sgifixes.patch
-
+- libarchive.sgifixes.patch
 rules:
-  # Compat functions that may be needed
-
-  # NOTE: libacl-devel/libattr-devel drop_buildrequires handled by generic.yaml
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   drop_buildrequires:
-    - e2fsprogs-devel
-
-  # Configure flags
+  - e2fsprogs-devel
   configure_flags:
     add:
-      - --disable-silent-rules
-      - --disable-acl
-      - --disable-xattr
-      - --without-nettle
-      - --without-libb2
+    - --disable-acl
+    - --disable-xattr
+    - --without-nettle
+    - --without-libb2
     remove:
-      - --with-zstd
-
+    - --with-zstd
   configure_disable:
-    - acl
-    - xattr
-
+  - acl
+  - xattr

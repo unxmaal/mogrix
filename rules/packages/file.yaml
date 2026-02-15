@@ -1,58 +1,35 @@
-# file - File type identification utility
-# Needs compat functions
-#
-# ---metadata---
-# complexity: medium
-# build_system: autoconf
-# key_fixes: [posix_spawn_file_actions, mogrix_compat_linking, getopt_long]
-# similar_to: [elfutils]
-# depends: [zlib]
-# status: WORKING
-# ---
-
 package: file
-
 rules:
-  # Compat functions needed
-
-  # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
-
-  # Autoconf cache overrides
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
-    ac_cv_func_getopt_long: "yes"
-
-  # Add staging library path for cross-compiled shared libs
+    ac_cv_func_getopt_long: 'yes'
   export_vars:
-    LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32"
-
-  # Configure flags
+    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32
   configure_flags:
     add:
-      - --disable-silent-rules
-      - --enable-fsect-man5
-      - --enable-shared
-
-  # NOTE: libdicl remove_lines handled by generic.yaml
-
-  # Disable Python bindings (no Python in cross-compile environment)
+    - --enable-fsect-man5
+    - --enable-shared
   spec_replacements:
-    - pattern: "%bcond_without python2"
-      replacement: "%bcond_with python2"
-    - pattern: "%bcond_without python3"
-      replacement: "%bcond_with python3"
-    # Force libtool to build shared libraries for cross-compilation using generic script
-    - pattern: "# remove hardcoded library paths from local libtool"
-      replacement: |
-        # Fix libtool for IRIX using generic script (note: file uses custom soname)
-        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
-        # file-specific: Custom SONAME for libmagic (libmagic.so.1)
-        sed -i 's|^soname_spec=.*|soname_spec="\\$libname\\$release\\$shared_ext.\\$major"|g' libtool
-        sed -i 's|^library_names_spec=.*|library_names_spec="\\$libname\\$release\\$shared_ext.\\$versuffix \\$libname\\$release\\$shared_ext.\\$major \\$libname\\$shared_ext"|g' libtool
-        # Add mogrix-compat library to src/Makefile LIBS
-        sed -i "s|^LIBS = |LIBS = -L$(pwd)/mogrix-compat -lmogrix-compat |g" src/Makefile
-        # remove hardcoded library paths from local libtool
-    # Change file-libs %files to handle both .so and .so.* patterns
-    - pattern: "%{_libdir}/*so.*"
-      replacement: "%{_libdir}/*.so*"
+  - pattern: '%bcond_without python2'
+    replacement: '%bcond_with python2'
+  - pattern: '%bcond_without python3'
+    replacement: '%bcond_with python3'
+  - pattern: '# remove hardcoded library paths from local libtool'
+    replacement: '# Fix libtool for IRIX using generic script (note: file uses custom soname)
 
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+
+      # file-specific: Custom SONAME for libmagic (libmagic.so.1)
+
+      sed -i ''s|^soname_spec=.*|soname_spec="\\$libname\\$release\\$shared_ext.\\$major"|g'' libtool
+
+      sed -i ''s|^library_names_spec=.*|library_names_spec="\\$libname\\$release\\$shared_ext.\\$versuffix \\$libname\\$release\\$shared_ext.\\$major \\$libname\\$shared_ext"|g'' libtool
+
+      # Add mogrix-compat library to src/Makefile LIBS
+
+      sed -i "s|^LIBS = |LIBS = -L$(pwd)/mogrix-compat -lmogrix-compat |g" src/Makefile
+
+      # remove hardcoded library paths from local libtool
+
+      '
+  - pattern: '%{_libdir}/*so.*'
+    replacement: '%{_libdir}/*.so*'

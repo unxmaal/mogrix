@@ -1,0 +1,47 @@
+package: lame
+
+rules:
+  # ncurses-devel is available in staging; nasm is x86-only (not needed for MIPS)
+  drop_buildrequires:
+    - nasm
+
+  # Keep libs and devel subpackages (libmp3lame useful for other builds)
+  spec_replacements:
+    # LAME frontend uses tgetent/tgetnum/tgetstr from termcap.
+    # On our staging, ncurses splits these into libtinfo.
+    # configure finds -lncurses (initscr) but termcap funcs are in -ltinfo.
+    - pattern: "%configure"
+      replacement: "export LIBS=\"$LIBS -ltinfo\"\n%configure"
+    # Remove %ifarch ix86 block around nasm in BuildRequires
+    - pattern: |
+        %ifarch %{ix86}
+        BuildRequires:  nasm
+        %endif
+      replacement: ""
+
+    # Remove %ifarch ix86 blocks in %build section
+    - pattern: |
+        %ifarch %{ix86}
+        export CFLAGS="$RPM_OPT_FLAGS -ffast-math"
+        #From LFS:http://www.linuxfromscratch.org/blfs/view/svn/multimedia/lame.html
+        export ac_cv_header_xmmintrin_h=no
+        %endif
+      replacement: ""
+
+    - pattern: |
+        %ifarch %{ix86}
+          --enable-nasm \
+        %endif
+      replacement: ""
+
+    # Remove doc HTML files from %files (may not be generated in cross-build)
+    - pattern: "%doc README TODO USAGE doc/html/*.html"
+      replacement: "%doc README TODO USAGE"
+
+    # Fix bash brace expansion in %files libs (rpmbuild uses /bin/sh, not bash)
+    - pattern: "%{_libdir}/libmp3lame.so.0{,.*}"
+      replacement: "%{_libdir}/libmp3lame.so.0\n%{_libdir}/libmp3lame.so.0.*"
+
+smoke_test:
+  - command: "/usr/sgug/bin/lame --help 2>&1 | head -1"
+    expect: "LAME"

@@ -1,80 +1,53 @@
-# libxml2 - XML parsing library
-# Successfully cross-compiled for IRIX N32
-# Note: pthread causes crashes on IRIX, so threads are disabled
-#
-# ---metadata---
-# complexity: medium
-# build_system: autoconf
-# key_fixes: [libtool_shared, python_disable, lzma_disable, threads_disable]
-# similar_to: [popt, xz]
-# depends: [zlib]
-# status: WORKING
-# ---
-
 package: libxml2
-
-# Note: The old SGUG patch (libxml2.sgifixes.patch) was for xml2-config.in libdir handling
-# which is no longer needed in libxml2 2.12.x - it now uses @libdir@ from configure
-
-# Use patch file instead of sed
 add_patch:
-  - libxml2-disable-check.patch
-
+- libxml2-disable-check.patch
 rules:
-  # NOTE: skip_check is inherited from generic.yaml
-
-  # Compat functions that may be needed
-
-  # Configure flags
   configure_flags:
     add:
-      - --disable-silent-rules
-      - --without-python
-      - --without-icu
-      - --without-zlib
-      - --without-lzma
-      - --without-threads    # CRITICAL: pthread crashes IRIX rld
-      - --without-tls
+    - --without-python
+    - --without-icu
+    - --without-zlib
+    - --without-lzma
+    - --without-threads
+    - --without-tls
     remove:
-      - --with-python
-      - --with-zlib
-      - --with-lzma
-      - --with-threads
-      - --with-tls
-
+    - --with-python
+    - --with-zlib
+    - --with-lzma
+    - --with-threads
+    - --with-tls
   configure_disable:
-    - static
-
-  # All spec replacements in single section
+  - static
   spec_replacements:
-    # Skip the check phase entirely
-    - pattern: "%check"
-      replacement: "%check\nexit 0\n# Original check section:"
+  - pattern: '%check'
+    replacement: '%check
 
-    # Fix libtool to build shared libraries for IRIX using generic script
-    - pattern: "%make_build"
-      replacement: |
-        # Fix libtool to build shared libraries for IRIX
-        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
-        %make_build
+      exit 0
 
-    # Remove Python subpackage since we build --without-python
-    - pattern: "%package -n python3-libxml2"
-      replacement: "# Disabled: %package -n python3-libxml2"
-    - pattern: "%description -n python3-libxml2"
-      replacement: "# Disabled: %description -n python3-libxml2"
-    - pattern: "%files -n python3-libxml2"
-      replacement: "# Disabled: %files -n python3-libxml2"
-    - pattern: "%{python3_sitearch}/libxml2mod.so"
-      replacement: ""
-    - pattern: "%{python3_sitelib}/libxml2.py"
-      replacement: ""
-    - pattern: "%{python3_sitelib}/__pycache__/libxml2.*"
-      replacement: ""
-    - pattern: "%{python3_sitelib}/drv_libxml2.py"
-      replacement: ""
-    - pattern: "%{python3_sitelib}/__pycache__/drv_libxml2.*"
-      replacement: ""
-    - pattern: "%doc doc/apibuild.py"
-      replacement: ""
+      # Original check section:'
+  - pattern: '%make_build'
+    replacement: '# Fix libtool to build shared libraries for IRIX
 
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+
+      %make_build
+
+      '
+  - pattern: '%package -n python3-libxml2'
+    replacement: '# Disabled: %package -n python3-libxml2'
+  - pattern: '%description -n python3-libxml2'
+    replacement: '# Disabled: %description -n python3-libxml2'
+  - pattern: '%files -n python3-libxml2'
+    replacement: '# Disabled: %files -n python3-libxml2'
+  - pattern: '%{python3_sitearch}/libxml2mod.so'
+    replacement: ''
+  - pattern: '%{python3_sitelib}/libxml2.py'
+    replacement: ''
+  - pattern: '%{python3_sitelib}/__pycache__/libxml2.*'
+    replacement: ''
+  - pattern: '%{python3_sitelib}/drv_libxml2.py'
+    replacement: ''
+  - pattern: '%{python3_sitelib}/__pycache__/drv_libxml2.*'
+    replacement: ''
+  - pattern: '%doc doc/apibuild.py'
+    replacement: ''

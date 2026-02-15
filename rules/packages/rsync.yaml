@@ -1,73 +1,55 @@
-# rsync - file synchronization tool (FC40: 3.2.7)
 package: rsync
-
 rules:
-  inject_compat_functions:
-    - stpcpy
-
-  # IRIX doesn't support 128-bit long double — rsync's bundled snprintf
-  # uses LDOUBLE for %f formatting, triggering __extenddftf2 which crashes.
   ac_cv_overrides:
-    ac_cv_type_long_double_wider: "no"
-
+    ac_cv_type_long_double_wider: 'no'
   drop_buildrequires:
-    - popt-devel
-    - lz4-devel
-    - xxhash-devel
-
+  - lz4-devel
+  - xxhash-devel
   configure_flags:
     add:
-      - "--disable-lz4"
-      - "--disable-xxhash"
-      - "--enable-openssl"
-      - "--enable-zstd"
-      - "--enable-ipv6"
+    - --disable-lz4
+    - --disable-xxhash
+    - --enable-openssl
+    - --enable-zstd
+    - --enable-ipv6
     remove:
-      - "--enable-lz4"
-      - "--enable-xxhash"
-
+    - --enable-lz4
+    - --enable-xxhash
   drop_subpackages:
-    - "daemon"
-
+  - daemon
   spec_replacements:
-    # Collapse conditional %prep — isprerelease=0, so use non-prerelease setup
-    # Also removes the %if block where emitter wrongly injected compat copies
-    - pattern: |
-        %if %isprerelease
-        %setup -q -n rsync-%{version}%{?prerelease}
-      replacement: |
-        %if 0
-        %setup -q -n rsync-%{version}%{?prerelease}
+  - pattern: '%if %isprerelease
 
-    # Re-inject compat copies after patches (emitter put them in dead %if branch)
-    # Must list ALL compat sources — generic + package-specific + extra_files
-    - pattern: "%patch 2 -p1 -b .buffer-overflow"
-      replacement: |
-        %patch 2 -p1 -b .buffer-overflow
+      %setup -q -n rsync-%{version}%{?prerelease}
 
-        # Mogrix compat sources (re-injected — emitter put them in %if branch)
-        mkdir -p mogrix-compat
-        for src in %{SOURCE100} %{SOURCE101} %{SOURCE102} %{SOURCE103} %{SOURCE104} %{SOURCE105} %{SOURCE106} %{SOURCE107} %{SOURCE108}; do
-          cp "$src" mogrix-compat/
-        done
+      '
+    replacement: '%if 0
 
-    # Remove systemd unit file installations (daemon subpackage dropped)
-    - pattern: "install -D -m644 %{SOURCE3} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd.service"
-      replacement: "# systemd services disabled for IRIX"
-    - pattern: "install -D -m644 %{SOURCE2} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd.socket"
-      replacement: "# systemd socket disabled"
-    - pattern: "install -D -m644 %{SOURCE4} $RPM_BUILD_ROOT/%{_sysconfdir}/rsyncd.conf"
-      replacement: "install -D -m644 %{SOURCE4} $RPM_BUILD_ROOT/%{_sysconfdir}/rsyncd.conf"
-    - pattern: "install -D -m644 %{SOURCE5} $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/rsyncd"
-      replacement: "# sysconfig disabled"
-    - pattern: "install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service"
-      replacement: "# systemd template disabled"
+      %setup -q -n rsync-%{version}%{?prerelease}
 
-    # Remove daemon scriptlet sections (drop_subpackages doesn't remove these)
-    - pattern: "%post daemon\n"
-      replacement: ""
-    - pattern: "%preun daemon\n"
-      replacement: ""
-    - pattern: "%postun daemon\n"
-      replacement: ""
+      '
+  - pattern: '%patch 2 -p1 -b .buffer-overflow'
+    replacement: "%patch 2 -p1 -b .buffer-overflow\n\n# Mogrix compat sources (re-injected — emitter put them in %if branch)\nmkdir -p mogrix-compat\nfor src in %{SOURCE100} %{SOURCE101} %{SOURCE102} %{SOURCE103}\
+      \ %{SOURCE104} %{SOURCE105} %{SOURCE106}; do\n  cp \"$src\" mogrix-compat/\ndone\n"
+  - pattern: install -D -m644 %{SOURCE3} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd.service
+    replacement: '# systemd services disabled for IRIX'
+  - pattern: install -D -m644 %{SOURCE2} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd.socket
+    replacement: '# systemd socket disabled'
+  - pattern: install -D -m644 %{SOURCE4} $RPM_BUILD_ROOT/%{_sysconfdir}/rsyncd.conf
+    replacement: install -D -m644 %{SOURCE4} $RPM_BUILD_ROOT/%{_sysconfdir}/rsyncd.conf
+  - pattern: install -D -m644 %{SOURCE5} $RPM_BUILD_ROOT/%{_sysconfdir}/sysconfig/rsyncd
+    replacement: '# sysconfig disabled'
+  - pattern: install -D -m644 %{SOURCE6} $RPM_BUILD_ROOT/%{_unitdir}/rsyncd@.service
+    replacement: '# systemd template disabled'
+  - pattern: '%post daemon
 
+      '
+    replacement: ''
+  - pattern: '%preun daemon
+
+      '
+    replacement: ''
+  - pattern: '%postun daemon
+
+      '
+    replacement: ''

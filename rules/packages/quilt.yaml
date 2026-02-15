@@ -1,0 +1,10 @@
+package: quilt
+rules:
+  drop_buildrequires:
+  - p7zip
+  - perl-podlators
+  - util-linux-ng
+  - '%{_sbindir}/sendmail'
+  spec_replacements:
+  - pattern: '%{find_lang} %{name}'
+    replacement: '# find_lang skipped for cross-build'

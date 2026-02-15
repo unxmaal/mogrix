@@ -2576,9 +2576,14 @@ def create_srpm(packages: tuple[str, ...], output_dir: str | None):
     help="Output directory (default: ~/mogrix_outputs/bundles/)",
 )
 @click.option(
-    "--no-tarball",
+    "--tarball",
     is_flag=True,
-    help="Don't create tarball, just build the bundle directory",
+    help="Create .tar.gz instead of self-extracting .run",
+)
+@click.option(
+    "--no-package",
+    is_flag=True,
+    help="Don't package — just build the bundle directory",
 )
 @click.option(
     "--include",
@@ -2600,7 +2605,8 @@ def create_srpm(packages: tuple[str, ...], output_dir: str | None):
 def bundle(
     packages: tuple[str, ...],
     output: str | None,
-    no_tarball: bool,
+    tarball: bool,
+    no_package: bool,
     include: tuple[str, ...],
     name: str | None,
     sysroot: str,
@@ -2608,18 +2614,20 @@ def bundle(
     """Create a self-contained app bundle for IRIX.
 
     Bundles PACKAGES with all mogrix-built shared library dependencies
-    into a self-contained directory with launcher scripts. Extract on an
-    IRIX system alongside SGUG-RSE without conflicts.
+    into a self-contained directory with launcher scripts. Output is a
+    self-extracting .run installer by default.
 
     \b
-    Single app:
+    Single app (produces .run installer):
         mogrix bundle nano
-        mogrix bundle groff --no-tarball
+
+    \b
+    Tarball output instead:
+        mogrix bundle nano --tarball
 
     \b
     Suite (multiple apps in one bundle):
         mogrix bundle telescope snownews lynx --name mogrix-smallweb
-        mogrix bundle weechat nano --name chat-suite
 
     \b
     Extra packages (siblings not auto-detected):
@@ -2643,13 +2651,34 @@ def bundle(
     if len(packages) > 1 and not suite_name:
         suite_name = f"{target_package}-suite"
 
+    # Determine output format
+    if no_package:
+        output_format = "directory"
+    elif tarball:
+        output_format = "tarball"
+    else:
+        output_format = "run"
+
+    # Load package-level trampoline exclusions from rules
+    trampoline_exclude: set[str] = set()
+    for pkg in packages:
+        rule_path = RULES_DIR / "packages" / f"{pkg}.yaml"
+        if rule_path.exists():
+            import yaml
+
+            with open(rule_path) as f:
+                rule_data = yaml.safe_load(f) or {}
+            pkg_exclude = rule_data.get("bundle_trampoline_exclude", [])
+            trampoline_exclude.update(pkg_exclude)
+
     builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
     builder.create_bundle(
         target_package=target_package,
         output_dir=output_dir,
         extra_packages=extra if extra else None,
-        create_tarball=not no_tarball,
+        output_format=output_format,
         suite_name=suite_name,
+        trampoline_exclude=trampoline_exclude if trampoline_exclude else None,
     )
 
 

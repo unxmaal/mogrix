@@ -1,0 +1,53 @@
+package: libpsl
+rules:
+  drop_buildrequires:
+  - libicu-devel
+  - gtk-doc
+  - publicsuffix-list
+  drop_requires:
+  - publicsuffix-list-dafsa
+  - publicsuffix-list
+  drop_subpackages:
+  - psl
+  - psl-make-dafsa
+  configure_flags:
+    add:
+    - --disable-static
+    - --disable-gtk-doc
+    - --disable-man
+    remove:
+    - --enable-man
+    - --enable-gtk-doc
+    - --enable-builtin=libicu
+    - --with-psl-distfile=%{_datadir}/publicsuffix/public_suffix_list.dafsa
+    - --with-psl-file=%{_datadir}/publicsuffix/effective_tld_names.dat
+    - --with-psl-testfile=%{_datadir}/publicsuffix/test_psl.txt
+  install_cleanup:
+  - rm -f %{buildroot}%{_bindir}/psl
+  - rm -f %{buildroot}%{_bindir}/psl-make-dafsa
+  - rm -rf %{buildroot}%{_mandir}/man1
+  spec_replacements:
+  - pattern: rm -frv list
+    replacement: '# mogrix: keep bundled PSL data'
+  - pattern: ln -sv %{_datadir}/publicsuffix list
+    replacement: '# mogrix: using bundled PSL data'
+  - pattern: '%py3_shebang_fix src/psl-make-dafsa'
+    replacement: '# mogrix: no python3'
+  - pattern: --enable-runtime=libidn2
+    replacement: --enable-builtin=libidn2 --enable-runtime=libidn2
+  - pattern: '# avoid using rpath'
+    replacement: '# mogrix: skip rpath fixup'
+  - pattern: sed -i libtool \
+    replacement: '# mogrix: rpath sed removed \'
+  - pattern: '    -e ''s|^\(runpath_var=\).*$|\1|'' \'
+    replacement: '# mogrix: rpath sed line 1 \'
+  - pattern: '    -e ''s|^\(hardcode_libdir_flag_spec=\).*$|\1|'''
+    replacement: '# mogrix: rpath sed line 2'
+  - pattern: 'Summary:        C library for the Publix Suffix List'
+    replacement: 'Summary:        C library for the Public Suffix List
+
+      Provides: libpsl.so.5'
+  - pattern: '%{_datadir}/gtk-doc/html/libpsl/'
+    replacement: ''
+  - pattern: '%{_mandir}/man3/libpsl.3*'
+    replacement: ''

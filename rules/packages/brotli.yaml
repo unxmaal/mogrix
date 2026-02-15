@@ -1,0 +1,9 @@
+package: brotli
+rules:
+  drop_subpackages:
+  - python3-brotli
+  spec_replacements:
+  - pattern: '%py3_build'
+    replacement: 'true # skip python build'
+  - pattern: '%py3_install'
+    replacement: 'true # skip python install'
