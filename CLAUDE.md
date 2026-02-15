@@ -48,11 +48,17 @@ The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl
 
 ### Before Ending a Session
 
-0. **Use the handoff pattern.** When ending a session, update HANDOFF.md with current state, pending issues, and next steps. The next session (human o
-r AI) starts informed.
+0. **Use the handoff pattern.** When ending a session, update HANDOFF.md with current state, pending issues, and next steps. The next session (human or AI) starts informed.
 1. Did I make any fixes outside of mogrix source?
 2. Are those fixes now stored in mogrix rules?
 3. Could someone rebuild from scratch using only mogrix?
+
+---
+
+## Agent Orchestration
+
+> **Batch builds use background agents. Read `rules/methods/task-tracking.md` for the full rules.**
+> Short version: max 2-3 agents, report to `build-results/<package>.md`, only orchestrator writes INDEX.md.
 
 ---
 
@@ -67,6 +73,7 @@ r AI) starts informed.
 | `rules/methods/text-replacement.md` | safepatch vs sed |
 | `rules/methods/patch-creation.md` | Creating patches |
 | `rules/methods/upstream-packages.md` | Non-Fedora packages (git/tarball) + suite bundles |
+| `rules/methods/task-tracking.md` | Task tracking + agent orchestration for batch builds |
 | `compat/catalog.yaml` | Compat function registry |
 | `HANDOFF.md` | Current session state |
 

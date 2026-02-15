@@ -1,0 +1,76 @@
+# imlib2 - Image loading/saving/rendering library (FC40: 1.11.1, autotools)
+# Available deps: freetype, libjpeg-turbo, libpng, libtiff, giflib, bzip2
+# Missing deps: libid3tag, libheif, libjxl, librsvg2, libspectre, libwebp, openjpeg2
+# These will be disabled by configure autodetection
+
+package: imlib2
+
+add_source:
+  - memmem.h
+
+rules:
+  drop_buildrequires:
+    - doxygen
+    - giflib-devel
+    - libid3tag-devel
+    - libheif-devel
+    - libjxl-devel
+    - librsvg2-devel
+    - libspectre-devel
+    - libwebp-devel
+    - openjpeg2-devel
+    - libXext-devel
+    - libtool
+
+  drop_subpackages:
+    - id3tag-loader
+
+  # IRIX has clock_gettime but lacks CLOCK_MONOTONIC constant
+  # Must override both the func check AND the librt check to prevent detection
+  ac_cv_overrides:
+    ac_cv_func_clock_gettime: "no"
+    ac_cv_lib_rt_clock_gettime: "no"
+
+  prep_commands:
+    # IRIX lacks memmem (GNU extension) - include our compat header in all loaders that use it
+    - "cp %{_sourcedir}/memmem.h src/modules/loaders/"
+    - "sed -i '1i #include \"memmem.h\"' src/modules/loaders/loader_xbm.c"
+    - "sed -i '1i #include \"memmem.h\"' src/modules/loaders/loader_xpm.c"
+    - "sed -i '1i #include \"memmem.h\"' src/modules/loaders/loader_svg.c"
+
+  configure_flags:
+    add:
+      - "--disable-static"
+
+  spec_replacements:
+    # Fix autoreconf for cross-build - run AUTOPOINT=true and apply IRIX libtool fix
+    - pattern: "autoreconf -ifv"
+      replacement: |
+        AUTOPOINT=true autoreconf -ifv
+        # Apply IRIX libtool fix after autoreconf regenerates libtool files
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh configure
+
+    # Remove the doc build option - no doxygen on IRIX
+    - pattern: " --enable-doc-build \\\n --with-pic \\"
+      replacement: " --disable-doc-build \\\n --with-pic \\"
+
+    # Remove the libtool sed hacks since we handle libtool differently
+    - pattern: "sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=\"\"|g' libtool\nsed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
+      replacement: "# libtool rpath fixes handled by IRIX libtool fix script"
+
+    # Fix %files - remove doc/html reference since we disabled doc build
+    - pattern: "%files devel\n%doc doc/html"
+      replacement: "%files devel\n%doc"
+
+    # Remove exclude for id3tag loader (subpackage dropped, loader won't be built)
+    - pattern: "%exclude %{_libdir}/imlib2/loaders/id3.*"
+      replacement: "# id3tag loader not built (no libid3tag)"
+
+    # Remove X11/Xext requires from devel, add explicit Provides
+    - pattern: "Requires:       libX11-devel\nRequires:       libXext-devel\nRequires:       freetype-devel >= 2.1.9-4"
+      replacement: |
+        Requires:       freetype-devel >= 2.1.9-4
+        Provides: imlib2(mips-32) = %{version}-%{release}
+        Provides: imlib2-devel(mips-32) = %{version}-%{release}
+        Provides: libImlib2.so.1
+        Provides: pkgconfig(imlib2)

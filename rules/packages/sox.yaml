@@ -1,0 +1,88 @@
+# sox - Sound eXchange audio tool (FC40: 14.4.2.0)
+# Autotools build. Has many optional audio format/output deps.
+# Available in staging: flac, libogg, libvorbis, opus, lame, libao, libsndfile, libltdl
+# NOT available: gsm, wavpack, ladspa, libmad, libid3tag, twolame, opusfile,
+#   pulseaudio, libsamplerate
+# Disable dynamic plugin loading (--with-dyn-default) to avoid rld issues.
+# Disable Linux-only audio outputs (ALSA, PulseAudio, OSS).
+package: sox
+
+rules:
+  drop_buildrequires:
+    - pulseaudio-libs-devel
+    - gsm-devel
+    - wavpack-devel
+    - ladspa-devel
+    - libpng-devel
+    - libid3tag-devel
+    - opusfile-devel
+    - libmad-devel
+    - twolame-devel
+    - libsamplerate-devel
+
+  # LD for libtool shared libs
+  export_vars:
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+
+  spec_replacements:
+    # Replace configure flags: disable unavailable libs, disable Linux audio,
+    # disable dynamic loading (link formats statically into libsox).
+    # NOTE: spec_replacements run BEFORE configure_disable injection,
+    # so pattern must match the ORIGINAL spec text (without --disable-selinux etc.)
+    - pattern: |
+        %configure --without-lpc10 \
+                   --with-gsm \
+                   --includedir=%{_includedir}/sox \
+                   --disable-static \
+                   --with-distro=Fedora \
+                   --with-dyn-default
+      replacement: |
+        %configure --without-lpc10 \
+                   --without-gsm \
+                   --without-ladspa \
+                   --without-mad \
+                   --without-id3tag \
+                   --without-twolame \
+                   --without-wavpack \
+                   --without-opusfile \
+                   --without-samplerate \
+                   --without-png \
+                   --with-alsa=no \
+                   --with-pulseaudio=no \
+                   --with-oss=no \
+                   --with-ao \
+                   --includedir=%{_includedir}/sox \
+                   --disable-static \
+                   --with-distro=IRIX
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+
+    # The sox plugin directory won't have plugins since we're not using --with-dyn-default
+    # The %files section references %dir %{_libdir}/sox/ and plugin .so files
+    - pattern: |
+        %dir %{_libdir}/sox/
+        %{_libdir}/sox/libsox_fmt_*.so
+      replacement: |
+        # Dynamic plugins disabled for IRIX — formats linked statically into libsox
+
+    # Remove the install commands that clean up plugin .la and .a files
+    - pattern: |
+        rm -f $RPM_BUILD_ROOT%{_libdir}/sox/*.la
+        rm -f $RPM_BUILD_ROOT%{_libdir}/sox/*.a
+      replacement: |
+        # sox plugins disabled — no .la/.a to remove
+
+    # Add explicit Provides for shared library soname (AutoProv disabled)
+    - pattern: "Requires: pkgconfig"
+      replacement: |
+        Requires: pkgconfig
+        Provides: libsox.so.3
+
+    # Fix bash brace expansion in %files if present
+    - pattern: "%{_libdir}/libsox.so.*"
+      replacement: |
+        %{_libdir}/libsox.so.3
+        %{_libdir}/libsox.so.3.*
+
+smoke_test:
+  - command: "/usr/sgug/bin/sox --version 2>&1 | head -1"
+    expect: "sox"

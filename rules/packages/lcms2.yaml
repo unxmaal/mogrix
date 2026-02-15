@@ -1,0 +1,37 @@
+# lcms2 - Little CMS 2 color management engine (FC40: 2.16, meson)
+# Dependencies: libjpeg-turbo, libtiff, zlib (all in sysroot)
+
+package: lcms2
+
+rules:
+  drop_buildrequires:
+    - meson
+
+  spec_replacements:
+    # Replace %meson macro with raw meson setup command
+    - pattern: "%meson -Dutils=true"
+      replacement: |
+        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          -Dutils=true \
+          -Dc_link_args="-L$COMPAT_DIR -lmogrix-compat"
+
+    # Replace %meson_build with raw ninja
+    - pattern: "%meson_build"
+      replacement: "/home/edodd/.local/bin/meson compile -C _build"
+
+    # Replace %meson_install with raw meson install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=%{buildroot} /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Add explicit Provides (rpmmacros.irix sets AutoProv: no)
+    - pattern: "Provides:       littlecms-devel = %{version}-%{release}"
+      replacement: |
+        Provides:       littlecms-devel = %{version}-%{release}
+        Provides: lcms2(mips-32) = %{version}-%{release}
+        Provides: lcms2-devel(mips-32) = %{version}-%{release}
+        Provides: liblcms2.so.2
+        Provides: pkgconfig(lcms2)

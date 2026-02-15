@@ -1,0 +1,19 @@
+# yasm - modular assembler (x86/x86-64, C code)
+# Host code generators (genperf, genmacro, genversion, genmodule, genstring, re2c)
+# use CC_FOR_BUILD/CCLD_FOR_BUILD but Makefile.in appends $(LIBS) which leaks
+# the cross-compiled -lmogrix-compat archive into host linking.
+package: yasm
+
+rules:
+  drop_buildrequires:
+    - xmlto
+    - byacc
+  prep_commands:
+    # Remove $(LIBS) from host tool link lines — LIBS contains
+    # -lmogrix-compat (MIPS cross-compiled), which can't link with host cc.
+    - "sed -i 's/\\($(AM_V_GEN)$(genmacro_LINK).*$(genmacro_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
+    - "sed -i 's/\\($(AM_V_GEN)$(genmodule_LINK).*$(genmodule_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
+    - "sed -i 's/\\($(AM_V_GEN)$(genperf_LINK).*$(genperf_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
+    - "sed -i 's/\\($(AM_V_GEN)$(genstring_LINK).*$(genstring_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
+    - "sed -i 's/\\($(AM_V_GEN)$(genversion_LINK).*$(genversion_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
+    - "sed -i 's/\\($(AM_V_GEN)$(re2c_LINK).*$(re2c_LDADD)\\) $(LIBS)/\\1/' Makefile.in"

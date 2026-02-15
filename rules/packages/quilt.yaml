@@ -1,0 +1,17 @@
+# quilt - patch management tool (noarch: shell/perl scripts, no compiled code)
+# %{find_lang} uses curly-brace form which skip_find_lang doesn't catch.
+# Build deps for docs/NLS not needed in cross-build environment.
+package: quilt
+
+rules:
+  drop_buildrequires:
+    - p7zip
+    - perl-generators
+    - perl-podlators
+    - util-linux-ng
+    - "%{_sbindir}/sendmail"
+  spec_replacements:
+    # Comment out %{find_lang} — curly-brace form not caught by skip_find_lang.
+    # Locale files are removed by generic install_cleanup anyway.
+    - pattern: "%{find_lang} %{name}"
+      replacement: "# find_lang skipped for cross-build"

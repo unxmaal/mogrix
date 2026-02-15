@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-15 (session 40)
-**Status**: 105+ source packages cross-compiled (290+ RPMs). All 35 bundle packages rebuilt with dlmalloc spin locks + high-fd fix. 20 bundles (.run installers) created. Essentials, bash, and extras verified on IRIX.
+**Last Updated**: 2026-02-15 (session 42)
+**Status**: 116+ source packages cross-compiled (310+ RPMs). All 35 bundle packages rebuilt with dlmalloc spin locks + high-fd fix. 20 bundles (.run installers) created. Essentials, bash, and extras verified on IRIX.
 
 ---
 
@@ -17,80 +17,72 @@
 
 ## Current State
 
-**All bundles rebuilt (session 40)**: 35 packages rebuilt, 20 bundles created with hardened dlmalloc:
+### Session 42: Alpine email client (completed)
 
-**Suites** (5):
-| Suite | Packages | Size |
-|-------|----------|------|
-| mogrix-essentials | nano, grep, sed, gawk, less, coreutils, findutils, diffutils, tar, tree-pkg | 29.6 MB |
-| mogrix-extras | bc, jq, man-db, tmux, vim-enhanced | 28.2 MB |
-| mogrix-net | curl, rsync, gnupg2 | 21.1 MB |
-| mogrix-smallweb | telescope, gmi100, lynx, snownews | 12.4 MB |
-| mogrix-fun | cmatrix, figlet, sl | 0.7 MB |
+**Completed this session** (built, MIPS N32 verified, staged, copied to outputs):
+- **alpine** 2.26 — console email client with built-in IMAP c-client library.
+  11 distinct build issues resolved iteratively. Key fixes in `rules/packages/alpine.yaml`:
+  - CC_FOR_BUILD LIBS cross-contamination (sed $LIBS out of ac_link)
+  - IRIX case added to host detection in configure
+  - c-client target slx with flocksim.c instead of flocklnx.c (IRIX has no fstatfs)
+  - scandir/alphasort prototypes guarded with `#if !_SGIAPI` (not `#ifndef` -- _SGIAPI is a macro expression)
+  - HOSTCC pattern for help_h_gen/help_c_gen code generators
+  - vfork -> fork define (pith/osdep/pipe.c), %zu -> %u, mkdtemp compat
+  - os_slx.h patched with flocksim.h + ustat.h includes
 
-**Individual bundles** (15): bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2
+### Session 41: Batch building
 
-**Deployed on IRIX** (`/usr/people/edodd/apps/`):
-- mogrix-essentials (verified: bash, grep, sed, gawk, less, ls, find, diff, tar, nano, bc, tmux, vim, xxd, man, jq)
-- bash (verified: $BASH_VERSION = 5.2.26, brace expansion, for loops)
-- mogrix-extras (verified: vim 9.1, tmux 3.5a, bc, jq, man-db)
+**Completed** (built, MIPS N32 verified, staged, copied to outputs):
+- **recode** 3.7.14 — character set converter. -lgen for dirname, Python/NLS disabled.
+- **mpg123** 1.32.6 — MPEG audio player. Dummy output only, network disabled.
+- **lame** 3.100 — MP3 encoder. -ltinfo for termcap, nasm/ix86 blocks removed.
+- **libpsl** 0.21.5 — Public Suffix List library. libidn2 backend (no ICU), bundled PSL data.
+- **opus** 1.5.1 — audio codec. In-tree build (no pushd/popd), libtool IRIX fix.
+- **libssh2** 1.11.0 — SSH2 client library. openssl+zlib backend, libtool fix.
+- **lcms2** 2.16 — Color management engine. Meson build, replaced %meson macros with raw meson commands.
+- **imlib2** 1.11.1 — Image rendering library. Autotools, memmem compat, CLOCK_MONOTONIC disabled.
+- **mksh** 59c — MirBSD Korn Shell. Custom Build.sh, TARGET_OS=IRIX. Verified on IRIX.
+- **libao** 1.2.0, **libsndfile** 1.2.2, **libcaca** 0.99-beta20, **ksh** 1.0.8 — agent-built.
 
-**Trampoline exclusions working**: bash bundle only installs `bash` and `bashbug` trampolines — `sh`, builtins (alias, cd, bg, fg, etc.) correctly excluded.
+### Batch Progress
 
-**Known issue — jq abort on exit**: jq produces correct output but calls abort() during exit cleanup. Functional but cosmetic. Not dlmalloc-related (output verified via par trace: dlmalloc high-fd working, fd 128 with FD_CLOEXEC).
+| Batch | Task | Status | Details |
+|-------|------|--------|---------|
+| #191 Quick-win CLI | COMPLETED | screen, zsh, ed, dtach, pwgen, rlwrap, units, diffstat, most |
+| #192 Fun/trivial | COMPLETED | cowsay, banner, neofetch, screenfetch, boxes, sl |
+| #193 Sysadmin | COMPLETED | dos2unix, ncdu, dash, lrzsz |
+| #194 Dev tools pt1 | COMPLETED | ctags, patchutils, enscript, mandoc, help2man, recode |
+| #195 Alt shells | IN_PROGRESS | mksh DONE (verified on IRIX), ksh checking build sys |
+| #196 Foundation libs | IN_PROGRESS | slang/jansson/libyaml/libev done; json-c BLOCKED(cmake); libcaca building |
+| #197 Compression/net | COMPLETING | lz4/lzo done; brotli BLOCKED(cmake); libpsl+libssh2 DONE this session |
+| #199 Audio | IN_PROGRESS | libogg/libvorbis/flac done; opus+lame+mpg123 DONE this session; libao+libsndfile building |
+| #198 User apps | IN_PROGRESS | alpine DONE; mc, irssi, joe, vile, frotz pending |
+| #200 Image libs | IN_PROGRESS | libtiff done; lcms2+imlib2 DONE this session; libwebp BLOCKED(cmake); openjpeg2 BLOCKED(cmake) |
+| #201 GTK3 stack | PENDING | blocked on image libs |
+| #202 Build tools | PENDING | cmake, ninja, meson, gdb, doxygen |
+| #203 Dev tools pt2 | PENDING | fossil, mercurial, quilt, re2c, yasm |
+| #204 IPC/heavy | PENDING | dbus, dbus-glib, icu, cyrus-sasl |
+| #205 GUI apps | PENDING | hexchat, geany, pidgin, nedit |
 
-**Build fixes this session**:
-- **bash**: `void dprintf` → `int dprintf` in externs.h (POSIX conflict with compat header). `LIBS_FOR_BUILD=${LIBS}` → `LIBS_FOR_BUILD=` in support/Makefile.in (cross-compiled -lmogrix-compat leaking into native man2html build).
-- **rsync**: Hardcoded SOURCE100-108 loop → SOURCE100-106 (only 7 compat sources exist, not 9).
+### Blocked Packages
 
-**IRIX tar gotcha confirmed**: Native IRIX `tar` silently drops long paths. Must use `gtar` from chroot for extraction, then `gtar` pipe for copying to host filesystem.
+| Package | Reason |
+|---------|--------|
+| json-c | cmake build system |
+| brotli | cmake build system |
+| libwebp | cmake build system |
+| ninja-build | cmake build system |
+| SDL2 | cmake build system |
+| p11-kit | meson build system (now unblocked — lcms2 proved meson works) |
+| htop | needs IRIX /proc backend |
 
 ---
 
-## Next Steps
+## Previous State (session 40)
 
-1. **Deploy remaining bundles to IRIX**: Copy and install mogrix-net, mogrix-smallweb, mogrix-fun, weechat, and other individual bundles
-2. **Test X11 bundles from real terminal**: dmenu, rxvt-unicode, st
-3. **Investigate jq abort-on-exit**: Low priority, functional output is correct
-4. **Pending tasks:**
-   - Build qtermwidget5 + qterminal
-   - Add convert-time lint for duplicated rules
-   - Implement mogrix elevate command
-   - htop: BLOCKED (needs IRIX /proc platform backend)
-5. **Low priority**: apropos segfault
-
----
-
-## Recent Work
-
-### Session 40: Full bundle rebuild + bash/rsync fixes
-
-**All 35 packages rebuilt** with hardened dlmalloc (spin locks + high-fd). 33/35 succeeded initially; bash and rsync required fixes:
-- **bash**: Two fixes — dprintf void→int conflict, LIBS_FOR_BUILD cross-contamination
-- **rsync**: SOURCE100-108 loop referenced non-existent sources (only 100-106 defined)
-
-**20 bundles created** (.run self-extracting installers). Trampoline exclusion system working — bash correctly excludes sh and builtins.
-
-**Deployed and verified essentials, bash, extras on IRIX**: grep, sed, gawk, less, nano, coreutils, findutils, diffutils, tar, bash, vim, tmux, bc, jq, man-db all functional. Old bundles cleaned up.
-
-**IRIX deployment lesson**: Native tar silently drops long paths. Always use gtar from chroot for extraction, then gtar pipe for host copy: `gtar cf - -C /tmp bundle-dir | gtar xf - -C /usr/people/edodd/apps/`
-
-### Session 39: dlmalloc test suite + thread safety fix
-
-**Focused dlmalloc test suite**: Wrote `tests/dlmalloc-test.c` (29 tests) to proactively find defects before rebuild. Found:
-1. **Thread safety (CRITICAL)**: `USE_LOCKS=0` → 6/10 runs crash with concurrent pthreads. Fix: `USE_LOCKS=1 + USE_SPIN_LOCKS=1` (MIPS ll/sc atomics). 20/20 clean after fix.
-2. **`-O2` optimization gotcha**: Compiler eliminated malloc+free pairs, making dlmalloc appear inactive. Fix: volatile sink pattern.
-3. All other tests pass: page size (16384), /dev/zero fd (>=128, FD_CLOEXEC), calloc zeroing+overflow, memalign, 500MB allocs, fork safety, 50K stress cycles.
-
-### Session 38: tcsh bundle + dlmalloc /dev/zero high-fd fix
-
-**tcsh 6.24.10**: Built and bundled. Configure vendor match fix: sed `*-sgi-iri*` to `*-*-iri*` because config.sub canonicalizes `mips-irix6.5` to `mips-unknown-irix6.5`.
-
-**dlmalloc /dev/zero high-fd fix**: dlmalloc opens `/dev/zero` for mmap and caches the fd (typically fd 3). Programs like tcsh that close low fds (0-14) invalidate this cached fd. Fix: `fcntl(fd, F_DUPFD, 128)` + FD_CLOEXEC.
-
-### Session 37: SOLVED weechat TLS ABORT -- dlmalloc cross-heap corruption
-
-**Fix -- dlmalloc moved to executables only**. `-Bsymbolic-functions` + per-library dlmalloc = cross-heap corruption. Now dlmalloc.o in exe only; .so inherits via rld.
+**All bundles rebuilt**: 35 packages rebuilt, 20 bundles created with hardened dlmalloc.
+**Deployed on IRIX**: mogrix-essentials, bash, mogrix-extras verified.
+**Trampoline exclusions working**: bash bundle correctly excludes sh and builtins.
 
 ---
 
