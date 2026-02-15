@@ -7,11 +7,16 @@
 # scope: global (applies to every package)
 # purpose: Remove Linux-specific deps, set IRIX paths, skip %check
 # key_sections:
-#   - drop_buildrequires: systemd, selinux, kernel-headers, libdicl, gnupg2, gcc-c++, etc.
+#   - drop_buildrequires: systemd, selinux, kernel-headers, libdicl, gcc, gcc-c++, gnupg2,
+#       texinfo, doxygen, help2man, desktop-file-utils, git, valgrind,
+#       python3, python3-devel, python3-setuptools, ruby, ruby-devel,
+#       perl-generators, glibc-langpack-en, rust-*/golang-*/ghc-*
 #   - drop_requires: libdicl (replaced by mogrix compat injection)
 #   - remove_lines: gpgverify, ldconfig_scriptlets, libdicl exports, systemd scriptlets
 #   - ac_cv_overrides: malloc_0_nonnull, realloc_0_nonnull, gl_cv_cc_wallow, gl_cv_func_select_*
-#   - inject_compat_functions: strdup, strndup, getline, getopt_long, asprintf, vasprintf
+#   - inject_compat_functions: strdup, strndup, strnlen, getline, getopt_long, asprintf,
+#       vasprintf, setenv, strerror_r, reallocarray, stpcpy
+#   - configure_flags.add: --disable-silent-rules
 #   - rpm_macros: _prefix=/usr/sgug, _libdir=/usr/sgug/lib32
 #   - configure_disable: selinux, systemd, udev, inotify, epoll, etc.
 #   - header_overlays: generic (stdarg.h, stdio.h, etc.)
@@ -34,13 +39,31 @@ generic:
     - libacl-devel
     - libattr-devel
     - audit-libs-devel
-    # C++ compiler not needed - we use clang cross-compiler
+    # Compilers not needed - we use clang cross-compiler
+    - gcc
     - gcc-c++
     # GPG verification not needed for cross-compilation
     - gnupg2
     # libdicl replaced by mogrix compat injection
     - libdicl
     - libdicl-devel
+    # Doc/build tools not needed for cross-compilation
+    - texinfo
+    - doxygen
+    - help2man
+    - desktop-file-utils
+    - git
+    - valgrind
+    # Language ecosystems not on IRIX
+    - python3
+    - python3-devel
+    - python3-setuptools
+    - ruby
+    - ruby-devel
+    # RPM macro generators - Linux-only
+    - perl-generators
+    # Locale data not needed
+    - glibc-langpack-en
     # Language ecosystems that have never been ported to IRIX (glob patterns)
     - "rust-*"
     - "golang-*"
@@ -116,6 +139,14 @@ generic:
     - getopt_long
     - asprintf
     - vasprintf
+    - setenv
+    - strerror_r
+    - reallocarray
+    - stpcpy
+
+  configure_flags:
+    add:
+      - "--disable-silent-rules"
 
   # RPM macros injected directly (replaces sgug-rpm-config)
   rpm_macros:

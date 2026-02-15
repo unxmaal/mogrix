@@ -1,48 +1,25 @@
-# units - unit conversion tool
-# Needs readline and ncurses (both staged)
-# IRIX needs sys/ioctl.h for TIOCGWINSZ and struct winsize
-# units.h redefines strchr→index when !HAVE_STRCHR but IRIX has strchr in libc
 package: units
-
 rules:
   drop_buildrequires:
-    - python3-devel
-    - python3-requests
+  - python3-requests
   configure_flags:
     add:
-      - --without-python
-      # Autotools defaults sharedstatedir to ${prefix}/com but RPM expects
-      # %{_sharedstatedir} = /usr/sgug/var/lib. Align them so currency.units
-      # installs where %files expects it.
-      - --sharedstatedir=%{_sharedstatedir}
+    - --without-python
+    - --sharedstatedir=%{_sharedstatedir}
   export_vars:
-    # Use CPPFLAGS not CFLAGS — CFLAGS leaks into the link command and
-    # -include is not understood by the linker.
-    CPPFLAGS: "-include sys/ioctl.h -include strings.h $CPPFLAGS"
+    CPPFLAGS: -include sys/ioctl.h -include strings.h $CPPFLAGS
   ac_cv_overrides:
-    # Tell configure these functions exist in IRIX libc — prevents strfunc.c
-    # from providing conflicting K&R-style reimplementations
-    ac_cv_func_strtok: "yes"
-    ac_cv_func_strpbrk: "yes"
-    ac_cv_func_strspn: "yes"
-    ac_cv_func_strchr: "yes"
+    ac_cv_func_strtok: 'yes'
+    ac_cv_func_strpbrk: 'yes'
+    ac_cv_func_strspn: 'yes'
+    ac_cv_func_strchr: 'yes'
   prep_commands:
-    # units.h has #ifndef HAVE_STRCHR / #define strchr(a,b) index((a),(b))
-    # IRIX has strchr in libc but configure may not detect it cross-compiling.
-    # Remove the compat macro entirely — IRIX has real strchr.
-    - "sed -i '/#define strchr/d' units.h"
-    - "sed -i '/#define strrchr/d' units.h"
+  - sed -i '/#define strchr/d' units.h
+  - sed -i '/#define strrchr/d' units.h
   install_cleanup:
-    # Create the sharedstatedir/units directory — Fedora creates this via
-    # systemd timer for currency updates; we need the dir in the buildroot
-    # so %files can own it.
-    - "mkdir -p %{buildroot}%{_sharedstatedir}/units"
+  - mkdir -p %{buildroot}%{_sharedstatedir}/units
   spec_replacements:
-    # make install already gzips info files; the spec gzips again and fails
-    # because the .gz already exists. Use -f to overwrite.
-    - pattern: "gzip %{buildroot}%{_infodir}/units.info"
-      replacement: "gzip -f %{buildroot}%{_infodir}/units.info"
-    # make install already creates units_cur.1; spec's ln -s fails because
-    # the file already exists. Use ln -sf to force overwrite.
-    - pattern: "ln -s units.1 %{buildroot}%{_mandir}/man1/units_cur.1"
-      replacement: "ln -sf units.1 %{buildroot}%{_mandir}/man1/units_cur.1"
+  - pattern: gzip %{buildroot}%{_infodir}/units.info
+    replacement: gzip -f %{buildroot}%{_infodir}/units.info
+  - pattern: ln -s units.1 %{buildroot}%{_mandir}/man1/units_cur.1
+    replacement: ln -sf units.1 %{buildroot}%{_mandir}/man1/units_cur.1

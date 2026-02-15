@@ -1,23 +1,12 @@
-# git - Fast Version Control System (FC40: 2.44.0)
-# NOTE: git is extremely complex (~20 subpackages, Makefile build, heavy perl deps).
-# The stale SGUG-RSE sgifixes01 patch (for git 2.22.0) has been removed.
-# REMAINING: needs pcre2 headers staged, doc build disabled (no asciidoc),
-# NO_GETTEXT=1 in config.mak, plus many more fixes for full cross-build.
 package: git
-
 rules:
-
   drop_buildrequires:
-    - libsecret-devel
-    - perl-generators
-    - httpd
-
+  - libsecret-devel
+  - httpd
   spec_replacements:
-    # Expand brace expansion — rpmbuild uses /bin/sh which doesn't support {a,b}
-    - pattern: "rm -rf perl/Git/LoadCPAN{.pm,/}"
-      replacement: "rm -rf perl/Git/LoadCPAN.pm perl/Git/LoadCPAN/"
-    - pattern: "mv contrib/{contacts,subtree}/git-*.txt Documentation/"
-      replacement: "mv contrib/contacts/git-*.txt contrib/subtree/git-*.txt Documentation/"
-    - pattern: "rm -rf %{buildroot}%{_pkgdocdir}/contrib/{contacts,credential}/"
-      replacement: "rm -rf %{buildroot}%{_pkgdocdir}/contrib/contacts/ %{buildroot}%{_pkgdocdir}/contrib/credential/"
-
+  - pattern: rm -rf perl/Git/LoadCPAN{.pm,/}
+    replacement: rm -rf perl/Git/LoadCPAN.pm perl/Git/LoadCPAN/
+  - pattern: mv contrib/{contacts,subtree}/git-*.txt Documentation/
+    replacement: mv contrib/contacts/git-*.txt contrib/subtree/git-*.txt Documentation/
+  - pattern: rm -rf %{buildroot}%{_pkgdocdir}/contrib/{contacts,credential}/
+    replacement: rm -rf %{buildroot}%{_pkgdocdir}/contrib/contacts/ %{buildroot}%{_pkgdocdir}/contrib/credential/

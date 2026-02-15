@@ -1,108 +1,83 @@
-# jq - Command-line JSON processor
-# Standard autoconf package, requires oniguruma
 package: jq
-
 rules:
-  # IRIX lacks setenv (only has putenv)
-  inject_compat_functions:
-    - setenv
-
-  # Add -lgen for dirname (IRIX has dirname in libgen, not libc)
   export_vars:
-    LIBS: "-lgen"
-
-  # Tell configure that C99 math functions are not available on IRIX
-  # jq gracefully handles missing functions via LIBM_DD_NO fallbacks
-  # Need both ac_cv_func_* and ac_cv_lib_m_* since jq checks both
+    LIBS: -lgen
   ac_cv_overrides:
-    # C99 math functions not in IRIX libm
-    # C99 math functions NOT available in IRIX libm
-    ac_cv_lib_m_acosh: "no"
-    ac_cv_lib_m_asinh: "no"
-    ac_cv_lib_m_atanh: "no"
-    ac_cv_lib_m_cbrt: "no"
-    ac_cv_lib_m_copysign: "no"
-    ac_cv_lib_m_drem: "no"
-    ac_cv_lib_m_erf: "no"
-    ac_cv_lib_m_erfc: "no"
-    ac_cv_lib_m_exp2: "no"
-    ac_cv_lib_m_expm1: "no"
-    ac_cv_lib_m_fdim: "no"
-    ac_cv_lib_m_fma: "no"
-    ac_cv_lib_m_fmin: "no"
-    ac_cv_lib_m_fmax: "no"
-    ac_cv_lib_m_gamma: "no"
-    ac_cv_lib_m_ilogb: "no"
-    ac_cv_lib_m_lgamma: "no"
-    ac_cv_lib_m_log1p: "no"
-    ac_cv_lib_m_log2: "no"
-    ac_cv_lib_m_logb: "no"
-    ac_cv_lib_m_nearbyint: "no"
-    ac_cv_lib_m_nextafter: "no"
-    ac_cv_lib_m_nexttoward: "no"
-    ac_cv_lib_m_remainder: "no"
-    ac_cv_lib_m_rint: "no"
-    ac_cv_lib_m_round: "no"
-    ac_cv_lib_m_scalb: "no"
-    ac_cv_lib_m_scalbn: "no"
-    ac_cv_lib_m_scalbln: "no"
-    ac_cv_lib_m_significand: "no"
-    ac_cv_lib_m_tgamma: "no"
-    ac_cv_lib_m_trunc: "no"
-    # Bessel functions - not available in IRIX libm
-    ac_cv_lib_m_j0: "no"
-    ac_cv_lib_m_j1: "no"
-    ac_cv_lib_m_jn: "no"
-    ac_cv_lib_m_y0: "no"
-    ac_cv_lib_m_y1: "no"
-    ac_cv_lib_m_yn: "no"
-    # Functions IRIX does have
-    ac_cv_lib_m_ldexp: "yes"
-    ac_cv_lib_m_modf: "yes"
-    ac_cv_lib_m_frexp: "yes"
-    ac_cv_lib_m_floor: "yes"
-    ac_cv_lib_m_ceil: "yes"
-    ac_cv_lib_m_fabs: "yes"
-    ac_cv_lib_m_sqrt: "yes"
-    ac_cv_lib_m_sin: "yes"
-    ac_cv_lib_m_cos: "yes"
-    ac_cv_lib_m_tan: "yes"
-    ac_cv_lib_m_asin: "yes"
-    ac_cv_lib_m_acos: "yes"
-    ac_cv_lib_m_atan: "yes"
-    ac_cv_lib_m_atan2: "yes"
-    ac_cv_lib_m_sinh: "yes"
-    ac_cv_lib_m_cosh: "yes"
-    ac_cv_lib_m_tanh: "yes"
-    ac_cv_lib_m_exp: "yes"
-    ac_cv_lib_m_log: "yes"
-    ac_cv_lib_m_log10: "yes"
-    ac_cv_lib_m_pow: "yes"
-    ac_cv_lib_m_hypot: "yes"
-    ac_cv_lib_m_fmod: "yes"
-
-  # Remove .la files, static libs, and duplicate docs
+    ac_cv_lib_m_acosh: 'no'
+    ac_cv_lib_m_asinh: 'no'
+    ac_cv_lib_m_atanh: 'no'
+    ac_cv_lib_m_cbrt: 'no'
+    ac_cv_lib_m_copysign: 'no'
+    ac_cv_lib_m_drem: 'no'
+    ac_cv_lib_m_erf: 'no'
+    ac_cv_lib_m_erfc: 'no'
+    ac_cv_lib_m_exp2: 'no'
+    ac_cv_lib_m_expm1: 'no'
+    ac_cv_lib_m_fdim: 'no'
+    ac_cv_lib_m_fma: 'no'
+    ac_cv_lib_m_fmin: 'no'
+    ac_cv_lib_m_fmax: 'no'
+    ac_cv_lib_m_gamma: 'no'
+    ac_cv_lib_m_ilogb: 'no'
+    ac_cv_lib_m_lgamma: 'no'
+    ac_cv_lib_m_log1p: 'no'
+    ac_cv_lib_m_log2: 'no'
+    ac_cv_lib_m_logb: 'no'
+    ac_cv_lib_m_nearbyint: 'no'
+    ac_cv_lib_m_nextafter: 'no'
+    ac_cv_lib_m_nexttoward: 'no'
+    ac_cv_lib_m_remainder: 'no'
+    ac_cv_lib_m_rint: 'no'
+    ac_cv_lib_m_round: 'no'
+    ac_cv_lib_m_scalb: 'no'
+    ac_cv_lib_m_scalbn: 'no'
+    ac_cv_lib_m_scalbln: 'no'
+    ac_cv_lib_m_significand: 'no'
+    ac_cv_lib_m_tgamma: 'no'
+    ac_cv_lib_m_trunc: 'no'
+    ac_cv_lib_m_j0: 'no'
+    ac_cv_lib_m_j1: 'no'
+    ac_cv_lib_m_jn: 'no'
+    ac_cv_lib_m_y0: 'no'
+    ac_cv_lib_m_y1: 'no'
+    ac_cv_lib_m_yn: 'no'
+    ac_cv_lib_m_ldexp: 'yes'
+    ac_cv_lib_m_modf: 'yes'
+    ac_cv_lib_m_frexp: 'yes'
+    ac_cv_lib_m_floor: 'yes'
+    ac_cv_lib_m_ceil: 'yes'
+    ac_cv_lib_m_fabs: 'yes'
+    ac_cv_lib_m_sqrt: 'yes'
+    ac_cv_lib_m_sin: 'yes'
+    ac_cv_lib_m_cos: 'yes'
+    ac_cv_lib_m_tan: 'yes'
+    ac_cv_lib_m_asin: 'yes'
+    ac_cv_lib_m_acos: 'yes'
+    ac_cv_lib_m_atan: 'yes'
+    ac_cv_lib_m_atan2: 'yes'
+    ac_cv_lib_m_sinh: 'yes'
+    ac_cv_lib_m_cosh: 'yes'
+    ac_cv_lib_m_tanh: 'yes'
+    ac_cv_lib_m_exp: 'yes'
+    ac_cv_lib_m_log: 'yes'
+    ac_cv_lib_m_log10: 'yes'
+    ac_cv_lib_m_pow: 'yes'
+    ac_cv_lib_m_hypot: 'yes'
+    ac_cv_lib_m_fmod: 'yes'
   install_cleanup:
-    - "find $RPM_BUILD_ROOT -name '*.la' -delete"
-    - "rm -f $RPM_BUILD_ROOT%{_libdir}/libjq.a"
-    - "rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/jq"
-
-  # Add explicit dependencies (auto-requires doesn't work for cross-compiled packages)
+  - find $RPM_BUILD_ROOT -name '*.la' -delete
+  - rm -f $RPM_BUILD_ROOT%{_libdir}/libjq.a
+  - rm -rf $RPM_BUILD_ROOT%{_datadir}/doc/jq
   add_requires:
-    - oniguruma
-
-  # Apply libtool fixes after configure
+  - oniguruma
   spec_replacements:
-    # The configure uses autoreconf -if then %configure, insert fix after configure runs
-    - pattern: "%make_build"
-      replacement: |
-        /opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
-        %make_build
+  - pattern: '%make_build'
+    replacement: '/opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
 
-    # Remove chrpath call - not needed for cross-compilation and tool may not exist
-    - pattern: "chrpath -d %{buildroot}%{_bindir}/%{name}"
-      replacement: "# chrpath not needed for cross-compilation"
+      %make_build
 
-    # Man pages aren't compressed for cross-compilation
-    - pattern: "%{_datadir}/man/man1/jq.1.gz"
-      replacement: "%{_datadir}/man/man1/jq.1*"
+      '
+  - pattern: chrpath -d %{buildroot}%{_bindir}/%{name}
+    replacement: '# chrpath not needed for cross-compilation'
+  - pattern: '%{_datadir}/man/man1/jq.1.gz'
+    replacement: '%{_datadir}/man/man1/jq.1*'

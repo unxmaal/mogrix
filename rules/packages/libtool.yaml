@@ -1,65 +1,30 @@
-# libtool package rules for IRIX cross-compilation
 package: libtool
-
 smoke_test:
-  - command: "/usr/sgug/bin/libtool --version"
-    expect: "2.4.7"
-
-# libtool 2.4.7 already has the IRIX inherit_rpath fixes from SGUG-RSE
-# Old libtool.sgifixes.patch no longer needed
-
+- command: /usr/sgug/bin/libtool --version
+  expect: 2.4.7
 rules:
-  # Libtool's Makefile regenerates autotools files when timestamps are off.
-  # The PATH includes staging which has cross-compiled MIPS autotools binaries.
-  # Force host autotools and prevent regeneration.
   export_vars:
-    PERL: "/usr/bin/perl"
-    AUTOCONF: "/usr/bin/autoconf"
-    AUTOM4TE: "/usr/bin/autom4te"
-    ACLOCAL: "/usr/bin/aclocal"
-    AUTOMAKE: "/usr/bin/automake"
-    AUTOHEADER: "/usr/bin/autoheader"
-
-  # Touch autotools-generated files to prevent make from regenerating them
+    PERL: /usr/bin/perl
+    AUTOCONF: /usr/bin/autoconf
+    AUTOM4TE: /usr/bin/autom4te
+    ACLOCAL: /usr/bin/aclocal
+    AUTOMAKE: /usr/bin/automake
+    AUTOHEADER: /usr/bin/autoheader
   prep_commands:
-    - "find . -name aclocal.m4 -o -name configure -o -name Makefile.in -o -name config.h.in | xargs touch"
-
-  # help2man not available during cross-compilation
-  drop_buildrequires:
-    - help2man
-
-  # Drop Fedora-specific requires that don't apply to IRIX
-  # gcc(major) = 13 is Fedora GCC - we use clang
-  # automake version lock is too strict
+  - find . -name aclocal.m4 -o -name configure -o -name Makefile.in -o -name config.h.in | xargs touch
   drop_requires:
-    - "gcc(major)"
-    - "automake = 1.16.5"
-
-  # Fix shebangs: /bin/bash and /usr/sgug/bin/bash don't work yet (needs libreadline.so.8)
-  # Use /bin/ksh which exists on IRIX and handles most bash-isms libtool needs
+  - gcc(major)
+  - automake = 1.16.5
   install_cleanup:
-    - "sed -i 's|#!.*/bin/bash|#!/bin/ksh|g' %{buildroot}%{_bindir}/libtool %{buildroot}%{_bindir}/libtoolize"
-
+  - sed -i 's|#!.*/bin/bash|#!/bin/ksh|g' %{buildroot}%{_bindir}/libtool %{buildroot}%{_bindir}/libtoolize
   spec_replacements:
-    # Replace make command: remove Fedora hardening flags (not defined for IRIX)
-    # and add HELP2MAN=true to skip man page generation
-    - pattern: |
-        %make_build \
-            CUSTOM_LTDL_CFLAGS="%_hardening_cflags" \
-            CUSTOM_LTDL_LDFLAGS="%_hardening_ldflags"
-      replacement: "%make_build HELP2MAN=true"
-    # Also pass HELP2MAN=true during install (Makefile regenerates man pages)
-    - pattern: "%make_install"
-      replacement: "%make_install HELP2MAN=true"
-    # Info files aren't auto-compressed in cross-compilation (no __brp_compress)
-    - pattern: "%{_infodir}/libtool.info*.gz"
-      replacement: "%{_infodir}/libtool.info*"
-    # Fix host triple: %configure expands --host=mips-irix (from rpmbuild --target),
-    # but libtool's configure needs host_os=irix6* to enable shared library support.
-    # Appending --host= overrides the earlier one from %configure expansion.
-    - pattern: "%configure"
-      replacement: "%configure --host=mips-sgi-irix6.5"
-    # Fix bash brace expansion not supported in rpmbuild shell
-    - pattern: "rm -f %{buildroot}%{_libdir}/libltdl.{a,la}"
-      replacement: "rm -f %{buildroot}%{_libdir}/libltdl.a %{buildroot}%{_libdir}/libltdl.la"
-
+  - pattern: "%make_build \\\n    CUSTOM_LTDL_CFLAGS=\"%_hardening_cflags\" \\\n    CUSTOM_LTDL_LDFLAGS=\"%_hardening_ldflags\"\n"
+    replacement: '%make_build HELP2MAN=true'
+  - pattern: '%make_install'
+    replacement: '%make_install HELP2MAN=true'
+  - pattern: '%{_infodir}/libtool.info*.gz'
+    replacement: '%{_infodir}/libtool.info*'
+  - pattern: '%configure'
+    replacement: '%configure --host=mips-sgi-irix6.5'
+  - pattern: rm -f %{buildroot}%{_libdir}/libltdl.{a,la}
+    replacement: rm -f %{buildroot}%{_libdir}/libltdl.a %{buildroot}%{_libdir}/libltdl.la

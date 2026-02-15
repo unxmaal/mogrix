@@ -1,266 +1,142 @@
-# perl 5.38.2 package rules for IRIX cross-compilation
-#
 smoke_test:
-  - command: "/usr/sgug/bin/perl -e 'print \"ok\\n\"'"
-    expect: "ok"
-  - command: "/usr/sgug/bin/perl -v"
-    expect: "5.38.2"
-#
-# ---metadata---
-# complexity: high
-# build_system: custom (Perl Configure)
-# key_fixes: [pre-generated config.sh, cross-compilation, IRIX math functions]
-# similar_to: []
-# depends: [zlib-ng, bzip2]
-# status: INSTALLED (rebuilding with Provides)
-# ---
-#
-# Cross-compilation approach:
-# 1. Pre-generated config.sh (adapted from SGUG-RSE) tells Perl about IRIX
-# 2. Configure -S reads config.sh without probing (no interactive configure)
-# 3. hostperl=/usr/bin/perl means build scripts run on Linux host
-# 4. CC=irix-cc compiles C code for IRIX target
-
+- command: /usr/sgug/bin/perl -e 'print "ok\n"'
+  expect: ok
+- command: /usr/sgug/bin/perl -v
+  expect: 5.38.2
 package: perl
-
 add_patch:
-  - perl.sgifixes.patch
-
+- perl.sgifixes.patch
 add_source:
-  - perl.irix6_clang_config.sh
-
+- perl.irix6_clang_config.sh
 rules:
-  # Drop all 188 subpackages - cross-compiled perl uses monolithic packaging.
-  # Subpackage %files sections reference wrong paths (archlib vs privlib).
-  # We use a file manifest (%files -f) to capture everything installed.
   drop_subpackages:
-    - "[A-Za-z]*"
-
-  # Drop Linux-specific BuildRequires (systemtap-sdt-devel handled by generic.yaml)
+  - '[A-Za-z]*'
   drop_buildrequires:
-    - gdbm-devel
-    - libdb-devel
-    - groff-base
-    - procps
-    - tcsh
-
-  # Drop Linux-specific Requires
+  - libdb-devel
+  - groff-base
+  - procps
+  - tcsh
   drop_requires:
-    - rtld(GNU_HASH)
-
-  # Remove main package Requires referencing dropped subpackages.
-  # All 188 subpackages are merged into the monolithic package.
+  - rtld(GNU_HASH)
   remove_lines:
-    - "Requires:       perl-"
-    - "Requires:       %perl_compat"
-    - "%gendep_perl"
-
+  - 'Requires:       perl-'
+  - 'Requires:       %perl_compat'
+  - '%gendep_perl'
   spec_replacements:
-    # === 1. Disable conditionals that don't apply to IRIX ===
+  - pattern: '%global dual_life 0'
+    replacement: '%global dual_life 1'
+  - pattern: '%bcond_without perl_enables_systemtap'
+    replacement: '%bcond_with perl_enables_systemtap'
+  - pattern: '%bcond_without perl_enables_cplusplus_test'
+    replacement: '%bcond_with perl_enables_cplusplus_test'
+  - pattern: '%bcond_without bdb'
+    replacement: '%bcond_with bdb'
+  - pattern: '%bcond_without gdbm'
+    replacement: '%bcond_with gdbm'
+  - pattern: '%bcond_without perl_enables_groff'
+    replacement: '%bcond_with perl_enables_groff'
+  - pattern: '%bcond_without perl_enables_turkish_test'
+    replacement: '%bcond_with perl_enables_turkish_test'
+  - pattern: '# Set optimize=none to prevent from injecting upstream''s value.
 
-    # Enable dual_life to keep all core modules in the monolithic package.
-    # When dual_life=0, %install removes dual-life modules to avoid conflicts
-    # with separately packaged perl modules. We need them all.
-    - pattern: "%global dual_life 0"
-      replacement: "%global dual_life 1"
+      /bin/sh Configure -des \
 
-    # Disable systemtap
-    - pattern: "%bcond_without perl_enables_systemtap"
-      replacement: "%bcond_with perl_enables_systemtap"
+      '
+    replacement: "# IRIX: Use pre-generated config.sh for cross-compilation\ncp %{SOURCE200} config.sh\nsed -i 's|DIDBSINSTALLPREFIX/lib|%{_libdir}|g' config.sh\nsed -i 's|DIDBSINSTALLPREFIX|%{_prefix}|g'\
+      \ config.sh\n# Update perl version paths in config.sh\nsed -i 's|perl5/5.38|perl5/%{perl_abi}|g' config.sh\n# Fix cc/ld/cpp to use full staging path (irix-cc -> full path)\nsed -i \"s|irix-cc|%{__cc}|g\"\
+      \ config.sh\nbash ./Configure -S\n# Build native miniperl for the host (no DynaLoader, can't load .so)\n# This prevents the \"wrong ELF class\" error when build scripts try to\n# load cross-compiled\
+      \ MIPS .so files. A real miniperl has no XS loading.\ncp config.h config.h.cross\ncp $(perl -MConfig -e 'print $Config{archlib}')/CORE/config.h config.h\n# Point MINIPERL to our native binary (not\
+      \ the IRIX one make will build)\n# -Ilib MUST be first so @INC[0]='lib' and buildcustomize.pl loads correctly\n# -I. added after for perl 5.26+ (. not in @INC)\nsed -i 's|MINIPERL = \\$(LDLIBPTH)\
+      \ ./miniperl\\$(EXE_EXT) -Ilib|MINIPERL = $(LDLIBPTH) ./miniperl.native -Ilib -I.|' Makefile\n# Build generate_uudmap and generate headers (needed by globals.c)\ngcc -o generate_uudmap.host generate_uudmap.c\n\
+      ./generate_uudmap.host uudmap.h bitcount.h mg_data.h\n# Create git_version.h if it doesn't exist\ntest -f git_version.h || echo '#define PERL_GIT_UNPUSHED_COMMITS /*leave blank*/' > git_version.h\n\
+      mkdir -p native_obj\n# Note: op.c, perl.c, universal.c are excluded - only their mini variants\n# (opmini.c, perlmini.c, universalmini.c) with -DPERL_IS_MINIPERL are used\nfor src in av.c scope.c\
+      \ peep.c doop.c doio.c dump.c gv.c hv.c \\\n    mg.c reentr.c mro_core.c perly.c pp.c pp_hot.c pp_ctl.c \\\n    pp_sys.c utf8.c sv.c taint.c toke.c util.c deb.c run.c builtin.c \\\n    class.c pad.c\
+      \ globals.c keywords.c perlio.c numeric.c \\\n    mathoms.c locale.c pp_pack.c pp_sort.c caretx.c dquote.c time64.c \\\n    regcomp.c regcomp_debug.c regcomp_invlist.c regcomp_study.c \\\n    regcomp_trie.c\
+      \ regexec.c miniperlmain.c; do\n    base=$(basename $src .c)\n    gcc -DPERL_CORE -DPTHREAD_H_FIRST -O2 -I. -fPIC \\\n        -c -o native_obj/${base}.o $src || exit 1\ndone\nln -sf op.c opmini.c\n\
+      ln -sf perl.c perlmini.c\nln -sf universal.c universalmini.c\nfor src in opmini.c perlmini.c universalmini.c; do\n    base=$(basename $src .c)\n    gcc -DPERL_CORE -DPTHREAD_H_FIRST -DPERL_IS_MINIPERL\
+      \ \\\n        -DPERL_EXTERNAL_GLOB -O2 -I. -fPIC \\\n        -c -o native_obj/${base}.o $src || exit 1\ndone\ngcc -o miniperl.native native_obj/*.o -ldl -lm -lpthread -lcrypt\ncp config.h.cross config.h\n\
+      # Original Configure invocation disabled for cross-compilation:\nif false; then\n# Set optimize=none to prevent from injecting upstream's value.\n/bin/sh Configure -des \\\n"
+  - pattern: '        -Duse64bitint'
+    replacement: '        -Duse64bitint
 
-    # Disable C++ tests
-    - pattern: "%bcond_without perl_enables_cplusplus_test"
-      replacement: "%bcond_with perl_enables_cplusplus_test"
+      fi'
+  - pattern: make %{?_smp_mflags}
+    replacement: '# Clean stale artifacts from Configure -S''s internal make
 
-    # Disable BerkeleyDB (not cross-compiled yet)
-    - pattern: "%bcond_without bdb"
-      replacement: "%bcond_with bdb"
+      rm -f *.o makefile lib/buildcustomize.pl miniperl generate_uudmap miniperl.xok
 
-    # Disable gdbm (not cross-compiled yet)
-    - pattern: "%bcond_without gdbm"
-      replacement: "%bcond_with gdbm"
+      make %{?_smp_mflags}
 
-    # Disable groff
-    - pattern: "%bcond_without perl_enables_groff"
-      replacement: "%bcond_with perl_enables_groff"
+      '
+  - pattern: "for i in sys/ioctl.h sys/syscall.h syscall.h\ndo\n    %{new_perl} %{build_bindir}/h2ph -a -d %{build_archlib} $i || true\ndone\n"
+    replacement: '# IRIX: Skip h2ph generation (requires running target perl)
 
-    # Disable Turkish locale tests
-    - pattern: "%bcond_without perl_enables_turkish_test"
-      replacement: "%bcond_with perl_enables_turkish_test"
+      # h2ph should be run on IRIX after installation
 
-    # === 2. Replace Configure invocation with pre-generated config.sh ===
-    # Wrap original Configure in "if false; then ... fi" to make it dead code.
-    # Insert our config.sh setup before the block.
-    - pattern: |
-        # Set optimize=none to prevent from injecting upstream's value.
-        /bin/sh Configure -des \
-      replacement: |
-        # IRIX: Use pre-generated config.sh for cross-compilation
-        cp %{SOURCE200} config.sh
-        sed -i 's|DIDBSINSTALLPREFIX/lib|%{_libdir}|g' config.sh
-        sed -i 's|DIDBSINSTALLPREFIX|%{_prefix}|g' config.sh
-        # Update perl version paths in config.sh
-        sed -i 's|perl5/5.38|perl5/%{perl_abi}|g' config.sh
-        # Fix cc/ld/cpp to use full staging path (irix-cc -> full path)
-        sed -i "s|irix-cc|%{__cc}|g" config.sh
-        bash ./Configure -S
-        # Build native miniperl for the host (no DynaLoader, can't load .so)
-        # This prevents the "wrong ELF class" error when build scripts try to
-        # load cross-compiled MIPS .so files. A real miniperl has no XS loading.
-        cp config.h config.h.cross
-        cp $(perl -MConfig -e 'print $Config{archlib}')/CORE/config.h config.h
-        # Point MINIPERL to our native binary (not the IRIX one make will build)
-        # -Ilib MUST be first so @INC[0]='lib' and buildcustomize.pl loads correctly
-        # -I. added after for perl 5.26+ (. not in @INC)
-        sed -i 's|MINIPERL = \$(LDLIBPTH) ./miniperl\$(EXE_EXT) -Ilib|MINIPERL = $(LDLIBPTH) ./miniperl.native -Ilib -I.|' Makefile
-        # Build generate_uudmap and generate headers (needed by globals.c)
-        gcc -o generate_uudmap.host generate_uudmap.c
-        ./generate_uudmap.host uudmap.h bitcount.h mg_data.h
-        # Create git_version.h if it doesn't exist
-        test -f git_version.h || echo '#define PERL_GIT_UNPUSHED_COMMITS /*leave blank*/' > git_version.h
-        mkdir -p native_obj
-        # Note: op.c, perl.c, universal.c are excluded - only their mini variants
-        # (opmini.c, perlmini.c, universalmini.c) with -DPERL_IS_MINIPERL are used
-        for src in av.c scope.c peep.c doop.c doio.c dump.c gv.c hv.c \
-            mg.c reentr.c mro_core.c perly.c pp.c pp_hot.c pp_ctl.c \
-            pp_sys.c utf8.c sv.c taint.c toke.c util.c deb.c run.c builtin.c \
-            class.c pad.c globals.c keywords.c perlio.c numeric.c \
-            mathoms.c locale.c pp_pack.c pp_sort.c caretx.c dquote.c time64.c \
-            regcomp.c regcomp_debug.c regcomp_invlist.c regcomp_study.c \
-            regcomp_trie.c regexec.c miniperlmain.c; do
-            base=$(basename $src .c)
-            gcc -DPERL_CORE -DPTHREAD_H_FIRST -O2 -I. -fPIC \
-                -c -o native_obj/${base}.o $src || exit 1
-        done
-        ln -sf op.c opmini.c
-        ln -sf perl.c perlmini.c
-        ln -sf universal.c universalmini.c
-        for src in opmini.c perlmini.c universalmini.c; do
-            base=$(basename $src .c)
-            gcc -DPERL_CORE -DPTHREAD_H_FIRST -DPERL_IS_MINIPERL \
-                -DPERL_EXTERNAL_GLOB -O2 -I. -fPIC \
-                -c -o native_obj/${base}.o $src || exit 1
-        done
-        gcc -o miniperl.native native_obj/*.o -ldl -lm -lpthread -lcrypt
-        cp config.h.cross config.h
-        # Original Configure invocation disabled for cross-compilation:
-        if false; then
-        # Set optimize=none to prevent from injecting upstream's value.
-        /bin/sh Configure -des \
+      true
 
-    # Close the "if false" block after the last Configure argument
-    - pattern: "        -Duse64bitint"
-      replacement: "        -Duse64bitint\nfi"
+      '
+  - pattern: "%{new_perl} -MConfig -i -pn \\\n    -e 's\"\\A#!(?:perl|\\./perl|/perl|/usr/bin/perl|/usr/bin/env perl)\\b\"$Config{startperl}\"' \\\n    $(find %{buildroot}%{perl5_testdir}/perl-tests -type\
+      \ f)\n"
+    replacement: '# IRIX: Skip shebang normalization (can''t run cross-compiled perl)
 
-    # === 3. Fix the make invocation for cross-compilation ===
-    # Configure -S's internal 'make depend' compiles IRIX .o files and creates
-    # stale state (makefile, symlinks). Clean this up so the spec's make starts fresh.
-    - pattern: "make %{?_smp_mflags}"
-      replacement: |
-        # Clean stale artifacts from Configure -S's internal make
-        rm -f *.o makefile lib/buildcustomize.pl miniperl generate_uudmap miniperl.xok
-        make %{?_smp_mflags}
+      true
 
-    # === 4. Fix %install section - skip h2ph (needs target perl) ===
-    - pattern: |
-        for i in sys/ioctl.h sys/syscall.h syscall.h
-        do
-            %{new_perl} %{build_bindir}/h2ph -a -d %{build_archlib} $i || true
-        done
-      replacement: |
-        # IRIX: Skip h2ph generation (requires running target perl)
-        # h2ph should be run on IRIX after installation
-        true
+      '
+  - pattern: '%global perl_archname %{_arch}-%{_os}%{perl_arch_stem}'
+    replacement: '%global perl_archname mips-thread-multi'
+  - pattern: ln -s "libperl.so.%{perl_version}" "$RPM_BUILD_ROOT%{_libdir}/%{soname}"
+    replacement: ln -sf "libperl.so.%{perl_version}" "$RPM_BUILD_ROOT%{_libdir}/%{soname}"
+  - pattern: ln -s "libperl.so.%{perl_version}" "$RPM_BUILD_ROOT%{_libdir}/libperl.so"
+    replacement: ln -sf "libperl.so.%{perl_version}" "$RPM_BUILD_ROOT%{_libdir}/libperl.so"
+  - pattern: '    s|INCLUDE         = ./zlib-src|INCLUDE         = %{_includedir}|'
+    replacement: '    s|INCLUDE         = ./zlib-src|INCLUDE         = /opt/sgug-staging/usr/sgug/include|'
+  - pattern: '    s|LIB             = ./zlib-src|LIB             = %{_libdir}|'
+    replacement: '    s|LIB             = ./zlib-src|LIB             = /opt/sgug-staging/usr/sgug/lib32|'
+  - pattern: "pushd $RPM_BUILD_ROOT%{_mandir}/man1/\n  for i in perl588delta.1 perldelta.1 ; do\n    iconv -c -f MS-ANSI -t UTF-8 $i --output new-$i\n    rm $i\n    mv new-$i $i\n  done\npopd\n"
+    replacement: "cd $RPM_BUILD_ROOT%{_mandir}/man1/\n  for i in perl588delta.1 perldelta.1 ; do\n    if [ -f \"$i\" ]; then\n      iconv -c -f MS-ANSI -t UTF-8 $i --output new-$i\n      rm $i\n      mv\
+      \ new-$i $i\n    fi\n  done\ncd -\n"
+  - pattern: '
 
-    # === 5. Replace new_perl shebang normalization with host perl ===
-    - pattern: |
-        %{new_perl} -MConfig -i -pn \
-            -e 's"\A#!(?:perl|\./perl|/perl|/usr/bin/perl|/usr/bin/env perl)\b"$Config{startperl}"' \
-            $(find %{buildroot}%{perl5_testdir}/perl-tests -type f)
-      replacement: |
-        # IRIX: Skip shebang normalization (can't run cross-compiled perl)
-        true
+      rm %{buildroot}'
+    replacement: '
 
-    # === 6. Fix perl_archname for IRIX ===
-    - pattern: "%global perl_archname %{_arch}-%{_os}%{perl_arch_stem}"
-      replacement: "%global perl_archname mips-thread-multi"
+      rm -f %{buildroot}'
+  - pattern: '
 
-    # === 7. Fix libperl SONAME for IRIX (not Linux-style versioning) ===
-    # IRIX shared libraries use different conventions
-    # Keep the libperl.so symlink creation but adjust for IRIX
-    - pattern: "ln -s \"libperl.so.%{perl_version}\" \"$RPM_BUILD_ROOT%{_libdir}/%{soname}\""
-      replacement: "ln -sf \"libperl.so.%{perl_version}\" \"$RPM_BUILD_ROOT%{_libdir}/%{soname}\""
-    - pattern: "ln -s \"libperl.so.%{perl_version}\" \"$RPM_BUILD_ROOT%{_libdir}/libperl.so\""
-      replacement: "ln -sf \"libperl.so.%{perl_version}\" \"$RPM_BUILD_ROOT%{_libdir}/libperl.so\""
+      rm %{build_'
+    replacement: '
 
-    # === 8. Fix Compress::Zlib paths for cross-compilation ===
-    # The zlib config references %{_includedir} and %{_libdir} which will be
-    # the IRIX paths (/usr/sgug/include, /usr/sgug/lib32). For cross-compilation,
-    # these need to point to the staging area.
-    - pattern: "    s|INCLUDE         = ./zlib-src|INCLUDE         = %{_includedir}|"
-      replacement: "    s|INCLUDE         = ./zlib-src|INCLUDE         = /opt/sgug-staging/usr/sgug/include|"
-    - pattern: "    s|LIB             = ./zlib-src|LIB             = %{_libdir}|"
-      replacement: "    s|LIB             = ./zlib-src|LIB             = /opt/sgug-staging/usr/sgug/lib32|"
+      rm -f %{build_'
+  - pattern: '
 
-    # === 9. Fix bash-isms in %install (pushd/popd not in POSIX sh) ===
-    - pattern: |
-        pushd $RPM_BUILD_ROOT%{_mandir}/man1/
-          for i in perl588delta.1 perldelta.1 ; do
-            iconv -c -f MS-ANSI -t UTF-8 $i --output new-$i
-            rm $i
-            mv new-$i $i
-          done
-        popd
-      replacement: |
-        cd $RPM_BUILD_ROOT%{_mandir}/man1/
-          for i in perl588delta.1 perldelta.1 ; do
-            if [ -f "$i" ]; then
-              iconv -c -f MS-ANSI -t UTF-8 $i --output new-$i
-              rm $i
-              mv new-$i $i
-            fi
-          done
-        cd -
+      rm $RPM_BUILD_ROOT'
+    replacement: '
 
-    # === 10. Make all file removals in %install tolerant of missing files ===
-    # Cross-compilation may not install all expected files (disabled extensions, etc.)
-    - pattern: "\nrm %{buildroot}"
-      replacement: "\nrm -f %{buildroot}"
-    - pattern: "\nrm %{build_"
-      replacement: "\nrm -f %{build_"
-    - pattern: "\nrm $RPM_BUILD_ROOT"
-      replacement: "\nrm -f $RPM_BUILD_ROOT"
+      rm -f $RPM_BUILD_ROOT'
+  - pattern: '%files
 
-    # === 11. Monolithic %files with manifest ===
-    # Replace the empty meta-package %files with a manifest-based section.
-    # The manifest is generated by install_cleanup at end of %install.
-    - pattern: "%files\n# Main perl package is an empty meta package."
-      replacement: "%files -f perl-filelist.txt\n%license Artistic Copying"
+      # Main perl package is an empty meta package.'
+    replacement: '%files -f perl-filelist.txt
 
-    # === 12. Disable unpackaged files check ===
-    # Cross-compilation may leave unexpected files; don't fail the build
-    - pattern: "%global perl_archname mips-thread-multi"
-      replacement: "%global perl_archname mips-thread-multi\n%define _unpackaged_files_terminate_build 0"
+      %license Artistic Copying'
+  - pattern: '%global perl_archname mips-thread-multi'
+    replacement: '%global perl_archname mips-thread-multi
 
-    # === 13. Explicit perl module Provides ===
-    # rpmmacros.irix sets __find_provides=%{nil} + AutoProv:no globally for
-    # cross-compiled packages, and this CANNOT be overridden from the spec
-    # (macro files loaded via --macros have higher priority than %global).
-    # Instead, we add explicit Provides for the modules that Phase 2 packages
-    # need: autoconf requires perl(File::Compare) + perl-interpreter,
-    # automake requires perl(Thread::Queue) + perl(threads).
-    # All these modules ARE physically present in our monolithic perl RPM.
-    - pattern: "Provides:       perl-core = %{perl_version}-%{release}"
-      replacement: |
-        Provides: perl-interpreter
-        Provides: perl(File::Compare)
-        Provides: perl(Thread::Queue)
-        Provides: perl(threads)
-        Provides:       perl-core = %{perl_version}-%{release}
+      %define _unpackaged_files_terminate_build 0'
+  - pattern: 'Provides:       perl-core = %{perl_version}-%{release}'
+    replacement: 'Provides: perl-interpreter
 
-  # Fix shebangs for IRIX and generate file manifest
+      Provides: perl(File::Compare)
+
+      Provides: perl(Thread::Queue)
+
+      Provides: perl(threads)
+
+      Provides:       perl-core = %{perl_version}-%{release}
+
+      '
   install_cleanup:
-    - "find %{buildroot}%{_bindir} -type f -exec grep -l '#!/usr/bin/perl' {} \\; | xargs -r sed -i 's|#!/usr/bin/perl|#!/usr/sgug/bin/perl|g'"
-    - "find %{buildroot}%{_bindir} -type f -exec grep -l '#!.*perl' {} \\; | xargs -r sed -i 's|#!/usr/local/bin/perl|#!/usr/sgug/bin/perl|g'"
-    - "find $RPM_BUILD_ROOT -type f -o -type l | sed \"s|$RPM_BUILD_ROOT||\" | sort > perl-filelist.txt"
-
+  - find %{buildroot}%{_bindir} -type f -exec grep -l '#!/usr/bin/perl' {} \; | xargs -r sed -i 's|#!/usr/bin/perl|#!/usr/sgug/bin/perl|g'
+  - find %{buildroot}%{_bindir} -type f -exec grep -l '#!.*perl' {} \; | xargs -r sed -i 's|#!/usr/local/bin/perl|#!/usr/sgug/bin/perl|g'
+  - find $RPM_BUILD_ROOT -type f -o -type l | sed "s|$RPM_BUILD_ROOT||" | sort > perl-filelist.txt

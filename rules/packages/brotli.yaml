@@ -1,16 +1,9 @@
-# brotli - compression library (used by curl, etc.)
-# Uses cmake build system
 package: brotli
-
 rules:
-  drop_buildrequires:
-    - python3-devel
-    - python3-setuptools
   drop_subpackages:
-    - python3-brotli
+  - python3-brotli
   spec_replacements:
-    # Remove python bindings build
-    - pattern: "%py3_build"
-      replacement: "true # skip python build"
-    - pattern: "%py3_install"
-      replacement: "true # skip python install"
+  - pattern: '%py3_build'
+    replacement: 'true # skip python build'
+  - pattern: '%py3_install'
+    replacement: 'true # skip python install'

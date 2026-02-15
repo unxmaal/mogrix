@@ -1,22 +1,8 @@
-# pcre - Perl Compatible Regular Expressions
-# Needs compat functions
-
 package: pcre
-
 rules:
-  # Compat functions needed
-
-  # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
-
-  # Configure flags
   configure_flags:
     add:
-      - --enable-utf
-      - --enable-unicode-properties
-      - --disable-silent-rules
+    - --enable-utf
+    - --enable-unicode-properties
     remove:
-      - --enable-jit
-
-  # NOTE: libdicl remove_lines handled by generic.yaml
-
+    - --enable-jit

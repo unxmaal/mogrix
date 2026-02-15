@@ -1,41 +1,28 @@
 package: aterm
-
 rules:
   drop_buildrequires:
-    - desktop-file-utils     # Fedora desktop integration
-    - libAfterImage-devel    # Optional (not available, configure skips gracefully)
-    - mesa-libGL-devel       # Only needed with libAfterImage
-
+  - libAfterImage-devel
+  - mesa-libGL-devel
   spec_replacements:
-    # Remove X11 path overrides — sysroot already provides X11 headers/libs
-    # --x-includes=%{_includedir} would add -I/usr/sgug/include which misses X11
-    - pattern: "--x-includes=%{_includedir} --x-libraries=%{_libdir}"
-      replacement: ""
-    # Remove --enable-background-image (requires libAfterImage)
-    - pattern: "--enable-background-image"
-      replacement: ""
-    # Disable CJK font support — k14/taipei16 fonts not available on IRIX
-    - pattern: "-enable-kanji"
-      replacement: "--disable-kanji"
-    - pattern: "--enable-big5"
-      replacement: "--disable-big5"
-    - pattern: "--enable-greek"
-      replacement: "--disable-greek"
-    # Skip desktop file installation
-    - pattern: "desktop-file-install --dir=$RPM_BUILD_ROOT%{_datadir}/applications %{SOURCE1}"
-      replacement: "# desktop-file-install skipped for IRIX"
-    # Skip chrpath (not available on build host, and rpath not harmful for IRIX)
-    - pattern: "chrpath --delete %{buildroot}%{_bindir}/aterm"
-      replacement: "# chrpath skipped for IRIX cross-build"
-    # Remove desktop file from %files
-    - pattern: "%{_datadir}/applications/%{name}.desktop"
-      replacement: "# desktop file skipped"
-    # Man pages not compressed by our rpmbuild (brp scripts disabled)
-    - pattern: "%{_mandir}/man1/%{name}.1.gz"
-      replacement: "%{_mandir}/man1/%{name}.1*"
-
+  - pattern: --x-includes=%{_includedir} --x-libraries=%{_libdir}
+    replacement: ''
+  - pattern: --enable-background-image
+    replacement: ''
+  - pattern: -enable-kanji
+    replacement: --disable-kanji
+  - pattern: --enable-big5
+    replacement: --disable-big5
+  - pattern: --enable-greek
+    replacement: --disable-greek
+  - pattern: desktop-file-install --dir=$RPM_BUILD_ROOT%{_datadir}/applications %{SOURCE1}
+    replacement: '# desktop-file-install skipped for IRIX'
+  - pattern: chrpath --delete %{buildroot}%{_bindir}/aterm
+    replacement: '# chrpath skipped for IRIX cross-build'
+  - pattern: '%{_datadir}/applications/%{name}.desktop'
+    replacement: '# desktop file skipped'
+  - pattern: '%{_mandir}/man1/%{name}.1.gz'
+    replacement: '%{_mandir}/man1/%{name}.1*'
   drop_requires:
-    - xorg-x11-fonts-misc    # Fedora font dependency, IRIX has its own X11 fonts
-
+  - xorg-x11-fonts-misc
   install_cleanup:
-    - "rm -f %{buildroot}%{_datadir}/applications/aterm.desktop"
+  - rm -f %{buildroot}%{_datadir}/applications/aterm.desktop

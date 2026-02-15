@@ -1,51 +1,28 @@
-# gzip - GNU compression utility
-# FC40: gzip-1.13-1.fc40
-# Analysis: 13 infos (strdup, getopt_long, getline, reallocarray, strerror_r)
-# Uses gnulib heavily — similar patterns to sed/grep/diffutils
-
 package: gzip
-classes: [nls-disabled]
-
+classes:
+- nls-disabled
 smoke_test:
-  - command: "echo hello | /usr/sgug/bin/gzip -c | /usr/sgug/bin/gzip -dc"
-    expect: "hello"
-  - command: "/usr/sgug/bin/gzip --version"
-    expect: "1.13"
-
+- command: echo hello | /usr/sgug/bin/gzip -c | /usr/sgug/bin/gzip -dc
+  expect: hello
+- command: /usr/sgug/bin/gzip --version
+  expect: '1.13'
 rules:
-  # Compat functions needed for IRIX
-  # strdup: dlmalloc/libc allocator mismatch
-  # getopt_long: option parsing
-  # getline: line reading
-  # reallocarray: gnulib xmalloc
-  # strerror_r: error reporting
-  inject_compat_functions:
-    - reallocarray
-    - strerror_r
-
-  # Tell configure that IRIX has working implementations
   ac_cv_overrides:
-    gl_cv_func_gettimeofday_clobber: "no"
-    ac_cv_func_gettimeofday: "yes"
-    ac_cv_header_sys_time_h: "yes"
-    ac_cv_func_timegm: "yes"
-    ac_cv_func_getprogname: "no"
-    ac_cv_type_long_double: "no"
-    gl_cv_have_include_next: "yes"
-
-  # Renumber Source100/101 to avoid conflict with compat source injection
-  # (compat sources start at Source100)
+    gl_cv_func_gettimeofday_clobber: 'no'
+    ac_cv_func_gettimeofday: 'yes'
+    ac_cv_header_sys_time_h: 'yes'
+    ac_cv_func_timegm: 'yes'
+    ac_cv_func_getprogname: 'no'
+    ac_cv_type_long_double: 'no'
+    gl_cv_have_include_next: 'yes'
   spec_replacements:
-    - pattern: "Source100: colorzgrep.csh"
-      replacement: "Source50: colorzgrep.csh"
-    - pattern: "Source101: colorzgrep.sh"
-      replacement: "Source51: colorzgrep.sh"
-    - pattern: "%{SOURCE100}"
-      replacement: "%{SOURCE50}"
-    - pattern: "%{SOURCE101}"
-      replacement: "%{SOURCE51}"
-
-  # Remove gnulib-tests from SUBDIRS (built during 'make all' but not needed)
+  - pattern: 'Source100: colorzgrep.csh'
+    replacement: 'Source50: colorzgrep.csh'
+  - pattern: 'Source101: colorzgrep.sh'
+    replacement: 'Source51: colorzgrep.sh'
+  - pattern: '%{SOURCE100}'
+    replacement: '%{SOURCE50}'
+  - pattern: '%{SOURCE101}'
+    replacement: '%{SOURCE51}'
   prep_commands:
-    - "sed -i 's/gnulib-tests//' Makefile.in"
-
+  - sed -i 's/gnulib-tests//' Makefile.in

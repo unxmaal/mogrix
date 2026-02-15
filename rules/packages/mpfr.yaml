@@ -1,24 +1,12 @@
-# mpfr - Multiple Precision Floating-Point Reliable library (FC40: 4.2.1)
-# Depends on gmp
 package: mpfr
-
 rules:
-  drop_buildrequires:
-    - texinfo
-
-  # IRIX rld has no __thread TLS support
   ac_cv_overrides:
-    ax_cv_c_compiler_vendor: "clang"
-
+    ax_cv_c_compiler_vendor: clang
   configure_flags:
     add:
-      - "--disable-thread-safe"
-
+    - --disable-thread-safe
   spec_replacements:
-    # Remove info dir cleanup
-    - pattern: "rm -f $RPM_BUILD_ROOT%{_infodir}/dir"
-      replacement: "rm -rf $RPM_BUILD_ROOT%{_infodir}"
-
-    # Remove info files from %files
-    - pattern: "%{_infodir}/*.info*"
-      replacement: ""
+  - pattern: rm -f $RPM_BUILD_ROOT%{_infodir}/dir
+    replacement: rm -rf $RPM_BUILD_ROOT%{_infodir}
+  - pattern: '%{_infodir}/*.info*'
+    replacement: ''

@@ -1,30 +1,19 @@
-# enscript - text to PostScript converter
-# Skip autoreconf — autopoint (gettext) not available on cross-build host
-# Patch Makefile.in to include e_885913/e_885915 encodings added by Fedora patch
-#   (autoreconf would do this, but we skip it)
-# Use POSIX CODESET instead of GNU _NL_CTYPE_CODESET_NAME (not available on IRIX)
-# Link with -lgen for dirname/basename (in libgen.so on IRIX, not in libc)
 package: enscript
-
 rules:
-  drop_buildrequires:
-    - gettext-devel
-    - gettext
   configure_disable:
-    - nls
+  - nls
   add_patch:
-    - makefile-in-add-885913-885915.patch
+  - makefile-in-add-885913-885915.patch
   spec_replacements:
-    # Skip autoreconf — autopoint not available
-    - pattern: "autoreconf -fiv"
-      replacement: "true # skip autoreconf (no autopoint)"
-    # After Fedora newencodings patch adds _NL_CTYPE_CODESET_NAME, replace with POSIX CODESET
-    # Must go after %patch -P 16 (newencodings) which introduces this symbol
-    - pattern: "%patch -P 16 -p1 -b .newencodings"
-      replacement: |
-        %patch -P 16 -p1 -b .newencodings
-        # Fix _NL_CTYPE_CODESET_NAME -> CODESET (POSIX, works on IRIX)
-        sed -i 's/_NL_CTYPE_CODESET_NAME/CODESET/' src/util.c
-    # Link with libgen for dirname/basename (IRIX has these in libgen.so, not libc)
-    - pattern: "%configure"
-      replacement: 'LIBS="$LIBS -lgen" %configure'
+  - pattern: autoreconf -fiv
+    replacement: 'true # skip autoreconf (no autopoint)'
+  - pattern: '%patch -P 16 -p1 -b .newencodings'
+    replacement: '%patch -P 16 -p1 -b .newencodings
+
+      # Fix _NL_CTYPE_CODESET_NAME -> CODESET (POSIX, works on IRIX)
+
+      sed -i ''s/_NL_CTYPE_CODESET_NAME/CODESET/'' src/util.c
+
+      '
+  - pattern: '%configure'
+    replacement: LIBS="$LIBS -lgen" %configure

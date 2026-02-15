@@ -1,15 +1,7 @@
-# libmetalink - Metalink library
-# Used for download management with mirrors
-
 package: libmetalink
-
 rules:
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
-
-  # Configure flags
   configure_flags:
     add:
-      - --disable-silent-rules
-      - --with-libexpat
+    - --with-libexpat
     remove:
-      - --with-libxml2
+    - --with-libxml2

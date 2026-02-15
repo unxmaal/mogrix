@@ -1,31 +1,13 @@
 package: zip
-
 rules:
-  inject_compat_functions:
-    - stpcpy
-
   drop_buildrequires: []
-
-  # Drop runtime dependency on unzip (may not be installed yet)
   drop_requires:
-    - unzip
-
+  - unzip
   spec_replacements:
-    # Replace the build command entirely. Same approach as unzip:
-    # - Skip generic_gcc (recursively sets CC=gcc)
-    # - Skip unix/configure (sets conflicting flags during cross-compilation)
-    # - Use known-good flags for IRIX directly with 'zips' target
-    - pattern: |
-        %{make_build} -f unix/Makefile prefix=%{_prefix} "CFLAGS_NOOPT=-I. -DUNIX $RPM_OPT_FLAGS" generic_gcc
-      replacement: |
-        %{make_build} -f unix/Makefile prefix=%{_prefix} \
-          CC="%{__cc}" BIND="%{__cc}" CPP="%{__cc} -E" \
-          "CFLAGS=-include strings.h -I. -DUNIX %{optflags} -DHAVE_DIRENT_H -DHAVE_TERMIOS_H -DUSE_BZIP2 -DLARGE_FILE_SUPPORT" \
-          AS="%{__cc} -c" \
-          LFLAGS2="-L$(pwd)/mogrix-compat -lmogrix-compat -lbz2" \
-          zips
+  - pattern: '%{make_build} -f unix/Makefile prefix=%{_prefix} "CFLAGS_NOOPT=-I. -DUNIX $RPM_OPT_FLAGS" generic_gcc
 
-    # Fix typo in spec: RPM_BULD_ROOT → RPM_BUILD_ROOT
-    - pattern: "$RPM_BULD_ROOT"
-      replacement: "$RPM_BUILD_ROOT"
-
+      '
+    replacement: "%{make_build} -f unix/Makefile prefix=%{_prefix} \\\n  CC=\"%{__cc}\" BIND=\"%{__cc}\" CPP=\"%{__cc} -E\" \\\n  \"CFLAGS=-include strings.h -I. -DUNIX %{optflags} -DHAVE_DIRENT_H -DHAVE_TERMIOS_H\
+      \ -DUSE_BZIP2 -DLARGE_FILE_SUPPORT\" \\\n  AS=\"%{__cc} -c\" \\\n  LFLAGS2=\"-L$(pwd)/mogrix-compat -lmogrix-compat -lbz2\" \\\n  zips\n"
+  - pattern: $RPM_BULD_ROOT
+    replacement: $RPM_BUILD_ROOT

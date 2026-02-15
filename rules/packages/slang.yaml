@@ -1,32 +1,36 @@
-# slang - S-Lang library (needed by mc, most, etc.)
 package: slang
-
 rules:
   drop_buildrequires:
-    - libpng-devel
-    - pcre-devel
-    - oniguruma-devel
+  - pcre-devel
   configure_disable:
-    - png
-    - pcre
-    - onig
+  - png
+  - pcre
+  - onig
   prep_commands:
-    # IRIX needs explicit fcntl.h for open() and fcntl()
-    - "sed -i '1i #include <fcntl.h>' src/slutty.c"
-    # Fix undeclared SLtt_write_to_status_line in smg module
-    - "sed -i '/#include <slang.h>/a extern int SLtt_write_to_status_line(const char *, int);' modules/slsmg-module.c"
+  - 'sed -i ''1i #include <fcntl.h>'' src/slutty.c'
+  - sed -i '/#include <slang.h>/a extern int SLtt_write_to_status_line(const char *, int);' modules/slsmg-module.c
   spec_replacements:
-    # Brace globs don't work with /bin/sh
-    - pattern: "--with-{png,z}lib=%{_libdir}"
-      replacement: "--with-pnglib=%{_libdir} --with-zlib=%{_libdir}"
-    - pattern: "--with-{png,z}inc=%{_includedir}"
-      replacement: "--with-pnginc=%{_includedir} --with-zinc=%{_includedir}"
-    # IRIX doesn't have sincos/sincosf (GNU extensions) — remove from config.h after configure
-    - pattern: "# fails with %{?_smp_mflags}"
-      replacement: "# Remove sincos/sincosf — GNU extensions not on IRIX\nsed -i 's/^#define HAVE_SINCOS.*/#undef HAVE_SINCOS/' src/sysconf.h\nsed -i 's/^#define HAVE_SINCOSF.*/#undef HAVE_SINCOSF/' src/sysconf.h\nsed -i 's/^#define HAVE_FENV_H.*/#undef HAVE_FENV_H/' src/sysconf.h\nsed -i 's/^#define HAVE_FECLEAREXCEPT.*/#undef HAVE_FECLEAREXCEPT/' src/sysconf.h\n# fails with %{?_smp_mflags}"
-    # IRIX doesn't have sincos — tell configure
-    - pattern: "export ac_cv_header_sys_random_h=\"no\""
-      replacement: "export ac_cv_header_sys_random_h=\"no\"\nexport ac_cv_lib_m_sincos=no\nexport ac_cv_lib_m_sincosf=no"
-    # Brace glob in rm command (install section)
-    - pattern: "rm -rf $RPM_BUILD_ROOT%{_docdir}/{slang,slsh}"
-      replacement: "rm -rf $RPM_BUILD_ROOT%{_docdir}/slang $RPM_BUILD_ROOT%{_docdir}/slsh"
+  - pattern: --with-{png,z}lib=%{_libdir}
+    replacement: --with-pnglib=%{_libdir} --with-zlib=%{_libdir}
+  - pattern: --with-{png,z}inc=%{_includedir}
+    replacement: --with-pnginc=%{_includedir} --with-zinc=%{_includedir}
+  - pattern: '# fails with %{?_smp_mflags}'
+    replacement: '# Remove sincos/sincosf — GNU extensions not on IRIX
+
+      sed -i ''s/^#define HAVE_SINCOS.*/#undef HAVE_SINCOS/'' src/sysconf.h
+
+      sed -i ''s/^#define HAVE_SINCOSF.*/#undef HAVE_SINCOSF/'' src/sysconf.h
+
+      sed -i ''s/^#define HAVE_FENV_H.*/#undef HAVE_FENV_H/'' src/sysconf.h
+
+      sed -i ''s/^#define HAVE_FECLEAREXCEPT.*/#undef HAVE_FECLEAREXCEPT/'' src/sysconf.h
+
+      # fails with %{?_smp_mflags}'
+  - pattern: export ac_cv_header_sys_random_h="no"
+    replacement: 'export ac_cv_header_sys_random_h="no"
+
+      export ac_cv_lib_m_sincos=no
+
+      export ac_cv_lib_m_sincosf=no'
+  - pattern: rm -rf $RPM_BUILD_ROOT%{_docdir}/{slang,slsh}
+    replacement: rm -rf $RPM_BUILD_ROOT%{_docdir}/slang $RPM_BUILD_ROOT%{_docdir}/slsh

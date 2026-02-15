@@ -1,49 +1,56 @@
-# libstrophe - XMPP client library (FC40)
 package: libstrophe
-
 rules:
   inject_compat_functions:
-    - explicit_bzero
-
+  - explicit_bzero
   configure_flags:
     add:
-      - "--disable-examples"
+    - --disable-examples
     remove:
-      - "--enable-coverage"
-
+    - --enable-coverage
   drop_buildrequires:
-    - doxygen
-    - lcov
-
+  - lcov
   drop_subpackages:
-    - doc
-
+  - doc
   spec_replacements:
-    # Fix res_query check: IRIX has res_query() in libc, no -lresolv needed.
-    # Must patch AFTER autoreconf since it regenerates configure from configure.ac.
-    - pattern: "autoreconf -i -W all"
-      replacement: "autoreconf -i -W all\nsed -i 's|RESOLV_LIBS=\"-lresolv\"|RESOLV_LIBS=\"\"|' configure"
+  - pattern: autoreconf -i -W all
+    replacement: 'autoreconf -i -W all
 
-    # Disable doxygen/coverage (can't build docs during cross-compilation)
-    - pattern: "# Build HTML documentation\ndoxygen\nmake coverage  # results are in coverage/"
-      replacement: "# Docs/coverage disabled for cross-compilation"
+      sed -i ''s|RESOLV_LIBS="-lresolv"|RESOLV_LIBS=""|'' configure'
+  - pattern: '# Build HTML documentation
 
-    # Disable doc/coverage installation (no doxygen output to install)
-    - pattern: "# Install HTML documentation for the doc subpackage\nmkdir -p %{buildroot}%{_pkgdocdir}/\ncp -a docs/html/ %{buildroot}%{_pkgdocdir}/\ncp -a coverage/ %{buildroot}%{_pkgdocdir}/html/"
-      replacement: "# Doc/coverage install disabled for cross-compilation"
+      doxygen
 
-    # Disable examples installation (--disable-examples means no .libs/.deps)
-    - pattern: "# Install examples/ dir shipping binary files generated\nmkdir -p %{buildroot}%{_libdir}/%{name}/\ncp -a examples/ %{buildroot}%{_libdir}/%{name}/\nmv %{buildroot}%{_libdir}/%{name}/examples/.libs %{buildroot}%{_libdir}/%{name}/examples/libs\nmv %{buildroot}%{_libdir}/%{name}/examples/.deps %{buildroot}%{_libdir}/%{name}/examples/deps\nrm -f %{buildroot}%{_libdir}/%{name}/examples/.dirstamp\nrm -f %{buildroot}%{_libdir}/%{name}/examples/deps/.dirstamp"
-      replacement: "# Examples install disabled for cross-compilation"
+      make coverage  # results are in coverage/'
+    replacement: '# Docs/coverage disabled for cross-compilation'
+  - pattern: '# Install HTML documentation for the doc subpackage
 
-    # Remove examples dir from devel %files (not built)
-    - pattern: "%{_libdir}/%{name}/"
-      replacement: ""
+      mkdir -p %{buildroot}%{_pkgdocdir}/
 
-    # Add explicit Provides
-    - pattern: "^Name:           libstrophe"
-      replacement: |
-        Name:           libstrophe
-        Provides: libstrophe(mips-32) = %{version}-%{release}
-        Provides: libstrophe.so.0
+      cp -a docs/html/ %{buildroot}%{_pkgdocdir}/
 
+      cp -a coverage/ %{buildroot}%{_pkgdocdir}/html/'
+    replacement: '# Doc/coverage install disabled for cross-compilation'
+  - pattern: '# Install examples/ dir shipping binary files generated
+
+      mkdir -p %{buildroot}%{_libdir}/%{name}/
+
+      cp -a examples/ %{buildroot}%{_libdir}/%{name}/
+
+      mv %{buildroot}%{_libdir}/%{name}/examples/.libs %{buildroot}%{_libdir}/%{name}/examples/libs
+
+      mv %{buildroot}%{_libdir}/%{name}/examples/.deps %{buildroot}%{_libdir}/%{name}/examples/deps
+
+      rm -f %{buildroot}%{_libdir}/%{name}/examples/.dirstamp
+
+      rm -f %{buildroot}%{_libdir}/%{name}/examples/deps/.dirstamp'
+    replacement: '# Examples install disabled for cross-compilation'
+  - pattern: '%{_libdir}/%{name}/'
+    replacement: ''
+  - pattern: '^Name:           libstrophe'
+    replacement: 'Name:           libstrophe
+
+      Provides: libstrophe(mips-32) = %{version}-%{release}
+
+      Provides: libstrophe.so.0
+
+      '

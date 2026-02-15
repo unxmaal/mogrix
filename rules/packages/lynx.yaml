@@ -1,36 +1,34 @@
 package: lynx
 upstream:
   url: https://invisible-mirror.net/archives/lynx/tarballs/lynx2.9.2.tar.bz2
-  version: "2.9.2"
+  version: 2.9.2
   type: tarball
   build_system: autoconf
   license: GPLv2
-  summary: "Text-mode web browser"
+  summary: Text-mode web browser
   source_dir: lynx2.9.2
 rules:
-  inject_compat_functions:
-    - setenv
   explicit_provides:
-    - "lynx"
+  - lynx
   export_vars:
-    CFLAGS: "-Wno-deprecated-declarations"
+    CFLAGS: -Wno-deprecated-declarations
   configure_flags:
     add:
-      - "--with-screen=ncurses"
-      - "--with-ssl"
-      - "--with-zlib"
-      - "--disable-nls"
-      - "--disable-ipv6"
-      - "--disable-rpath-hack"
-      - "--enable-default-colors"
-      - "--enable-persistent-cookies"
-      - "--enable-prettysrc"
-      - "--enable-scrollbar"
-      - "--enable-read-eta"
-      - "--enable-charset-choice"
-      - "--enable-externs"
-      - "--enable-cgi-links"
-      - "--enable-internal-links"
-      - "--enable-nsl-fork"
-      - "--enable-file-upload"
-      - "--enable-source-cache"
+    - --with-screen=ncurses
+    - --with-ssl
+    - --with-zlib
+    - --disable-nls
+    - --disable-ipv6
+    - --disable-rpath-hack
+    - --enable-default-colors
+    - --enable-persistent-cookies
+    - --enable-prettysrc
+    - --enable-scrollbar
+    - --enable-read-eta
+    - --enable-charset-choice
+    - --enable-externs
+    - --enable-cgi-links
+    - --enable-internal-links
+    - --enable-nsl-fork
+    - --enable-file-upload
+    - --enable-source-cache

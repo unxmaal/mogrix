@@ -1,70 +1,47 @@
-# vile - VI Like Emacs (terminal-only, no X11)
 package: vile
-
 rules:
   drop_buildrequires:
-    - desktop-file-utils
-    - perl-generators
-    - libXpm-devel
-    - libXaw-devel
-    - libXt-devel
-    - flex
-
+  - libXpm-devel
+  - libXaw-devel
+  - libXt-devel
   drop_requires:
-    - "xorg-x11-fonts-misc"
-
-  # Drop xvile (X11) and common (merge into main) subpackages
+  - xorg-x11-fonts-misc
   drop_subpackages:
-    - "xvile"
-    - "common"
-    - "-n xvile"
-
+  - xvile
+  - common
+  - -n xvile
   configure_flags:
     add:
-      # Disable loadable filters (shared .so plugins)
-      - "--without-loadable-filters"
-
+    - --without-loadable-filters
   spec_replacements:
-    # Remove Requires on vile-common since we merge common into main
-    - pattern: "Requires:\t%{name}-common = %{version}-%{release}"
-      replacement: ""
+  - pattern: "Requires:\t%{name}-common = %{version}-%{release}"
+    replacement: ''
+  - pattern: "DESKTOP_FLAGS=--vendor='' \\\n%configure --with-loadable-filters \\\n\t   --disable-rpath-hack \\\n\t   --disable-stripping \\\n\t   --with-app-defaults=%{_datadir}/X11/app-defaults \\\n\t\
+      \   --with-screen=Xaw \\\n\t   --with-icon-theme \\\n\t   --with-icondir=%{_datadir}/icons/ \\\n\t   --with-pixmapdir=%{_datadir}/pixmaps/ \\\n\t   --with-xpm\n\nmake %{?_smp_mflags} xvile\ntouch\
+      \ vile"
+    replacement: '# xvile build removed for IRIX (terminal vile only)'
+  - pattern: "--with-loadable-filters \\\n\t   --disable-rpath-hack"
+    replacement: --disable-rpath-hack
+  - pattern: make install DESTDIR=%{buildroot} INSTALL='install -p' TARGET='xvile'
+    replacement: '# xvile install removed'
+  - pattern: make install-desktop DESKTOP_FLAGS=--vendor='' DESKTOP_DIR=%{buildroot}%{_datadir}/applications
+    replacement: '# desktop install removed'
+  - pattern: 'rm -v -f %{buildroot}%{_datadir}/applications/lxvile.desktop
 
-    # Remove the entire second configure+make cycle for xvile FIRST
-    # (before removing --with-loadable-filters which appears in both blocks)
-    # Use unique --with-screen=Xaw to identify the second block
-    - pattern: "DESKTOP_FLAGS=--vendor='' \\\n%configure --with-loadable-filters \\\n\t   --disable-rpath-hack \\\n\t   --disable-stripping \\\n\t   --with-app-defaults=%{_datadir}/X11/app-defaults \\\n\t   --with-screen=Xaw \\\n\t   --with-icon-theme \\\n\t   --with-icondir=%{_datadir}/icons/ \\\n\t   --with-pixmapdir=%{_datadir}/pixmaps/ \\\n\t   --with-xpm\n\nmake %{?_smp_mflags} xvile\ntouch vile"
-      replacement: "# xvile build removed for IRIX (terminal vile only)"
+      rm -v -f %{buildroot}%{_datadir}/applications/uxvile.desktop'
+    replacement: '# desktop file cleanup removed'
+  - pattern: "pushd %{buildroot}%{_mandir}/man1 \nln -s xvile.1 uxvile.1\nln -s xvile.1 lxvile.1\npopd"
+    replacement: '# xvile man symlinks removed'
+  - pattern: '%{_mandir}/man1/vile*.1.gz'
+    replacement: '%{_mandir}/man1/vile*.1*'
+  - pattern: '%{_bindir}/vile-to-html'
+    replacement: '%{_bindir}/vile-to-html
 
-    # Now remove --with-loadable-filters from the first (remaining) configure
-    - pattern: "--with-loadable-filters \\\n\t   --disable-rpath-hack"
-      replacement: "--disable-rpath-hack"
+      %doc AUTHORS COPYING CHANGES README doc/*doc
 
-    # Remove xvile install
-    - pattern: "make install DESTDIR=%{buildroot} INSTALL='install -p' TARGET='xvile'"
-      replacement: "# xvile install removed"
-    # Remove desktop install
-    - pattern: "make install-desktop DESKTOP_FLAGS=--vendor='' DESKTOP_DIR=%{buildroot}%{_datadir}/applications"
-      replacement: "# desktop install removed"
-    # Remove desktop file cleanup
-    - pattern: "rm -v -f %{buildroot}%{_datadir}/applications/lxvile.desktop\nrm -v -f %{buildroot}%{_datadir}/applications/uxvile.desktop"
-      replacement: "# desktop file cleanup removed"
-
-    # Fix pushd/popd (bash-only) - these are for xvile man symlinks we don't need
-    - pattern: "pushd %{buildroot}%{_mandir}/man1 \nln -s xvile.1 uxvile.1\nln -s xvile.1 lxvile.1\npopd"
-      replacement: "# xvile man symlinks removed"
-
-    # Fix man page .1.gz -> .1* (rpmmacros.irix disables compression)
-    - pattern: "%{_mandir}/man1/vile*.1.gz"
-      replacement: "%{_mandir}/man1/vile*.1*"
-
-    # Merge common files into main %files section
-    - pattern: "%{_bindir}/vile-to-html"
-      replacement: "%{_bindir}/vile-to-html\n%doc AUTHORS COPYING CHANGES README doc/*doc\n%{_datadir}/vile/"
-
+      %{_datadir}/vile/'
   install_cleanup:
-    # Remove loadable filter .so directory if it was created
-    - "rm -rf %{buildroot}%{_libdir}/vile"
-
+  - rm -rf %{buildroot}%{_libdir}/vile
 smoke_test:
-  - command: "/usr/sgug/bin/vile --version"
-    expect: "9.8z"
+- command: /usr/sgug/bin/vile --version
+  expect: 9.8z

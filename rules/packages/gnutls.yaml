@@ -1,125 +1,88 @@
-# gnutls - TLS library
-# Needs compat functions
-# Build system: autotools (complex spec with many inline %if/%else/%endif)
-#
-# IMPORTANT: This spec has inline %if/%else/%endif blocks inside the
-# %configure line continuation. The configure_flags:remove engine can't
-# handle these (it leaves orphaned \ on %endif lines). Instead we:
-# 1. Flip bcond macros via spec_replacements so RPM resolves conditionals
-# 2. Remove specific configure lines via spec_replacements
-# 3. Only use configure_flags:add (prepend is safe)
-
 package: gnutls
-
 rules:
-  # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   drop_requires:
-    - crypto-policies
-    - "crypto-policies-scripts"
-    - p11-kit-trust
-
+  - crypto-policies
+  - crypto-policies-scripts
+  - p11-kit-trust
   drop_buildrequires:
-    - trousers-devel
-    - libidn2-devel
-    - "mingw*"
-
-  # IRIX rld has no TLS support (__tls_get_addr unresolvable)
-  # gthreads.h maps _Thread_local to __thread; redefine to empty (plain static)
-  # Safe: IRIX is single-threaded for our purposes
-  # Can't use -D from CFLAGS because #define in gthreads.h overrides -D
+  - trousers-devel
+  - mingw*
   prep_commands:
-    - "sed -i 's/#define _Thread_local __thread/#define _Thread_local/' lib/gthreads.h"
-
-  # Autoconf cache overrides
-  # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
+  - sed -i 's/#define _Thread_local __thread/#define _Thread_local/' lib/gthreads.h
   ac_cv_overrides:
-    gl_cv_func_working_getdelim: "yes"
-    # IRIX select() works fine - prevent gnulib from replacing it
-    # (gnulib's select.c can't find the real select() declaration)
-
-  # Configure flags - only ADD (prepend to %configure line, safe with continuations)
-  # Do NOT use remove here - see comment at top of file
+    gl_cv_func_working_getdelim: 'yes'
   configure_flags:
     add:
-      - --disable-doc
-      - --disable-gtk-doc
-      - --disable-guile
-      - --disable-dane
-      - --disable-hardware-acceleration
-      - --without-tpm
-      - --without-tpm2
-      - --without-idn
-      - --disable-libdane
-      - --disable-valgrind-tests
-      - --without-p11-kit
-      # Point gnutls to the CA bundle in staging (%{_sysconfdir} = /usr/sgug/etc)
-      # Bundles copy this file; weechat/curl find it automatically via gnutls
-      - --with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt
-
-  # Disable Linux-specific features
+    - --disable-doc
+    - --disable-gtk-doc
+    - --disable-guile
+    - --disable-dane
+    - --disable-hardware-acceleration
+    - --without-tpm
+    - --without-tpm2
+    - --without-idn
+    - --disable-libdane
+    - --disable-valgrind-tests
+    - --without-p11-kit
+    - --with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt
   configure_disable:
-    - seccomp-tests
-
+  - seccomp-tests
   spec_replacements:
-    # === Flip bcond macros to disable features not available on IRIX ===
-    # %bcond_without X = ON by default; %bcond_with X = OFF by default
-    # Flipping these makes RPM evaluate all %if %{with X} blocks to FALSE,
-    # keeping only the %else branches (which have the --disable/--without flags)
-    - pattern: "%bcond_without dane"
-      replacement: "%bcond_with dane"
-    - pattern: "%bcond_without fips"
-      replacement: "%bcond_with fips"
-    - pattern: "%bcond_without tpm2"
-      replacement: "%bcond_with tpm2"
-    - pattern: "%bcond_without gost"
-      replacement: "%bcond_with gost"
-    - pattern: "%bcond_without mingw"
-      replacement: "%bcond_with mingw"
-    # Disable bootstrap (autoreconf) - pre-generated configure works fine
-    # and autoreconf needs autopoint (gettext) which may not be available
-    - pattern: "%bcond_without bootstrap"
-      replacement: "%bcond_with bootstrap"
-    # === Remove configure flags that can't use configure_flags:remove ===
-    # These are inside the multi-line %configure block with inline conditionals
-    - pattern: "           --enable-ktls \\\n"
-      replacement: ""
-    - pattern: "           --with-default-trust-store-pkcs11=\"pkcs11:\" \\\n"
-      replacement: ""
-    # IRIX has no crypto-policies — system priority file doesn't exist.
-    # gnutls_set_default_priority() reads this file; missing = GNUTLS_E_INVALID_REQUEST.
-    - pattern: "           --with-system-priority-file=%{_sysconfdir}/crypto-policies/back-ends/gnutls.config \\\n"
-      replacement: ""
-    # @SYSTEM reads the system priority file — use NORMAL as hardcoded fallback
-    - pattern: '--with-default-priority-string="@SYSTEM"'
-      replacement: '--with-default-priority-string="NORMAL"'
-    # Bashisms: pushd/popd not available in /bin/sh
-    - pattern: "pushd native_build"
-      replacement: "cd native_build"
-    - pattern: "popd"
-      replacement: "cd .."
-    # Remove doc/info file entries - we disabled doc generation
-    - pattern: "%{_mandir}/man3/*\n"
-      replacement: ""
-    - pattern: "%{_infodir}/gnutls*\n"
-      replacement: ""
-    - pattern: "%{_infodir}/pkcs11-vision*\n"
-      replacement: ""
-    # p11tool not built (--without-p11-kit)
-    - pattern: "%{_bindir}/p11tool\n"
-      replacement: ""
-    # Man pages not generated (--disable-doc)
-    - pattern: "%{_mandir}/man1/*\n"
-      replacement: ""
-    # HTML docs not generated (--disable-doc --disable-gtk-doc)
-    - pattern: "%{_docdir}/manual/*\n"
-      replacement: ""
-    # Remove locale file references (NLS disabled, locale dir removed by cleanup)
-    - pattern: "%files -f native_build/gnutls.lang"
-      replacement: "%files"
+  - pattern: '%bcond_without dane'
+    replacement: '%bcond_with dane'
+  - pattern: '%bcond_without fips'
+    replacement: '%bcond_with fips'
+  - pattern: '%bcond_without tpm2'
+    replacement: '%bcond_with tpm2'
+  - pattern: '%bcond_without gost'
+    replacement: '%bcond_with gost'
+  - pattern: '%bcond_without mingw'
+    replacement: '%bcond_with mingw'
+  - pattern: '%bcond_without bootstrap'
+    replacement: '%bcond_with bootstrap'
+  - pattern: '           --enable-ktls \
 
-  # Clean up doc files we don't want packaged
+      '
+    replacement: ''
+  - pattern: '           --with-default-trust-store-pkcs11="pkcs11:" \
+
+      '
+    replacement: ''
+  - pattern: '           --with-system-priority-file=%{_sysconfdir}/crypto-policies/back-ends/gnutls.config \
+
+      '
+    replacement: ''
+  - pattern: --with-default-priority-string="@SYSTEM"
+    replacement: --with-default-priority-string="NORMAL"
+  - pattern: pushd native_build
+    replacement: cd native_build
+  - pattern: popd
+    replacement: cd ..
+  - pattern: '%{_mandir}/man3/*
+
+      '
+    replacement: ''
+  - pattern: '%{_infodir}/gnutls*
+
+      '
+    replacement: ''
+  - pattern: '%{_infodir}/pkcs11-vision*
+
+      '
+    replacement: ''
+  - pattern: '%{_bindir}/p11tool
+
+      '
+    replacement: ''
+  - pattern: '%{_mandir}/man1/*
+
+      '
+    replacement: ''
+  - pattern: '%{_docdir}/manual/*
+
+      '
+    replacement: ''
+  - pattern: '%files -f native_build/gnutls.lang'
+    replacement: '%files'
   install_cleanup:
-    - "rm -rf %{buildroot}%{_docdir}/manual"
-
-  # NOTE: libdicl remove_lines handled by generic.yaml
-
+  - rm -rf %{buildroot}%{_docdir}/manual

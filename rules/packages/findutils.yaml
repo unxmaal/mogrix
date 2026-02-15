@@ -1,46 +1,30 @@
-# findutils - GNU find, xargs, locate utilities
-# FC40: findutils-4.9.0-8.fc40
-# Analysis: 2 errors (%zu in gnulib-tests only), 5 warnings, 40 infos
-# Uses gnulib heavily, out-of-tree build (mkdir build; cd build; ../configure)
-
 package: findutils
-classes: [nls-disabled]
-
+classes:
+- nls-disabled
 smoke_test:
-  - command: "/usr/sgug/bin/find --version"
-    expect: "4.9.0"
-  - command: "/usr/sgug/bin/xargs --version"
-    expect: "4.9.0"
-
+- command: /usr/sgug/bin/find --version
+  expect: 4.9.0
+- command: /usr/sgug/bin/xargs --version
+  expect: 4.9.0
 rules:
-  # Compat functions needed for IRIX
-  # strdup: dlmalloc/libc allocator mismatch
-  # getopt_long: option parsing
-  # getline: line reading
-  # reallocarray: gnulib xmalloc
-  # strerror_r: error reporting
-  inject_compat_functions:
-    - reallocarray
-    - strerror_r
-
-  # Drop test-only build deps (keep git — needed for %autosetup -S git)
   drop_buildrequires:
-    - dejagnu
-    - texinfo
-
-  # Remove gnulib-tests AFTER autoreconf (which regenerates Makefile.in from Makefile.am)
-  # Can't use prep_commands — they run before patches, and the no-locate patch modifies
-  # the same SUBDIRS line in Makefile.am, causing a hunk rejection.
+  - dejagnu
   spec_replacements:
-    - pattern: "autoreconf -fiv"
-      replacement: "AUTOPOINT=true autoreconf -fiv\nsed -i 's/gnulib-tests//' Makefile.in || true\nsed -i 's/gnulib-tests//' Makefile.am || true\n# Fix gnulib stdint.in.h: AC_COMPUTE_INT produces empty values in cross-compile\n# which breaks SIG_ATOMIC_MAX (and potentially other type limits)\nsed -i 's/@BITSIZEOF_SIG_ATOMIC_T@/32/g; s/@HAVE_SIGNED_SIG_ATOMIC_T@/1/g; s/@SIG_ATOMIC_T_SUFFIX@//g' lib/stdint.in.h gl/lib/stdint.in.h 2>/dev/null || true"
-    # Remove info page references — no texinfo on IRIX, info pages not useful
-    - pattern: "%{_infodir}/find.info*"
-      replacement: "# %{_infodir}/find.info* (removed — no texinfo)"
-    - pattern: "%{_infodir}/find-maint.info.*"
-      replacement: "# %{_infodir}/find-maint.info.* (removed — no texinfo)"
+  - pattern: autoreconf -fiv
+    replacement: 'AUTOPOINT=true autoreconf -fiv
 
-  # Remove generated info dir file
+      sed -i ''s/gnulib-tests//'' Makefile.in || true
+
+      sed -i ''s/gnulib-tests//'' Makefile.am || true
+
+      # Fix gnulib stdint.in.h: AC_COMPUTE_INT produces empty values in cross-compile
+
+      # which breaks SIG_ATOMIC_MAX (and potentially other type limits)
+
+      sed -i ''s/@BITSIZEOF_SIG_ATOMIC_T@/32/g; s/@HAVE_SIGNED_SIG_ATOMIC_T@/1/g; s/@SIG_ATOMIC_T_SUFFIX@//g'' lib/stdint.in.h gl/lib/stdint.in.h 2>/dev/null || true'
+  - pattern: '%{_infodir}/find.info*'
+    replacement: '# %{_infodir}/find.info* (removed — no texinfo)'
+  - pattern: '%{_infodir}/find-maint.info.*'
+    replacement: '# %{_infodir}/find-maint.info.* (removed — no texinfo)'
   install_cleanup:
-    - "rm -rf %{buildroot}%{_infodir}"
-
+  - rm -rf %{buildroot}%{_infodir}

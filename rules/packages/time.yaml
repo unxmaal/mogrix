@@ -1,22 +1,9 @@
-# time - GNU time utility (FC40: 1.9)
 package: time
-
 rules:
-  inject_compat_functions:
-    - strerror_r
-
-  drop_buildrequires:
-    - texinfo
-
   spec_replacements:
-    # Remove GPG verification (gnupg2 not available for build host verify)
-    - pattern: "%{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data='%{SOURCE0}'"
-      replacement: "# gpgverify removed for cross-build"
-
-    # Remove info dir and files (texinfo dropped)
-    - pattern: "rm -f $RPM_BUILD_ROOT%{_infodir}/dir"
-      replacement: "rm -rf $RPM_BUILD_ROOT%{_infodir}"
-
-    - pattern: "%{_infodir}/time.info*"
-      replacement: ""
-
+  - pattern: '%{gpgverify} --keyring=''%{SOURCE2}'' --signature=''%{SOURCE1}'' --data=''%{SOURCE0}'''
+    replacement: '# gpgverify removed for cross-build'
+  - pattern: rm -f $RPM_BUILD_ROOT%{_infodir}/dir
+    replacement: rm -rf $RPM_BUILD_ROOT%{_infodir}
+  - pattern: '%{_infodir}/time.info*'
+    replacement: ''

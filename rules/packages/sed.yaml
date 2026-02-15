@@ -1,52 +1,21 @@
-# sed - GNU stream text editor
-# FC40: sed-4.9-1.fc40
-# Analysis: 36 findings (3 errors, 5 warnings, 28 infos)
-# %zu errors only in lib/malloc/dynarray_at_failure.c (error path) + gnulib-tests (skipped)
-# Most findings are in gnulib-tests/ which won't compile (skip_check)
-
 package: sed
-classes: [nls-disabled]
-
+classes:
+- nls-disabled
 smoke_test:
-  - command: "echo foo | /usr/sgug/bin/sed s/foo/bar/"
-    expect: "bar"
-  - command: "/usr/sgug/bin/sed --version"
-    expect: "4.9"
-
+- command: echo foo | /usr/sgug/bin/sed s/foo/bar/
+  expect: bar
+- command: /usr/sgug/bin/sed --version
+  expect: '4.9'
 rules:
-  # Compat functions needed for IRIX
-  # strdup: dlmalloc/libc allocator mismatch (15+ locations in lib/)
-  # getopt_long: sed/sed.c uses it for option parsing
-  # reallocarray: lib/xmalloc.c, lib/ialloc.h, lib/reallocarray.c
-  # strerror_r: lib/error.c
-  inject_compat_functions:
-    - reallocarray
-    - strerror_r
-
-  # Drop build deps not available or not needed
   drop_buildrequires:
-    - valgrind            # test-only (skip_check)
-    - glibc-langpack-el   # test locales
-    - glibc-langpack-en   # test locales
-    - glibc-langpack-ru   # test locales
-    - perl-Getopt-Long    # test-only
-
-  # Use included regex: IRIX libc only has POSIX regex (regcomp/regexec),
-  # not GNU regex extensions (re_compile_pattern/re_search/re_set_syntax).
-  # Fedora uses --without-included-regex because glibc has GNU regex.
+  - glibc-langpack-el
+  - glibc-langpack-ru
+  - perl-Getopt-Long
   configure_flags:
     add:
-      - --disable-acl
+    - --disable-acl
     remove:
-      - --without-included-regex
-
-  # Fix %zu in error path (IRIX libc doesn't support %zu format specifier)
-  # Remove gnulib-tests from SUBDIRS — it's built during 'make all' but
-  # references Linux-specific functions (select wrapper, getrandom tests, etc.)
-  # Since we skip_check, these tests are never needed.
+    - --without-included-regex
   prep_commands:
-    - "sed -i 's/%zu/%u/g' lib/malloc/dynarray_at_failure.c"
-    - "sed -i 's/gnulib-tests//' Makefile.in"
-
-  # NLS and %find_lang handled by nls-disabled class
-
+  - sed -i 's/%zu/%u/g' lib/malloc/dynarray_at_failure.c
+  - sed -i 's/gnulib-tests//' Makefile.in

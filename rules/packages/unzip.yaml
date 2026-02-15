@@ -1,36 +1,13 @@
 package: unzip
-
 rules:
-  inject_compat_functions:
-    - stpcpy
-
-  # bzip2-devel is already in staging
   drop_buildrequires: []
-
   spec_replacements:
-    # Replace the entire build command. The original uses generic_gcc which
-    # recursively sets CC=gcc, and unix/configure sets conflicting -DNO_DIR
-    # + -DHAVE_DIRENT_H during cross-compilation. Skip configure entirely and
-    # use known-good flags for IRIX (has dirent.h, termios.h, no fchmod/fchown/lchown).
-    - pattern: |
-        %make_build -f unix/Makefile CF_NOOPT="-I. -DUNIX $RPM_OPT_FLAGS -DNOMEMCPY -DIZ_HAVE_UXUIDGID -DNO_LCHMOD" \
-                              LFLAGS2="%{?__global_ldflags}" generic_gcc
-      replacement: |
-        %make_build -f unix/Makefile \
-          CC="%{__cc}" LD="%{__cc}" \
-          CF="-include strings.h -Diswprint=isprint -I. -DUNIX %{optflags} -DNOMEMCPY -DIZ_HAVE_UXUIDGID -DNO_LCHMOD -O3 -DUNICODE_SUPPORT -DUTF8_MAYBE_NATIVE -DNO_FCHMOD -DNO_FCHOWN -DNO_LCHOWN -DNO_NL_LANGINFO -DZMEM -DNO_ERRNO -DHAVE_DIRENT_H -DHAVE_TERMIOS_H -D_MBCS -DNO_VALLOC -DUSE_BZIP2" \
-          AS="%{__cc} -c" \
-          LF2="-L$(pwd)/mogrix-compat -lmogrix-compat" \
-          D_USE_BZ2="-DUSE_BZIP2" L_BZ2="-lbz2" IZ_BZIP2="bzip2" CC_BZ="%{__cc}" CFLAGS_BZ="-O3" \
-          unzips
-
-    # Clear LFLAGS2 (Fedora hardening flags, not needed for IRIX) — keep as empty
-    # since we use LF2 in the build command above for compat linking
-    - pattern: 'LFLAGS2="%{?__global_ldflags}"'
-      replacement: 'LFLAGS2=""'
-
-  # Fix zipinfo symlink pointing to buildroot (make install creates absolute symlink)
+  - pattern: "%make_build -f unix/Makefile CF_NOOPT=\"-I. -DUNIX $RPM_OPT_FLAGS -DNOMEMCPY -DIZ_HAVE_UXUIDGID -DNO_LCHMOD\" \\\n                      LFLAGS2=\"%{?__global_ldflags}\" generic_gcc\n"
+    replacement: "%make_build -f unix/Makefile \\\n  CC=\"%{__cc}\" LD=\"%{__cc}\" \\\n  CF=\"-include strings.h -Diswprint=isprint -I. -DUNIX %{optflags} -DNOMEMCPY -DIZ_HAVE_UXUIDGID -DNO_LCHMOD -O3 -DUNICODE_SUPPORT\
+      \ -DUTF8_MAYBE_NATIVE -DNO_FCHMOD -DNO_FCHOWN -DNO_LCHOWN -DNO_NL_LANGINFO -DZMEM -DNO_ERRNO -DHAVE_DIRENT_H -DHAVE_TERMIOS_H -D_MBCS -DNO_VALLOC -DUSE_BZIP2\" \\\n  AS=\"%{__cc} -c\" \\\n  LF2=\"\
+      -L$(pwd)/mogrix-compat -lmogrix-compat\" \\\n  D_USE_BZ2=\"-DUSE_BZIP2\" L_BZ2=\"-lbz2\" IZ_BZIP2=\"bzip2\" CC_BZ=\"%{__cc}\" CFLAGS_BZ=\"-O3\" \\\n  unzips\n"
+  - pattern: LFLAGS2="%{?__global_ldflags}"
+    replacement: LFLAGS2=""
   install_cleanup:
-    - "rm -f %{buildroot}%{_bindir}/zipinfo"
-    - "ln -sf unzip %{buildroot}%{_bindir}/zipinfo"
-
+  - rm -f %{buildroot}%{_bindir}/zipinfo
+  - ln -sf unzip %{buildroot}%{_bindir}/zipinfo

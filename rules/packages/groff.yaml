@@ -1,78 +1,79 @@
-# groff - document formatting system (FC40: 1.23.0)
-# First C++ cross-compiled package for IRIX.
-# Cross-compilation issues:
-# - Build tries to run MIPS groff binary for doc generation (.ps, .txt, .info)
-#   Fix: empty out all processed doc/example variables via make overrides
-# - C++ cmath/specfun needs irix-cxx + c++config.h patches
 package: groff
-
 rules:
-
   drop_buildrequires:
-    - texinfo
-    - git
-    - netpbm-progs
-    - perl-generators
-    - psutils
-    - ghostscript
-
+  - netpbm-progs
+  - psutils
+  - ghostscript
   drop_subpackages:
-    - doc
-    - x11
-
+  - doc
+  - x11
   install_cleanup:
-    - "rm -rf %{buildroot}%{_pkgdocdir}"
-    - "rm -rf %{buildroot}%{_datadir}/X11"
-    - "rm -f %{buildroot}%{_bindir}/gxditview"
-    - "rm -f %{buildroot}%{_bindir}/xtotroff"
-    - "rm -f %{buildroot}%{_mandir}/man1/gxditview.1"
-    - "rm -f %{buildroot}%{_mandir}/man1/xtotroff.1"
-    - "rm -rf %{buildroot}%{_datadir}/%{name}/%{version}/font/devX*"
-    - "rm -f %{buildroot}%{_datadir}/%{name}/%{version}/tmac/X.tmac"
-    - "rm -f %{buildroot}%{_datadir}/%{name}/%{version}/tmac/Xps.tmac"
-    - "rm -f %{buildroot}%{_datadir}/%{name}/%{version}/font/FontMap-X11"
-    - "rm -f %{buildroot}%{_libdir}/charset.alias"
-
+  - rm -rf %{buildroot}%{_pkgdocdir}
+  - rm -rf %{buildroot}%{_datadir}/X11
+  - rm -f %{buildroot}%{_bindir}/gxditview
+  - rm -f %{buildroot}%{_bindir}/xtotroff
+  - rm -f %{buildroot}%{_mandir}/man1/gxditview.1
+  - rm -f %{buildroot}%{_mandir}/man1/xtotroff.1
+  - rm -rf %{buildroot}%{_datadir}/%{name}/%{version}/font/devX*
+  - rm -f %{buildroot}%{_datadir}/%{name}/%{version}/tmac/X.tmac
+  - rm -f %{buildroot}%{_datadir}/%{name}/%{version}/tmac/Xps.tmac
+  - rm -f %{buildroot}%{_datadir}/%{name}/%{version}/font/FontMap-X11
+  - rm -f %{buildroot}%{_libdir}/charset.alias
   spec_replacements:
-    # Switch from git-based autosetup to simple patch application
-    - pattern: "%autosetup -S git"
-      replacement: "%autosetup -p1"
-    # Expand brace expansion — rpmbuild uses /bin/sh which doesn't support {a,b,c}
-    - pattern: "contrib/mom/examples/{README.txt,*.mom,mom.vim}"
-      replacement: "contrib/mom/examples/README.txt contrib/mom/examples/*.mom contrib/mom/examples/mom.vim"
-    # Skip ALL doc/example generation that requires running MIPS groff binary.
-    # Empty out every PROCESSED* variable and skip info/txt/html doc targets.
-    # Applied to both %make_build and %make_install since automake rebuilds in install too.
-    - pattern: "%make_build"
-      replacement: |
-        # Remove doc generation from 'all' target (can't run cross-compiled groff)
-        sed -i '/^all:.*doc\/groff\.info/d' Makefile
-        sed -i '/^all:.*generate_man_files/d' Makefile
-        GROFF_NODOC="PROCESSEDEXAMPLEFILES= PROCESSEDEXAMPLEFILES_PS= PROCESSEDEXAMPLEFILES_HTML= HDTBLPROCESSEDEXAMPLEFILES= MOMPROCESSEDEXAMPLEFILES= PROCESSEDDOCFILES= PROCESSEDDOCFILES_PS= PROCESSEDDOCFILES_TXT= PROCESSEDDOCFILES_HTML= PROCESSEDDOCFILES_PDF= GENERATEDDOCFILES="
-        %make_build $GROFF_NODOC
-    - pattern: "%make_install"
-      replacement: |
-        GROFF_NODOC="PROCESSEDEXAMPLEFILES= PROCESSEDEXAMPLEFILES_PS= PROCESSEDEXAMPLEFILES_HTML= HDTBLPROCESSEDEXAMPLEFILES= MOMPROCESSEDEXAMPLEFILES= PROCESSEDDOCFILES= PROCESSEDDOCFILES_PS= PROCESSEDDOCFILES_TXT= PROCESSEDDOCFILES_HTML= PROCESSEDDOCFILES_PDF= GENERATEDDOCFILES="
-        %make_install $GROFF_NODOC
-    # Expand brace expansion in for loop — /bin/sh doesn't support it
-    - pattern: "for file in g{nroff,troff,tbl,pic,eqn,neqn,refer,lookbib,indxbib,soelim} zsoelim; do"
-      replacement: "for file in gnroff gtroff gtbl gpic geqn gneqn grefer glookbib gindxbib gsoelim zsoelim; do"
-    # Force-overwrite symlinks (zsoelim already exists from make install)
-    - pattern: "ln -s ${file#?} %{buildroot}%{_bindir}/${file}"
-      replacement: "ln -sf ${file#?} %{buildroot}%{_bindir}/${file}"
-    - pattern: "ln -s ${file#?}.1.gz %{buildroot}%{_mandir}/man1/${file}.1.gz"
-      replacement: "ln -sf ${file#?}.1 %{buildroot}%{_mandir}/man1/${file}.1"
-    # Remove pdf symlink (no pdf docs generated in cross-build)
-    - pattern: "# fix absolute symlink to relative symlink\nrm -f %{buildroot}%{_pkgdocdir}/pdf/mom-pdf.pdf\nln -s ../examples/mom/mom-pdf.pdf %{buildroot}%{_pkgdocdir}/pdf/mom-pdf.pdf"
-      replacement: "# pdf symlink skipped (no pdf docs in cross-build)"
-    # Fix pushd/popd bashism — and skip CreationDate removal (no docs generated)
-    - pattern: "# remove CreationDate from documentation\npushd %{buildroot}%{_pkgdocdir}\n    find -name \"*.html\" | xargs sed -i \"/^<!-- CreationDate: /d\"\n    find -name \"*.ps\"   | xargs sed -i \"/^%%%%CreationDate: /d\"\npopd"
-      replacement: "# CreationDate removal skipped (no docs in cross-build)"
-    # Remove update-alternatives dependency — doesn't exist on IRIX
-    # Main package block
-    - pattern: "Requires(post): /usr/sbin/update-alternatives\nRequires(postun): /usr/sbin/update-alternatives\nRequires(preun): /usr/sbin/update-alternatives\n\nBuildRequires:"
-      replacement: "BuildRequires:"
-    # Base subpackage block
-    - pattern: "Requires(post): /usr/sbin/update-alternatives\nRequires(postun): /usr/sbin/update-alternatives\nRequires(preun): /usr/sbin/update-alternatives\n\n%description base"
-      replacement: "%description base"
+  - pattern: '%autosetup -S git'
+    replacement: '%autosetup -p1'
+  - pattern: contrib/mom/examples/{README.txt,*.mom,mom.vim}
+    replacement: contrib/mom/examples/README.txt contrib/mom/examples/*.mom contrib/mom/examples/mom.vim
+  - pattern: '%make_build'
+    replacement: '# Remove doc generation from ''all'' target (can''t run cross-compiled groff)
 
+      sed -i ''/^all:.*doc\/groff\.info/d'' Makefile
+
+      sed -i ''/^all:.*generate_man_files/d'' Makefile
+
+      GROFF_NODOC="PROCESSEDEXAMPLEFILES= PROCESSEDEXAMPLEFILES_PS= PROCESSEDEXAMPLEFILES_HTML= HDTBLPROCESSEDEXAMPLEFILES= MOMPROCESSEDEXAMPLEFILES= PROCESSEDDOCFILES= PROCESSEDDOCFILES_PS= PROCESSEDDOCFILES_TXT=
+      PROCESSEDDOCFILES_HTML= PROCESSEDDOCFILES_PDF= GENERATEDDOCFILES="
+
+      %make_build $GROFF_NODOC
+
+      '
+  - pattern: '%make_install'
+    replacement: 'GROFF_NODOC="PROCESSEDEXAMPLEFILES= PROCESSEDEXAMPLEFILES_PS= PROCESSEDEXAMPLEFILES_HTML= HDTBLPROCESSEDEXAMPLEFILES= MOMPROCESSEDEXAMPLEFILES= PROCESSEDDOCFILES= PROCESSEDDOCFILES_PS=
+      PROCESSEDDOCFILES_TXT= PROCESSEDDOCFILES_HTML= PROCESSEDDOCFILES_PDF= GENERATEDDOCFILES="
+
+      %make_install $GROFF_NODOC
+
+      '
+  - pattern: for file in g{nroff,troff,tbl,pic,eqn,neqn,refer,lookbib,indxbib,soelim} zsoelim; do
+    replacement: for file in gnroff gtroff gtbl gpic geqn gneqn grefer glookbib gindxbib gsoelim zsoelim; do
+  - pattern: ln -s ${file#?} %{buildroot}%{_bindir}/${file}
+    replacement: ln -sf ${file#?} %{buildroot}%{_bindir}/${file}
+  - pattern: ln -s ${file#?}.1.gz %{buildroot}%{_mandir}/man1/${file}.1.gz
+    replacement: ln -sf ${file#?}.1 %{buildroot}%{_mandir}/man1/${file}.1
+  - pattern: '# fix absolute symlink to relative symlink
+
+      rm -f %{buildroot}%{_pkgdocdir}/pdf/mom-pdf.pdf
+
+      ln -s ../examples/mom/mom-pdf.pdf %{buildroot}%{_pkgdocdir}/pdf/mom-pdf.pdf'
+    replacement: '# pdf symlink skipped (no pdf docs in cross-build)'
+  - pattern: "# remove CreationDate from documentation\npushd %{buildroot}%{_pkgdocdir}\n    find -name \"*.html\" | xargs sed -i \"/^<!-- CreationDate: /d\"\n    find -name \"*.ps\"   | xargs sed -i \"\
+      /^%%%%CreationDate: /d\"\npopd"
+    replacement: '# CreationDate removal skipped (no docs in cross-build)'
+  - pattern: 'Requires(post): /usr/sbin/update-alternatives
+
+      Requires(postun): /usr/sbin/update-alternatives
+
+      Requires(preun): /usr/sbin/update-alternatives
+
+
+      BuildRequires:'
+    replacement: 'BuildRequires:'
+  - pattern: 'Requires(post): /usr/sbin/update-alternatives
+
+      Requires(postun): /usr/sbin/update-alternatives
+
+      Requires(preun): /usr/sbin/update-alternatives
+
+
+      %description base'
+    replacement: '%description base'

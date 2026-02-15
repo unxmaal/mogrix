@@ -1,68 +1,40 @@
 package: nano
-classes: ['nls-disabled']
-
+classes:
+- nls-disabled
 rules:
-  inject_compat_functions:
-    - strerror_r
-    - stpcpy
-
   drop_buildrequires:
-    - texinfo
-    - file-devel
-    - git
-    - groff
-    - gettext-devel
-
-  # Disable libmagic (file-devel not cross-compiled yet)
-  # Disable gpgverify (gnupg2 not available on build host for this)
+  - groff
   configure_flags:
     add:
-      - "--disable-libmagic"
-
+    - --disable-libmagic
   drop_subpackages:
-    - "default-editor"
-    - "-n default-editor"
-
+  - default-editor
+  - -n default-editor
   spec_replacements:
-    # Switch from git-based autosetup to simple patch application
-    - pattern: "%autosetup -S git"
-      replacement: "%autosetup -p1"
+  - pattern: '%autosetup -S git'
+    replacement: '%autosetup -p1'
+  - pattern: '%{gpgverify} --keyring=''%{SOURCE2}'' --signature=''%{SOURCE1}'' --data=''%{SOURCE0}'''
+    replacement: '# gpgverify removed for cross-build'
+  - pattern: '%configure'
+    replacement: 'export LIBS="$LIBS -lgen"
 
-    # Remove gpg verification (gnupg2 not available for build)
-    - pattern: "%{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data='%{SOURCE0}'"
-      replacement: "# gpgverify removed for cross-build"
+      %configure'
+  - pattern: "sed -e 's/^#.*set speller.*$/set speller \"hunspell\"/' \\\n    -e 's|^# \\(include \"/usr/share/nano/\\*.nanorc\"\\)|\\1|' \\\n    %{SOURCE3} doc/sample.nanorc > ./nanorc\n"
+    replacement: "sed -e 's|^# \\(include \"/usr/sgug/share/nano/\\*.nanorc\"\\)|\\1|' \\\n    %{SOURCE3} doc/sample.nanorc > ./nanorc\n"
+  - pattern: '%files -f build/%{name}.lang'
+    replacement: '%files'
+  - pattern: '%{_infodir}/nano.info*'
+    replacement: ''
+  - pattern: '%doc doc/{faq,nano}.html'
+    replacement: ''
+  - pattern: '%{_bindir}/{,r}nano'
+    replacement: '%{_bindir}/nano
 
-    # IRIX dirname/basename are in libgen.so, not libc
-    # Must match original %configure (before engine adds flags)
-    - pattern: "%configure"
-      replacement: "export LIBS=\"$LIBS -lgen\"\n%configure"
+      %{_bindir}/rnano'
+  - pattern: '%{_mandir}/man1/{,r}nano.1*'
+    replacement: '%{_mandir}/man1/nano.1*
 
-    # Remove hunspell sed (not relevant for IRIX), fix include path for sgug
-    - pattern: |
-        sed -e 's/^#.*set speller.*$/set speller "hunspell"/' \
-            -e 's|^# \(include "/usr/share/nano/\*.nanorc"\)|\1|' \
-            %{SOURCE3} doc/sample.nanorc > ./nanorc
-      replacement: |
-        sed -e 's|^# \(include "/usr/sgug/share/nano/\*.nanorc"\)|\1|' \
-            %{SOURCE3} doc/sample.nanorc > ./nanorc
-
-    # Fix %files -f path (out-of-tree build uses build/ prefix, class pattern doesn't match)
-    - pattern: "%files -f build/%{name}.lang"
-      replacement: "%files"
-
-    # Remove info file reference (texinfo dropped)
-    - pattern: "%{_infodir}/nano.info*"
-      replacement: ""
-
-    # Fix bash brace expansions in %files (rpmbuild uses /bin/sh)
-    - pattern: "%doc doc/{faq,nano}.html"
-      replacement: ""
-    - pattern: "%{_bindir}/{,r}nano"
-      replacement: "%{_bindir}/nano\n%{_bindir}/rnano"
-    - pattern: "%{_mandir}/man1/{,r}nano.1*"
-      replacement: "%{_mandir}/man1/nano.1*\n%{_mandir}/man1/rnano.1*"
-
+      %{_mandir}/man1/rnano.1*'
   install_cleanup:
-    - "rm -rf %{buildroot}%{_infodir}"
-    - "rm -rf %{buildroot}%{_docdir}/nano"
-
+  - rm -rf %{buildroot}%{_infodir}
+  - rm -rf %{buildroot}%{_docdir}/nano

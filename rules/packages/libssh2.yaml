@@ -1,97 +1,51 @@
-# libssh2 - SSH2 protocol client library
-# Used by curl, git, and other network tools
-# Autotools build, links against openssl + zlib
-#
-# ---metadata---
-# complexity: low
-# build_system: autoconf
-# key_fixes: [libtool_shared, staging_openssl_zlib, drop_docs]
-# similar_to: [popt, libevent]
-# depends: [openssl, zlib-ng]
-# status: WORKING
-# ---
-
 package: libssh2
-
 rules:
-  # Drop test-only BuildRequires (tests skipped by generic skip_check)
   drop_buildrequires:
-    - openssh-server
-    - groff
-    - glibc-langpack-en
-    - "/usr/bin/man"
-
-  # Drop docs subpackage (man pages not needed for cross-compile target)
+  - openssh-server
+  - groff
+  - /usr/bin/man
   drop_subpackages:
-    - docs
-
-  # Export LD for libtool - GNU ld produces correct 2-LOAD-segment .so
+  - docs
   export_vars:
-    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
-    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
-    CPPFLAGS: "-I/opt/sgug-staging/usr/sgug/include $CPPFLAGS"
-    LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS"
-
-  # Configure flags -- replace original configure args entirely
+    LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    CPPFLAGS: -I/opt/sgug-staging/usr/sgug/include $CPPFLAGS
+    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS
   configure_flags:
     add:
-      - --disable-silent-rules
-      - --disable-static
-      - --disable-docker-tests
-      - --enable-shared
-
+    - --disable-static
+    - --disable-docker-tests
+    - --enable-shared
   spec_replacements:
-    # Remove the original configure continuation lines. configure_flags:add
-    # already adds these flags. spec_replacements runs BEFORE configure_disable
-    # and configure_flags_add, so we match the original text.
-    - pattern: "%configure \\\n\t--disable-silent-rules \\\n\t--enable-shared \\\n\t--disable-docker-tests"
-      replacement: "%configure"
+  - pattern: "%configure \\\n\t--disable-silent-rules \\\n\t--enable-shared \\\n\t--disable-docker-tests"
+    replacement: '%configure'
+  - pattern: '%{make_build}'
+    replacement: '# Fix libtool to build shared libraries for IRIX
 
-    # Fix libtool to build shared libraries for IRIX - inject before make
-    - pattern: "%{make_build}"
-      replacement: |
-        # Fix libtool to build shared libraries for IRIX
-        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
-        %{make_build}
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
 
-    # The Fedora spec builds static for tests then removes it.
-    # We use --disable-static, so the static lib doesn't exist.
-    - pattern: "rm -v %{buildroot}%{_libdir}/libssh2.a"
-      replacement: "# Static library not built (--disable-static)"
+      %{make_build}
 
-    # Remove example cleanup commands (examples not needed for cross-build)
-    - pattern: "make -C example clean"
-      replacement: "# make -C example clean # skipped for cross-build"
-    - pattern: "find example/ -type f \\\n\t'(' -name '*.am' -o -name '*.in' -o -name CMakeLists.txt ')' \\\n\t-print -delete"
-      replacement: "# example file cleanup skipped for cross-build"
-
-    # Remove pkgconfig sed (cross paths are different)
-    - pattern: "sed -i\t-e 's|-L%{_libdir} ||g' \\\n\t-e 's|-L[$]{libdir} ||g' %{buildroot}%{_libdir}/pkgconfig/libssh2.pc"
-      replacement: "# pkgconfig libdir cleanup skipped for cross-build"
-
-    # Comment out example dir from devel files (not cleaned/renamed for cross)
-    - pattern: "%doc example.%{_arch}/"
-      replacement: "# %doc example.%{_arch}/ # examples not packaged for cross-build"
-
-    # Avoid multilib mv of examples
-    - pattern: "mv -v example example.%{_arch}"
-      replacement: "# mv -v example example.%{_arch} # skipped for cross-build"
-
-    # Explicit Provides for .so (AutoProv disabled in rpmmacros.irix)
-    # Must be in the main preamble section (before %description)
-    - pattern: "Summary:\tA library implementing the SSH2 protocol"
-      replacement: "Summary:\tA library implementing the SSH2 protocol\nProvides:\tlibssh2.so.1"
-
-    # Fix bashism: brace expansion in sed command for test port
-    - pattern: "sed -i s/4711/47%{?__isa_bits}/ tests/{openssh_fixture.c,test_ssh{2.c,d.test}}"
-      replacement: "# Test port replacement skipped for cross-build"
-
-  # Remove man pages (docs subpackage dropped, man pages still installed by make)
+      '
+  - pattern: rm -v %{buildroot}%{_libdir}/libssh2.a
+    replacement: '# Static library not built (--disable-static)'
+  - pattern: make -C example clean
+    replacement: '# make -C example clean # skipped for cross-build'
+  - pattern: "find example/ -type f \\\n\t'(' -name '*.am' -o -name '*.in' -o -name CMakeLists.txt ')' \\\n\t-print -delete"
+    replacement: '# example file cleanup skipped for cross-build'
+  - pattern: "sed -i\t-e 's|-L%{_libdir} ||g' \\\n\t-e 's|-L[$]{libdir} ||g' %{buildroot}%{_libdir}/pkgconfig/libssh2.pc"
+    replacement: '# pkgconfig libdir cleanup skipped for cross-build'
+  - pattern: '%doc example.%{_arch}/'
+    replacement: '# %doc example.%{_arch}/ # examples not packaged for cross-build'
+  - pattern: mv -v example example.%{_arch}
+    replacement: '# mv -v example example.%{_arch} # skipped for cross-build'
+  - pattern: "Summary:\tA library implementing the SSH2 protocol"
+    replacement: "Summary:\tA library implementing the SSH2 protocol\nProvides:\tlibssh2.so.1"
+  - pattern: sed -i s/4711/47%{?__isa_bits}/ tests/{openssh_fixture.c,test_ssh{2.c,d.test}}
+    replacement: '# Test port replacement skipped for cross-build'
   install_cleanup:
-    - "rm -rf %{buildroot}%{_mandir}/man3"
-
-  # Override libtool cache for cross-compile
+  - rm -rf %{buildroot}%{_mandir}/man3
   ac_cv_overrides:
-    lt_cv_prog_compiler_static_works: "no"
+    lt_cv_prog_compiler_static_works: 'no'

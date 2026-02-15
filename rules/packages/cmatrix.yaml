@@ -1,57 +1,34 @@
-# cmatrix - Matrix-style terminal animation (FC40: 2.0)
 package: cmatrix
-
 rules:
-  inject_compat_functions:
-    - setenv
-
   drop_buildrequires:
-    - help2man
-    - console-setup
-    - xorg-x11-fonts-misc
-
-  # AC_CHECK_FILES can't cross-compile — provide cache overrides
+  - console-setup
+  - xorg-x11-fonts-misc
   ac_cv_overrides:
-    ac_cv_file__usr_lib_kbd_consolefonts: "no"
-    ac_cv_file__usr_share_consolefonts: "no"
-    ac_cv_file__usr_lib_X11_fonts_misc: "no"
-    ac_cv_file__usr_X11R6_lib_X11_fonts_misc: "no"
-    ac_cv_file__usr_share_X11_fonts_misc: "no"
-
+    ac_cv_file__usr_lib_kbd_consolefonts: 'no'
+    ac_cv_file__usr_share_consolefonts: 'no'
+    ac_cv_file__usr_lib_X11_fonts_misc: 'no'
+    ac_cv_file__usr_X11R6_lib_X11_fonts_misc: 'no'
+    ac_cv_file__usr_share_X11_fonts_misc: 'no'
   drop_subpackages:
-    - "x11-fonts"
-
+  - x11-fonts
   install_cleanup:
-    # Remove man page (help2man disabled, but make install still installs the pre-existing one)
-    - "rm -f %{buildroot}%{_mandir}/man1/%{name}.1"
-
+  - rm -f %{buildroot}%{_mandir}/man1/%{name}.1
   spec_replacements:
-    # Remove help2man call (not available for cross-build)
-    - pattern: "help2man -N -o %{name}.1 ./%{name}"
-      replacement: "# help2man disabled for cross-build"
+  - pattern: help2man -N -o %{name}.1 ./%{name}
+    replacement: '# help2man disabled for cross-build'
+  - pattern: install -Dpm0644 mtx.pcf %{buildroot}%{_x11fontdir}/misc/mtx.pcf
+    replacement: '# X11 font install disabled for IRIX'
+  - pattern: install -dm0755 %{buildroot}%{_exec_prefix}/lib/kbd/consolefonts
+    replacement: '# console font dir disabled'
+  - pattern: '%{_exec_prefix}/lib/kbd/consolefonts/matrix.*'
+    replacement: ''
+  - pattern: install -Dpm0644 %{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
+    replacement: '# man page install disabled (help2man not available)'
+  - pattern: '%{_mandir}/man1/%{name}.1*'
+    replacement: ''
+  - pattern: '%post x11-fonts
 
-    # Remove X11 font install (x11-fonts subpackage dropped)
-    - pattern: "install -Dpm0644 mtx.pcf %{buildroot}%{_x11fontdir}/misc/mtx.pcf"
-      replacement: "# X11 font install disabled for IRIX"
-
-    # Remove console font install (console-setup not available)
-    - pattern: "install -dm0755 %{buildroot}%{_exec_prefix}/lib/kbd/consolefonts"
-      replacement: "# console font dir disabled"
-
-    # Remove console font from %files
-    - pattern: "%{_exec_prefix}/lib/kbd/consolefonts/matrix.*"
-      replacement: ""
-
-    # Remove man page install (help2man disabled, no .1 file generated)
-    - pattern: "install -Dpm0644 %{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1"
-      replacement: "# man page install disabled (help2man not available)"
-
-    - pattern: "%{_mandir}/man1/%{name}.1*"
-      replacement: ""
-
-    # Remove orphaned %post/%postun for dropped x11-fonts subpackage
-    # (drop_subpackages doesn't handle scriptlets)
-    - pattern: "%post x11-fonts\nmkfontdir %{_x11fontdir}/misc"
-      replacement: "# x11-fonts scriptlets disabled (subpackage dropped)"
-    - pattern: "%postun x11-fonts\nif [ \"$1\" = \"0\" -a -d %{_x11fontdir}/misc ]; then\n  mkfontdir %{_x11fontdir}/misc\nfi"
-      replacement: "# x11-fonts postun disabled (subpackage dropped)"
+      mkfontdir %{_x11fontdir}/misc'
+    replacement: '# x11-fonts scriptlets disabled (subpackage dropped)'
+  - pattern: "%postun x11-fonts\nif [ \"$1\" = \"0\" -a -d %{_x11fontdir}/misc ]; then\n  mkfontdir %{_x11fontdir}/misc\nfi"
+    replacement: '# x11-fonts postun disabled (subpackage dropped)'

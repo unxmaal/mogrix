@@ -1,141 +1,111 @@
-# vim - Vi IMproved text editor (FC40: 9.1.158)
-# Complex: builds minimal-vim (tiny) + enhanced-vim (huge) in 3 build cycles.
-# We skip gvim (no GTK3 on IRIX) and disable all interpreters/optional features.
-# Key dep: ncurses (staged).
 package: vim
-
 rules:
   drop_buildrequires:
-    - perl-generators
-    - "perl(ExtUtils::Embed)"
-    - "perl(ExtUtils::ParseXS)"
-    - perl-devel
-    - python3-devel
-    - ruby
-    - ruby-devel
-    - lua-devel
-    - gtk3-devel
-    - libICE-devel
-    - libSM-devel
-    - libX11-devel
-    - libXpm-devel
-    - libXt-devel
-    - libappstream-glib
-    - libcanberra-devel
-    - desktop-file-utils
-    - gpm-devel
-    - libsodium-devel
-    - glibc-gconv-extra
-
+  - perl(ExtUtils::Embed)
+  - perl(ExtUtils::ParseXS)
+  - perl-devel
+  - gtk3-devel
+  - libICE-devel
+  - libSM-devel
+  - libX11-devel
+  - libXpm-devel
+  - libXt-devel
+  - libappstream-glib
+  - libcanberra-devel
+  - gpm-devel
+  - libsodium-devel
+  - glibc-gconv-extra
   drop_subpackages:
-    - spell
-
-  # Replace per-locale %lang(xx) lang directory entries with a single glob.
-  # The individual locale dirs may not exist (msgfmt unavailable for cross-compilation)
-  # but the lang/ tree itself exists (menu translations are .vim files, not .mo).
+  - spell
   remove_lines:
-    - "%{vimdir}/lang/"
-
+  - '%{vimdir}/lang/'
   drop_requires:
-    - "vim-default-editor"
-
+  - vim-default-editor
   prep_commands:
-    # Fix %zu format — IRIX libc doesn't support it
-    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' src/libvterm/src/encoding.c"
-    # IRIX sys/fcntl.h defines OP_NONE as 0, colliding with vim's enum constant.
-    # Undefine it before structs.h uses it.
-    - "sed -i '1i#ifdef OP_NONE\\n#undef OP_NONE\\n#endif' src/structs.h"
-
+  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' src/libvterm/src/encoding.c
+  - sed -i '1i#ifdef OP_NONE\n#undef OP_NONE\n#endif' src/structs.h
   spec_replacements:
-    # Disable GUI bcond — no GTK3 on IRIX
-    - pattern: "%bcond_without gui"
-      replacement: "%bcond_with gui"
-    # Disable GPM (Linux mouse daemon)
-    - pattern: "%bcond_without gpm"
-      replacement: "%bcond_with gpm"
-    # Disable libsodium crypto
-    - pattern: "%bcond_without libsodium_crypt"
-      replacement: "%bcond_with libsodium_crypt"
-    # Disable default-editor profile scripts
-    - pattern: "%bcond_without default_editor"
-      replacement: "%bcond_with default_editor"
-    # Disable all interpreter bindings
-    - pattern: "%define withlua 1"
-      replacement: "%define withlua 0"
-    - pattern: "%define withperl 1"
-      replacement: "%define withperl 0"
-    - pattern: "%define withruby 1"
-      replacement: "%define withruby 0"
-    # Disable SELinux
-    - pattern: "%define WITH_SELINUX 1"
-      replacement: "%define WITH_SELINUX 0"
-    # Disable netbeans (Java IDE integration)
-    - pattern: "%define withnetbeans 1"
-      replacement: "%define withnetbeans 0"
-    # Remove _GNU_SOURCE — conflicts with IRIX headers. _SGI_SOURCE provides equivalents.
-    - pattern: "-D_GNU_SOURCE"
-      replacement: ""
-    # Remove _FILE_OFFSET_BITS=64 — IRIX n32 uses 32-bit off_t
-    - pattern: "-D_FILE_OFFSET_BITS=64"
-      replacement: ""
-    # Replace pushd/popd with cd (dash doesn't have pushd)
-    - pattern: "pushd %{buildroot}/%{_datadir}/%{name}/%{vimdir}/tutor"
-      replacement: "_vim_tutor_dir=\"%{buildroot}/%{_datadir}/%{name}/%{vimdir}/tutor\"\n_vim_save_dir=$(pwd)\ncd \"$_vim_tutor_dir\""
-    - pattern: "popd"
-      replacement: "cd \"$_vim_save_dir\""
-    # Skip iconv tutor conversion (IRIX iconv has different codeset names)
-    - pattern: "iconv -f "
-      replacement: "true # iconv disabled for IRIX # "
-    # Fix 'mv' of ru.UTF-8 manpages — target 'ru' may exist, use rm+mv
-    - pattern: "mv %{buildroot}/%{_mandir}/ru.UTF-8 %{buildroot}/%{_mandir}/ru"
-      replacement: "rm -rf %{buildroot}/%{_mandir}/ru\nmv %{buildroot}/%{_mandir}/ru.UTF-8 %{buildroot}/%{_mandir}/ru 2>/dev/null || true"
-    # tgetent() is in libtinfo, not libncurses (Fedora splits ncurses into tinfo)
-    - pattern: "--with-tlib=ncurses"
-      replacement: "--with-tlib=tinfo"
-    # Disable python3 interpreter (no cross-compiled python3 available)
-    - pattern: "--enable-python3interp=dynamic"
-      replacement: "--disable-python3interp"
-    # Fix install conflict: vim's make install creates 'view' symlink but it
-    # may already exist from a previous step. Force-remove before installing.
-    - pattern: "%make_install BINDIR=%{_bindir} STRIP=/bin/true"
-      replacement: "rm -f %{buildroot}%{_bindir}/view %{buildroot}%{_bindir}/ex %{buildroot}%{_bindir}/rview\n%make_install BINDIR=%{_bindir} STRIP=/bin/true"
-    # Fix bash brace expansions — our /bin/sh is dash which doesn't support {a,b}.
-    # The vim spec uses several brace expansions that need expanding.
-    - pattern: "rm %{buildroot}/%{_datadir}/applications/{vim,gvim}.desktop"
-      replacement: "rm -f %{buildroot}/%{_datadir}/applications/vim.desktop %{buildroot}/%{_datadir}/applications/gvim.desktop"
-    - pattern: "rm %{buildroot}/%{_datadir}/icons/{hicolor,locolor}/*/apps/gvim.png"
-      replacement: "rm -f %{buildroot}/%{_datadir}/icons/hicolor/*/apps/gvim.png %{buildroot}/%{_datadir}/icons/locolor/*/apps/gvim.png"
-    - pattern: "rm -f %{buildroot}%{_bindir}/{vim,view}"
-      replacement: "rm -f %{buildroot}%{_bindir}/vim %{buildroot}%{_bindir}/view"
-    - pattern: "mkdir -p %{buildroot}%{_datadir}/icons/hicolor/{16x16,32x32,48x48,64x64}/apps"
-      replacement: "mkdir -p %{buildroot}%{_datadir}/icons/hicolor/16x16/apps %{buildroot}%{_datadir}/icons/hicolor/32x32/apps %{buildroot}%{_datadir}/icons/hicolor/48x48/apps %{buildroot}%{_datadir}/icons/hicolor/64x64/apps"
-    # Fix vimfiles mkdir brace expansions for dash
-    - pattern: "mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/{after,autoload,colors,compiler,doc,ftdetect,ftplugin,indent,keymap,lang,plugin,print,spell,syntax,tutor}"
-      replacement: |
-        for d in after autoload colors compiler doc ftdetect ftplugin indent keymap lang plugin print spell syntax tutor; do
-          mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/$d
-        done
-    - pattern: "mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/after/{autoload,colors,compiler,doc,ftdetect,ftplugin,indent,keymap,lang,plugin,print,spell,syntax,tutor}"
-      replacement: |
-        for d in autoload colors compiler doc ftdetect ftplugin indent keymap lang plugin print spell syntax tutor; do
-          mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/after/$d
-        done
-    # Replace first %lang entry with a glob that claims the entire lang/ tree.
-    # remove_lines then strips the remaining 41 per-locale entries.
-    - pattern: "%lang(af) %{_datadir}/%{name}/%{vimdir}/lang/af"
-      replacement: "%{_datadir}/%{name}/%{vimdir}/lang"
-    # Inject vim cross-compile cache variables before the first configure.
-    # vim's configure requires these when it detects cross-compilation.
-    - pattern: "cd src\nautoconf"
-      replacement: |
-        cd src
-        autoconf
-        # Vim cross-compile cache overrides for IRIX
-        export vim_cv_toupper_broken=no
-        export vim_cv_terminfo=yes
-        export vim_cv_tgetent=zero
-        export vim_cv_getcwd_broken=no
-        export vim_cv_stat_ignores_slash=no
-        export vim_cv_memmove_handles_overlap=yes
-        export vim_cv_bcopy_handles_overlap=yes
-        export vim_cv_memcpy_handles_overlap=yes
+  - pattern: '%bcond_without gui'
+    replacement: '%bcond_with gui'
+  - pattern: '%bcond_without gpm'
+    replacement: '%bcond_with gpm'
+  - pattern: '%bcond_without libsodium_crypt'
+    replacement: '%bcond_with libsodium_crypt'
+  - pattern: '%bcond_without default_editor'
+    replacement: '%bcond_with default_editor'
+  - pattern: '%define withlua 1'
+    replacement: '%define withlua 0'
+  - pattern: '%define withperl 1'
+    replacement: '%define withperl 0'
+  - pattern: '%define withruby 1'
+    replacement: '%define withruby 0'
+  - pattern: '%define WITH_SELINUX 1'
+    replacement: '%define WITH_SELINUX 0'
+  - pattern: '%define withnetbeans 1'
+    replacement: '%define withnetbeans 0'
+  - pattern: -D_GNU_SOURCE
+    replacement: ''
+  - pattern: -D_FILE_OFFSET_BITS=64
+    replacement: ''
+  - pattern: pushd %{buildroot}/%{_datadir}/%{name}/%{vimdir}/tutor
+    replacement: '_vim_tutor_dir="%{buildroot}/%{_datadir}/%{name}/%{vimdir}/tutor"
+
+      _vim_save_dir=$(pwd)
+
+      cd "$_vim_tutor_dir"'
+  - pattern: popd
+    replacement: cd "$_vim_save_dir"
+  - pattern: 'iconv -f '
+    replacement: 'true # iconv disabled for IRIX # '
+  - pattern: mv %{buildroot}/%{_mandir}/ru.UTF-8 %{buildroot}/%{_mandir}/ru
+    replacement: 'rm -rf %{buildroot}/%{_mandir}/ru
+
+      mv %{buildroot}/%{_mandir}/ru.UTF-8 %{buildroot}/%{_mandir}/ru 2>/dev/null || true'
+  - pattern: --with-tlib=ncurses
+    replacement: --with-tlib=tinfo
+  - pattern: --enable-python3interp=dynamic
+    replacement: --disable-python3interp
+  - pattern: '%make_install BINDIR=%{_bindir} STRIP=/bin/true'
+    replacement: 'rm -f %{buildroot}%{_bindir}/view %{buildroot}%{_bindir}/ex %{buildroot}%{_bindir}/rview
+
+      %make_install BINDIR=%{_bindir} STRIP=/bin/true'
+  - pattern: rm %{buildroot}/%{_datadir}/applications/{vim,gvim}.desktop
+    replacement: rm -f %{buildroot}/%{_datadir}/applications/vim.desktop %{buildroot}/%{_datadir}/applications/gvim.desktop
+  - pattern: rm %{buildroot}/%{_datadir}/icons/{hicolor,locolor}/*/apps/gvim.png
+    replacement: rm -f %{buildroot}/%{_datadir}/icons/hicolor/*/apps/gvim.png %{buildroot}/%{_datadir}/icons/locolor/*/apps/gvim.png
+  - pattern: rm -f %{buildroot}%{_bindir}/{vim,view}
+    replacement: rm -f %{buildroot}%{_bindir}/vim %{buildroot}%{_bindir}/view
+  - pattern: mkdir -p %{buildroot}%{_datadir}/icons/hicolor/{16x16,32x32,48x48,64x64}/apps
+    replacement: mkdir -p %{buildroot}%{_datadir}/icons/hicolor/16x16/apps %{buildroot}%{_datadir}/icons/hicolor/32x32/apps %{buildroot}%{_datadir}/icons/hicolor/48x48/apps %{buildroot}%{_datadir}/icons/hicolor/64x64/apps
+  - pattern: mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/{after,autoload,colors,compiler,doc,ftdetect,ftplugin,indent,keymap,lang,plugin,print,spell,syntax,tutor}
+    replacement: "for d in after autoload colors compiler doc ftdetect ftplugin indent keymap lang plugin print spell syntax tutor; do\n  mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/$d\ndone\n"
+  - pattern: mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/after/{autoload,colors,compiler,doc,ftdetect,ftplugin,indent,keymap,lang,plugin,print,spell,syntax,tutor}
+    replacement: "for d in autoload colors compiler doc ftdetect ftplugin indent keymap lang plugin print spell syntax tutor; do\n  mkdir -p %{buildroot}/%{_datadir}/%{name}/vimfiles/after/$d\ndone\n"
+  - pattern: '%lang(af) %{_datadir}/%{name}/%{vimdir}/lang/af'
+    replacement: '%{_datadir}/%{name}/%{vimdir}/lang'
+  - pattern: 'cd src
+
+      autoconf'
+    replacement: 'cd src
+
+      autoconf
+
+      # Vim cross-compile cache overrides for IRIX
+
+      export vim_cv_toupper_broken=no
+
+      export vim_cv_terminfo=yes
+
+      export vim_cv_tgetent=zero
+
+      export vim_cv_getcwd_broken=no
+
+      export vim_cv_stat_ignores_slash=no
+
+      export vim_cv_memmove_handles_overlap=yes
+
+      export vim_cv_bcopy_handles_overlap=yes
+
+      export vim_cv_memcpy_handles_overlap=yes
+
+      '
