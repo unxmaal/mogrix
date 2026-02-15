@@ -1,4 +1,9 @@
 package: libretls
+
+add_source:
+  - arc4random_irix.h
+  - getentropy_irix.c
+
 upstream:
   url: https://git.causal.agency/libretls
   version: "3.8.1"
@@ -25,14 +30,14 @@ rules:
     # IRIX needs: (a) arc4random locking via pthreads + /dev/zero mmap,
     # (b) getentropy via /dev/urandom, (c) MAP_ANON definition.
 
-    # 1. Create IRIX arc4random platform header
-    - "printf '%s\\n' '/* arc4random hooks for IRIX */' '#include <sys/mman.h>' '#include <pthread.h>' '#include <signal.h>' '#include <fcntl.h>' '#include <unistd.h>' '' 'static pthread_mutex_t arc4random_mtx = PTHREAD_MUTEX_INITIALIZER;' '#define _ARC4_LOCK()   pthread_mutex_lock(&arc4random_mtx)' '#define _ARC4_UNLOCK() pthread_mutex_unlock(&arc4random_mtx)' '#define _ARC4_ATFORK(f) pthread_atfork(NULL, NULL, (f))' '' 'static inline void _getentropy_fail(void) { raise(SIGKILL); }' '' 'static volatile sig_atomic_t _rs_forked;' 'static inline void _rs_forkhandler(void) { _rs_forked = 1; }' '' 'static inline void _rs_forkdetect(void) {' '    static pid_t _rs_pid = 0;' '    pid_t pid = getpid();' '    if (_rs_pid == 0 || _rs_pid == 1 || _rs_pid != pid || _rs_forked) {' '        _rs_pid = pid; _rs_forked = 0;' '        if (rs) memset(rs, 0, sizeof(*rs));' '    }' '}' '' '/* IRIX has no MAP_ANON - use /dev/zero */' 'static inline void *_arc4_mmap_anon(size_t len) {' '    int fd; void *p;' '    fd = open(\"/dev/zero\", O_RDWR);' '    if (fd == -1) return MAP_FAILED;' '    p = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);' '    close(fd); return p;' '}' '' 'static inline int _rs_allocate(struct _rs **rsp, struct _rsx **rsxp) {' '    if ((*rsp = _arc4_mmap_anon(sizeof(**rsp))) == MAP_FAILED) return -1;' '    if ((*rsxp = _arc4_mmap_anon(sizeof(**rsxp))) == MAP_FAILED) {' '        munmap(*rsp, sizeof(**rsp)); *rsp = NULL; return -1;' '    }' '    _ARC4_ATFORK(_rs_forkhandler); return 0;' '}' > compat/arc4random_irix.h"
+    # 1. Install IRIX arc4random platform header
+    - "cp %{_sourcedir}/arc4random_irix.h compat/arc4random_irix.h"
 
     # 2. Add __sgi case to arc4random.h before the #else fallback
     - "sed -i 's/^#else$/#elif defined(__sgi)\\n#include \"arc4random_irix.h\"\\n#else/' compat/arc4random.h"
 
-    # 3. Create simple IRIX getentropy (reads /dev/urandom)
-    - "printf '%s\\n' '/* getentropy for IRIX */' '#include <sys/types.h>' '#include <fcntl.h>' '#include <errno.h>' '#include <unistd.h>' '' 'int getentropy(void *buf, size_t buflen) {' '    int fd, saved_errno; ssize_t n; char *p = buf;' '    if (buflen > 256) { errno = EIO; return -1; }' '    fd = open(\"/dev/urandom\", O_RDONLY);' '    if (fd == -1) return -1;' '    while (buflen > 0) {' '        n = read(fd, p, buflen);' '        if (n < 0) { if (errno == EINTR) continue;' '            saved_errno = errno; close(fd); errno = saved_errno; return -1; }' '        p += n; buflen -= n;' '    }' '    close(fd); return 0;' '}' > compat/getentropy_irix.c"
+    # 3. Install IRIX getentropy (reads /dev/urandom)
+    - "cp %{_sourcedir}/getentropy_irix.c compat/getentropy_irix.c"
 
     # 4. Replace Linux getentropy with IRIX version in Makefile.am.
     # Also strip the HOST_LINUX conditional around it — IRIX doesn't match

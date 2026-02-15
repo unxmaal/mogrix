@@ -18,6 +18,7 @@ add_source:
   - explicit_bzero.irix.c
   - digest-openssl.irix.c
   - charclass.irix.h
+  - cipher-evptype-dispatch.c
 
 smoke_test:
   - command: "/usr/sgug/bin/ssh -V"
@@ -513,43 +514,16 @@ rules:
     # Fix IRIX rld R_MIPS_REL32 relocation failures in cipher.c:
     # Function pointers in the static ciphers[] array require dynamic
     # relocations that IRIX rld intermittently fails to process.
-    # The failure is non-deterministic and depends on binary layout.
-    # Fix: add ssh_cipher_evptype() dispatch function and replace the
-    # (*cipher->evptype)() call site in cipher_init().
+    # Fix: inject dispatch function from add_source file, replace the
+    # (*cipher->evptype)() call site, and NULL out EVP function pointers.
+    - "cp %{_sourcedir}/cipher-evptype-dispatch.c ."
     - |
-      perl -e '
-        local $/;
-        open(F, "<cipher.c") or die "cannot read cipher.c: $!";
-        my $c = <F>;
-        close F;
-        my $dispatch = qq{
-      /* IRIX rld fix: dispatch EVP cipher type by name instead of through
-       * function pointers in a static array (rld fails some R_MIPS_REL32). */
-      static const EVP_CIPHER *
-      ssh_cipher_evptype(const char *name)
-      {
-      \tif (strcmp(name, "3des-cbc") == 0) return EVP_des_ede3_cbc();
-      \tif (strcmp(name, "aes128-cbc") == 0) return EVP_aes_128_cbc();
-      \tif (strcmp(name, "aes192-cbc") == 0) return EVP_aes_192_cbc();
-      \tif (strcmp(name, "aes256-cbc") == 0) return EVP_aes_256_cbc();
-      \tif (strcmp(name, "aes128-ctr") == 0) return EVP_aes_128_ctr();
-      \tif (strcmp(name, "aes192-ctr") == 0) return EVP_aes_192_ctr();
-      \tif (strcmp(name, "aes256-ctr") == 0) return EVP_aes_256_ctr();
-      \tif (strcmp(name, "aes128-gcm\@openssh.com") == 0) return EVP_aes_128_gcm();
-      \tif (strcmp(name, "aes256-gcm\@openssh.com") == 0) return EVP_aes_256_gcm();
-      \treturn NULL;
-      }
-      };
-        $c =~ s/(int\ncipher_init\(struct sshcipher_ctx)/$dispatch\n$1/;
-        $c =~ s/type = \(\*cipher->evptype\)\(\);/type = ssh_cipher_evptype(cipher->name);/;
-        # Replace EVP function pointers in ciphers[] static array with NULL
-        # to eliminate R_MIPS_REL32 data relocations (dispatch function handles it now)
-        $c =~ s/(CFLAG_CBC,\s+)EVP_\w+/${1}NULL/g;
-        $c =~ s/(0,\s+)EVP_aes_\w+/${1}NULL/g;
-        open(F, ">cipher.c") or die "cannot write cipher.c: $!";
-        print F $c;
-        close F;
-      '
+      perl -0777 -pi -e '
+        s/(int\ncipher_init\(struct sshcipher_ctx)/#include "cipher-evptype-dispatch.c"\n\n$1/;
+        s/type = \(\*cipher->evptype\)\(\);/type = ssh_cipher_evptype(cipher->name);/;
+        s/(CFLAG_CBC,\s+)EVP_\w+/${1}NULL/g;
+        s/(0,\s+)EVP_aes_\w+/${1}NULL/g;
+      ' cipher.c
     # Fix IRIX rld R_MIPS_REL32 relocation failures in charclass.h:
     # The cclasses[] static array uses function pointers to libc ctype
     # functions (isalnum, isalpha, etc.) which require dynamic relocations.

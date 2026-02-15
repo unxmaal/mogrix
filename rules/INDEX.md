@@ -257,6 +257,14 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | bash dprintf type conflict | `conflicting types for 'dprintf'` — void vs int return type | prep_commands | rules/packages/bash.yaml | bash `externs.h` declares `extern void dprintf(...)` but POSIX (and mogrix compat `stdio.h`) declares `int dprintf(...)`. bash's own implementation also returns int. Fix: `sed 's/^extern void dprintf/extern int dprintf/' externs.h` |
 | LIBS_FOR_BUILD cross-contamination | `skipping incompatible .../libmogrix-compat.a` when building native host tools | prep_commands | rules/packages/bash.yaml | Build systems that set `LIBS_FOR_BUILD=${LIBS}` (bash support/Makefile.in) leak cross-compiled `-lmogrix-compat` into native tool compilation (man2html). Fix: `sed 's/^LIBS_FOR_BUILD = ${LIBS}/LIBS_FOR_BUILD =/' support/Makefile.in`. Different from flex pattern (line 229): flex needs compat in cross-only sources; bash just needs to block LIBS leakage. |
 
+## Anti-Patterns
+
+| Anti-Pattern | Why It's Wrong | Do This Instead |
+|-------------|----------------|-----------------|
+| Inline C code in prep_commands (heredocs, printf chains generating .c/.h files) | YAML escaping corrupts C silently; can't review, test, or diff standalone | Put C files in `patches/packages/<name>/`, reference via `add_source`, copy with `cp %{_sourcedir}/file.c dest.c` in prep_commands |
+| Fixes applied outside mogrix rules (manual sed, staging edits) | Knowledge lost — next rebuild fails the same way | Store in package YAML or generic.yaml |
+| Duplicating generic.yaml rules in package YAML | Double-application or silent conflict | Check generic.yaml first (see top of this file) |
+
 ## File Locations
 
 | Category | Path | Contents |

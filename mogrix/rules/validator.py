@@ -1,5 +1,6 @@
 """Rule validation for mogrix."""
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -445,6 +446,9 @@ class RuleValidator:
         # Check for conflicts within the rule
         self._check_rule_conflicts(path, rules, result)
 
+        # Check for inline C code in prep_commands
+        self._check_inline_c_code(path, rules, result)
+
     def _check_rule_conflicts(
         self, path: Path, rules: dict, result: ValidationResult
     ) -> None:
@@ -502,6 +506,75 @@ class RuleValidator:
                         message=f"Conflicting configure_flags (both add and remove): {sorted(conflicts)}",
                     )
                 )
+
+    # Patterns that indicate inline C code in prep_commands.
+    # These should be extracted to add_source files instead.
+    _INLINE_C_PATTERNS = [
+        # Heredoc writing a .c or .h file
+        re.compile(r"cat\s+>\s*\S+\.(c|h)\s*<<"),
+        # printf chain writing a .c or .h file
+        re.compile(r"printf\s.*>\s*\S+\.(c|h)\s*$"),
+    ]
+    # Threshold: prep_commands with this many lines AND C-like content
+    _INLINE_C_LINE_THRESHOLD = 10
+    _INLINE_C_CONTENT_PATTERNS = [
+        re.compile(r"#include\s+[<\"]"),
+        re.compile(r"\b(int|void|char|pid_t|size_t|ssize_t)\s+\w+\s*\("),
+        re.compile(r"\breturn\s+\(?\s*-?\d"),
+    ]
+
+    def _check_inline_c_code(
+        self, path: Path, rules: dict, result: ValidationResult
+    ) -> None:
+        """Check for inline C code in prep_commands.
+
+        C source code should live in patches/packages/<name>/ as standalone
+        files referenced via add_source, not inline in YAML. Inline C is
+        fragile (YAML escaping), hard to review, and untestable.
+        """
+        prep = rules.get("prep_commands", [])
+        if not isinstance(prep, list):
+            return
+
+        for i, cmd in enumerate(prep):
+            if not isinstance(cmd, str):
+                continue
+
+            # Check for direct file-generation patterns
+            for pattern in self._INLINE_C_PATTERNS:
+                if pattern.search(cmd):
+                    result.issues.append(
+                        ValidationIssue(
+                            file=str(path.name),
+                            severity="warning",
+                            message=(
+                                f"prep_commands[{i}]: inline C code generation detected. "
+                                "Extract to patches/packages/<name>/ and use add_source instead."
+                            ),
+                        )
+                    )
+                    break
+
+            # Check for long commands with C-like content
+            lines = cmd.strip().splitlines()
+            if len(lines) >= self._INLINE_C_LINE_THRESHOLD:
+                c_indicators = sum(
+                    1
+                    for p in self._INLINE_C_CONTENT_PATTERNS
+                    if p.search(cmd)
+                )
+                if c_indicators >= 2:
+                    result.issues.append(
+                        ValidationIssue(
+                            file=str(path.name),
+                            severity="warning",
+                            message=(
+                                f"prep_commands[{i}]: {len(lines)}-line command "
+                                "contains C code patterns. Consider extracting to "
+                                "a file in patches/packages/<name>/ via add_source."
+                            ),
+                        )
+                    )
 
     def _validate_class_rule(self, path: Path, result: ValidationResult) -> None:
         """Validate a class rule file."""
