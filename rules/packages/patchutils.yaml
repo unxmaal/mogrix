@@ -1,0 +1,10 @@
+# patchutils - tools for manipulating patch files
+# Man pages not generated during cross-compile (no xmlto)
+package: patchutils
+
+rules:
+  skip_manpages: true
+  spec_replacements:
+    # Man pages not available in cross-build — remove from %files
+    - pattern: "%{_mandir}/*/*"
+      replacement: "# man pages not available in cross-build"

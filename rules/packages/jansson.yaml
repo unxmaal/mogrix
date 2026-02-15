@@ -1,0 +1,16 @@
+# jansson - C JSON library
+# Disable HTML doc generation (needs doxygen/sphinx on build host)
+package: jansson
+
+rules:
+  drop_buildrequires:
+    - python3-sphinx
+  drop_subpackages:
+    - devel-doc
+  spec_replacements:
+    # Disable html doc target — doxygen not available for cross build
+    - pattern: "make html"
+      replacement: "true # skip make html"
+    # Remove duplicate rm *.la (already handled by install_cleanup)
+    - pattern: 'rm "$RPM_BUILD_ROOT%{_libdir}"/*.la'
+      replacement: "true # la files already removed by install_cleanup"

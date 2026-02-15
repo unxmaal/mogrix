@@ -1,0 +1,36 @@
+# libao - Cross Platform Audio Output Library
+# IRIX has native audio support via libaudio (SGI Audio Library).
+# The IRIX audio plugin builds successfully since audio.h is in the native
+# IRIX sysroot. ALSA/PulseAudio/JACK/OSS/ESD/aRts/NAS are disabled.
+package: libao
+
+rules:
+  drop_buildrequires:
+    - pkgconfig(libpulse)
+
+  configure_flags:
+    add:
+      - "--disable-pulse"
+      - "--disable-esd"
+      - "--disable-arts"
+      - "--disable-nas"
+
+  install_cleanup:
+    # Remove .la files from plugin directory (generic only handles _libdir/*.la)
+    - "rm -f %{buildroot}%{_libdir}/ao/plugins-*/*.la"
+
+  spec_replacements:
+    # The .la find/rm in the spec uses -exec rm -rf; generic handles .la removal
+    - pattern: "find $RPM_BUILD_ROOT -name '*.la' -exec rm -rf {} \\;"
+      replacement: "# .la removal handled by generic rules"
+    # Remove docs dir removal - use %{buildroot} macro form
+    - pattern: "rm -rf $RPM_BUILD_ROOT%{_docdir}/%{name}*"
+      replacement: "rm -rf %{buildroot}%{_docdir}/%{name}*"
+    # Explicit Provides since AutoProv is disabled in rpmmacros.irix
+    - pattern: "BuildRequires: make"
+      replacement: |
+        BuildRequires: make
+        Provides: libao.so.4
+    # Man pages are not compressed in cross-build
+    - pattern: "%{_mandir}/man5/*"
+      replacement: "%{_mandir}/man5/*.5*"

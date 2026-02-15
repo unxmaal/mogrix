@@ -1,0 +1,95 @@
+# opus - audio codec for low-delay speech and audio communication
+# Pure C library with minimal dependencies (libogg for devel only)
+# Uses autotools with out-of-tree build in build_native/
+#
+# ---metadata---
+# complexity: low
+# build_system: autoconf
+# key_fixes: [bashisms, libtool_shared, man_page_gz, mingw_drop]
+# similar_to: [libogg]
+# depends: [libogg]
+# status: WORKING
+# ---
+
+package: opus
+
+rules:
+  # Drop doxygen - doc generation not needed for cross-compile
+  drop_buildrequires:
+    - doxygen
+
+  # Drop mingw subpackages
+  drop_subpackages:
+    - "mingw32-*"
+    - "mingw64-*"
+
+  # Drop libogg-devel from opus-devel Requires -- not available as installable dep
+  drop_requires:
+    - libogg-devel
+
+  # Configure flags for cross-compilation
+  configure_flags:
+    add:
+      - --disable-static
+      - --disable-doc
+      - --enable-custom-modes
+
+  # Export LD for libtool shared library building
+  export_vars:
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+
+  # Explicit provides (AutoProv disabled by rpmmacros.irix)
+  spec_replacements:
+    # Add explicit Provides for shared library (on main package, not devel)
+    - pattern: "%description\nThe Opus codec"
+      replacement: |
+        Provides: libopus.so.0
+
+        %description
+        The Opus codec
+
+    # Replace pushd/popd bashisms with cd (rpmbuild uses /bin/sh)
+    # and simplify the out-of-tree build to in-tree build
+    - pattern: |
+        mkdir build_native
+        pushd build_native
+        %global _configure ../configure
+        %configure --enable-custom-modes --disable-static \
+                   --enable-hardening \
+        %ifarch %{arm} %{arm64} %{power64}
+                --enable-fixed-point
+        %endif
+
+        %make_build
+        popd
+      replacement: |
+        %configure --enable-custom-modes --disable-static \
+                   --enable-hardening
+
+        # Fix libtool to build shared libraries for IRIX
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+        %make_build
+
+    # Fix %install to not reference build_native
+    - pattern: "%make_install -C build_native"
+      replacement: "%make_install"
+
+    # Remove man pages from %files (doxygen disabled, man pages not generated)
+    - pattern: "%{_datadir}/man/man3/opus_*.3.gz"
+      replacement: "# man pages not generated without doxygen"
+
+    # Remove doc html reference (no doxygen in cross-build)
+    - pattern: "%doc README build_native/doc/html rfc6716.txt rfc8251.txt"
+      replacement: "%doc README rfc6716.txt rfc8251.txt"
+
+    # Fix check to reference correct directory
+    - pattern: "make -C build_native check"
+      replacement: "make check"
+
+    # Remove duplicate .la removal (generic install_cleanup already removes *.la)
+    - pattern: "rm %{buildroot}%{_libdir}/libopus.la"
+      replacement: "# .la already removed by generic install_cleanup"
+
+smoke_test:
+  - command: "ls /usr/sgug/lib32/libopus.so.0"
+    expect: "libopus.so.0"

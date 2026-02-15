@@ -1,0 +1,129 @@
+# libsndfile - C library for reading and writing sound files (WAV, FLAC, OGG, etc.)
+# Uses autotools (autoreconf + configure + make)
+# Depends on libogg, libvorbis, flac, opus (all staged)
+# gsm-devel NOT staged — use bundled GSM610 instead of system libgsm
+# lame/mpg123/sqlite not enabled (optional, avoids complexity)
+#
+# ---metadata---
+# complexity: low
+# build_system: autoconf
+# key_fixes: [gsm_bundled, multilib_header, alsa_disable, configure_flags, provides, bashism]
+# similar_to: [opus, flac, libogg, libvorbis]
+# depends: [libogg, libvorbis, flac, opus]
+# status: WORKING
+# ---
+
+package: libsndfile
+
+rules:
+  # Drop deps not available or not needed for cross-compile
+  # alsa-lib-devel already dropped by generic.yaml
+  drop_buildrequires:
+    - gsm-devel
+    - autogen
+    - python3
+    - lame-devel
+    - mpg123-devel
+    - sqlite-devel
+
+  # Drop runtime deps that won't be available as installable packages
+  drop_requires:
+    - pkgconfig
+
+  # Export LD for libtool shared library building
+  export_vars:
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+
+  # Remove sndfile-play (no ALSA on IRIX, program still compiles but is useless)
+  install_cleanup:
+    - "rm -f %{buildroot}%{_bindir}/sndfile-play"
+    - "rm -f %{buildroot}%{_mandir}/man1/sndfile-play.1"
+
+  spec_replacements:
+    # Don't apply the system-gsm patch — use bundled GSM610 instead
+    # The patch switches from bundled GSM to system libgsm (-lgsm),
+    # but we don't have gsm-devel staged. The bundled copy compiles fine.
+    - pattern: "%patch -P0 -p1 -b .system-gsm\nrm -r src/GSM610"
+      replacement: "# system-gsm patch skipped — using bundled GSM610 (no gsm-devel staged)"
+
+    # Replace original configure flags block — disable ALSA, MPEG, sqlite
+    # (lame has no .pc file, sqlite/gsm not staged, ALSA doesn't exist on IRIX)
+    # configure_flags:add prepends but original flags come AFTER and override,
+    # so we must replace the whole block.
+    - pattern: |
+        %configure \
+        	--disable-dependency-tracking \
+        	--enable-sqlite \
+        	--enable-alsa \
+        	--enable-largefile \
+        	--enable-mpeg \
+        	--disable-static
+      replacement: |
+        %configure \
+        	--disable-dependency-tracking \
+        	--disable-sqlite \
+        	--disable-alsa \
+        	--enable-largefile \
+        	--disable-mpeg \
+        	--disable-static
+
+    # Fix libtool after configure for IRIX shared library building
+    - pattern: |
+        # Get rid of rpath
+        sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
+        sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+      replacement: |
+        # Fix libtool for IRIX shared library building
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
+
+    # Replace multilib header wrapper with direct header
+    # IRIX has no bits/wordsize.h; MIPS n32 is always 32-bit
+    # Just keep the original sndfile.h without the multilib wrapper
+    - pattern: |
+        # fix multilib issues
+        mv %{buildroot}%{_includedir}/sndfile.h \
+           %{buildroot}%{_includedir}/sndfile-%{__isa_bits}.h
+
+        cat > %{buildroot}%{_includedir}/sndfile.h <<EOF
+        #include <bits/wordsize.h>
+
+        #if __WORDSIZE == 32
+        # include "sndfile-32.h"
+        #elif __WORDSIZE == 64
+        # include "sndfile-64.h"
+        #else
+        # error "unexpected value for __WORDSIZE macro"
+        #endif
+        EOF
+      replacement: |
+        # Multilib wrapper skipped — IRIX MIPS n32 is always 32-bit
+
+    # Fix %files devel to not reference multilib header
+    - pattern: "%{_includedir}/sndfile-%{__isa_bits}.h"
+      replacement: "# multilib header not generated (IRIX is always 32-bit)"
+
+    # Add explicit Provides for shared library soname (AutoProv disabled by rpmmacros.irix)
+    - pattern: "%description\nlibsndfile is a C library"
+      replacement: |
+        Provides: libsndfile.so.1
+
+        %description
+        libsndfile is a C library
+
+    # sndfile-play won't work without ALSA — remove from %files utils
+    - pattern: "%{_bindir}/sndfile-play"
+      replacement: "# sndfile-play removed (no ALSA on IRIX)"
+
+    # Man page for sndfile-play also not installed
+    - pattern: "%{_mandir}/man1/sndfile-play.1*"
+      replacement: "# sndfile-play man page removed"
+
+    # Fix bashism: brace expansion {,.*} doesn't work with /bin/sh
+    - pattern: "%{_libdir}/%{name}.so.1{,.*}"
+      replacement: |
+        %{_libdir}/%{name}.so.1
+        %{_libdir}/%{name}.so.1.*
+
+smoke_test:
+  - command: "ls /usr/sgug/lib32/libsndfile.so.1"
+    expect: "libsndfile.so.1"

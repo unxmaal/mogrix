@@ -1,0 +1,51 @@
+# recode - character set converter
+# Skip autoreconf — autopoint (gettext) not available
+# Disable Python bindings (can't cross-compile)
+# Links -lgen for dirname() (IRIX libgen.so, not libc)
+package: recode
+
+rules:
+  drop_buildrequires:
+    - gettext-devel
+    - python3-Cython
+    - python3-devel
+    - python3-setuptools
+    - texinfo
+    - autoconf
+    - automake
+    - libtool
+  configure_disable:
+    - nls
+  inject_compat_functions:
+    - reallocarray
+    - strerror_r
+  drop_subpackages:
+    - devel
+  spec_replacements:
+    # Skip autoreconf — autopoint not available
+    - pattern: "autoreconf -fi"
+      replacement: "true # skip autoreconf (no autopoint)"
+    # Disable Python — patch configure to not error when no Python found
+    - pattern: "export PYTHON=%{__python3}"
+      replacement: |
+        export PYTHON=:
+        # Patch configure: don't error on missing Python (cross-compile, no Python bindings)
+        sed -i 's/as_fn_error \$? "no suitable Python interpreter found"/true # mogrix: skip Python requirement/' configure
+    # Remove --enable-nls (conflicts with configure_disable: nls)
+    - pattern: "    --enable-nls \\"
+      replacement: "    --disable-nls \\"
+    # Link libgen for dirname() — IRIX has dirname in libgen.so, not libc
+    - pattern: "%configure \\"
+      replacement: |-
+        export LIBS="$LIBS -lgen"
+        %configure \
+    # .la removal + devel file cleanup (devel subpackage dropped)
+    - pattern: "rm $RPM_BUILD_ROOT%{_libdir}/*.la"
+      replacement: |-
+        rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+        # Remove devel files (devel subpackage dropped)
+        rm -f $RPM_BUILD_ROOT%{_libdir}/librecode.so
+        rm -rf $RPM_BUILD_ROOT%{_includedir}
+    # info dir removal — use -rf to avoid failure
+    - pattern: "rm -r $RPM_BUILD_ROOT%{_infodir}/dir"
+      replacement: "rm -rf $RPM_BUILD_ROOT%{_infodir}/dir"

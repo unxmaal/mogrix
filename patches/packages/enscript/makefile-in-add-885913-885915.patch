@@ -1,0 +1,29 @@
+--- a/afmlib/Makefile.in	2026-02-15 05:47:53.306927794 +0000
++++ b/afmlib/Makefile.in	2026-02-15 05:48:06.769129116 +0000
+@@ -111,7 +111,7 @@
+ am_libafm_a_OBJECTS = afm.$(OBJEXT) afmparse.$(OBJEXT) \
+ 	strhash.$(OBJEXT) e_88591.$(OBJEXT) e_88592.$(OBJEXT) \
+ 	e_88593.$(OBJEXT) e_88594.$(OBJEXT) e_88595.$(OBJEXT) \
+-	e_88597.$(OBJEXT) e_88599.$(OBJEXT) e_885910.$(OBJEXT) \
++	e_88597.$(OBJEXT) e_88599.$(OBJEXT) e_885910.$(OBJEXT) e_885913.$(OBJEXT) e_885915.$(OBJEXT) \
+ 	e_pc.$(OBJEXT) e_mac.$(OBJEXT) e_vms.$(OBJEXT) e_hp8.$(OBJEXT) \
+ 	e_koi8.$(OBJEXT) deffont.$(OBJEXT)
+ libafm_a_OBJECTS = $(am_libafm_a_OBJECTS)
+@@ -293,7 +293,7 @@
+ noinst_LIBRARIES = libafm.a
+ libafm_a_SOURCES = afm.c afmparse.c strhash.c e_88591.c e_88592.c	\
+ e_88593.c e_88594.c e_88595.c e_88597.c e_88599.c e_885910.c e_pc.c	\
+-e_mac.c e_vms.c e_hp8.c e_koi8.c deffont.c
++e_mac.c e_vms.c e_hp8.c e_koi8.c deffont.c e_885913.c e_885915.c
+ 
+ noinst_HEADERS = afm.h afmint.h strhash.h
+ INCLUDES_windelta = +-I../w32/
+@@ -360,6 +360,8 @@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/deffont.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/e_88591.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/e_885910.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/e_885913.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/e_885915.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/e_88592.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/e_88593.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/e_88594.Po@am__quote@

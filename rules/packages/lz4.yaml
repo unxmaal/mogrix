@@ -1,0 +1,24 @@
+# lz4 - fast compression library
+# Fedora uses meson, but lz4 has a plain Makefile — use that for cross-compilation
+package: lz4
+
+rules:
+  drop_buildrequires:
+    - "meson >= 0.43"
+  drop_subpackages:
+    - libs
+    - devel
+    - static
+  prep_commands:
+    # Skip shared library build — irix-cc compile+link mode can't pass -Wl,-soname
+    - "sed -i 's/^lib: liblz4.a liblz4/lib: liblz4.a/' lib/Makefile"
+  spec_replacements:
+    # Remove meson vpath_srcdir
+    - pattern: "%global _vpath_srcdir contrib/meson"
+      replacement: "# meson disabled — using plain Makefile"
+    # Replace meson build with plain make (static only)
+    - pattern: "%meson \\\n  -Dprograms=true \\\n  -Ddefault_library=both \\\n  %{nil}\n%meson_build"
+      replacement: "%make_build CC=%{__cc} AR=%{__ar} PREFIX=%{_prefix} LIBDIR=%{_libdir} INCLUDEDIR=%{_includedir} BUILD_STATIC=yes"
+    # Replace meson install with plain make install (no shared)
+    - pattern: "%meson_install"
+      replacement: "%make_install CC=%{__cc} AR=%{__ar} PREFIX=%{_prefix} LIBDIR=%{_libdir} INCLUDEDIR=%{_includedir} BUILD_SHARED=no BUILD_STATIC=yes\nrm -rf %{buildroot}%{_includedir}/lz4*.h %{buildroot}%{_libdir}/liblz4.a %{buildroot}%{_libdir}/pkgconfig/liblz4.pc"

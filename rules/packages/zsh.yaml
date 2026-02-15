@@ -1,0 +1,50 @@
+# zsh - Z shell
+# Needs ncurses, pcre, gdbm (all staged)
+package: zsh
+
+rules:
+  drop_buildrequires:
+    - glibc-langpack-ja
+    - hostname
+    - libcap-devel
+    - valgrind
+    - texi2html
+    - texinfo
+  configure_flags:
+    add:
+      - --enable-cap=no
+      - --with-tcsetpgrp
+      - --disable-pcre
+      - "--libdir=%{_libdir}"
+    remove:
+      - --enable-pcre
+  configure_disable:
+    - dynamic
+  prep_commands:
+    # PR_SET_NAME is Linux-only (prctl). IRIX has no prctl.
+    # Stub it out — zsh only uses it for cosmetic process naming.
+    - "sed -i '/PR_SET_NAME/d' Src/jobs.c"
+    - "sed -i '/prctl/d' Src/jobs.c"
+  spec_replacements:
+    # Fix brace globs — not valid in /bin/sh
+    - pattern: "zsh{path,xmod}s.h"
+      replacement: "zshpaths.h zshxmods.h"
+    - pattern: "test-repo-git-rebase-{apply,merge}"
+      replacement: "test-repo-git-rebase-apply test-repo-git-rebase-merge"
+    # Skip HTML doc build — texi2html/texinfo not available
+    - pattern: "%make_build all html"
+      replacement: "%make_build all"
+    # Skip info install — no texinfo
+    - pattern: "%make_install install.info"
+      replacement: "%make_install"
+    # Remove info dir file (may not exist) — also remove all info since we skip install.info
+    - pattern: "rm -f $RPM_BUILD_ROOT%{_infodir}/dir"
+      replacement: "rm -rf $RPM_BUILD_ROOT%{_infodir}"
+    # Info files not installed — comment out %files reference
+    - pattern: "%{_infodir}/*"
+      replacement: "# %{_infodir}/* — info files not built"
+    # No lib/zsh directory when --disable-dynamic is used (all modules compiled in)
+    - pattern: "%{_libdir}/zsh"
+      replacement: "# %{_libdir}/zsh — dynamic modules disabled"
+  drop_subpackages:
+    - html

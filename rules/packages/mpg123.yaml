@@ -1,0 +1,107 @@
+# mpg123 - MPEG audio player and decoder library
+# IRIX has its own audio system — build with dummy output only for now
+# Network (http streaming) disabled — resolver.c uses _POSIX_C_SOURCE
+# which hides BSD types (u_int/u_char) needed by IRIX arpa/inet.h
+package: mpg123
+
+rules:
+  drop_buildrequires:
+    - pulseaudio-libs-devel
+    - jack-audio-connection-kit-devel
+    - portaudio-devel
+    - /usr/bin/doxygen
+  drop_subpackages:
+    - plugins-pulseaudio
+  configure_flags:
+    remove:
+      - "--with-default-audio=alsa"
+      - "--with-audio=alsa,%{?enable_jack:jack},pulse,oss,%{?enable_portaudio:portaudio}"
+    add:
+      - "--with-default-audio=dummy"
+      - "--with-audio=dummy"
+      - "--with-network=none"
+  spec_replacements:
+    # Remove alsa output from main files list
+    - pattern: "%{_libdir}/%{name}/output_alsa.*"
+      replacement: "# alsa output disabled"
+    # Remove OSS output from main files list (not available on IRIX)
+    - pattern: "%{_libdir}/%{name}/output_oss.*"
+      replacement: "# oss output disabled"
+    # .la removal - use -f flag for safety
+    - pattern: "rm %{buildroot}%{_libdir}/*.la"
+      replacement: "rm -f %{buildroot}%{_libdir}/*.la"
+    # Remove the entire %if 0%{?enable_jack} block around %package plugins-jack
+    # This contains a nested %if which confuses the validator
+    - pattern: |
+        %if 0%{?enable_jack}
+        %package plugins-jack
+        Summary: JACK output plug-in for %{name}
+        BuildRequires: pkgconfig(jack)
+        Requires: %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
+        %if 0%{?fedora} || 0%{?rhel} >= 8
+        Supplements: (mpg123%{?_isa} and jack-audio-connection-kit%{?_isa})
+        %endif
+        Obsoletes: %{name}-plugins-extras < 1.23.4-1
+
+        %description plugins-jack %{_description}
+
+        JACK output plug-in.
+        %endif
+      replacement: |
+        # jack plugin disabled for IRIX
+    # Remove the %if 0%{?enable_portaudio} block around %package plugins-portaudio
+    - pattern: |
+        %if 0%{?enable_portaudio}
+        %package plugins-portaudio
+        Summary: PortAudio output plug-in for %{name}
+        BuildRequires: pkgconfig(portaudio-2.0)
+        Requires: %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
+        %if 0%{?fedora} || 0%{?rhel} >= 8
+        Supplements: (mpg123%{?_isa} and portaudio%{?_isa})
+        %endif
+
+        %description plugins-portaudio %{_description}
+
+        PortAudio output plug-in.
+        %endif
+      replacement: |
+        # portaudio plugin disabled for IRIX
+    # Remove %files plugins-jack conditional block
+    - pattern: |
+        %if 0%{?enable_jack}
+        %files plugins-jack
+        %{_libdir}/%{name}/output_jack.*
+        %endif
+      replacement: |
+        # jack files disabled for IRIX
+    # Remove %files plugins-portaudio conditional block
+    - pattern: |
+        %if 0%{?enable_portaudio}
+        %files plugins-portaudio
+        %{_libdir}/%{name}/output_portaudio.*
+        %endif
+      replacement: |
+        # portaudio files disabled for IRIX
+    # Remove the fedora/enable_jack/enable_portaudio macro block
+    - pattern: |
+        %if 0%{?fedora}
+        %global enable_jack 1
+        %global enable_portaudio 1
+        %endif
+      replacement: |
+        # jack/portaudio disabled for IRIX
+    # Remove doxygen build step (pushd/popd not in /bin/sh, doxygen not needed)
+    - pattern: |
+        pushd doc
+          doxygen doxygen.conf
+        popd
+      replacement: |
+        # doxygen docs disabled for IRIX
+    # Remove doxygen-generated docs from %files devel
+    - pattern: "%doc NEWS.lib%{name} doc/html doc/examples doc/BENCHMARKING doc/README.gain"
+      replacement: "%doc NEWS.lib%{name} doc/examples doc/BENCHMARKING doc/README.gain"
+  prep_commands:
+    # _XOPEN_SOURCE hides struct winsize and TIOCGWINSZ on IRIX
+    # _SGI_SOURCE provides all needed POSIX/XSI + BSD extensions
+    - "sed -i 's/^#define _XOPEN_SOURCE 600/\\/\\* #define _XOPEN_SOURCE 600 -- removed for IRIX *\\//' src/term_posix.c"
+    - "sed -i 's/^#define _POSIX_C_SOURCE 200112L/\\/\\* #define _POSIX_C_SOURCE 200112L -- removed for IRIX *\\//' src/term_posix.c"

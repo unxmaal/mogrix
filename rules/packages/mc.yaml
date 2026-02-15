@@ -1,0 +1,38 @@
+# mc - Midnight Commander file manager
+package: mc
+
+rules:
+  drop_buildrequires:
+    - libssh2-devel
+    - e2fsprogs-devel
+    - groff-base
+    - check-devel
+    - aspell-en
+  configure_disable:
+    - vfs-sftp
+    - aspell
+    - cons-saver
+  configure_flags:
+    add:
+      - "--with-screen=slang"
+  drop_subpackages:
+    - python
+  spec_replacements:
+    # Brace glob doesn't expand under /bin/sh
+    - pattern: "contrib/mc.{sh,csh}"
+      replacement: "contrib/mc.sh contrib/mc.csh"
+    # Fix hardcoded /etc path — should use %{_sysconfdir} (= /usr/sgug/etc)
+    - pattern: "/etc/profile.d/*"
+      replacement: "%{_sysconfdir}/profile.d/*"
+    # cons.saver is Linux-specific (virtual console), not relevant for IRIX
+    - pattern: "%attr(755,root,root) %{_libexecdir}/mc/cons.saver"
+      replacement: "# cons.saver disabled — Linux virtual console only"
+    # Remove edit* line — already covered by %config mc/* glob (file listed twice)
+    - pattern: "%{_sysconfdir}/mc/edit*\n%config(noreplace) %{_sysconfdir}/mc/*"
+      replacement: "%config(noreplace) %{_sysconfdir}/mc/*"
+    # Remove localized man pages (install_cleanup removes locale, but these are separate)
+    - pattern: "%make_install"
+      replacement: "%make_install\nrm -rf %{buildroot}%{_mandir}/es %{buildroot}%{_mandir}/hu %{buildroot}%{_mandir}/it %{buildroot}%{_mandir}/pl %{buildroot}%{_mandir}/ru %{buildroot}%{_mandir}/sr"
+    # Python extfs plugins excluded — no Python on IRIX
+    - pattern: "%exclude %{_libexecdir}/mc/extfs.d/{s3+,uc1541}"
+      replacement: "%exclude %{_libexecdir}/mc/extfs.d/s3+\n%exclude %{_libexecdir}/mc/extfs.d/uc1541"

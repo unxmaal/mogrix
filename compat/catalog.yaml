@@ -54,6 +54,11 @@ functions:
     header: string.h
     description: Copy string and return pointer to end (POSIX.1-2008)
 
+  stpncpy:
+    file: runtime/stpncpy.c
+    header: string.h
+    description: Copy fixed-size string and return pointer to end (POSIX.1-2008)
+
   basename:
     file: string/basename.c
     header: libgen.h

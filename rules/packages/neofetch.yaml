@@ -1,0 +1,8 @@
+# neofetch - system information tool (bash script)
+# Uses make with PREFIX — needs override for /usr/sgug
+package: neofetch
+
+rules:
+  spec_replacements:
+    - pattern: "%make_install"
+      replacement: "make install DESTDIR=%{buildroot} PREFIX=%{_prefix} MANDIR=%{_mandir}"

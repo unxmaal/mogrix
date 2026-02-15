@@ -1,0 +1,32 @@
+# screen - terminal multiplexer
+# Needs IRIX-specific defines: _SGI_SOURCE, _SGI_REENTRANT_FUNCTIONS, NAMEDPIPE
+# NAMEDPIPE: IRIX lacks Unix domain sockets in some contexts; screen can use FIFOs
+package: screen
+
+rules:
+  export_vars:
+    CPPFLAGS: "-D_SGI_SOURCE -D_SGI_REENTRANT_FUNCTIONS -DNAMEDPIPE"
+  configure_flags:
+    add:
+      - --enable-colors256
+      - --enable-rxvt_osc
+      - --enable-use-locale
+      - --enable-telnet
+      - "--with-pty-mode=0620"
+      - "--with-sys-screenrc=%{_sysconfdir}/screenrc"
+  configure_disable:
+    - pam
+  drop_buildrequires:
+    - pam-devel
+    - utempter-devel
+    - libutempter-devel
+  spec_replacements:
+    # Fix brace glob {1,texinfo} — not valid in /bin/sh
+    - pattern: "doc/screen.{1,texinfo}"
+      replacement: "doc/screen.1 doc/screen.texinfo"
+    # Fix brace glob {.utf8,} — mv rename pattern
+    - pattern: "${i}{.utf8,}"
+      replacement: "$i.utf8 $i"
+    # Fix brace glob {-version,} — mv rename pattern
+    - pattern: "screen{-%{version},}"
+      replacement: "screen-%{version} screen"

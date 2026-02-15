@@ -1,0 +1,185 @@
+# mksh - MirBSD Korn Shell for IRIX
+# Uses Build.sh (custom shell build script), NOT autotools.
+# Build.sh respects CC, CFLAGS, LDFLAGS, LIBS, TARGET_OS env vars.
+# Feature detection is compile+link only (no test execution), so
+# cross-compilation works if CC is set to the cross-compiler.
+#
+# Two binaries built:
+#   mksh  - standard MirBSD Korn Shell
+#   lksh  - legacy mode (pdksh compat, -L flag to Build.sh)
+#
+# Build.sh has native IRIX support (TARGET_OS=IRIX*).
+# Compiler detected as "clang" via __llvm__ + __clang__ preprocessor.
+package: mksh
+
+smoke_test:
+  - command: "/usr/sgug/bin/mksh -c 'echo hello'"
+    expect: "hello"
+  - command: "/usr/sgug/bin/mksh -c 'print -r -- $KSH_VERSION'"
+    expect: "MIRBSD"
+
+rules:
+  drop_buildrequires:
+    - util-linux        # 'script' command used in %check only
+    - ed                # used in test suite only
+    - perl-interpreter  # used in test suite only
+    - "perl(Getopt::Std)"  # used in test suite only
+    - sed               # available on build host, not RPM-registered
+    - gcc               # using cross-compiler
+
+  drop_requires:
+    - grep              # used in %post scriptlet for /etc/shells
+    - sed               # used in %postun scriptlet for /etc/shells
+    - "%{_sbindir}/alternatives"  # update-alternatives doesn't exist on IRIX
+
+  spec_replacements:
+    # Replace the Build.sh invocation lines: Build.sh needs CC, CFLAGS, LDFLAGS,
+    # TARGET_OS set for cross-compilation. Also skip FAQ2HTML.sh which tries
+    # to run the just-built MIPS mksh binary on the x86 host.
+    #
+    # NOTE: mogrix engine automatically injects compat library build + LIBS export
+    # before this block. We only need to set CC, CFLAGS, LDFLAGS, TARGET_OS and
+    # invoke Build.sh.
+    #
+    # Build.sh -r = release build (optimized, no debug)
+    # Build.sh -L = legacy mode (lksh)
+    # TARGET_OS=IRIX tells Build.sh to use IRIX-specific settings
+    - pattern: |
+        CFLAGS="$RPM_OPT_FLAGS -DMKSH_DISABLE_EXPERIMENTAL" LDFLAGS="$RPM_LD_FLAGS" sh Build.sh -r
+        cp test.sh test_mksh.sh
+        HAVE_PERSISTENT_HISTORY=0; export HAVE_PERSISTENT_HISTORY
+        CFLAGS="$RPM_OPT_FLAGS -DMKSH_DISABLE_EXPERIMENTAL" LDFLAGS="$RPM_LD_FLAGS" sh Build.sh -L -r
+        cp -f test.sh test_lksh.sh
+        ./mksh FAQ2HTML.sh
+      replacement: |
+        # Build mksh with cross-compiler
+        COMPAT_DIR=$(pwd)/mogrix-compat
+        export CC="%{__cc}"
+        # -Wno-int-conversion: clang 18 hard-errors on NULL (0L) in comma
+        #   expressions returning pointers: return (maybe_errorf(...), NULL);
+        # -Wno-format: suppress sign mismatch warnings from %zu->%u sed fix
+        export CFLAGS="%{optflags} -DMKSH_DISABLE_EXPERIMENTAL -Wno-int-conversion -Wno-format"
+        export LDFLAGS="$LDFLAGS -L$COMPAT_DIR -lmogrix-compat"
+        export TARGET_OS=IRIX
+        sh Build.sh -r
+        cp test.sh test_mksh.sh
+
+        # Build lksh (legacy mode)
+        export HAVE_PERSISTENT_HISTORY=0
+        sh Build.sh -L -r
+        cp -f test.sh test_lksh.sh
+
+        # Skip FAQ2HTML.sh — it tries to run the MIPS mksh binary on x86 host
+
+    # Remove Fedora-conditional Provides/files for rksh (uses %if fedora)
+    # These use update-alternatives which doesn't exist on IRIX
+    - pattern: |
+        %if 0%{?fedora} || 0%{?rhel} > 8
+        Provides:         /bin/rksh
+        %endif
+      replacement: ""
+
+    # Remove update-alternatives Requires
+    - pattern: "Requires(post):   grep"
+      replacement: ""
+    - pattern: "Requires(post):   %{_sbindir}/alternatives"
+      replacement: ""
+    - pattern: "Requires(preun):  %{_sbindir}/alternatives"
+      replacement: ""
+    - pattern: "Requires(postun): sed"
+      replacement: ""
+
+    # Replace %post scriptlet (was managing /etc/shells + alternatives)
+    - pattern: |
+        %post
+        for d in /bin %{_bindir}; do
+        %if 0%{?fedora} || 0%{?rhel} > 8
+          for s in ksh %{name} rksh rmksh; do
+        %else
+          for s in ksh %{name} rmksh; do
+        %endif
+            grep -q '^'"$d/$s"'$' %{_sysconfdir}/shells 2>/dev/null || echo "$d/$s" >> /etc/shells
+          done
+        done
+
+        %{_sbindir}/alternatives --install %{_bindir}/ksh ksh %{_bindir}/%{name} 10 \
+        %if 0%{?fedora} || 0%{?rhel} > 8
+          --slave %{_bindir}/rksh rksh %{_bindir}/%{name} \
+        %endif
+          --slave %{_mandir}/man1/ksh.1.gz ksh-man %{_mandir}/man1/%{name}.1.gz \
+        %if 0%{?fedora} || 0%{?rhel} > 8
+          --slave %{_mandir}/man1/rksh.1.gz rksh-man %{_mandir}/man1/%{name}.1.gz
+        %endif
+      replacement: |
+        %post
+        # No /etc/shells or alternatives management on IRIX
+
+    # Replace %preun scriptlet
+    - pattern: |
+        %preun
+        if [ $1 -eq 0 ]; then
+          %{_sbindir}/alternatives --remove ksh %{_bindir}/%{name}
+        fi
+      replacement: |
+        %preun
+        # No alternatives management on IRIX
+
+    # Replace %postun scriptlet (uses bash-isms: [[ ]], sed -i)
+    - pattern: |
+        %postun
+        for d in /bin %{_bindir}; do
+          for s in ksh %{name} rksh rmksh; do
+            [ ! -x "$d/$s" ] && sed -e 's@^'"$d/$s"'$@POSTUNREMOVE@' -e '/^POSTUNREMOVE$/d' -i %{_sysconfdir}/shells
+          done
+        done
+      replacement: |
+        %postun
+        # No /etc/shells management on IRIX
+
+    # Remove rksh-related %if blocks from %install
+    - pattern: |
+        %if 0%{?fedora} || 0%{?rhel} > 8
+        touch $RPM_BUILD_ROOT{%{_bindir}/{ksh,rksh},%{_mandir}/man1/{ksh,rksh}.1}
+        %else
+        touch $RPM_BUILD_ROOT{%{_bindir}/ksh,%{_mandir}/man1/ksh.1}
+        %endif
+      replacement: |
+        touch $RPM_BUILD_ROOT%{_bindir}/ksh
+        touch $RPM_BUILD_ROOT%{_mandir}/man1/ksh.1
+
+    # Remove rksh ghost from %files
+    - pattern: |
+        %if 0%{?fedora} || 0%{?rhel} > 8
+        %ghost %{_bindir}/rksh
+        %endif
+      replacement: ""
+
+    # Remove rksh ghost man page from %files
+    - pattern: |
+        %if 0%{?fedora} || 0%{?rhel} > 8
+        %ghost %{_mandir}/man1/rksh.1*
+        %endif
+      replacement: ""
+
+    # Fix %doc line — FAQ.htm not built (FAQ2HTML.sh skipped)
+    - pattern: "%doc dot.mkshrc FAQ.htm"
+      replacement: "%doc dot.mkshrc"
+
+    # Fix man page globs — rpmmacros.irix disables compression
+    - pattern: "%ghost %{_mandir}/man1/ksh.1*"
+      replacement: "%ghost %{_mandir}/man1/ksh.1"
+
+    # Fix brace expansion in touch (bash-ism, /bin/sh can't expand)
+    # This is handled by the replacement above that removes the %if block
+
+    # Remove Conflicts: filesystem < 3 (Fedora-specific)
+    - pattern: "Conflicts:        filesystem < 3"
+      replacement: ""
+
+  # Fix %zu format specifiers — IRIX n32 libc is pre-C99, %zu corrupts varargs
+  prep_commands:
+    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lalloc.c misc.c shf.c sh.h"
+
+  install_cleanup:
+    # Remove locale files
+    - "rm -rf %{buildroot}%{_datadir}/locale"

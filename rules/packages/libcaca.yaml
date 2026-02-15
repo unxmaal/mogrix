@@ -1,0 +1,103 @@
+# libcaca - Colour ASCII Art library (FC40: 0.99.beta20)
+# Terminal-only build: ncurses + slang drivers. No X11/GL/Python/Ruby/imlib2.
+package: libcaca
+
+rules:
+  drop_buildrequires:
+    - libX11-devel
+    - freeglut-devel
+    - mesa-libGLU-devel
+    - "pkgconfig(imlib2)"
+    - "pkgconfig(pangoft2)"
+    - python3-devel
+    - python3-setuptools
+    - ruby
+    - ruby-devel
+
+  drop_requires:
+    - toilet
+    - imlib2-devel
+    - libX11-devel
+    - pango-devel
+    - freeglut-devel
+    - mesa-libGLU-devel
+
+  drop_subpackages:
+    - python3-caca
+    - ruby-caca
+
+  configure_disable:
+    - x11
+    - gl
+    - csharp
+    - java
+    - python
+    - ruby
+    - imlib2
+    - doc
+    - cxx
+    - network
+
+  install_cleanup:
+    - "rm -f %{buildroot}%{_libdir}/*.a"
+    # Libtool installs wrapper scripts instead of actual binaries during cross-compile.
+    # Replace wrapper scripts with real MIPS binaries from .libs/ directories.
+    - "for f in %{buildroot}%{_bindir}/*; do test -f \"$f\" && head -1 \"$f\" | grep -q '/bin/bash' && bname=$(basename \"$f\") && for d in src/.libs tools/.libs; do if test -f \"$d/$bname\"; then cp \"$d/$bname\" \"$f\"; break; fi; done; done"
+
+  prep_commands:
+    # Add forward declaration for _caca_alloc2d in common-image.c
+    # (declared in caca_internals.h but common-image.c only includes caca.h;
+    # C99 implicit function declaration is an error in clang)
+    - "sed -i '/#include \"common-image.h\"/a extern void *_caca_alloc2d(size_t width, size_t height, size_t elem_size);' src/common-image.c"
+
+  # GNU ld for shared library
+  export_vars:
+    LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
+
+  spec_replacements:
+    # Remove ruby vendor globals that try to execute 'ruby' at parse time
+    - pattern: "%{!?ruby_vendorlibdir: %global ruby_vendorlibdir %(ruby -r rbconfig -e 'print RbConfig::CONFIG[\"vendorlibdir\"]')}"
+      replacement: "# ruby globals removed for cross-build"
+    - pattern: "%{!?ruby_vendorarchdir: %global ruby_vendorarchdir %(ruby -r rbconfig -e 'print RbConfig::CONFIG[\"vendorarchdir\"]')}"
+      replacement: "# ruby globals removed for cross-build"
+    # Flip GL bcond: %bcond_without gl -> %bcond_with gl (defaults OFF)
+    - pattern: "%bcond_without gl"
+      replacement: "%bcond_with gl"
+    # Flip ruby bcond: %bcond_without ruby -> %bcond_with ruby (defaults OFF)
+    - pattern: "%bcond_without ruby"
+      replacement: "%bcond_with ruby"
+    # Remove doxygen BuildRequires (lowercase 'r' not matched by drop_buildrequires)
+    - pattern: "Buildrequires: doxygen"
+      replacement: "# doxygen removed for cross-build"
+    # Remove texlive BuildRequires (lowercase 'r')
+    - pattern: "Buildrequires: texlive-dvips"
+      replacement: "# texlive removed for cross-build"
+    - pattern: "Buildrequires: texlive-latex"
+      replacement: "# texlive removed for cross-build"
+    # Remove LTO flags definition (not applicable to cross-compile)
+    - pattern: "%define _lto_cflags -flto=auto -ffat-lto-objects"
+      replacement: "# LTO disabled for cross-build"
+    # Remove gio-2.0 LDFLAGS export; add -lm for libslang's unresolved atan2
+    # (libslang.so.2 uses atan2 from libm but has no NEEDED entry for it;
+    # IRIX rld strict resolution requires the exe to pull in libm)
+    - pattern: "export LDFLAGS=\"$(pkg-config --libs gio-2.0) $LDFLAGS\""
+      replacement: "export LIBS=\"$LIBS -lm\""
+    # Remove ruby vendorarch sed (ruby disabled)
+    - pattern: "sed -i -e 's/sitearchdir/vendorarchdir/g' -e 's/sitelibdir/vendorlibdir/g' configure"
+      replacement: "# ruby vendorarch sed removed for cross-build"
+    # Remove duplicate --disable-static/--disable-csharp/--disable-java and
+    # trailing backslash from original spec; inject libtool fix before make
+    - pattern: " \\\n  --disable-static \\\n  --disable-csharp \\\n  --disable-java\n\n%make_build"
+      replacement: "\n\n/opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1\n%make_build"
+    # Doc not built -- skip mv that moves generated docs
+    - pattern: "mv %{buildroot}%{_docdir}/libcaca-dev libcaca-dev-docs"
+      replacement: "# Doc move skipped -- docs not built"
+    # Remove html doc reference from %files devel (docs not built)
+    - pattern: "%doc libcaca-dev-docs/html/"
+      replacement: "# docs not built"
+    # Remove man3 devel docs (not built without doxygen)
+    - pattern: "%{_mandir}/man3/*\n"
+      replacement: ""
+    # Explicit Provides on main package (AutoProv:no in rpmmacros.irix)
+    - pattern: "URL: http://caca.zoy.org/wiki/libcaca\n"
+      replacement: "URL: http://caca.zoy.org/wiki/libcaca\nProvides: libcaca.so.0\n"

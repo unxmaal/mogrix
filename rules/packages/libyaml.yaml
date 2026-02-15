@@ -1,0 +1,39 @@
+package: libyaml
+
+rules:
+  drop_buildrequires:
+    - doxygen
+    - autoconf
+    - automake
+    - libtool
+  drop_subpackages:
+    - mingw32-libyaml
+    - mingw64-libyaml
+  force_conditionals:
+    # Disable mingw build — not relevant for IRIX cross-compilation
+    "0%{?fedora}": false
+  spec_replacements:
+    # pushd/popd are bash-isms — replace with cd
+    - pattern: "pushd build"
+      replacement: "cd build"
+    - pattern: "popd"
+      replacement: "cd .."
+    # Remove duplicate rm of .la/.a (install_cleanup handles .la)
+    - pattern: "rm -f %{buildroot}%{_libdir}/*.{la,a}"
+      replacement: "rm -f %{buildroot}%{_libdir}/*.a"
+    # html docs require doxygen — skip
+    - pattern: "%make_build all html"
+      replacement: "%make_build"
+    # Skip soname rewrite hack — not needed for IRIX
+    - pattern: "soname=$(readelf"
+      replacement: "true # soname rewrite skipped for IRIX cross-compile\n#soname=$(readelf"
+    - pattern: 'rm -f %{buildroot}%{_libdir}/libyaml.so'
+      replacement: '#rm -f %{buildroot}%{_libdir}/libyaml.so'
+    - pattern: 'echo "INPUT($soname)"'
+      replacement: '#echo "INPUT($soname)"'
+    # Doxygen runs during make all if present — remove installed html docs
+    - pattern: "rm -f %{buildroot}%{_libdir}/*.a"
+      replacement: "rm -f %{buildroot}%{_libdir}/*.a\nrm -rf %{buildroot}%{_docdir}/libyaml-devel-*/html"
+    # Remove doc html reference since doxygen output is cleaned up
+    - pattern: "%doc doc/html"
+      replacement: "# doc html removed (doxygen output cleaned up)"

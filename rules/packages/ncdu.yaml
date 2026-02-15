@@ -1,0 +1,7 @@
+# ncdu - NCurses Disk Usage
+# Needs ncurses (staged). IRIX lacks setenv — inject compat.
+package: ncdu
+
+rules:
+  inject_compat_functions:
+    - setenv

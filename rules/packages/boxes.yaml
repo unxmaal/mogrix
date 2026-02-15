@@ -1,0 +1,18 @@
+# boxes - ASCII art box drawing tool
+# Makefile-based build — needs explicit CC and LDFLAGS override
+package: boxes
+
+rules:
+  drop_subpackages:
+    - vim
+  spec_replacements:
+    # Pass cross-compiler to make (Makefile defaults to cc)
+    - pattern: "%make_build \\"
+      replacement: "%make_build CC=%{__cc} \\"
+    # Add compat+ncurses libs to LDFLAGS (build_ldflags is empty)
+    # Use double quotes so $COMPAT_DIR expands (set earlier in build script)
+    - pattern: "LDFLAGS_ADDTL='%{build_ldflags}'"
+      replacement: 'LDFLAGS_ADDTL="-lncurses -ltinfo -lmogrix-compat -L$COMPAT_DIR"'
+    # Remove vim syntax file install (vim subpackage dropped)
+    - pattern: "install -Dp -m 0644 %{name}.vim"
+      replacement: "# install -Dp -m 0644 %{name}.vim"

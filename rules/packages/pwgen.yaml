@@ -1,0 +1,11 @@
+# pwgen - password generator
+# Uses getopt_long but doesn't use autoconf — plain Makefile with manual configure.
+# The compat injection adds getopt_long to LIBS but pwgen's Makefile doesn't
+# use autoconf-style LIBS. Need to inject via LDFLAGS or prep_commands.
+package: pwgen
+
+rules:
+  prep_commands:
+    # pwgen's configure is hand-written, not autoconf. It doesn't honor LIBS.
+    # Patch Makefile.in to link against getopt_long compat object.
+    - "sed -i 's|^LDFLAGS.*=.*|& @LIBS@|' Makefile.in"

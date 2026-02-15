@@ -1,0 +1,44 @@
+# irssi - IRC client
+package: irssi
+
+rules:
+  drop_buildrequires:
+    - perl-ExtUtils-Embed
+    - perl-generators
+    - libotr-devel
+    - perl-devel
+  drop_requires:
+    - "perl(lib)"
+    - "perl(Symbol)"
+  configure_disable:
+    - perl
+  drop_subpackages:
+    - devel
+  spec_replacements:
+    # Remove conflicting perl flags — use line continuation to not break shell
+    - pattern: "--with-perl=module"
+      replacement: "--without-perl"
+    - pattern: "--with-perl-lib=vendor"
+      replacement: "--without-perl"
+    # Disable OTR (avoids libgcrypt configure test failure)
+    - pattern: "%{?with_otr:--with-otr=yes}"
+      replacement: "--with-otr=no"
+    - pattern: "%{!?with_otr:--with-otr=no}"
+      replacement: "--with-otr=no"
+    # Remove perl module cleanup (perl disabled)
+    - pattern: "find $RPM_BUILD_ROOT%{perl_vendorarch} -type f -a -name '*.bs' -a -empty -exec rm -f {} ';'"
+      replacement: "true # perl disabled"
+    - pattern: "find $RPM_BUILD_ROOT%{perl_vendorarch} -type f -a -name .packlist -exec rm {} ';'"
+      replacement: "true # perl disabled"
+    - pattern: "chmod -R u+w $RPM_BUILD_ROOT%{perl_vendorarch}"
+      replacement: "true # perl disabled"
+    - pattern: "rm -f $RPM_BUILD_ROOT%{perl_archlib}/perllocal.pod"
+      replacement: "true # perl disabled"
+    # Remove devel files (subpackage dropped) - in %install section
+    - pattern: "rm -Rf $RPM_BUILD_ROOT/%{_docdir}/%{name}"
+      replacement: "rm -Rf $RPM_BUILD_ROOT/%{_docdir}/%{name}\nrm -rf $RPM_BUILD_ROOT%{_includedir}/irssi $RPM_BUILD_ROOT%{_libdir}/pkgconfig/irssi-1.pc"
+    # Remove perl files from %files
+    - pattern: "%{perl_vendorarch}/Irssi*"
+      replacement: "# perl modules not built"
+    - pattern: "%{perl_vendorarch}/auto/Irssi"
+      replacement: "# perl auto not built"
