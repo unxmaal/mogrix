@@ -1,0 +1,34 @@
+# xscreensaver-gl-hacks - OpenGL screensaver demos from XScreenSaver
+# Only builds hacks/glx/ subdirectory (129 GL demos)
+# Uses hand-written spec at specs/packages/xscreensaver-gl-hacks.spec
+package: xscreensaver-gl-hacks
+upstream:
+  url: https://www.jwz.org/xscreensaver/xscreensaver-6.08.tar.gz
+  version: "6.08"
+  type: tarball
+  build_system: autoconf
+  license: MIT
+  summary: "OpenGL screensaver demos from XScreenSaver for IRIX"
+  source_dir: xscreensaver-6.08
+## add_source is NOT used here — the hand-written spec already has Source1/Source2
+## Using add_source would inject duplicates as Source200/201.
+## add_patch is NOT used here — the hand-written spec already has Patch0:
+## Using add_patch would inject a duplicate Patch500 causing double-apply.
+## The patch file is still stored in patches/packages/xscreensaver-gl-hacks/
+rules:
+  # Most generic rules don't apply — we use a hand-written spec
+  # But we do want compat function injection for strcasestr
+  inject_compat_functions:
+  - strcasestr
+  drop_buildrequires:
+  - libpng-devel
+  # Neutralize generic rewrite_paths — this hand-written spec already has
+  # correct cross-compilation paths. The generic rewrites mangle sysroot
+  # paths like /opt/irix-sysroot/usr/include → /opt/irix-sysroot/usr/sgug/include
+  rewrite_paths:
+    /usr/lib64: /usr/lib64
+    /usr/lib: /usr/lib
+    /usr/include: /usr/include
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig

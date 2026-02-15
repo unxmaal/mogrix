@@ -378,6 +378,11 @@ class RuleEngine:
                 f"export_vars: {list(rules['export_vars'].keys())}"
             )
 
+        # Path rewrites (override generic rewrite_paths for hand-written specs)
+        if "rewrite_paths" in rules:
+            result.path_rewrites.update(rules["rewrite_paths"])
+            result.applied_rules.append("package rewrite_paths: override")
+
         # Skip find_lang (for packages with NLS disabled)
         if rules.get("skip_find_lang"):
             result.skip_find_lang = True

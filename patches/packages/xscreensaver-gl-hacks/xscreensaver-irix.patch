@@ -1,0 +1,67 @@
+--- xscreensaver-6.08/hacks/screenhackI.h	2023-09-05 03:15:17.211885194 +0000
++++ xscreensaver-6.08/hacks/screenhackI.h	2026-02-15 20:02:35.947537440 +0000
+@@ -76,6 +76,7 @@
+ # include <X11/Xutil.h>
+ # include <X11/Xresource.h>
+ # include <X11/Xos.h>
++# include <X11/keysym.h>
+ #endif /* !HAVE_JWXYZ */
+ 
+ #ifdef HAVE_JWXYZ
+--- xscreensaver-6.08/utils/resources.c	2022-09-06 20:06:42.797412551 +0000
++++ xscreensaver-6.08/utils/resources.c	2026-02-15 19:58:11.164647325 +0000
+@@ -18,6 +18,7 @@
+ #if !defined(HAVE_COCOA) && !defined(HAVE_ANDROID)
+ 
+ #include <X11/Xresource.h>
++#include <X11/keysym.h>
+ 
+ /* These are the Xlib/Xrm versions of these functions.
+    The Cocoa versions are on OSX/XScreenSaverView.m.
+--- xscreensaver-6.08/utils/utils.h	2021-01-25 16:00:59.000000000 +0000
++++ xscreensaver-6.08/utils/utils.h	2026-02-15 20:00:08.539369462 +0000
+@@ -23,5 +23,6 @@
+ #else /* real X11 */
+ # include <X11/Xlib.h>
+ # include <X11/Xutil.h>
++# include <X11/keysym.h>
+ # include <X11/Xos.h>
+ #endif /* !HAVE_JWXYZ */
+--- xscreensaver-6.08/hacks/glx/grab-ximage.c	2022-09-18 01:21:40.265745729 +0000
++++ xscreensaver-6.08/hacks/glx/grab-ximage.c	2026-02-15 20:01:11.800299238 +0000
+@@ -63,6 +63,9 @@
+ # undef GENERATE_MIPMAPS
+ #else
+ # define GENERATE_MIPMAPS
++#ifdef __sgi
++# undef GENERATE_MIPMAPS
++#endif
+ #endif
+ 
+ 
+--- xscreensaver-6.08/hacks/glx/cubocteversion.c	2023-08-08 01:06:15.797438879 +0000
++++ xscreensaver-6.08/hacks/glx/cubocteversion.c	2026-02-15 20:03:37.494444003 +0000
+@@ -5456,7 +5456,11 @@
+           ce->self_tubes = random() & 1;
+         if (ce->random_colors)
+         {
+-          if (ce->use_shaders)
++#ifdef HAVE_GLSL
++        if (ce->use_shaders)
++#else
++        if (0)
++#endif
+             ce->colors = random() % NUM_COLORS;
+           else
+             ce->colors = random() % (NUM_COLORS-1);
+@@ -5521,8 +5525,10 @@
+ 
+   ce->WindW = (GLint)width;
+   ce->WindH = (GLint)height;
++#ifdef HAVE_GLSL
+   ce->tex_scale[0] = 1.0f/(GLfloat)width;
+   ce->tex_scale[1] = 1.0f/(GLfloat)height;
++#endif /* HAVE_GLSL */
+   glViewport(0,y,width,height);
+   ce->aspect = (GLfloat)width/(GLfloat)height;
+ #ifdef HAVE_GLSL
