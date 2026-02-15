@@ -1,29 +1,6 @@
 # Mogrix Rules Index
 
-## Check generic.yaml First
-
-**Before adding rules to a package YAML**, check what `rules/generic.yaml` already provides.
-Generic rules are applied to EVERY package automatically. Do NOT duplicate them in package files.
-
-**generic.yaml already handles:**
-
-| What | Mechanism | Details |
-|------|-----------|---------|
-| Test suite | `skip_check: true` | Can't run MIPS binaries on build host |
-| Linux-only build deps | `drop_buildrequires` | systemd, systemd-devel, libselinux-devel, kernel-headers, systemtap-sdt-devel, libcap-devel, libcap-ng-devel, libacl-devel, libattr-devel, audit-libs-devel, alsa-lib-devel, gnupg2, gcc-c++, libdicl, libdicl-devel |
-| Linux-only runtime deps | `drop_requires` | libdicl, libdicl-devel |
-| libdicl removal | `remove_lines` | CPPFLAGS/LIBS exports, %gpgverify, %ldconfig_scriptlets, systemd scriptlets |
-| Common compat functions | `inject_compat_functions` | strdup, strndup, strnlen, getline, getopt_long, asprintf, vasprintf (dlmalloc NOT injected — linked by irix-ld for executables only) |
-| malloc(0) cross-detect | `ac_cv_overrides` | ac_cv_func_malloc_0_nonnull, ac_cv_func_realloc_0_nonnull, gl_cv_func_select_* |
-| SGUG prefix paths | `rpm_macros` | _prefix=/usr/sgug, _libdir=/usr/sgug/lib32, _bindir, _includedir, etc. |
-| Path translation | `rewrite_paths` | /usr/lib64 → /usr/sgug/lib32, /usr/lib → /usr/sgug/lib32, /usr/include → /usr/sgug/include |
-| Linux-only features | `configure_disable` | selinux, systemd, udev, inotify, epoll, fanotify, timerfd, libcap, audit |
-| Header stubs | `header_overlays: generic` | execinfo.h, malloc.h, error.h, etc. |
-| Install cleanup | `install_cleanup` | Fix /usr/bin paths, rm *.la, rm infodir/dir, rm locale |
-| Skip %find_lang | `skip_find_lang: true` | Comments out %find_lang, strips `-f *.lang` from %files (locale files always removed) |
-| Subpackage bloat | `drop_subpackages` | debuginfo, debugsource, langpack-* |
-
-**Only add to a package YAML** when the package needs something beyond the above.
+> **Do NOT read this entire file.** Grep for specific problem keywords. See `rules/GENERIC_SUMMARY.md` for what generic.yaml already handles.
 
 ---
 
@@ -136,133 +113,46 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Clang 18 NULL int-conversion | `incompatible integer to pointer conversion returning 'long'` | CFLAGS `-Wno-int-conversion` | rules/packages/* | IRIX `NULL` is `0L` (long), not `((void *)0)`. Clang 18 hard-errors on implicit long-to-pointer conversion even without `-Werror`. Affects code using comma operator with NULL: `return (func(), NULL)`. Add `-Wno-int-conversion` to CFLAGS. See mksh.yaml |
 | Custom build script cross-compile | Build uses custom Build.sh (not autotools/cmake) | spec_replacements + export CC/CFLAGS | rules/packages/* | Set `CC="%{__cc}"`, `CFLAGS="%{optflags}"`, `LDFLAGS`, `TARGET_OS` via export in spec_replacement. Build.sh scripts typically use compile+link tests (no execution), so cross-compilation works if CC is set. Skip any step that runs the just-built binary on the host. See mksh.yaml |
 
-### dlmalloc shared library crash (cross-heap corruption)
-
-**Symptom**: ABORT/SIGSEGV when loading shared libraries that use malloc/free across library boundaries (e.g., weechat + libgcrypt + gnutls).
-
-**Root cause**: `-Bsymbolic-functions` (used in irix-ld for shared libs to stay under rld's ~4370 global GOT entry limit) binds each library's dlmalloc calls locally. When dlmalloc was auto-injected into every compat archive, each .so got its own private heap. Library A allocates, library B frees → dlmalloc detects cross-heap pointer → abort().
-
-**Fix (session 37)**:
-- `engine.py`: Removed dlmalloc auto-injection into compat archives. Actively strips dlmalloc if present.
-- `irix-ld`: Links `dlmalloc.o` into executables only (after $DSOHANDLE in LLD command).
-- Shared libraries leave malloc/free undefined → rld resolves them to the executable's single dlmalloc.
-- Pre-compiled `dlmalloc.o` deployed to `/opt/sgug-staging/usr/sgug/lib32/dlmalloc.o`.
-
-**Also fixed**: CRT symbol visibility — `__CTOR_END__`, `__DTOR_END__`, `__do_global_ctors_aux`, `_init` now `.hidden` in crtbeginS.S/crtendS.S to prevent cross-library OBJECT symbol interposition.
-
-### gnutls CA trust store
-
-**Symptom**: "peer's certificate issuer is unknown" / "certificate is NOT trusted" during TLS handshake.
-
-**Root cause**: gnutls was built without `--with-default-trust-store-file`, so it has no compiled-in path to the CA bundle.
-
-**Fix**: Added `--with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt` to gnutls.yaml configure_flags:add. Bundles include the CA bundle at this relative path.
-
 ---
 
 ## Invariants (Settled Facts)
 
+Only facts NOT already covered in the Problem Reference table above. For package-specific patterns, check the table first.
+
+### IRIX Platform
+
 | Fact | Implication | Reference |
 |------|-------------|-----------|
-| LLD 14 has MIPS relocation bugs | Always use LLD 18 with patches | lld-fixes/README.md |
-| GNU ld exe layout crashes rld | LLD for executables, GNU ld for -shared only | methods/linker-selection.md |
-| IRIX vsnprintf is pre-C99 | vsnprintf(NULL,0) returns -1, use iterative vasprintf | compat/stdio/asprintf.c |
-| IRIX lacks __thread TLS | Remove from source via patch | per-package in patches/ |
-| IRIX /dev/fd + utimes fails | futimens workaround in openat-compat.c | compat/dicl/openat-compat.c |
 | IRIX chroot doesn't isolate | Binaries see base system paths | methods/irix-testing.md |
-| fopencookie crashes | Use funopen instead | compat/stdio/funopen.c |
-| IRIX libc has no `%zu` support | Use `%u` for size_t, `%d` for ssize_t; `%zu` corrupts varargs → SIGSEGV | methods/irix-quirks.md |
-| dlmalloc replaces malloc but not strdup | Must inject compat strdup/strndup alongside dlmalloc | methods/irix-quirks.md |
-| GNU ld linker scripts crash rld | Replace `INPUT(-lfoo)` .so files with symlinks | methods/irix-quirks.md |
-| `-z separate-code` MUST NOT be used for .so | Produces 3 LOAD segments (R+RE+RW); IRIX rld only handles 2-segment .so (RE+RW). Corrupts rld internal state on dlopen | cross/bin/irix-ld |
-| brk() heap limited to 176MB | libpthread at 0x0C080000 blocks heap growth | methods/irix-address-space.md |
-| mmap-based malloc bypasses limit | dlmalloc in compat uses mmap, 1.2GB available | compat/malloc/dlmalloc.c |
+| brk() heap limited to 176MB | libpthread at 0x0C080000 blocks growth; dlmalloc uses mmap (1.2GB) | methods/irix-address-space.md |
 | Volatile fptr initializers crash | `static volatile fptr = memset;` relocation fails on rld | compat/string/explicit_bzero.c |
-| Source analysis is rules-driven | Patterns in source_checks.yaml + catalog.yaml source_patterns | rules/source_checks.yaml |
-| `-rdynamic` filtered in irix-ld | LLD doesn't support it; IRIX rld crashes on large dynamic symbol tables | cross/bin/irix-ld |
-| GNU version scripts crash rld | `--version-script` creates VERNEED/VERSYM dynamic tags that IRIX rld doesn't understand → SIGSEGV during dlopen | cross/bin/irix-ld (filtered) |
-| Shared libs need .ctors + DT_INIT | IRIX rld ignores `.init_array`; GNU ld merges .ctors→.init_array by default. Custom linker script + crtbeginS.o keeps .ctors and provides DT_INIT via .init function | cross/crt/crtbeginS.S, cross/irix-shared.lds |
-| C++ static ctors in .so require CRT | Without crtbeginS.o/crtendS.o, static constructors silently don't run → NULL d_ptr in STL containers, crashes on first use | cross/crt/crtbeginS.S, cross/crt/crtendS.S |
-| rld re-runs DT_INIT on re-encounter | Loading DSO A, then DSO B that NEEDS A, triggers A's .init again. Global GOT entries zeroed → SIGBUS. Fixed with beqz guard in crtbeginS.o | cross/crt/crtbeginS.S |
-| rld global GOT limit ~4370 | Shared libs with >4370 global GOT entries crash rld (SIGSEGV at rld internal PC). Not total GOT, specifically global entries. `-Bsymbolic-functions` reduces by moving defined FUNC symbols from global→local GOT | cross/bin/irix-ld |
-| dlmalloc in exe only, not .so | `-Bsymbolic-functions` + per-library dlmalloc = cross-heap corruption. dlmalloc.o linked into executables only; .so inherits via rld symbol resolution | mogrix/engine.py, cross/bin/irix-ld |
-| dlmalloc /dev/zero fd >= 128 | Programs that close low fds (tcsh, shells) won't break dlmalloc | compat/malloc/dlmalloc-src.inc |
-| dlmalloc thread-safe via spin locks | USE_LOCKS=1, USE_SPIN_LOCKS=1. MIPS ll/sc atomics, no libpthread needed. Without this, 6/10 threaded runs crash | compat/malloc/dlmalloc.c |
-| CRT symbols must be .hidden in .so | `__CTOR_END__`, `__DTOR_END__`, `__do_global_ctors_aux`, `_init` without `.hidden` causes cross-library OBJECT symbol interposition | cross/crt/crtbeginS.S, cross/crt/crtendS.S |
-| gnutls needs explicit CA trust path | Without `--with-default-trust-store-file`, gnutls has no compiled-in CA bundle path → TLS fails | rules/packages/gnutls.yaml |
-| X11 via IRIX native sysroot | Don't use `--x-includes`/`--x-libraries`; cross-compiler `--sysroot` finds X11 | rules/packages/aterm.yaml |
-| IRIX X11R6.3 API limits | XICCallback→XIMCallback, XSetIMValues→no-op, Xutf8→Xmb, XUTF8→XCompound | rules/packages/st.yaml |
-| Bundle wrapper shell recursion | Wrappers use `dirname`/`pwd`/`basename`; if those are also bundled commands, `$PATH` causes infinite loop fork bomb. Use `/bin/dirname`, `/bin/pwd`, `/bin/basename` (absolute paths) in all shell templates | mogrix/bundle.py |
-| IRIX has no TrueType fonts | Xft apps need bundled fonts; fontconfig `<dir prefix="relative">` for bundle paths | mogrix/bundle.py `_include_fonts()` |
-| `_XOPEN_SOURCE=600` hides IRIX defs | winsize/TIOCSWINSZ/TIOCGWINSZ gated by `_NO_XOPEN5`; remove, use `_SGI_SOURCE` | rules/packages/st.yaml |
-| setenv/unsetenv NOT in IRIX libc | `putenv()` only; compat wraps it. Must add to `inject_compat_functions` | compat/stdlib/setenv.c |
-| X11 .pc files for IRIX native libs | libXrender/libXft configure use `pkg-config --exists x11/xext`; handcrafted .pc files in staging | /opt/sgug-staging/.../pkgconfig/ |
-| Man pages not compressed | rpmmacros.irix disables brp scripts; use `*.1*` not `*.1.gz` in %files | rpmmacros.irix |
-| Circular NEEDED crashes rld | freetype↔harfbuzz circular dep + deep dep tree → rld SIGSEGV. Break cycles at build time | rules/packages/freetype.yaml |
-| rld strict UND resolution | IRIX rld doesn't search already-loaded DSOs for UND symbols unless there's a NEEDED edge. Must add explicit `-l` linkage | rules/packages/libxcb.yaml |
-| Qt5 needs preload chain | rld can't handle Qt5Gui's full dep tree in one dlopen. Must preload Qt5Core + harfbuzz first. Bundle wrappers implement this | rules/packages/qt5-qtbase.yaml |
-| Old /opt/cross/bin/irix-ld broken | Simple GNU ld wrapper produces MIPS_OPTIONS tags → rld crash. Always use staging irix-ld (LLD 18 for executables) | /opt/sgug-staging/usr/sgug/bin/irix-ld |
-| Bare `_XOPEN_SOURCE` hides C99 on IRIX | `#define _XOPEN_SOURCE` (no value) → `_XOPEN_SOURCE+0 = 0`, fails `>= 500` test for wprintf/fwprintf in wchar_core.h | rules/packages/lolcat.yaml |
-| XA_UTF8_STRING not in IRIX X11R6.3 | Xmu/Atoms.h missing UTF8 atom macro. Define as `XInternAtom(dpy, "UTF8_STRING", False)` | rules/packages/xclip.yaml |
-| sys/select.h includes sys/time.h | compat sys/select.h now includes sys/time.h for full struct timeval (was forward-decl only → incomplete type) | cross/include/dicl-clang-compat/sys/select.h |
-| rpmbuild uses /bin/sh not bash | No pushd/popd, ${var:0:7}, [[ ]], {a,b} brace expansion. Use cd, sed, [ ], explicit paths | All spec_replacements |
-| AUTOPOINT=true for NLS-disabled | Packages with autoreconf + nls-disabled class need `AUTOPOINT=true` | rules/packages/*.yaml |
-| C++ uses GCC 9 libstdc++ | clang++ with SGUG-RSE libstdc++ headers + custom CRT (.ctors) | cross/bin/irix-cxx |
-| IRIX libm lacks C99 math | Must disable _GLIBCXX_USE_C99_MATH_TR1 in c++config.h | staging c++config.h |
-| autoreconf regenerates configure | prep_commands on configure get overwritten; use spec_replacements post-autoreconf | rules/packages/*.yaml |
-| sockaddr_storage hidden by _XOPEN_SOURCE | dicl-clang-compat sys/socket.h needs explicit struct definition | cross/include/dicl-clang-compat/sys/socket.h |
-| R_MIPS_REL32 crashes rld | Function pointers in static data arrays cause rld SIGSEGV | patches/packages/openssh/ |
-| IRIX long double = double (n32) | 128-bit long double not supported; __extenddftf2 crashes | rules/packages/*.yaml |
-| dirname/basename in libgen.so | Not in libc; must link -lgen explicitly | rules/packages/nano.yaml |
-| bcond flipping is safe | Changing `%bcond_without` to `%bcond_with` only affects the macro default; all `%if %{with X}` blocks evaluate to FALSE, keeping `%else` branches | rules/packages/gnutls.yaml |
-| AutoProv: no in rpmmacros.irix | Cannot be overridden from spec; every .so-producing package needs explicit `Provides:` | rpmmacros.irix |
-| ncurses ext-colors breaks terminfo | ABI 6 auto-enables ext-colors → 32-bit number fields → garbage cols/lines → SIGBUS | rules/packages/ncurses.yaml |
-| _RLD_ARGS="-log" for debugging | IRIX rld logging shows unresolvable symbols, wrong sonames, load order | methods/irix-testing.md |
-| IRIX inttypes.h lacks MAX/PTR macros | PRIdMAX, SCNd64, etc. not defined; mogrix-compat inttypes.h provides them | compat/include/mogrix-compat/generic/inttypes.h |
-| Source `#define` overrides `-D` | CFLAGS `-D_Thread_local=` won't work if source has `#define _Thread_local __thread` | rules/packages/gnutls.yaml |
-| IRIX native tar limitations | IRIX `/bin/tar` silently drops files with paths >100 chars and can't handle GNU tar pax headers. Does not support `-z` flag. Fix: bundle tarballs use `--format=ustar` (no `-h`); extraction on IRIX MUST use GNU tar from chroot: `gtar xzf bundle.tar.gz -C /path`. For host deployment: `tar cf - -C /opt/chroot/tmp <bundle> \| tar xf - -C /usr/people/edodd/apps/` works for short paths; symlink to chroot for long paths | mogrix/bundle.py |
-| IRIX `cp -r` breaks on symlinks | IRIX `cp -r` dereferences relative symlinks and fails if targets don't exist yet during copy. Fix: use `tar cf - \| tar xf -` pipe to preserve symlinks | IRIX host deployment |
-| Bundle wrapper LD_LIBRARYN32_PATH contamination | Bundle trampolines used to prepend to existing `LD_LIBRARYN32_PATH`, causing old bundle paths to contaminate new runs. Fixed: wrappers now set `LD_LIBRARYN32_PATH` fresh (bundles are self-contained) | mogrix/bundle.py |
-| `extra_cflags` rule is dead code | Validated in validator.py but never applied by engine.py; use prep_commands or export_vars | mogrix/rules/validator.py |
-| `skip_manpages` rule is dead code | Validated but never applied by engine. Use prep_commands to touch man pages | mogrix/rules/validator.py |
-| `make_env` rule is dead code | Validated but never applied by engine. Use spec_replacements instead | mogrix/rules/validator.py |
-| `drop_subpackages` must be inside `rules:` | Only `add_patch` and `add_source` are handled at both top-level and rules-level | rules/packages/*.yaml |
-| `install_cleanup` misplacement | If spec has `%triggerpostun` before `%files`, cleanup lands in trigger scriptlet. Workaround: use spec_replacements | mogrix/rules/engine.py |
-| `remove_conditionals` can't nest | Simple regex matches first `%endif`, not the correct one for nested `%if/%endif`. Use bcond flipping instead | mogrix/rules/engine.py |
-| Clang 16 `.cpsetup` N32 bug | `.cpsetup` expands to `__gnu_local_gp` absolute refs instead of GP-relative. Fix: `-fno-integrated-as -B/opt/cross/bin/mips-sgi-irix6.5-`. Fixed in LLVM 18 (issue #52785) | rules/packages/libffi.yaml |
-| cmake finds MIPS staging binaries | `CMAKE_FIND_ROOT_PATH` picks up gmake/pkg-config from staging. Must set `-DCMAKE_MAKE_PROGRAM=/usr/bin/make -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config` | rules/packages/weechat.yaml |
-| `inject_compat_functions` affects HOST link | Bootstrap packages (flex, etc.) build HOST tools before cross-compiling. `-lmogrix-compat` in LIBS breaks HOST link. Fix: inject compat via prep_commands into cross-only source files | rules/packages/flex.yaml |
-| Perl `drop_subpackages` glob trap | `"*"` glob matches `-f` in `%files -f`, breaking file manifests. Use `"[A-Za-z]*"` to match package names only | rules/packages/perl.yaml |
-| SSL_CERT_FILE is OpenSSL-only | gnutls ignores it; use app-specific CA config (weechat: gnutls_ca_user) | mogrix/bundle.py |
-| weechat 4.x renamed gnutls settings | `gnutls_ca_file` → `gnutls_ca_system` + `gnutls_ca_user` | rules/packages/weechat.yaml |
-| IRIX has no endian.h | **SOLVED**: dicl-clang-compat/endian.h provides BYTE_ORDER, htobe/htole, bswap globally | cross/include/dicl-clang-compat/endian.h |
-| IRIX struct dirent lacks d_type | `d_type`, `DT_REG`, `DT_DIR` are BSD/Linux extensions; use `stat()` instead (per-package) | rules/packages/telescope.yaml |
-| IRIX clock_gettime has no CLOCK_* | Function exists in libc but CLOCK_MONOTONIC/CLOCK_REALTIME undefined; calling crashes (per-package) | rules/packages/telescope.yaml |
-| IRIX lacks timersub macro | **SOLVED**: dicl-clang-compat/sys/time.h provides timersub/timeradd/timercmp globally | cross/include/dicl-clang-compat/sys/time.h |
-| IRIX scandir selector lacks const | IRIX signature: `int (*)(dirent_t *)` not `int (*)(const struct dirent *)` (per-package) | rules/packages/*.yaml |
-| IRIX lacks open_memstream | **SOLVED**: `inject_compat_functions: open_memstream` (also needs funopen) | compat/stdio/open_memstream.c |
-| IRIX lacks dprintf | **SOLVED**: `inject_compat_functions: dprintf` (also provides vdprintf) | compat/stdio/dprintf.c |
-| IRIX lacks IOV_MAX | **SOLVED**: dicl-clang-compat/limits.h provides IOV_MAX=1024 globally | cross/include/dicl-clang-compat/limits.h |
-| MAP_ANON not on IRIX | No `MAP_ANON`/`MAP_ANONYMOUS`; anonymous mmap requires `/dev/zero` fd + `MAP_PRIVATE` | rules/packages/*.yaml |
-| IRIX has no getentropy/getrandom | `/dev/urandom` available as fallback | rules/packages/*.yaml |
-| libretls exports compat symbols | `reallocarray`, `strlcpy`, `strlcat` in libretls.so fool configure; override with ac_cv | rules/packages/*.yaml |
-| HOSTCC needed for code generators | Build-time generators must use host compiler; target objects use cross-compiler | rules/packages/telescope.yaml |
-| C++ va_list = char* on IRIX | stdarg.h defines `va_list = char*` in C++ mode to match IRIX header declarations; type-punning macros bridge to __builtin_va_list | cross/include/dicl-clang-compat/stdarg.h |
-| IRIX static select() in sys/time.h | XOPEN4/XOPEN5 flags trigger `static int select()` wrapper; force `_NO_XOPEN4=1 _NO_XOPEN5=1` to get extern declaration | cross/include/dicl-clang-compat/sys/time.h |
-| gnulib stdint.h loses SIG_ATOMIC_MAX | gnulib's include_next blocks IRIX stdint.h via __STDINT_H__ guard; compat stdint.h restores SIG_ATOMIC_MIN/MAX | compat/include/mogrix-compat/generic/stdint.h |
-| strnlen NOT in IRIX libc | gnulib fnmatch.c/mbsstr.c use strnlen(); now in generic.yaml inject_compat_functions | rules/generic.yaml |
-| `%{__global_ldflags}` undefined | rpmmacros.irix doesn't define it; literal string passed to compiler if used | rpmmacros.irix |
-| skip_find_lang is generic | All packages skip %find_lang; locale files removed by generic install_cleanup | rules/generic.yaml |
-| batch.py rule passthrough | batch converter must pass export_vars, skip_find_lang, skip_check, install_cleanup, spec_replacements to writer | mogrix/batch.py |
-| drop_subpackages ignores scriptlets | Engine removes %package/%description/%files but NOT %post/%postun for dropped subpackages; use spec_replacements | mogrix/emitter/spec.py |
-| gnutls `set_default_priority` fails | `GNUTLS_E_INVALID_REQUEST` / "The request is invalid" from `gnutls_set_default_priority()` | spec_replacements | rules/packages/gnutls.yaml | Fedora compiles gnutls with `--with-system-priority-file` and `--with-default-priority-string="@SYSTEM"`. On IRIX the crypto-policies file doesn't exist, so `@SYSTEM` fails. Fix: remove `--with-system-priority-file`, change default priority to `"NORMAL"`. |
-| dlmalloc /dev/zero fd closed | "Out of memory" after fd cleanup (e.g. tcsh closes fds 0-14) | dlmalloc-src.inc high-fd fix | compat/malloc/dlmalloc-src.inc | dlmalloc cached /dev/zero as fd 3; programs closing low fds invalidated it. Fix: `fcntl(fd, F_DUPFD, 128)` + FD_CLOEXEC. ALL bundles need rebuild. |
-| dlmalloc thread safety | SIGSEGV/ABORT in threaded programs (6/10 runs crash) | USE_LOCKS=1 + USE_SPIN_LOCKS=1 | compat/malloc/dlmalloc.c | USE_LOCKS=0 had no mutex; concurrent threads corrupt heap. Fix: spin locks via MIPS ll/sc atomics. No libpthread dependency. 20/20 clean after fix. |
-| tcsh configure vendor match | `configure: error: Tcsh can't guess the configuration file name` | prep_commands | rules/packages/tcsh.yaml | rpmmacros.irix passes `--host=mips-irix6.5` → config.sub canonicalizes to `mips-unknown-irix6.5`. tcsh matches `*-sgi-iri*` only. Fix: sed configure to accept `*-*-iri*` |
-| bash dprintf type conflict | `conflicting types for 'dprintf'` — void vs int return type | prep_commands | rules/packages/bash.yaml | bash `externs.h` declares `extern void dprintf(...)` but POSIX (and mogrix compat `stdio.h`) declares `int dprintf(...)`. bash's own implementation also returns int. Fix: `sed 's/^extern void dprintf/extern int dprintf/' externs.h` |
-| LIBS_FOR_BUILD cross-contamination | `skipping incompatible .../libmogrix-compat.a` when building native host tools | prep_commands | rules/packages/bash.yaml | Build systems that set `LIBS_FOR_BUILD=${LIBS}` (bash support/Makefile.in) leak cross-compiled `-lmogrix-compat` into native tool compilation (man2html). Fix: `sed 's/^LIBS_FOR_BUILD = ${LIBS}/LIBS_FOR_BUILD =/' support/Makefile.in`. Different from flex pattern (line 229): flex needs compat in cross-only sources; bash just needs to block LIBS leakage. |
-| IRIX NULL is 0L not (void *)0 | `incompatible integer to pointer conversion returning 'long'` in clang 18 | CFLAGS `-Wno-int-conversion` | rules/packages/mksh.yaml | Clang 18 hard-errors on implicit long→pointer even in C17 mode. IRIX stddef.h defines `NULL` as `0L`. Code using `(func(), NULL)` comma operator returns `long` which fails. Add `-Wno-int-conversion` to CFLAGS. |
-| Build.sh cross-compilation | Custom Build.sh scripts (not autotools) | spec_replacements: export CC/CFLAGS/TARGET_OS | rules/packages/mksh.yaml | Set CC, CFLAGS, LDFLAGS, TARGET_OS via environment. Build.sh compile+link tests work cross because they only check binary existence (no execution). Skip any post-build step that runs MIPS binary on host (e.g. FAQ2HTML.sh). |
+| IRIX native tar drops long paths | Silently drops >100 char paths; no `-z` flag. Use `gtar` from chroot | mogrix/bundle.py |
+| IRIX `cp -r` breaks on symlinks | Dereferences relative symlinks. Use `tar cf - \| tar xf -` pipe | IRIX host deployment |
+| X11 .pc files for native libs | Handcrafted x11.pc, xext.pc, etc. in staging for pkg-config | /opt/sgug-staging/.../pkgconfig/ |
+| Old /opt/cross/bin/irix-ld broken | Produces MIPS_OPTIONS tags → rld crash. Always use staging irix-ld | /opt/sgug-staging/usr/sgug/bin/irix-ld |
+| Clang 16 `.cpsetup` N32 bug | Fixed in LLVM 18; use `-fno-integrated-as` if stuck on 16 | rules/packages/libffi.yaml |
+
+### Engine Bugs & Gotchas
+
+| Bug | Workaround | Reference |
+|-----|------------|-----------|
+| `extra_cflags` / `skip_manpages` / `make_env` dead code | Use prep_commands or export_vars instead | mogrix/rules/validator.py |
+| `install_cleanup` misplacement | Misplaces if `%triggerpostun` precedes `%files`. Use spec_replacements | mogrix/rules/engine.py |
+| `remove_conditionals` can't nest | Matches first `%endif`. Use bcond flipping | mogrix/rules/engine.py |
+| `drop_subpackages` must be inside `rules:` | Only `add_patch`/`add_source` work at top-level | rules/packages/*.yaml |
+| `drop_subpackages` ignores scriptlets | Doesn't remove %post/%postun. Use spec_replacements | mogrix/emitter/spec.py |
+| `inject_compat_functions` affects HOST link | Bootstrap packages (flex) build HOST tools; -lmogrix-compat breaks them | rules/packages/flex.yaml |
+| Perl `drop_subpackages` glob trap | `"*"` matches `-f` in `%files -f`. Use `"[A-Za-z]*"` | rules/packages/perl.yaml |
+| cmake finds staging binaries | Set `-DCMAKE_MAKE_PROGRAM=/usr/bin/make` | rules/packages/weechat.yaml |
+| batch.py rule passthrough | Must pass export_vars, skip_find_lang, skip_check, install_cleanup, spec_replacements | mogrix/batch.py |
+
+### Bundle & Wrapper
+
+| Fact | Implication | Reference |
+|------|-------------|-----------|
+| Shell wrapper recursion | Bundled dirname/pwd/basename cause fork bomb via $PATH. Use absolute `/bin/` paths | mogrix/bundle.py |
+| LD_LIBRARYN32_PATH contamination | Wrappers must set fresh, not prepend to existing | mogrix/bundle.py |
+| SSL_CERT_FILE is OpenSSL-only | gnutls ignores it; use app-specific CA config | mogrix/bundle.py |
 
 ## Anti-Patterns
 
@@ -292,27 +182,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Source analyzer | mogrix/analyzers/source.py | Ripgrep-based source scanner |
 | Rule auditor | mogrix/analyzers/rules.py | Duplication detection across packages |
 | Spec validator | mogrix/validators/spec.py | Specfile structural validator |
-| Methods | rules/methods/*.md | Process documentation (15 files) |
-
-**Methods index:**
-
-| File | Purpose |
-|------|---------|
-| before-you-start.md | Pre-debug checklist (read first when stuck) |
-| mogrix-workflow.md | How to run mogrix commands |
-| package-rules.md | Writing package YAML rules |
-| autoconf-cross.md | Autotools cross-compilation patterns |
-| cmake-cross.md | CMake cross-compilation patterns |
-| compat-functions.md | Adding compat functions to catalog |
-| patch-creation.md | Creating source patches |
-| text-replacement.md | safepatch vs sed |
-| linker-selection.md | GNU ld vs LLD 18 selection |
-| irix-testing.md | IRIX shell rules, chroot, debugging |
-| irix-quirks.md | IRIX libc/rld quirks reference |
-| irix-address-space.md | IRIX memory layout and limits |
-| bundles.md | Bundle architecture end-to-end |
-| build-order.md | Package build ordering |
-| task-tracking.md | ultralist task tracking |
+| Methods | rules/methods/*.md | Process documentation (see CLAUDE.md for index) |
 
 ## Rule Hierarchy
 
@@ -330,28 +200,7 @@ Rules are applied in order: **generic → class → package**. Each layer adds t
 |-------|---------|----------|
 | `nls-disabled` | Disables NLS, skips %find_lang, removes lang file refs | bison, coreutils, diffutils, findutils, flex, gawk, grep, gzip, make, nano, sed, tar |
 
-**Auditing for elevation:** Run `mogrix audit-rules` to detect duplicated rules across packages and flag candidates for promotion to class or generic level.
-
-**Elevation candidates** (audit 2026-02-11, rules used in 8+ packages):
-
-| Rule | Type | Count | Candidate for |
-|------|------|-------|---------------|
-| `strdup` | inject_compat_functions | 69 | generic.yaml |
-| `strndup` | inject_compat_functions | 48 | generic.yaml |
-| `getline` | inject_compat_functions | 24 | generic.yaml |
-| `getopt_long` | inject_compat_functions | 21 | generic.yaml |
-| `rm *.la` | install_cleanup | 19 | generic.yaml |
-| `asprintf` | inject_compat_functions | 14 | generic.yaml |
-| `--disable-static` | configure_flags: add | 11 | generic.yaml |
-| `gcc-c++` | drop_buildrequires | 11 | generic.yaml |
-| `vasprintf` | inject_compat_functions | 10 | generic.yaml |
-| `texinfo` | drop_buildrequires | 10 | class rule |
-| `--disable-silent-rules` | configure_flags: add | 9 | generic.yaml |
-| `--disable-doc` | configure_flags: add | 8 | generic.yaml |
-| `rm infodir/dir` | install_cleanup | 7 | generic.yaml |
-| `gl_cv_func_select_*` | ac_cv_overrides | 5-6 | generic.yaml |
-
-Moving these to generic requires testing — compat function injection adds link-time overhead and some packages may not tolerate `--disable-static`. Evaluate before bulk promotion.
+**Auditing for elevation:** Run `mogrix audit-rules` to detect duplicated rules across packages and flag candidates for promotion to class or generic level. Top candidates (2026-02-11): strdup(69), strndup(48), getline(24), getopt_long(21), rm *.la(19), asprintf(14). Requires testing before bulk promotion.
 
 ## Smoke Tests
 

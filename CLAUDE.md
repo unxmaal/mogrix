@@ -1,7 +1,8 @@
 # Claude Instructions
 
 > **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
-> ALWAYS search `rules/INDEX.md` first. Also check `compat/catalog.yaml`, `HANDOFF.md`, `plan.md`. 
+> Read `rules/GENERIC_SUMMARY.md` when starting a package. Grep `rules/INDEX.md` for specific problem keywords. Do NOT read the full INDEX.md. Expand the search with broader search terms or `-C` context lines if needed.
+> Also check `compat/catalog.yaml`, `HANDOFF.md`, `plan.md`.
 > If you don't know what to do, check `rules/methods/before-you-start.md`.
 
 ---
@@ -66,7 +67,8 @@ The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl
 
 | File | Purpose |
 |------|---------|
-| `rules/INDEX.md` | Package lookup, method pointers |
+| `rules/GENERIC_SUMMARY.md` | What generic.yaml already handles (read before writing rules) |
+| `rules/INDEX.md` | Problem lookup — grep, don't read whole file |
 | `rules/methods/mogrix-workflow.md` | How to run mogrix |
 | `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging |
 | `rules/methods/compat-functions.md` | Adding compat functions |
