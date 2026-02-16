@@ -17,6 +17,32 @@ rules:
   - texlive-epstopdf
   - flex
   - bison
+  - "tex(*)"
+  - "%{_bindir}/python3"
+  - zlib-devel
+  - llvm-devel
+  - clang-devel
+  - cmake
+  drop_requires:
+  - perl-interpreter
+  - graphviz
+  # remove_lines handles deps that drop_buildrequires can't match
+  # (trailing comma on perl-interpreter, %{_bindir} macro in python3)
+  remove_lines:
+  - "perl-interpreter,"
+  - "%{_bindir}/python3"
+  inject_compat_functions:
+  - strtoimax
+  prep_commands:
+  # IRIX stdio.h defines fileno as a macro like OpenBSD/AIX.
+  # ::fileno() breaks because the macro expands to ::((p)->_file).
+  # Add __sgi to the existing OpenBSD/AIX guard.
+  - "sed -i 's/defined(__OpenBSD__) || defined(_AIX)/defined(__OpenBSD__) || defined(_AIX) || defined(__sgi)/' deps/spdlog/include/spdlog/details/os-inl.h"
+  # ghc::filesystem doesn't recognize IRIX. Add __sgi as SVR4 (IRIX is SVR4-based).
+  - "sed -i 's/#elif defined(__HAIKU__)/#elif defined(__sgi)\\n#define GHC_OS_SYS5R4\\n#elif defined(__HAIKU__)/' deps/filesystem/filesystem.hpp"
+  # IRIX lacks TLS (__tls_get_addr). spdlog uses thread_local (disabled via SPDLOG_NO_TLS).
+  # Doxygen itself uses THREAD_LOCAL macro — redefine to static (single-threaded use only).
+  - "sed -i 's/#define THREAD_LOCAL thread_local/#define THREAD_LOCAL static/' src/doxygen.h"
   export_vars:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
@@ -24,7 +50,7 @@ rules:
   spec_replacements:
   # Replace entire %if wizard ON/OFF cmake blocks + cmake_build with cross-compile cmake
   - pattern: "%if  \"x%{build_wizard}\" == \"xON\"\n%cmake \\\n      -DPYTHON_EXECUTABLE=%{_bindir}/python3 \\\n      -Duse_libclang=%{clang_support} \\\n      -Dbuild_doc=OFF \\\n      -Dbuild_wizard=ON \\\n      -Dbuild_xmlparser=ON \\\n      -Dbuild_search=%{xapian_core_support} \\\n      -DMAN_INSTALL_DIR=%{_mandir}/man1 \\\n      -DCMAKE_INSTALL_PREFIX:PATH=%{_prefix} \\\n      -DBUILD_SHARED_LIBS=OFF \\\n%else\n%cmake \\\n      -DPYTHON_EXECUTABLE=%{_bindir}/python3 \\\n      -Duse_libclang=%{clang_support} \\\n      -Dbuild_doc=OFF \\\n      -Dbuild_wizard=OFF \\\n      -Dbuild_xmlparser=ON \\\n      -Dbuild_search=OFF \\\n      -DMAN_INSTALL_DIR=%{_mandir}/man1 \\\n      -DCMAKE_INSTALL_PREFIX:PATH=%{_prefix} \\\n      -DBUILD_SHARED_LIBS=OFF \\\n%endif\n\n%cmake_build %{?_smp_mflags}"
-    replacement: "cmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_CXX_COMPILER=%{__cxx} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_CXX_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 /opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.a -lgen\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DPYTHON_EXECUTABLE=/usr/bin/python3 \\\n  -Duse_libclang=OFF \\\n  -Dbuild_doc=OFF \\\n  -Dbuild_wizard=OFF \\\n  -Dbuild_xmlparser=ON \\\n  -Dbuild_search=OFF \\\n  -DMAN_INSTALL_DIR=%{_mandir}/man1 \\\n  -DBUILD_SHARED_LIBS=OFF \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DUNIX=1 \\\n  -DFLEX_EXECUTABLE=/usr/bin/flex \\\n  -DBISON_EXECUTABLE=/usr/bin/bison \\\n  -DICONV_INCLUDE_DIR=/opt/irix-sysroot/usr/include \\\n  -DICONV_LIBRARY=/opt/irix-sysroot/lib32/libc.so.1\ncd _build && make %{?_smp_mflags}"
+    replacement: "cmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_CXX_COMPILER=%{__cxx} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_CXX_FLAGS=\"-DSPDLOG_NO_TLS=1 -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 -L$COMPAT_DIR -lmogrix-compat -lm -lgen\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DPYTHON_EXECUTABLE=/usr/bin/python3 \\\n  -Duse_libclang=OFF \\\n  -Dbuild_doc=OFF \\\n  -Dbuild_wizard=OFF \\\n  -Dbuild_xmlparser=ON \\\n  -Dbuild_search=OFF \\\n  -DMAN_INSTALL_DIR=%{_mandir}/man1 \\\n  -DBUILD_SHARED_LIBS=OFF \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DUNIX=1 \\\n  -DFLEX_EXECUTABLE=/usr/bin/flex \\\n  -DBISON_EXECUTABLE=/usr/bin/bison \\\n  -DICONV_INCLUDE_DIR=/opt/irix-sysroot/usr/include \\\n  -DICONV_LIBRARY=/opt/irix-sysroot/lib32/libc.so.1\ncd _build && make %{?_smp_mflags}"
   # Fix orphaned %endif from drop_subpackages: latex
   # The latex subpackage is inside %if ! 0%{?_module_build} ... %endif
   # drop_subpackages will comment out %description latex but leave %{summary}. and %endif

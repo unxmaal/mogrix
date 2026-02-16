@@ -2,9 +2,9 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-15)
+## Current Status (2026-02-16)
 
-**105+ source packages cross-compiled for IRIX (290+ RPMs). 20 bundles (5 suites + 15 individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles.
+**120+ source packages cross-compiled for IRIX (300+ RPMs). 20 bundles (5 suites + 15 individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO).
 
 All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app bundles (.tar.gz or self-extracting .run) for IRIX. 145+ package rule files. Suites: mogrix-essentials, mogrix-extras, mogrix-net, mogrix-smallweb, mogrix-fun. Individual bundles: bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2 — all tested on IRIX.
 
@@ -217,6 +217,29 @@ Key Qt5 fixes:
 |---------|-------------|----------|--------|
 | qtermwidget5 | cmake | qterminal | NEXT |
 | qterminal | cmake | Community target | Blocked on qtermwidget5 |
+
+### Batch Builds (Sessions 48+)
+
+| Batch | Content | Status |
+|-------|---------|--------|
+| #191–#200 | 60+ packages (libs, utils, fun) | COMPLETED |
+| #201 GTK3 stack | cairo, pango, gdk-pixbuf, gtk3 | PENDING (image libs ready) |
+| #202 Build tools | cmake, ninja, doxygen, meson, gdb | DONE (gdb SKIPPED — no IRIX debug support in 14.2) |
+| #203 Dev tools pt2 | re2c, yasm, quilt done; fossil, mercurial | PENDING |
+| #204 IPC/heavy | dbus, dbus-glib, icu, cyrus-sasl | PENDING |
+| #205 GUI apps | hexchat, geany, pidgin, nedit | PENDING |
+
+Recent P5E packages (sessions 49-50): ed, dash, units, enscript, screen, mandoc, lrzsz, recode, zsh, mpg123, libpsl, opus, lame, mksh, libssh2, libao, libsndfile, libcaca, ksh, alpine, vile, re2c, yasm, quilt, lcms2, imlib2, frotz, stow, sox, doxygen.
+
+### Skipped Packages
+
+| Package | Reason |
+|---------|--------|
+| gdb 14.2 | All IRIX native debug support removed. SGUG-RSE used 7.6.2. |
+| htop | Needs Linux /proc backend |
+| openjpeg2 | No SRPM available |
+
+See `rules/INDEX.md` "Skipped Packages" and `rules/methods/before-you-start.md` section 0 for the full triage checklist.
 
 ### Future targets
 

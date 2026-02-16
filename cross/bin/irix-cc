@@ -62,6 +62,38 @@ for arg in "$@"; do
     esac
 done
 
+# Expand response files (@file) — meson uses these for large link commands.
+# Shell scripts can't read @file syntax; the linker flag parsing below needs
+# to see the actual arguments. Only expand if an @file argument is present.
+has_rspfile=false
+for arg in "$@"; do
+    case "$arg" in @*) has_rspfile=true; break ;; esac
+done
+if [ "$has_rspfile" = "true" ]; then
+    expanded_args=""
+    for arg in "$@"; do
+        case "$arg" in
+            @*)
+                rspfile="${arg#@}"
+                if [ -f "$rspfile" ]; then
+                    # Response files have all args on one line, space-separated.
+                    # Strip single quotes (meson quotes $ORIGIN rpath args).
+                    expanded_args="$expanded_args $(sed "s/'//g" "$rspfile")"
+                else
+                    expanded_args="$expanded_args $arg"
+                fi
+                ;;
+            *)
+                expanded_args="$expanded_args $arg"
+                ;;
+        esac
+    done
+    # Re-set positional parameters to expanded args
+    # Note: this loses quoting for filenames with spaces, but response files
+    # are only used for link commands which don't have such filenames.
+    set -- $expanded_args
+fi
+
 # Check if this is preprocess-only (-E flag present)
 preprocess_only=false
 if echo " $* " | grep -q " -E "; then

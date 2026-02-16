@@ -1,0 +1,10 @@
+package: libXcomposite
+
+upstream:
+  url: https://xorg.freedesktop.org/archive/individual/lib/libXcomposite-0.4.4.tar.bz2
+  version: "0.4.4"
+  type: tarball
+  build_system: autoconf
+  license: MIT
+  summary: "X Composite extension library"
+  source_dir: libXcomposite-0.4.4

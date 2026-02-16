@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-15 (session 49)
-**Status**: XScreenSaver GL hacks now fully reproducible via mogrix pipeline. 131 MIPS N32 binaries built from hand-written spec + rules. Engine enhanced with package-level `rewrite_paths` override.
+**Last Updated**: 2026-02-16 (session 53)
+**Status**: GTK3 3.24.41 BUILT and staged. All batch #201 dependencies complete. irix-cc now handles meson response files.
 
 ---
 
@@ -13,89 +13,91 @@
 
 **NEVER CHEAT.** Don't copy from SGUG-RSE. Don't fake Provides. Every FC40 package must be properly cross-compiled.
 
+**CHECK USEFULNESS FIRST.** Before porting a package, verify it will actually work on IRIX. See `rules/methods/before-you-start.md` section 0.
+
 ---
 
 ## Current State
 
-### xscreensaver-gl-hacks: DONE and reproducible
+### Batch 201 GTK3 Stack: COMPLETE
 
-Fully mogrix-managed build. Key files:
-- **Spec**: `specs/packages/xscreensaver-gl-hacks.spec` (hand-written, builds only hacks/glx/)
-- **Rules**: `rules/packages/xscreensaver-gl-hacks.yaml` (no add_source/add_patch — spec handles those directly)
-- **Patches**: `patches/packages/xscreensaver-gl-hacks/` (gl_stub.c, glu_stub.c, xscreensaver-irix.patch)
-- **RPM**: `~/rpmbuild/RPMS/mips/xscreensaver-gl-hacks-6.08-1.mips.rpm` (131 binaries)
-- **SRPM**: `~/mogrix_inputs/SRPMS/xscreensaver-gl-hacks-6.08-1.src.rpm` (upstream URL 410 Gone; tarball extracted from Fedora SRPM)
+All components built and staged to `/opt/sgug-staging`:
+- atk, gdk-pixbuf2, libepoxy (with GLX), xorgproto, libXfixes
+- libXcomposite, libXcursor, libXdamage, libXi, libXinerama, libXrandr
+- **GTK3 3.24.41** — 4 RPMs: gtk3, gtk3-devel, gtk3-immodules, gtk-update-icon-cache
 
-Lessons captured in rules/INDEX.md. Key gotchas for hand-written specs:
-- Don't use `add_source`/`add_patch` in YAML if the spec already has Source/Patch lines (causes duplicates)
-- Use `rewrite_paths` override to neutralize generic path rewriting (new engine feature added this session)
-- xscreensaver's configure hardcodes XInput2/Xft as required; must `sed 's/^exit \$CONF_STATUS$/exit 0/'`
+### irix-cc response file expansion (this session)
 
-### Doxygen: INCOMPLETE
+`cross/bin/irix-cc` now expands meson `@file` response files before processing flags. This was required for GTK3's large link commands where `-Wl,` flags and `-shared` were inside the file. Deployed to staging. See INDEX.md "Meson Cross-Builds" section.
 
-Build started (`rules/packages/doxygen.yaml`), got to 59% compile, then failed on `spdlog/filesystem.hpp` not recognizing IRIX. User interrupted to work on xscreensaver. Needs:
-- Fix `deps/filesystem/filesystem.hpp` IRIX detection
-- Fix `deps/spdlog` `::fileno()` scope issue
+### Xge.h expanded (this session)
 
-### cmake ecosystem: DONE
+`patches/packages/libXi/Xge.h` now includes inline stubs for `XGetEventData`, `XFreeEventData`, and `XSetIMValues` declaration. Installed at `/opt/sgug-staging/usr/sgug/include/X11/extensions/Xge.h`.
 
-cmake, json-c, brotli, libwebp, ninja-build all built and staged.
+### Native glib tools provisioned
 
-### meson: installed on build host
+GTK3 meson build requires native (x86_64) tools. Extracted from Ubuntu debs without root:
+- `glib-compile-resources` → `/tmp/glib-dev-bin/usr/bin/` (symlinked from `cross/native-tools/`)
+- `gdbus-codegen` → `cross/native-tools/` (patched Python module path)
+- `xmllint` → `/tmp/xmllint-pkg/usr/bin/` (symlinked from `cross/native-tools/`)
 
-`~/.local/bin/meson` (1.10.1 via uv tool). Not a cross-compiled package.
+**WARNING**: `/tmp/` contents are ephemeral. If cleared, re-extract with:
+```
+apt-get download libglib2.0-dev-bin && dpkg-deb -x libglib2.0-dev-bin*.deb /tmp/glib-dev-bin
+apt-get download libxml2-utils && dpkg-deb -x libxml2-utils*.deb /tmp/xmllint-pkg
+```
 
 ---
 
 ## Next Steps
 
-1. **Resume doxygen build** — fix spdlog/filesystem.hpp for IRIX
-2. **Build gdb** — complex (6444-line spec, 40+ patches)
+1. **Build #205 GUI apps** — hexchat, geany, pidgin, nedit (GTK3 is now available!)
+2. **Build #204 IPC/heavy** — dbus, dbus-glib, icu, cyrus-sasl
 3. **Build #203 remaining** — fossil, mercurial
-4. **Build #201 GTK3 stack** — image libs all ready
-5. **Build #204 IPC/heavy** — dbus, dbus-glib, icu, cyrus-sasl
-6. **Low priority**: `drop_buildrequires_if_unavailable` engine feature, ksh build system
+4. **Test GTK3 on IRIX** — copy RPMs to chroot, verify libgtk-3.so loads
+5. **Low priority**: `drop_buildrequires_if_unavailable` engine feature
 
 ### Batch Progress
 
 | Batch | Status |
 |-------|--------|
-| #191–#200 | COMPLETED (see plan.md for details) |
-| #201 GTK3 stack | PENDING |
-| #202 Build tools | cmake+ninja DONE; meson on host; doxygen INCOMPLETE; gdb PENDING |
+| #191–#200 | COMPLETED |
+| #201 GTK3 stack | **DONE** |
+| #202 Build tools | DONE (gdb skipped) |
 | #203 Dev tools pt2 | re2c/yasm/quilt DONE; fossil/mercurial PENDING |
 | #204 IPC/heavy | PENDING |
-| #205 GUI apps | PENDING |
+| #205 GUI apps | PENDING — can start now (GTK3 available) |
 
-### Blocked Packages
+### Blocked/Skipped Packages
 
 | Package | Reason |
 |---------|--------|
+| gdb 14.2 | No IRIX native debug support in this version |
 | ksh | ~3400-line custom build system |
-| htop | needs IRIX /proc backend |
-| openjpeg2 | no SRPM available |
+| htop | Needs Linux /proc backend |
+| openjpeg2 | No SRPM available |
 
 ---
 
 ## Recent Work
 
-### Session 49: xscreensaver-gl-hacks reproducible build
+### Session 53: GTK3 built (continuation of 52)
 
-- Made xscreensaver GL hacks fully reproducible via mogrix: hand-written spec, upstream tarball, GL/GLU stubs, IRIX patch
-- Fixed 5 issues during pipeline integration:
-  1. Double patch application (add_patch + Patch0 in spec)
-  2. Source duplication (add_source + Source1/2 in spec)
-  3. Path mangling by generic `rewrite_paths` rule on sysroot paths
-  4. Missing CC= in configure (found gcc instead of irix-cc)
-  5. xscreensaver configure aborting on missing XInput2/Xft
-- **Engine enhancement**: Added `rewrite_paths` support to `_apply_package_rules()` in `mogrix/rules/engine.py` — packages can now override generic path rewrites (identity mappings neutralize them)
-- Started doxygen build (interrupted — see above)
+- Built GTK3 3.24.41 after 12 iterations fixing: XSetIMValues missing, xcookie union member (5 files), atk-bridge.h, sincos in tests, meson response file expansion, demo/example file list cleanup
+- Key fixes: `irix-cc` response file expansion, expanded `Xge.h` with XGetEventData/XFreeEventData/XSetIMValues stubs, disabled demos/examples in meson
+- Updated `rules/INDEX.md` with "Meson Cross-Builds" section
 
-### Session 48: `__rld_obj_head` fix + GL hacks deployment
+### Session 52: GTK3 stack dependencies + GTK3 prep
 
-- Fixed `__rld_obj_head` crash: `--export-dynamic-symbol=__rld_obj_head` in irix-ld
-- Bundled libz.so (zlib-ng 1.3.0) to fix "libpng error: bad parameters to zlib"
-- User confirmed GL hacks working on IRIX
+- Built 6 X11 extension libraries (libXcomposite, libXcursor, libXdamage, libXi, libXinerama, libXrandr)
+- Rebuilt libepoxy with GLX support (`-Dglx=yes -Dx11=true`)
+- Provisioned native glib tools for meson cross-builds
+- Created comprehensive `rules/packages/gtk3.yaml` with ~160 lines of rules
+
+### Session 51: GDB investigation + skip decision
+
+- Investigated GDB 14.2 — no IRIX native debug support in this version
+- Added `-z norelro` to irix-ld, `gl_cv_malloc_ptrdiff=yes` pattern
 
 ---
 
@@ -111,3 +113,4 @@ cmake, json-c, brotli, libwebp, ninja-build all built and staged.
 | Build methods | `rules/methods/*.md` |
 | Compat functions | `compat/catalog.yaml` |
 | Workspace paths & workflow | `CLAUDE.md` |
+| SGUG RSE reference | `/home/edodd/projects/github/sgug-rse` |

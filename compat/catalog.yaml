@@ -252,6 +252,17 @@ functions:
       - pattern: '\bstrerror_r\s*\('
         note: "IRIX libc lacks strerror_r — inject compat version"
 
+  # C99 intmax functions (IRIX 6.5 predates C99)
+  strtoimax:
+    file: intmax/strtoimax.c
+    header: inttypes.h
+    description: C99 intmax conversion functions (strtoimax, strtoumax, wcstoimax, wcstoumax)
+    provides:
+      - strtoimax
+      - strtoumax
+      - wcstoimax
+      - wcstoumax
+
   # getopt_long (GNU extension for long options)
   getopt_long:
     file: functions/getopt_long.c

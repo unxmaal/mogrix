@@ -1,0 +1,36 @@
+--- a/src/XIint.h
++++ b/src/XIint.h
+@@ -6,6 +6,33 @@
+ #ifndef _XIINT_H_
+ #define _XIINT_H_
+ #include <X11/extensions/XI.h>
++#include <X11/Xlibint.h>
++
++/* IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6).
++ * It's a simple wrapper around _XEatData that converts words to bytes. */
++#ifndef _XEatDataWords
++static inline void _XEatDataWords(Display *dpy, unsigned long n)
++{ _XEatData(dpy, n * 4); }
++#endif
++
++/* IRIX sysroot Xlibint.h lacks _XUnknownNativeEvent (added in libX11 1.3).
++ * Stub in xge_compat.c - we just need the declaration. */
++extern Status _XUnknownNativeEvent(Display*, XEvent*, xEvent*);
++
++/* IRIX sysroot lacks Generic Event Extension cookie functions (libX11 1.3+).
++ * Stubs in xge_compat.c. Only declare when Xge.h has been included first
++ * (XGenericEventCookie defined), since most source files don't need these. */
++#ifdef _XGenericEventCookie_defined
++typedef Bool (*XESetWireToEventCookieProc)(Display*, XGenericEventCookie*, xEvent*);
++typedef Bool (*XESetCopyEventCookieProc)(Display*, XGenericEventCookie*, XGenericEventCookie*);
++extern XESetWireToEventCookieProc XESetWireToEventCookie(Display*, int, XESetWireToEventCookieProc);
++extern XESetCopyEventCookieProc XESetCopyEventCookie(Display*, int, XESetCopyEventCookieProc);
++#endif
++
++/* IRIX extutil.h uses XMissingExtension but doesn't include Xext.h which
++ * declares it. With -Werror=implicit this becomes a fatal error. */
++#include <X11/extensions/Xext.h>
++
+ 
+ /* inputproto 2.0 still shipped with these defined in the proto headers */
+ #ifndef XInput_Initial_Release

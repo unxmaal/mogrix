@@ -1,0 +1,34 @@
+package: libXi
+
+upstream:
+  url: https://xorg.freedesktop.org/archive/individual/lib/libXi-1.7.10.tar.bz2
+  version: "1.7.10"
+  type: tarball
+  build_system: autoconf
+  license: MIT
+  summary: "X Input extension library"
+  source_dir: libXi-1.7.10
+
+add_source:
+  - xeatdatawords.patch
+  - Xge.h
+  - xge_compat.c
+
+rules:
+  # X.org uses its own malloc(0) test, not the standard autoconf one
+  ac_cv_overrides:
+    xorg_cv_malloc0_returns_null: "no"
+
+  # IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6)
+  # IRIX sysroot lacks Xge.h (Generic Event Extension, added in X11R7.5)
+  # xge_compat.c provides stub implementations of XGE functions missing
+  # from IRIX native libX11 (XESetWireToEventCookie, XESetCopyEventCookie,
+  # _XUnknownNativeEvent). Compiled into src/ so libtool links it into libXi.so.
+  prep_commands:
+    - "patch -p1 < %{_sourcedir}/xeatdatawords.patch"
+    - "cp %{_sourcedir}/Xge.h include/X11/extensions/Xge.h"
+    - "cp %{_sourcedir}/xge_compat.c src/xge_compat.c"
+    - "sed -i 's/XExtInt.c/XExtInt.c xge_compat.c/' src/Makefile.am src/Makefile.in"
+
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_docdir}"

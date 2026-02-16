@@ -191,11 +191,16 @@ else
     # must define. crt1.o provides it as COMMON, but LLD doesn't export COMMON
     # symbols to .dynsym by default. libC.so.2 and libGLcore.so reference it;
     # without this, any binary loading those libraries gets "unresolvable symbol".
+    # -z norelro: IRIX rld doesn't support GNU_RELRO. Without this, LLD creates
+    # a separate LOAD segment for .data.rel.ro with a GNU_RELRO header.
+    # Large C++ binaries (GDB) with hundreds of RTTI relocations in .data.rel.ro
+    # crash during static init when the RELRO segment is separate from .got/.data.
     exec $LLD \
       --allow-shlib-undefined \
       --disable-new-dtags \
       --export-dynamic-symbol=__rld_obj_head \
       --image-base=0x1000000 \
+      -z norelro \
       -dynamic-linker /lib32/rld \
       $CRT1 \
       $CRTBEGIN \

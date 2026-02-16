@@ -1,0 +1,18 @@
+package: libXfixes
+
+upstream:
+  url: https://xorg.freedesktop.org/archive/individual/lib/libXfixes-5.0.3.tar.bz2
+  version: "5.0.3"
+  type: tarball
+  build_system: autoconf
+  license: MIT
+  summary: "X Fixes library"
+  source_dir: libXfixes-5.0.3
+
+add_source:
+  - xeatdatawords.patch
+
+rules:
+  # IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6)
+  prep_commands:
+    - "patch -p1 < %{_sourcedir}/xeatdatawords.patch"

@@ -102,6 +102,44 @@
 #define PRIX64 "llX"
 #endif
 
+/* C99 intmax types/functions required by C++ <cinttypes>.
+ * IRIX inttypes.h has strtoimax/strtoumax but lacks imaxdiv_t/imaxabs/imaxdiv
+ * and the wide-char variants wcstoimax/wcstoumax.
+ *
+ * NOTE: Do NOT re-declare strtoimax/strtoumax — IRIX's inttypes.h declares
+ * them without extern "C", so in C++ mode they have C++ linkage. Re-declaring
+ * them in extern "C" causes "different language linkage" errors. */
+#include <wchar.h>  /* for wchar_t */
+
+typedef struct {
+    intmax_t quot;
+    intmax_t rem;
+} imaxdiv_t;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static inline intmax_t imaxabs(intmax_t j)
+{
+    return j < 0 ? -j : j;
+}
+
+static inline imaxdiv_t imaxdiv(intmax_t numer, intmax_t denom)
+{
+    imaxdiv_t result;
+    result.quot = numer / denom;
+    result.rem  = numer % denom;
+    return result;
+}
+
+intmax_t  wcstoimax(const wchar_t *nptr, wchar_t **endptr, int base);
+uintmax_t wcstoumax(const wchar_t *nptr, wchar_t **endptr, int base);
+
+#ifdef __cplusplus
+}
+#endif
+
 /* MAX-width format specifiers (intmax_t = long long on MIPS n32) */
 #ifndef PRIdMAX
 #define PRIdMAX "lld"

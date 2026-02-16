@@ -1,0 +1,46 @@
+# gdb - GNU Debugger (hand-written spec for IRIX)
+# Uses specs/packages/gdb.spec instead of Fedora's 6444-line spec.
+# The Fedora spec is too complex: 46 patches, %include mechanism, PGO builds,
+# RPM integration, multiple subpackages. For IRIX we just need core debugging.
+package: gdb
+upstream:
+  url: https://ftp.gnu.org/gnu/gdb/gdb-14.2.tar.xz
+  version: "14.2"
+  type: tarball
+  build_system: autoconf
+  license: GPL-3.0-or-later
+  summary: "GNU Debugger for IRIX"
+  source_dir: gdb-14.2
+rules:
+  drop_buildrequires:
+  - expat-devel
+  drop_requires:
+  - perl-interpreter
+  # Override generic rewrite_paths — hand-written spec uses sysroot paths
+  rewrite_paths:
+    /usr/lib64: /usr/lib64
+    /usr/lib: /usr/lib
+    /usr/include: /usr/include
+  prep_commands:
+  # libiberty/filedescriptor.c uses dup2() without including unistd.h
+  - "sed -i '1i #include <unistd.h>' libiberty/filedescriptor.c"
+  # libiberty/fibheap.c uses LONG_MIN without including limits.h
+  - "sed -i '1i #include <limits.h>' libiberty/fibheap.c"
+  # pex-unix.c pid_t return type mismatch — IRIX pid_t is long, function returns int
+  # Fix forward decl (one-line) and definition (two-line)
+  - "sed -i 's/static int pex_unix_wait/static pid_t pex_unix_wait/g' libiberty/pex-unix.c"
+  - "sed -i '/^static int$/{N;s/static int\\npex_unix_wait/static pid_t\\npex_unix_wait/}' libiberty/pex-unix.c"
+  # gnulib's inttypes.h chain fails to define PRIo64 during cross-compile
+  # Add it after __STDC_FORMAT_MACROS in common-defs.h (included by every file)
+  - "sed -i '/__STDC_FORMAT_MACROS/a #ifndef PRIo64\\n#define PRIo64 \"llo\"\\n#endif' gdbsupport/common-defs.h"
+  # GDB 14.2 removed IRIX target support — remove IRIX from the obsolete list
+  - "sed -i '/\\*-\\*-irix\\*/d' gdb/configure.tgt"
+  - "sed -i '/\\*-\\*-irix\\*/d' gdb/configure.host"
+  # IRIX has no TLS (__tls_get_addr) — replace thread_local with static
+  # cp-support.c: "static thread_local SIGJMP_BUF" → "static SIGJMP_BUF"
+  - "sed -i 's/static thread_local/static/g' gdb/cp-support.c gdb/event-top.c gdbsupport/safe-strerror.cc"
+  ac_cv_overrides:
+    ac_cv_header_fcntl_h: "yes"
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig

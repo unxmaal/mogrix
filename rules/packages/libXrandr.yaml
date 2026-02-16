@@ -1,0 +1,23 @@
+package: libXrandr
+
+upstream:
+  url: https://xorg.freedesktop.org/archive/individual/lib/libXrandr-1.5.2.tar.bz2
+  version: "1.5.2"
+  type: tarball
+  build_system: autoconf
+  license: MIT
+  summary: "X RandR extension library"
+  source_dir: libXrandr-1.5.2
+
+add_source:
+  - xeatdatawords.patch
+
+rules:
+  # X.org uses its own malloc(0) test that requires running a program.
+  # Cross-compilation can't run MIPS binaries — override the cache variable.
+  ac_cv_overrides:
+    xorg_cv_malloc0_returns_null: "no"
+
+  # IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6)
+  prep_commands:
+    - "patch -p1 < %{_sourcedir}/xeatdatawords.patch"

@@ -2,6 +2,25 @@
 
 Check these resources before making significant changes or debugging build failures.
 
+## 0. Will this package actually work on IRIX?
+
+Before investing time porting a package, ask: **does this software require OS-specific support that IRIX doesn't have?**
+
+Red flags that a package won't be useful:
+- **Debuggers/profilers** that need OS-specific ptrace, /proc, or perf support (GDB 14.2 removed all IRIX native debugging — we burned multiple sessions before realizing this)
+- **System daemons** that need systemd, D-Bus, cgroups, or Linux-specific IPC
+- **Filesystem tools** that need Linux-specific syscalls (inotify, fanotify, io_uring)
+- **Network tools** that need netfilter, eBPF, or /proc/net
+- **Container/VM tools** that need namespaces, seccomp, or KVM
+
+Quick checks:
+1. Does the package have IRIX-specific code? `grep -r irix <source>` — if it was removed, that's a bad sign
+2. Did SGUG-RSE build it? Check `/home/edodd/projects/github/sgug-rse/packages/<name>/`
+3. Does it depend on Linux-only APIs? Check configure.ac for `linux`-only code paths
+4. Is there an IRIX-native alternative? (dbx for debugging, IRIX syslog, etc.)
+
+If the answer is "it'll compile but can't actually do its job," skip it.
+
 ## 1. Check rules first
 
 Check the rules/INDEX.md first.
