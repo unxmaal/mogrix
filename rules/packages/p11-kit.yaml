@@ -1,10 +1,13 @@
 # p11-kit - PKCS#11 module support
+# Meson-based build — uses explicit meson cross-compilation commands
 # SGUG-RSE sgifixes patch was for 0.23.16.1; replaced with prep_commands for 0.25.3
 
 package: p11-kit
 
 rules:
   # Compat functions needed
+  inject_compat_functions:
+    - pselect
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
 
@@ -12,6 +15,18 @@ rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
     gl_cv_func_working_getdelim: "yes"
+
+  drop_buildrequires:
+    - meson
+    - gtk-doc
+    - bash-completion
+    - /usr/bin/xsltproc
+    - pkgconfig(glib-2.0)
+    - pkgconfig(systemd)
+
+  # Trust module requires native asn1Parser which we don't have
+  drop_subpackages:
+    - trust
 
   # IRIX-specific source fixes (replacing p11-kit.sgifixes.patch for 0.25.3)
   prep_commands:
@@ -29,17 +44,95 @@ rules:
     - "sed -i 's/#elif HAVE_SIG_T/#elif defined(HAVE_SIG_T)/; s/#elif HAVE___SIGHANDLER_T/#elif defined(HAVE___SIGHANDLER_T)/' p11-kit/server.c"
     # Rename sa_len to my_sa_len in server.c (conflicts with IRIX macro)
     - "sed -i 's/socklen_t sa_len;/socklen_t my_sa_len;/; s/sa_len = sizeof/my_sa_len = sizeof/g; s/, \\&sa_len)/, \\&my_sa_len)/g' p11-kit/server.c"
+    # Fix %zu format specifier in lexer.c (IRIX libc doesn't support %zu, size_t is 4 bytes on n32)
+    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' common/lexer.c"
+    # Patch meson.build: IRIX has nanosleep/dlopen/gmtime_r in libc
+    # The meson has_function() check fails due to IRIX header type mismatches (timespec_t etc.)
+    # Add 'host_system != irix' guard to each problematic detection line
+    - "sed -i \"s/if not cc.has_function('nanosleep')/if host_system != 'irix' and not cc.has_function('nanosleep')/\" meson.build"
+    - "sed -i \"s/if not cc.has_function('dlopen')/if host_system != 'irix' and not cc.has_function('dlopen')/\" meson.build"
+    # gmtime_r check: IRIX has it, but cross-check fails — force-set for IRIX
+    - "sed -i \"s/if cc.has_function('gmtime_r')/if host_system == 'irix' or cc.has_function('gmtime_r')/\" meson.build"
+    # strerror_r check: IRIX has XSI strerror_r but cross-check may fail
+    - "sed -i \"s/if cc.has_function('strerror_r'/if host_system == 'irix' or cc.has_function('strerror_r'/\" meson.build"
+    # Fix timegm conflict: p11-kit compat.h declares timegm when HAVE_TIMEGM is not set,
+    # but our mogrix-compat/generic/time.h also declares it. Guard with __sgi check.
+    - "sed -i 's/#ifndef HAVE_TIMEGM/#if !defined(HAVE_TIMEGM) \\&\\& !defined(__sgi)/' common/compat.h"
+    # Fix getprogname: IRIX has neither program_invocation_short_name nor __progname.
+    # Replace the #error with a simple "unknown" fallback for SGI.
+    - "sed -i 's/#error No way to retrieve short program name/name = \"unknown\"; \\/* IRIX fallback *\\//' common/compat.c"
+    # Fix strerror_r detection: meson incorrectly detects GNU strerror_r for IRIX cross-compile.
+    # IRIX has XSI strerror_r. Patch the strerror_r check to force XSI for IRIX.
+    - "sed -i \"s/if cc.compiles(strerror_r_code, name : 'GNU strerror_r check')/if host_system != 'irix' and cc.compiles(strerror_r_code, name : 'GNU strerror_r check')/\" meson.build"
+    # Python is used for code generation (build-time scripts on host). Must use native python3.
+    # meson's import('python').find_installation() finds the cross-target python, which doesn't exist.
+    # Replace with find_program('python3') which finds the build-machine python.
+    - "sed -i \"s/^python = import('python').find_installation()/python = find_program('python3')/\" meson.build"
+    - "sed -i 's/^python_version = .*$/# python_version check skipped for IRIX cross/' meson.build"
+    - "sed -i 's/^python_version_req = .*$/# python_version_req skipped/' meson.build"
+    - "sed -i '/^if not python_version/,/^endif/c\\# python version check skipped for IRIX cross' meson.build"
+    # Create package-specific meson cross file that adds compat library link args
+    # and -lpthread (IRIX needs explicit pthread linking)
+    - "cp /home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini p11-kit-cross.ini"
+    - "sed -i \"s|c_link_args = \\[\\]|c_link_args = ['-L$(pwd)/mogrix-compat', '-lmogrix-compat', '-lpthread']|\" p11-kit-cross.ini"
 
   spec_replacements:
     # Skip GPG signature verification (gpgv2 not available on build host)
     - pattern: "gpgv2 --keyring %{SOURCE2} %{SOURCE1} %{SOURCE0}"
       replacement: ": # skip gpgv2 signature verification"
 
-  # Configure flags
-  configure_flags:
-    add:
-      - --without-systemd
-      - --disable-doc
-      - --without-bash-completion
-    remove:
-      - --with-trust-paths
+    # Replace %meson + %meson_build with explicit meson cross-compilation
+    - pattern: "%meson -Dgtk_doc=true -Dman=true -Dtrust_paths=%{_sysconfdir}/pki/ca-trust/source:%{_datadir}/pki/ca-trust-source\n%meson_build"
+      replacement: |
+        MOGRIX_CROSS=$(pwd)/p11-kit-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          --sysconfdir=%{_sysconfdir} \
+          --libexecdir=%{_libexecdir} \
+          -Dgtk_doc=false \
+          -Dman=false \
+          -Dnls=false \
+          -Dtest=false \
+          -Dsystemd=disabled \
+          -Dbash_completion=disabled \
+          -Dtrust_paths=%{_sysconfdir}/pki/ca-trust/source:%{_datadir}/pki/ca-trust-source \
+          --wrap-mode=nodownload
+        /home/edodd/.local/bin/meson compile -C _build
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Remove systemd unit file install (no systemd on IRIX)
+    - pattern: "mkdir -p $RPM_BUILD_ROOT%{_userunitdir}\ninstall -p -m 644 %{SOURCE4} $RPM_BUILD_ROOT%{_userunitdir}"
+      replacement: "# systemd unit files not needed on IRIX"
+
+    # Remove systemd files from server subpackage, add %dir for pkcs11 (was in trust)
+    - pattern: "%{_userunitdir}/p11-kit-client.service\n%{_libexecdir}/p11-kit/p11-kit-server\n%{_userunitdir}/p11-kit-server.service\n%{_userunitdir}/p11-kit-server.socket"
+      replacement: "%dir %{_libdir}/pkcs11\n%{_libexecdir}/p11-kit/p11-kit-server"
+
+    # Remove bash-completion files from %files (won't be installed)
+    - pattern: "%{_datadir}/bash-completion/completions/p11-kit"
+      replacement: "# bash-completion not installed"
+    - pattern: "%{_datadir}/bash-completion/completions/trust"
+      replacement: "# bash-completion not installed"
+
+    # Remove man pages from %files (not being built)
+    - pattern: "%{_mandir}/man1/trust.1.gz\n%{_mandir}/man8/p11-kit.8.gz\n%{_mandir}/man5/pkcs11.conf.5.gz"
+      replacement: "# man pages not built"
+
+    # Remove gtk-doc from devel %files
+    - pattern: "%doc %{_datadir}/gtk-doc/"
+      replacement: "# gtk-doc not built"
+
+    # Remove %post/%postun trust scriptlets (trust module not built)
+    - pattern: "%post trust\n%{_sbindir}/alternatives --install %{_libdir}/libnssckbi.so %{alt_ckbi} %{_libdir}/pkcs11/p11-kit-trust.so 30"
+      replacement: "# trust module scriptlets removed (not built)"
+    - pattern: "%postun trust\nif [ $1 -eq 0 ] ; then\n        # package removal\n        %{_sbindir}/alternatives --remove %{alt_ckbi} %{_libdir}/pkcs11/p11-kit-trust.so\nfi"
+      replacement: "# trust module postun removed (not built)"
+
+    # Remove trust-extract-compat install (trust module not built, but trust-extract-compat is just a shell script)
+    - pattern: "install -p -m 755 %{SOURCE3} $RPM_BUILD_ROOT%{_libexecdir}/p11-kit/"
+      replacement: "# trust-extract-compat not installed (trust module not built)"

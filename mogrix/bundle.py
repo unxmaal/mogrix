@@ -63,7 +63,7 @@ case "$dir" in
     /*) ;;
     *)  dir="`/bin/pwd`/$dir" ;;
 esac
-LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}"
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
 {terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
 """
@@ -75,7 +75,7 @@ case "$dir" in
     /*) ;;
     *)  dir="`/bin/pwd`/$dir" ;;
 esac
-LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}"
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
 {terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
 """

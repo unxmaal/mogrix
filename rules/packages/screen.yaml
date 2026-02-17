@@ -3,6 +3,10 @@
 # NAMEDPIPE: IRIX lacks Unix domain sockets in some contexts; screen can use FIFOs
 package: screen
 
+smoke_test:
+  - command: "/usr/sgug/bin/screen --version"
+    expect: "4.09.01"
+
 rules:
   export_vars:
     CPPFLAGS: "-D_SGI_SOURCE -D_SGI_REENTRANT_FUNCTIONS -DNAMEDPIPE"
@@ -20,6 +24,12 @@ rules:
     - pam-devel
     - utempter-devel
     - libutempter-devel
+  prep_commands:
+    # screen.c uses PATH_MAX but doesn't include <limits.h> — add it
+    - "sed -i '1i #include <limits.h>' screen.c"
+  install_cleanup:
+    # make install creates screen.old backup — remove it
+    - "rm -f %{buildroot}%{_bindir}/screen.old"
   spec_replacements:
     # Fix brace glob {1,texinfo} — not valid in /bin/sh
     - pattern: "doc/screen.{1,texinfo}"
@@ -28,5 +38,30 @@ rules:
     - pattern: "${i}{.utf8,}"
       replacement: "$i.utf8 $i"
     # Fix brace glob {-version,} — mv rename pattern
+    # Must keep $RPM_BUILD_ROOT prefix on BOTH args or binary gets moved out of buildroot
     - pattern: "screen{-%{version},}"
-      replacement: "screen-%{version} screen"
+      replacement: "screen-%{version} $RPM_BUILD_ROOT%{_bindir}/screen"
+    # osdef.h is generated during make (from osdef.sh). Its prototypes for
+    # connect/bind/accept conflict with IRIX socket headers (socklen_t vs int).
+    # Generate osdef.h first, fix the conflicting declarations, then build.
+    - pattern: "# fails with %{?_smp_mflags}\nmake"
+      replacement: |-
+        # Generate osdef.h first, then fix conflicting socket prototypes
+        make osdef.h
+        sed -i -e '/extern int.*connect/d' -e '/extern int.*bind/d' -e '/extern int.*accept/d' osdef.h
+        # fails with %{?_smp_mflags}
+        make
+    # Replace %{_rundir} in socket-dir configure flag — IRIX has no /run
+    - pattern: '--with-socket-dir="%{_rundir}/screen"'
+      replacement: '--with-socket-dir="%{_localstatedir}/run/screen"'
+    # Remove the tmpfiles.d and rundir packaging — IRIX doesn't have systemd
+    - pattern: "# Create the socket dir\nmkdir -p $RPM_BUILD_ROOT%{_rundir}/screen\n\n# And tell systemd to recreate it on start with tmpfs\nmkdir -p $RPM_BUILD_ROOT%{_tmpfilesdir}\ncat <<EOF > $RPM_BUILD_ROOT%{_tmpfilesdir}/screen.conf\n# screen needs directory in /run\n%if %{with multiuser}\nd %{_rundir}/screen 0755 root root\n%else\nd %{_rundir}/screen 0775 root screen\n%endif\nEOF"
+      replacement: "# Create the socket dir (IRIX: use var/run instead of systemd tmpfiles)\nmkdir -p $RPM_BUILD_ROOT%{_localstatedir}/run/screen"
+    # Remove tmpfilesdir from %files
+    - pattern: "%{_tmpfilesdir}/screen.conf"
+      replacement: ""
+    # Replace _rundir references in %files with _localstatedir/run
+    - pattern: "%attr(755,root,root) %{_rundir}/screen"
+      replacement: "%attr(755,root,root) %{_localstatedir}/run/screen"
+    - pattern: "%attr(775,root,screen) %{_rundir}/screen"
+      replacement: "%attr(775,root,screen) %{_localstatedir}/run/screen"

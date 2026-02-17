@@ -57,6 +57,10 @@ CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_EXTERN_C="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_EXTERN_C="
+# Use plain string literals for Xt/Motif resource names instead of XtStrings/_XmStrings
+# offset form. The offset form generates R_MIPS_REL32 relocations that IRIX rld doesn't
+# apply in static data sections, leaving raw offsets that crash XrmPermStringToQuark.
+CLANG_FLAGS="$CLANG_FLAGS -DXTSTRINGDEFINES -DXMSTRINGDEFINES"
 # Use .ctors/.dtors instead of .init_array — IRIX rld doesn't support init_array
 CLANG_FLAGS="$CLANG_FLAGS -fno-use-init-array"
 
@@ -140,7 +144,12 @@ elif [ "$link_only" = "true" ]; then
     # Link only - filter out compile-only flags and pass to LLD wrapper
     link_args=""
     next_is_output=false
+    skip_next_arg=false
     for arg in "$@"; do
+        if [ "$skip_next_arg" = "true" ]; then
+            skip_next_arg=false
+            continue
+        fi
         if [ "$next_is_output" = "true" ]; then
             link_args="$link_args -o $arg"
             next_is_output=false
@@ -156,8 +165,14 @@ elif [ "$link_only" = "true" ]; then
                 ld_flag=$(echo "$arg" | sed 's/^-Wl,//' | tr ',' ' ')
                 link_args="$link_args $ld_flag"
                 ;;
+            # Skip two-argument compiler flags (flag + next-arg path)
+            # Must be checked BEFORE the glob patterns below
+            -idirafter|-isystem|-iwithprefix|-iwithprefixbefore|-iprefix|-include|-imacros|-isysroot|-MF|-MT|-MQ)
+                skip_next_arg=true
+                ;;
             # Skip compile-only flags (but not -Wl which is handled above)
-            -D*|-I*|-W*|-O*|-g|-g[0-9]|-ggdb*|-gdwarf*|-gz*|-std=*|-c|-Q*|-f*|-m*)
+            # Handles concatenated forms like -I/path, -isystem/path, -DFOO
+            -D*|-I*|-isystem*|-idirafter*|-iprefix*|-iwithprefix*|-include*|-imacros*|-isysroot*|-W*|-O*|-g|-g[0-9]|-ggdb*|-gdwarf*|-gz*|-std=*|-c|-Q*|-f*|-m*)
                 ;;
             # Skip compiler flags that LLD doesn't understand
             -static|-dynamic|-Bdynamic|-Bstatic|-pedantic|-pedantic-errors)

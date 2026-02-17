@@ -1,0 +1,43 @@
+package: nedit
+upstream:
+  url: https://downloads.sourceforge.net/project/nedit/nedit-source/nedit-5.7-src.tar.gz
+  version: "5.7"
+  type: tarball
+  build_system: makefile
+  license: "GPL-2.0-only"
+  summary: "Classic Motif text editor for X11"
+  source_dir: nedit-5.7
+add_source:
+  - fix_class_recs.c
+rules:
+  export_vars:
+    # Disable dlmalloc — nedit uses IRIX native Motif which has its own malloc.
+    # Mixed dlmalloc (exe) + system malloc (libXm.so.2) causes cross-heap SIGSEGV.
+    MOGRIX_NO_DLMALLOC: "1"
+  prep_commands:
+    # Fix SGI Makefile for cross-compilation: add staging include/lib paths
+    - "sed -i 's|CFLAGS=-O -DSGI|CFLAGS=-O -DSGI -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include|' makefiles/Makefile.sgi"
+    # Replace -lPW with -lgen (IRIX equivalent), add staging lib path
+    - "sed -i 's|LIBS= -lm -lXm -lXt -lX11 -lPW|LIBS= -L/opt/sgug-staging/usr/sgug/lib32 -lm -lXm -lXt -lX11 -lgen|' makefiles/Makefile.sgi"
+    # Remove the verification step that tries to run the cross-compiled binary
+    - "sed -i 's|@source/nedit -V|@echo Skipping cross-compiled binary verification|' Makefile"
+    # Copy the class record fixup source into source/ directory
+    - "cp %{_sourcedir}/fix_class_recs.c source/fix_class_recs.c"
+    # Add fix_class_recs.o to OBJS in source/Makefile.common (nedit only, not nc)
+    - "sed -i 's|rangeset.o|rangeset.o fix_class_recs.o|' source/Makefile.common"
+  spec_replacements:
+    # Use make sgi with cross-compiler, pass compat lib via LDFLAGS
+    - pattern: "%make_build"
+      replacement: |
+        COMPAT_LIB="$(pwd)/mogrix-compat/libmogrix-compat.a"
+        make sgi CC=%{__cc} AR=%{__ar} LIBS="-L/opt/sgug-staging/usr/sgug/lib32 -lm -lXm -lXt -lX11 -lgen $COMPAT_LIB"
+    # nedit has no install target - install manually
+    - pattern: "%make_install PREFIX=%{_prefix} DESTDIR=%{buildroot}"
+      replacement: |
+        mkdir -p %{buildroot}%{_bindir}
+        cp source/nedit %{buildroot}%{_bindir}/nedit
+        cp source/nc %{buildroot}%{_bindir}/nedit-nc
+smoke_test:
+- command: "/usr/sgug/bin/nedit"
+  args: "-V"
+  expect: "NEdit"

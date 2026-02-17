@@ -1,0 +1,56 @@
+package: woff2
+rules:
+  drop_subpackages:
+  - tools
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+  spec_replacements:
+  # Replace Fedora cmake macros with explicit cross-compilation
+  - pattern: |
+      %cmake \
+          -DCMAKE_INSTALL_PREFIX="%{_prefix}" \
+          -DCMAKE_INSTALL_LIBDIR="%{_libdir}" \
+          -DCMAKE_SKIP_RPATH=TRUE
+      %cmake_build
+    replacement: |
+      cmake -B _build -S . \
+        -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_C_COMPILER=%{__cc} \
+        -DCMAKE_CXX_COMPILER=%{__cxx} \
+        -DCMAKE_AR=%{__ar} \
+        -DCMAKE_RANLIB=%{__ranlib} \
+        -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+        -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
+        -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}" \
+        -DCMAKE_CXX_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}" \
+        -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
+        -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
+        -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
+        -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
+        -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_SKIP_RPATH=TRUE \
+        -DUNIX=1
+      cd _build && make %{?_smp_mflags}
+  # Replace cmake install
+  - pattern: "%cmake_install"
+    replacement: "make -C _build install DESTDIR=%{buildroot}"
+  # Fix vpath_builddir reference to _build
+  - pattern: "cd %{_vpath_builddir}"
+    replacement: "cd _build"
+  # Add tool binaries to main files section (dropped from tools subpackage)
+  - pattern: "%{_libdir}/libwoff2enc.so.*"
+    replacement: |
+      %{_libdir}/libwoff2enc.so.*
+      %{_bindir}/woff2_compress
+      %{_bindir}/woff2_decompress
+      %{_bindir}/woff2_info
+smoke_test:
+- command: "/usr/sgug/bin/woff2_info"
+  expect: "Usage"

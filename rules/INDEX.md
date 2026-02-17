@@ -67,6 +67,7 @@
 | update-alternatives | Doesn't exist on IRIX, blocks rpm install | spec_replacements | rules/packages/* | Drop Requires(post/preun/postun) |
 | Compat header conflicts | Unconditional decls clash with static versions | ac_cv_overrides + inject_compat | rules/packages/* | Override ac_cv_func_X="yes" |
 | R_MIPS_REL32 crashes rld | Function pointers in static data | add_patch | patches/packages/* | Dispatch functions (switch/strcmp) |
+| R_MIPS_REL32 partial failure | IRIX rld silently skips some R_MIPS_REL32 relocs in large executables; superclass/method pointers in widget ClassRec structs left as NULL | add_source + prep_commands | patches/packages/nedit/fix_class_recs.c | `__attribute__((constructor))` function patches broken fields at startup. Declare extern class records as parent type (e.g. XmManagerClassRec) to avoid needing private headers. Check fields `== NULL` then assign GOT-resolved values. Small test binaries resolve same symbols fine — issue is binary-size-dependent. See nedit.yaml |
 | Long double crash | IRIX MIPS n32 has no 128-bit long double | ac_cv_overrides | rules/packages/* | `ac_cv_type_long_double_wider: "no"` |
 | IRIX libgen.so | dirname/basename in libgen.so, not libc | spec_replacements | rules/packages/* | `LIBS="$LIBS -lgen"` before %configure |
 | Cross-build doc generation | Build tries to run MIPS binary for docs | spec_replacements | rules/packages/* | Override make vars to empty, remove doc from `all:` target |
@@ -83,6 +84,8 @@
 | rld re-encounter GOT crash | SIGBUS when DSO with large GOT is loaded as NEEDED after dlopen | `beqz` guard in crtbeginS.o | cross/crt/crtbeginS.S | rld re-runs DT_INIT on re-encounter, zeros global GOT entries above LOCAL_GOTNO ~128. Guard checks `__CTOR_END__` for NULL before deref. Threshold: LOCAL_GOTNO ≤103 OK, ≥140 crashes. |
 | rld global GOT entry limit | SIGSEGV/SIGBUS in rld (PC=0x0FB6AA44) loading .so with large symbol table | `-Bsymbolic-functions` in irix-ld | cross/bin/irix-ld | rld has ~4370 global GOT entry limit per shared library. Global GOT = SYMTABNO - GOTSYM. Qt5Gui (5364) and Qt5Widgets (8567) exceed it. `-Bsymbolic-functions` moves defined FUNC symbols to local GOT, reducing count by 50-65%. Added unconditionally to irix-ld for all shared libraries. |
 | dlmalloc shared lib crash | ABORT/SIGSEGV cross-heap corruption when .so uses malloc/free across library boundaries | dlmalloc in exe only, not .so | mogrix/engine.py, cross/bin/irix-ld | `-Bsymbolic-functions` binds each .so's dlmalloc locally → private heaps → cross-heap free() abort. Fix: dlmalloc.o linked into executables only; .so leaves malloc undefined → rld resolves to exe's single heap. See [detailed section below](#dlmalloc-shared-library-crash-cross-heap-corruption) |
+| dlmalloc + IRIX native libs | SIGSEGV when using IRIX native .so files (Motif libXm.so, etc.) with dlmalloc exe | `export_vars: {MOGRIX_NO_DLMALLOC: "1"}` | rules/packages/nedit.yaml | IRIX native .so files have their own malloc from libc.so.1. Our exe's dlmalloc can't override it (IRIX rld doesn't do symbol interposition for pre-linked native libs). Use `MOGRIX_NO_DLMALLOC=1` in export_vars to skip dlmalloc.o. |
+| Bundle wrapper missing /usr/lib32 | rld fails to find IRIX system .so files (libXm.so.2, libXpm.so.2) — "unresolvable symbol" or SIGSEGV | Fixed in bundle.py wrapper templates | mogrix/bundle.py | Bundle wrappers set `LD_LIBRARYN32_PATH=$dir/_lib32` which OVERRIDES default rld search path. IRIX native libs in `/usr/lib32` become invisible. Fix: append `:/usr/lib32` to the path. Applied to both WRAPPER_TEMPLATE and SBIN_WRAPPER_TEMPLATE. |
 | CRT symbol visibility | .so picks up wrong `__CTOR_END__` / `_init` from other .so → SIGSEGV at garbage PC (e.g. 0x24020000) when many DSOs loaded | `.hidden` in crtbeginS.S/crtendS.S + crt-hide.ver | cross/crt/crtbeginS.S, cross/crt/crtendS.S | `__CTOR_END__`, `__DTOR_END__`, `__do_global_ctors_aux`, `_init` now `.hidden` to prevent cross-library symbol interposition. **CONFIRMED**: this was the sole cause of the GTK3 crash (libgmodule + libharfbuzz pre-fix → crash; post-fix → works). ~65 libraries in staging still have exposed `_init` from pre-fix builds; they'll be fixed on rebuild. |
 | gnutls CA trust store | "peer's certificate issuer is unknown" / TLS handshake fails | configure_flags: add | rules/packages/gnutls.yaml | `--with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt`. Without it, gnutls has no compiled-in CA path. See [detailed section below](#gnutls-ca-trust-store) |
 | Circular NEEDED crashes rld | SIGSEGV (PC=0x0) during dependency resolution with circular NEEDED entries | Break the cycle | rules/packages/freetype.yaml | freetype↔harfbuzz circular dep (freetype NEEDED harfbuzz, harfbuzz NEEDED freetype) crashes rld during single-pass resolution combined with deep dep trees. Fix: `--without-harfbuzz` for freetype. Harfbuzz still works standalone. |
@@ -302,3 +305,55 @@ GTK3 unconditionally includes `atk-bridge.h` under `#ifdef GDK_WINDOWING_X11`.
 **Problem: GTK3 requires native glib tools (glib-compile-resources, gdbus-codegen, xmllint)**
 These are build-machine tools not available on the cross-compile host.
 **Fix:** Extract from Ubuntu debs using `apt-get download` + `dpkg-deb -x` to `/tmp/`. Symlink/copy to `cross/native-tools/`. gdbus-codegen needs its Python module path patched to point to the extracted location.
+
+---
+
+## Git / Makefile-based packages
+
+**Problem: IRIX unistd.h includes getopt.h → struct option conflict**
+IRIX `<unistd.h>` (line 392) includes `<getopt.h>`, which pulls in our compat getopt.h defining `struct option` (POSIX: name, has_arg, flag, val). Apps like git that define their own `struct option` with different fields get redefinition errors.
+**Fix:** Use `_MOGRIX_NO_GETOPT_STRUCT_OPTION` guard. Add `-D_MOGRIX_NO_GETOPT_STRUCT_OPTION` to CFLAGS. Our compat getopt.h wraps struct option/getopt_long in `#ifndef _MOGRIX_NO_GETOPT_STRUCT_OPTION`.
+
+**Problem: Makefile-based builds don't link compat library**
+Mogrix injects compat via `export LIBS="-L$COMPAT_DIR -lmogrix-compat"`. Works for autoconf. Makefile-only builds (like git) ignore `LIBS`.
+**Fix:** Use the package's own Makefile variables. Git uses `EXTLIBS += -L./mogrix-compat -lmogrix-compat`. Also check if the package has built-in compat (git has NO_MKDTEMP, NO_SETENV, NO_UNSETENV, NO_MEMMEM, NO_STRCASESTR, HAVE_GETDELIM, etc.).
+
+**Problem: Linux auto-detection in cross builds (sysinfo, CLOCK_MONOTONIC, sync_file_range, PROCFS)**
+Git's `config.mak.uname` detects Linux and adds `-DHAVE_SYSINFO` directly to BASIC_CFLAGS (not through ifdef). Setting `HAVE_SYSINFO=` in config.mak doesn't help.
+**Fix:** prep_command: `sed -i '/HAVE_SYSINFO\|PROCFS_EXECUTABLE_PATH\|HAVE_PLATFORM_PROCINFO/d' config.mak.uname`. For `ifdef`-based vars, override with empty: `HAVE_CLOCK_GETTIME =`, `HAVE_CLOCK_MONOTONIC =`, `HAVE_SYNC_FILE_RANGE =`.
+
+**Problem: IRIX atfork_parent/atfork_prepare name collision**
+IRIX `<unistd.h>` declares `extern int atfork_parent(void (*)(int,int))`. Git's run-command.c defines `static void atfork_parent(struct atfork_state *)`. Link-time or compile-time conflict.
+**Fix:** prep_command: `sed -i 's/atfork_parent/git_atfork_parent/g; s/atfork_prepare/git_atfork_prepare/g' run-command.c`
+
+**Problem: IRIX fileno macro breaks with void* argument**
+IRIX fileno is a macro. In http.c, `fileno(result)` where `result` is `void*` causes macro expansion to dereference void pointer.
+**Fix:** prep_command: `sed -i 's/fileno(result)/(((FILE *)result)->_file)/g' http.c`
+
+**Problem: dirname/basename live in libgen.so on IRIX, not libc**
+Missing `dirname` and `basename` at link time.
+**Fix:** Add `-lgen` to EXTLIBS or LDFLAGS. IRIX has `<libgen.h>` and both functions in `/usr/lib32/libgen.so`.
+
+**Problem: pushd/popd in spec files (bash-isms)**
+Fedora specs use `pushd`/`popd` which don't exist in `/bin/sh`.
+**Fix:** spec_replacements: replace `pushd dir > /dev/null ... popd > /dev/null` with `(cd dir && ...)` subshells, or skip entirely if the operation isn't needed.
+
+**Problem: Brace expansion in spec files**
+Fedora specs use `{foo,bar}` brace expansion (bash-ism) in find commands, rm, etc.
+**Fix:** spec_replacements: expand manually. E.g., `find %{buildroot}{%{_bindir},%{_libexecdir}}` → `find %{buildroot}%{_bindir} %{buildroot}%{_libexecdir}`.
+
+**Problem: irix-cc wrapper misroutes -MM (dependency generation)**
+Makefile-based builds that use `$(CC) -MM` for generating dependency files fail because the irix-cc wrapper doesn't recognize `-MM` as a preprocessing operation and falls through to compile+link mode.
+**Fix:** Pre-create empty deps.mk and remove the regeneration rule from the Makefile: `touch src/deps.mk && sed -i '/^deps.mk:/,/>/d' src/Makefile`. See feh.yaml.
+
+**Problem: _SC_HOST_NAME_MAX / HOST_NAME_MAX missing on IRIX**
+Code using `sysconf(_SC_HOST_NAME_MAX)` or `HOST_NAME_MAX` fails. IRIX has `MAXHOSTNAMELEN` (256) but not the POSIX constant.
+**Fix:** `sed -i '1i#ifndef HOST_NAME_MAX\n#define HOST_NAME_MAX 255\n#endif' src/file.c`. See feh.yaml.
+
+**Problem: Make CFLAGS= on command line kills += additions**
+When a Makefile uses `CFLAGS += -DPREFIX=... -DPACKAGE=...`, passing `CFLAGS=value` on the make command line overrides ALL `+=` additions, stripping crucial defines.
+**Fix:** Use `export CFLAGS=value` (environment variable) instead of `make CFLAGS=value`. The env var allows `?=` to skip but `+=` to still append. See feh.yaml.
+
+**Problem: IRIX scandir function pointer type mismatch**
+IRIX `scandir()` uses `int (*)(dirent_t *)` instead of POSIX `int (*)(const struct dirent *)`. Causes incompatible-function-pointer-types errors.
+**Fix:** Add `-Wno-incompatible-function-pointer-types` to CFLAGS. See feh.yaml.

@@ -1,0 +1,89 @@
+# feh - fast image viewer using Imlib2 (FC40: 3.10.2)
+# Makefile-based build (no autotools). Uses imlib2, libcurl, libpng, X11, Xinerama.
+package: feh
+
+rules:
+  inject_compat_functions:
+    - mkdtemp
+
+  drop_buildrequires:
+    - libXt-devel
+    - libexif-devel
+    - perl-Test-Command
+    - perl-Test-Harness
+  drop_requires:
+    - dejavu-sans-fonts
+
+  prep_commands:
+    # Remove _POSIX_C_SOURCE and _XOPEN_SOURCE — they hide IRIX-specific definitions
+    # (struct winsize, TIOCSWINSZ, various SGI extensions). _SGI_SOURCE provides everything.
+    - "sed -i 's/-D_POSIX_C_SOURCE=200809L//' config.mk"
+    - "sed -i 's/-D_XOPEN_SOURCE=700//' config.mk"
+    - "sed -i 's/-D_DARWIN_C_SOURCE//' config.mk"
+    # Remove -pedantic — IRIX headers use extensions that trigger warnings-as-errors
+    - "sed -i 's/-pedantic//' config.mk"
+    # IRIX lacks HOST_NAME_MAX and _SC_HOST_NAME_MAX — define HOST_NAME_MAX
+    # to trigger the simpler code path (IRIX MAXHOSTNAMELEN is 256)
+    - "sed -i '1i#ifndef HOST_NAME_MAX\\n#define HOST_NAME_MAX 255\\n#endif' src/winwidget.c"
+    # Pre-create empty deps.mk and disable its regeneration rule.
+    # The irix-cc wrapper doesn't handle -MM (dependency generation) correctly —
+    # it misroutes to compile+link instead of preprocess-only mode.
+    - "touch src/deps.mk"
+    - "sed -i '/^deps.mk:/,/>/d' src/Makefile"
+
+  spec_replacements:
+    # Replace the Fedora build command with cross-compilation build.
+    # The generic preamble already builds mogrix-compat and sets $LIBS.
+    # For Makefile builds, $LIBS is not auto-used — pass via LDFLAGS.
+    # Disable exif (no libexif), mkstemps (IRIX lacks it), verscmp (use bundled).
+    - pattern: |
+        sed -i \
+          -e "s|^doc_dir =.*$|doc_dir = \$(DESTDIR)%{_pkgdocdir}|" \
+          -e "s|^example_dir =.*$|example_dir = \$(doc_dir)/examples|" \
+          -e "s|^CFLAGS ?=.*$|CFLAGS = ${RPM_OPT_FLAGS}|" \
+          config.mk
+        %make_build PREFIX="%{_prefix}" VERSION="%{version}" \
+            curl=1 exif=1 test=1 xinerama=1
+      replacement: |
+        sed -i \
+          -e "s|^doc_dir =.*$|doc_dir = \$(DESTDIR)%{_pkgdocdir}|" \
+          -e "s|^example_dir =.*$|example_dir = \$(doc_dir)/examples|" \
+          config.mk
+        # Set pkg-config for cross-compilation (not auto-set in Makefile builds)
+        export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig"
+        export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
+        export CC="%{__cc}"
+        # Do NOT pass CFLAGS on make command line — it overrides config.mk's +=
+        # additions (which add -DPREFIX, -DPACKAGE, -DVERSION, -Wall, etc.).
+        # Instead, pass compat library via LDFLAGS (Makefile doesn't use $LIBS).
+        # Use -Wno-incompatible-function-pointer-types for IRIX scandir signature.
+        export CFLAGS="-O2 -Wno-incompatible-function-pointer-types"
+        %make_build PREFIX="%{_prefix}" VERSION="%{version}" \
+            CC="%{__cc}" \
+            LDFLAGS="$LIBS" \
+            curl=1 exif=0 mkstemps=0 verscmp=0 xinerama=1
+
+    # Fix install to use correct ICON_PREFIX
+    - pattern: "%make_install PREFIX=%{_prefix}"
+      replacement: "%make_install PREFIX=%{_prefix} ICON_PREFIX=%{buildroot}%{_prefix}/share/icons"
+
+    # Remove yudit font deletion (may not exist with our paths)
+    - pattern: "rm %{buildroot}%{_datadir}/%{name}/fonts/yudit.ttf"
+      replacement: "rm -f %{buildroot}%{_datadir}/%{name}/fonts/yudit.ttf"
+
+    # Remove find-lowres example deletion (path may differ)
+    - pattern: "rm %{buildroot}%{_docdir}/%{name}/examples/find-lowres"
+      replacement: "rm -f %{buildroot}%{_docdir}/%{name}/examples/find-lowres"
+
+    # Remove desktop file and icon entries from %files (not useful on IRIX)
+    - pattern: "%{_datadir}/applications/%{name}.desktop"
+      replacement: ""
+    - pattern: "%{_datarootdir}/icons/hicolor/48x48/apps/feh.png"
+      replacement: ""
+    - pattern: "%{_datarootdir}/icons/hicolor/scalable/apps/feh.svg"
+      replacement: ""
+
+  # Remove files that reference desktop integration (not useful on IRIX)
+  install_cleanup:
+    - "rm -f %{buildroot}%{_datadir}/applications/feh.desktop"
+    - "rm -rf %{buildroot}%{_datadir}/icons"

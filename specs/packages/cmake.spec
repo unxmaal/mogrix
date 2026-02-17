@@ -109,7 +109,7 @@ perl -pi -e 's/!defined\(__GNU__\)/!defined(__GNU__) \&\&                       
 #    UB in standards.h macro evaluation with clang. IRIX's default SGI mode
 #    already provides all the POSIX features these libraries need.
 #    Match lines with the exact "BSD|Darwin|Windows") pattern, add IRIX.
-for f in Utilities/cm{bzip2,curl,libarchive,liblzma,libuv}/CMakeLists.txt; do
+for f in Utilities/cmbzip2/CMakeLists.txt Utilities/cmcurl/CMakeLists.txt Utilities/cmlibarchive/CMakeLists.txt Utilities/cmliblzma/CMakeLists.txt Utilities/cmlibuv/CMakeLists.txt; do
   perl -pi -e 's/MATCHES "BSD\|Darwin\|Windows"\)/MATCHES "BSD|Darwin|Windows|IRIX")/' "$f"
 done
 
@@ -153,6 +153,25 @@ perl -pi -e 's/^#elif defined\(__hpux\)/#elif defined(__sgi)\n# include "posix.h
 perl -pi -e 's/^#elif defined\(__hpux\)/#elif defined(__sgi)\n\/* IRIX: no CLOCK_MONOTONIC, use CLOCK_SGI_CYCLE (hardware counter) *\/\n\n#include <stdint.h>\n#include <time.h>\n#include <sys\/ptimers.h>\n\n#undef NANOSEC\n#define NANOSEC ((uint64_t) 1e9)\n\nuint64_t uv__hrtime(uv_clocktype_t type) {\n  struct timespec ts;\n  clock_gettime(CLOCK_SGI_CYCLE, \&ts);\n  return (((uint64_t) ts.tv_sec) * NANOSEC + ts.tv_nsec);\n}\n\n#elif defined(__hpux)/' \
   Utilities/cmlibuv/src/unix/posix-hrtime.c
 
+# 14. Add fallback CMAKE_ROOT resolution for bundle layout.
+#     cmake resolves data dir relative to binary: strip "bin" suffix from exe_dir,
+#     append "share/cmake-3.28". In mogrix bundles, binaries are in _bin/ not bin/,
+#     so the standard suffix-strip produces "_" prefix → "_share/cmake-3.28" (wrong).
+#     Add fallback: if standard resolution fails, try exe_dir/../share/cmake-3.28.
+perl -pi -e 'if (/Build tree has.*bin.*config.*cmake/) {
+  # Insert a fallback check before the build-tree check
+  print "    // Mogrix bundle fallback: try <exe_dir>/../<CMAKE_DATA_DIR>\n";
+  print "    std::string fallback_dir = cmSystemTools::GetFilenamePath(exe_dir);\n";
+  print "    std::string fallback_root = cmStrCat(fallback_dir, \"/\", CMAKE_DATA_DIR);\n";
+  print "    if (cmSystemTools::FileExists(cmStrCat(fallback_root, \"/Modules/CMake.cmake\"))) {\n";
+  print "      cmSystemToolsCMakeRoot = fallback_root;\n";
+  print "    }\n";
+  print "  }\n";
+  print "  if (cmSystemToolsCMakeRoot.empty() ||\n";
+  print "      !cmSystemTools::FileExists(\n";
+  print "        cmStrCat(cmSystemToolsCMakeRoot, \"/Modules/CMake.cmake\"))) {\n";
+}' Source/cmSystemTools.cxx
+
 %build
 # Use host cmake to cross-configure for IRIX
 # Bundle ALL third-party deps (no system libs) to avoid dependency issues
@@ -177,8 +196,12 @@ cd _build && make %{?_smp_mflags} VERBOSE=1
 %install
 cd _build && make install DESTDIR=%{buildroot}
 
-# Remove docs we don't need
+# Remove docs and extras we don't need on IRIX
 rm -rf %{buildroot}%{_datadir}/doc
+rm -rf %{buildroot}%{_prefix}/doc
+rm -rf %{buildroot}%{_datadir}/bash-completion
+rm -rf %{buildroot}%{_datadir}/emacs
+rm -rf %{buildroot}%{_datadir}/vim
 
 # Create version-suffixed symlinks
 for f in cmake cpack ctest; do
