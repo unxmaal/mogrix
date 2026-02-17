@@ -33,6 +33,50 @@
 
 Test MCP at session start: `irix_exec "echo ok"`
 
+### mogrix-test MCP Server (Test Harness)
+
+A separate MCP server (`tools/mogrix-test-server.py`) provides structured testing tools. Results are stored as JSON in `test-results/<package>.json`.
+
+| Tool | Purpose |
+|------|---------|
+| `test_bundle bundle_path` | Deploy a `.run` bundle to IRIX, run all tests (auto `--version` + YAML smoke_tests), return pass/fail report |
+| `test_binary binary [args]` | Run a single binary on IRIX. Returns exit code, stdout, stderr, crash/signal info |
+| `check_deps path` | Check library dependencies WITHOUT running. Reports each NEEDED soname and resolution status |
+| `par_trace command` | Run command under `par` (syscall tracer) with intelligent output parsing |
+| `test_report [package]` | Return stored test results. If package given, full results; if omitted, summary of all |
+| `screenshot [delay]` | Capture the IRIX X11 display as PNG. Use Read tool to view the image |
+
+**Key differences from irix MCP tools:**
+
+- `test_bundle` deploys to `/tmp/mogrix-test/` on the IRIX **host** (not chroot). Bundle wrappers set their own `LD_LIBRARYN32_PATH`, so running through chroot would pollute the environment.
+- `test_binary` supports both chroot mode (default, for installed packages) and `host_mode` (for bundle binaries).
+- `screenshot` captures the X11 display via `xwd` on IRIX, transfers via SCP, converts to PNG on Linux.
+
+**Typical testing workflow:**
+
+```bash
+# 1. Full bundle test (auto-discovers binaries, runs smoke tests from YAML)
+test_bundle {"bundle_path": "/path/to/package.run"}
+
+# 2. Quick ad-hoc binary check
+test_binary {"binary": "/usr/sgug/bin/grep", "args": "--version"}
+
+# 3. Check library deps before deploying
+check_deps {"path": "/path/to/bundle_dir"}
+
+# 4. Debug a crash with parsed syscall trace
+par_trace {"command": "/usr/sgug/bin/failing-binary"}
+
+# 5. GUI app testing: launch + screenshot
+test_binary {"binary": "/path/to/gui-app", "args": "-display :0", "env": {"DISPLAY": ":0"}, "timeout": 5, "host_mode": true}
+screenshot {"delay": 3}
+
+# 6. View all test results
+test_report {}
+```
+
+**Configuration:** Defined in `.mcp.json` under `mogrix-test`. Uses its own SSH connection (separate from the irix MCP server).
+
 ---
 
 ## Shell Rules

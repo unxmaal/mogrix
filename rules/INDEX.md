@@ -202,6 +202,8 @@ Only facts NOT already covered in the Problem Reference table above. For package
 | Source analyzer | mogrix/analyzers/source.py | Ripgrep-based source scanner |
 | Rule auditor | mogrix/analyzers/rules.py | Duplication detection across packages |
 | Spec validator | mogrix/validators/spec.py | Specfile structural validator |
+| Test results | test-results/*.json | Bundle test results from mogrix-test MCP server |
+| Test server | tools/mogrix-test-server.py | MCP server for IRIX testing (test_bundle, test_binary, check_deps, par_trace, screenshot) |
 | Methods | rules/methods/*.md | Process documentation (see CLAUDE.md for index) |
 
 ## Rule Hierarchy

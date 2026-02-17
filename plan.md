@@ -2,9 +2,9 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-16)
+## Current Status (2026-02-17)
 
-**120+ source packages cross-compiled for IRIX (300+ RPMs). 20 bundles (5 suites + 15 individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO).
+**120+ source packages cross-compiled for IRIX (300+ RPMs). 154 bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
 
 All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app bundles (.tar.gz or self-extracting .run) for IRIX. 145+ package rule files. Suites: mogrix-essentials, mogrix-extras, mogrix-net, mogrix-smallweb, mogrix-fun. Individual bundles: bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2 — all tested on IRIX.
 
@@ -227,7 +227,7 @@ Key Qt5 fixes:
 | #202 Build tools | cmake, ninja, doxygen, meson, gdb | DONE (gdb SKIPPED — no IRIX debug support in 14.2) |
 | #203 Dev tools pt2 | re2c, yasm, quilt done; fossil, mercurial | PENDING |
 | #204 IPC/heavy | dbus, dbus-glib, icu, cyrus-sasl | PENDING |
-| #205 GUI apps | hexchat, geany, pidgin, nedit | PENDING |
+| #205 GUI apps | nedit DONE (Motif, constructor workaround for rld R_MIPS_REL32 partial failure); hexchat, geany, pidgin PENDING |
 
 Recent P5E packages (sessions 49-50): ed, dash, units, enscript, screen, mandoc, lrzsz, recode, zsh, mpg123, libpsl, opus, lame, mksh, libssh2, libao, libsndfile, libcaca, ksh, alpine, vile, re2c, yasm, quilt, lcms2, imlib2, frotz, stow, sox, doxygen.
 
@@ -303,8 +303,9 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | IRIX bundle tests passing across 20 bundles | Done |
 | Bootstrap tarball (`scripts/bootstrap-tarball.sh`) | Done |
 | MCP-based IRIX testing (no SSH) | Done |
+| mogrix-test MCP server (test_bundle, test_binary, check_deps, par_trace, screenshot) | Done |
 | App bundles (`mogrix bundle` — .tar.gz and self-extracting .run) | Done |
-| Bundle smoke testing (`mogrix test`) | Done |
+| Bundle smoke testing (`mogrix test` + mogrix-test MCP) | Done |
 | dlmalloc test suite (`tests/dlmalloc-test.c` — 29 tests) | Done |
 | Upstream package support (`mogrix create-srpm`) | Done |
 | Suite bundles (`mogrix bundle pkg1 pkg2 --name`) | Done |
@@ -347,6 +348,8 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | `-D_WCHAR_T` in C++ mode | Prevents IRIX stdlib.h from typedef-ing wchar_t (C++ keyword) |
 | Disable C99 math TR1 in c++config.h | IRIX libm lacks exp2l, cbrt, fdim, etc. |
 | R_MIPS_REL32 dispatch pattern | IRIX rld fails on function pointers in static data; use switch/strcmp dispatch |
+| R_MIPS_REL32 constructor workaround | IRIX rld silently skips some R_MIPS_REL32 relocs in large binaries; `__attribute__((constructor))` patches broken class record fields at startup. See nedit.yaml |
+| MOGRIX_NO_DLMALLOC for IRIX native Motif | Apps linking IRIX native libXm.so must disable dlmalloc to avoid cross-heap corruption |
 
 ---
 
@@ -368,6 +371,8 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 14. **Batch automation:** `mogrix batch-build` automates multi-package pipelines ✓
 15. **App bundles:** `mogrix bundle` creates optimized tarballs that coexist with SGUG-RSE ✓
 16. **Qt5 on IRIX:** Qt5 5.15.13 cross-compiled and verified running (`qVersion()` = "5.15.13") ✓
+17. **Motif app on IRIX:** NEdit 5.7 cross-compiled and rendering on IRIX native Motif (constructor workaround for rld relocation failures) ✓
+18. **Structured test harness:** mogrix-test MCP server with bundle testing, dep checking, par tracing, and X11 screenshots ✓
 
 ---
 

@@ -15,25 +15,25 @@ Bundles solve this by:
 ## Layout
 
 ```
-/opt/mogrix-apps/                       # User extracts bundles here
-  bin/                                  # ONE directory in PATH (trampolines)
-    nano                                # → ../nano-7.2-6a-irix-bundle/nano
-    weechat                             # → ../weechat-4.2.1-2a-irix-bundle/weechat
-  nano-7.2-6a-irix-bundle/
-    nano, rnano, tput, ...              # Wrapper scripts
-    install                             # Creates trampolines in ../bin/
-    uninstall                           # Removes them
-    README                              # Generated docs
-    _bin/                               # Actual ELF binaries
-    _sbin/                              # System binaries (if any)
-    _lib32/                             # Shared libraries (pruned)
-    share/                              # Data files
-      terminfo/                         # Trimmed to ~30 common terminals
-      fonts/                            # TTF fonts for Xft apps (if included)
-    etc/                                # Config files (if needed)
-      fonts/fonts.conf                  # Fontconfig config (relative font dirs)
-      fonts/conf.d/50-monospace.conf    # Maps "monospace" → bundled font
-      pki/tls/certs/ca-bundle.crt       # CA certs for TLS apps
+/opt/mogrix-apps/                              # User extracts bundles here
+  bin/                                         # ONE directory in PATH (trampolines)
+    nano                                       # → ../nano-7.2-6-irix-bundle.0217261456/nano
+    weechat                                    # → ../weechat-4.2.1-2-irix-bundle.0216262337/weechat
+  nano-7.2-6-irix-bundle.0217261456/
+    nano, rnano, tput, ...                     # Wrapper scripts
+    install                                    # Creates trampolines in ../bin/
+    uninstall                                  # Removes them
+    README                                     # Generated docs
+    _bin/                                      # Actual ELF binaries
+    _sbin/                                     # System binaries (if any)
+    _lib32/                                    # Shared libraries (pruned)
+    share/                                     # Data files
+      terminfo/                                # Trimmed to ~30 common terminals
+      fonts/                                   # TTF fonts for Xft apps (if included)
+    etc/                                       # Config files (if needed)
+      fonts/fonts.conf                         # Fontconfig config (relative font dirs)
+      fonts/conf.d/50-monospace.conf           # Maps "monospace" → bundled font
+      pki/tls/certs/ca-bundle.crt              # CA certs for TLS apps
 ```
 
 ## Three Layers of Scripts
@@ -143,19 +143,102 @@ This means any bundle that includes fontconfig and has TTF files in `fonts/` wil
 
 ## Versioning
 
-Bundle names include an alphabetic revision suffix: `weechat-4.2.1-2a-irix-bundle`. When rebuilding, the suffix auto-increments (a → b → c). Old bundle directories and tarballs for the same version are cleaned up automatically.
+Bundle names use a date-serial suffix: `nano-7.2-6-irix-bundle.0217261456` (format: `MMDDYYHHmm`). When rebuilding, previous bundle directories and tarballs for the same package version are automatically cleaned up.
 
-This lets users distinguish between rebuilds of the same package version (e.g., after fixing a TLS bug).
+This lets users distinguish between rebuilds of the same package version (e.g., after fixing a TLS bug) and ensures unique bundle names across sessions.
+
+## Self-Extracting .run Bundles
+
+The primary distribution format is a self-extracting `.run` file. This is a shell script with a gzipped tarball payload appended after a marker line.
+
+### How .run Files Work
+
+The `.run` file structure:
+
+```
+#!/bin/sh
+# ... extraction script (shell code) ...
+exit 0
+<binary payload: gzipped tar>
+```
+
+The extraction script uses `tail +SKIP` to skip past itself and pipe the binary payload through `gzcat | tar xf -`. The `SKIP` variable is set to the line number where the payload begins.
+
+### Critical: IRIX Shell Compatibility
+
+The extraction script uses **full absolute paths** for every command because IRIX users may have DIDBS or SGUG-RSE in their `$PATH`, which shadows system commands. Bare `tar`, `mkdir`, `pwd` etc. could resolve to the wrong binary and fail silently.
+
+| Command | Why absolute |
+|---------|-------------|
+| `/bin/sh` | Shebang — must be Bourne shell |
+| `/bin/pwd` | DIDBS/SGUG pwd could behave differently |
+| `/bin/tail` | IRIX native tail supports `+N` syntax |
+| `/sbin/mkdir` | Must be IRIX native mkdir |
+| `/sbin/tar` | IRIX native tar for extraction |
+| `/usr/sbin/gzcat` | IRIX gzip decompressor |
+| `/bin/dirname`, `/bin/basename` | Path manipulation |
+
+### .run Usage on IRIX
+
+```sh
+# Install to current directory (creates bundle-dir + bin/)
+sh nano-7.2-6-irix-bundle.0217261456.run
+
+# Install to specific directory
+sh nano-7.2-6-irix-bundle.0217261456.run /opt/mogrix-apps
+
+# Extract only (don't run install script)
+sh nano-7.2-6-irix-bundle.0217261456.run --extract-only /tmp
+```
+
+## Suite Bundles
+
+Multiple apps can be combined into a single bundle with shared libraries:
+
+```bash
+# Suite with explicit name
+uv run mogrix bundle telescope snownews lynx --name mogrix-smallweb
+
+# Include extra subpackages
+uv run mogrix bundle groff --include groff-perl
+```
+
+Suite bundles share `_lib32/` — common libraries (libncurses, libpcre2, etc.) are included once. Each app gets its own wrapper script. The `install` script creates trampolines for all binaries from all included packages.
 
 ## Invocation
 
 ```bash
+# Single app bundle
 uv run mogrix bundle <package>
+
+# Suite bundle
+uv run mogrix bundle pkg1 pkg2 pkg3 --name suite-name
+
+# Include extra subpackages
+uv run mogrix bundle <package> --include extra-subpackage
+
+# Build directory only, no tarball/.run
+uv run mogrix bundle <package> --no-tarball
 ```
 
-Output goes to `~/mogrix_outputs/bundles/`. The tarball is what gets copied to IRIX.
+Output goes to `~/mogrix_outputs/bundles/`:
+- `<name>.tar.gz` — compressed tarball
+- `<name>.run` — self-extracting installer (preferred for distribution)
+- `<name>/` — extracted bundle directory
 
 ## User Installation
+
+### Via .run file (recommended)
+
+```sh
+# On IRIX
+cd /opt/mogrix-apps
+sh /tmp/nano-7.2-6-irix-bundle.0217261456.run .
+PATH=/opt/mogrix-apps/bin:$PATH; export PATH
+nano
+```
+
+### Via .tar.gz (manual)
 
 ```sh
 # On IRIX (one-time setup)
@@ -169,6 +252,14 @@ gzip -dc /tmp/weechat-4.2.1-2a-irix-bundle.tar.gz | tar xf -
 cd weechat-4.2.1-2a-irix-bundle
 ./install
 weechat
+```
+
+### Uninstalling
+
+```sh
+cd /opt/mogrix-apps/weechat-4.2.1-2a-irix-bundle
+./uninstall
+# Then optionally: rm -rf /opt/mogrix-apps/weechat-4.2.1-2a-irix-bundle
 ```
 
 ## Key Files
