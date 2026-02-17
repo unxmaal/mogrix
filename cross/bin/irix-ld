@@ -78,8 +78,10 @@ for arg in "$@"; do
             # autoconf probes this to find library directories.
             ;;
         --version-script=*|--version-script)
-            # Skip GNU symbol versioning — IRIX rld doesn't support .gnu.version* sections.
-            # Version scripts create VERNEED/VERSYM dynamic tags that crash rld during dlopen.
+            # Skip user-provided GNU symbol versioning — IRIX rld doesn't support
+            # .gnu.version* sections. Version scripts create VERNEED/VERSYM dynamic
+            # tags that crash rld during dlopen. We add our own CRT version script
+            # internally (see crt-hide.ver) and strip-verneed cleans up the sections.
             case "$arg" in
                 --version-script) skip_next=1 ;;
             esac
@@ -117,6 +119,12 @@ if [ "$is_shared" = "1" ]; then
     CRTBEGIN=$STAGING/lib32/crtbeginS.o
     CRTEND=$STAGING/lib32/crtendS.o
     DSOHANDLE=$STAGING/lib32/dso_handle.o
+    # crt-hide.ver: Force CRT symbols local to fix BFD ld MIPS n32 bug where
+    # .hidden visibility is lost. Without this, __CTOR_END__ goes in the GLOBAL
+    # GOT and rld resolves it to the executable's __CTOR_END__, breaking all
+    # shared library constructors (glib gobject_init, etc.). strip-verneed
+    # removes the resulting .gnu.version sections post-link.
+    CRT_HIDE="$(dirname "$0")/../crt/crt-hide.ver"
 
     # Find the output file name from -o flag (needed for post-link strip-verneed)
     output_file=""
@@ -140,6 +148,7 @@ if [ "$is_shared" = "1" ]; then
     # libcrypto.so.3. This matches the executable case (LLD) ordering.
     $GNULD \
       -Bsymbolic-functions \
+      --version-script="$CRT_HIDE" \
       -T "$LDSCRIPT" \
       $CRTBEGIN \
       $DSOHANDLE \

@@ -38,11 +38,11 @@ extern "C" {
  * (modff is available in IRIX - don't redefine)
  */
 #ifndef ldexpf
-static inline float ldexpf(float x, int exp) { return (float)ldexp((double)x, exp); }
+static __inline__ float ldexpf(float x, int exp) { return (float)ldexp((double)x, exp); }
 #endif
 
 #ifndef frexpf
-static inline float frexpf(float x, int *exp) { return (float)frexp((double)x, exp); }
+static __inline__ float frexpf(float x, int *exp) { return (float)frexp((double)x, exp); }
 #endif
 
 /* C99 math functions missing from IRIX headers.

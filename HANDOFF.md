@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-16 (session 53)
-**Status**: GTK3 3.24.41 BUILT and staged. All batch #201 dependencies complete. irix-cc now handles meson response files.
+**Last Updated**: 2026-02-17 (session 59)
+**Status**: All 28 bundles rebuilt with fixed self-extracting template. GTK3 verified on IRIX.
 
 ---
 
@@ -15,33 +15,34 @@
 
 **CHECK USEFULNESS FIRST.** Before porting a package, verify it will actually work on IRIX. See `rules/methods/before-you-start.md` section 0.
 
+**SYNC STAGING -> CHROOT.** After rebuilding any library, compare sizes and redeploy to chroot. Mismatched versions cause silent SIGABRT. See INDEX.md "Staging/chroot library mismatch".
+
 ---
 
 ## Current State
 
-### Batch 201 GTK3 Stack: COMPLETE
+### Bundles: All 28 rebuilt and working
 
-All components built and staged to `/opt/sgug-staging`:
-- atk, gdk-pixbuf2, libepoxy (with GLX), xorgproto, libXfixes
-- libXcomposite, libXcursor, libXdamage, libXi, libXinerama, libXrandr
-- **GTK3 3.24.41** — 4 RPMs: gtk3, gtk3-devel, gtk3-immodules, gtk-update-icon-cache
+Self-extracting `.run` bundles now use full absolute paths (`/sbin/tar`, `/sbin/mkdir`, `/usr/sbin/gzcat`, `/bin/tail`, `/bin/pwd`) to avoid PATH shadowing from DIDBS/SGUG-RSE on user's IRIX host. `cd "$dest"` instead of `-C` flag. All bundles in `~/mogrix_outputs/bundles/`.
 
-### irix-cc response file expansion (this session)
+**21 individual apps:** bash, bc, bitlbee, cmatrix, dmenu, gmi100, groff, jq, lynx, man-db, nano, rxvt-unicode, snownews, st, tcsh, telescope, tinc, tmux, vim-enhanced, weechat, wget2
 
-`cross/bin/irix-cc` now expands meson `@file` response files before processing flags. This was required for GTK3's large link commands where `-Wl,` flags and `-shared` were inside the file. Deployed to staging. See INDEX.md "Meson Cross-Builds" section.
+**7 suites:**
+- mogrix-essentials: nano grep sed gawk less coreutils findutils diffutils tar tree-pkg
+- mogrix-extras: bc jq man-db tmux vim-enhanced
+- mogrix-fun: cmatrix figlet sl
+- mogrix-funtools: cowsay banner
+- mogrix-clitools: dtach diffstat pwgen rlwrap ncdu
+- mogrix-net: curl rsync gnupg2
+- mogrix-smallweb: telescope gmi100 lynx snownews
 
-### Xge.h expanded (this session)
+### GTK3 on IRIX: WORKING
 
-`patches/packages/libXi/Xge.h` now includes inline stubs for `XGetEventData`, `XFreeEventData`, and `XSetIMValues` declaration. Installed at `/opt/sgug-staging/usr/sgug/include/X11/extensions/Xge.h`.
+`test_gtk3` renders on IRIX 6.5 console. Runtime requirements for non-chroot GTK3 apps: `FONTCONFIG_FILE` override needed (see INDEX.md "FONTCONFIG_FILE for non-chroot apps").
 
 ### Native glib tools provisioned
 
-GTK3 meson build requires native (x86_64) tools. Extracted from Ubuntu debs without root:
-- `glib-compile-resources` → `/tmp/glib-dev-bin/usr/bin/` (symlinked from `cross/native-tools/`)
-- `gdbus-codegen` → `cross/native-tools/` (patched Python module path)
-- `xmllint` → `/tmp/xmllint-pkg/usr/bin/` (symlinked from `cross/native-tools/`)
-
-**WARNING**: `/tmp/` contents are ephemeral. If cleared, re-extract with:
+GTK3 meson build requires native (x86_64) tools in `/tmp/` -- re-extract if cleared:
 ```
 apt-get download libglib2.0-dev-bin && dpkg-deb -x libglib2.0-dev-bin*.deb /tmp/glib-dev-bin
 apt-get download libxml2-utils && dpkg-deb -x libxml2-utils*.deb /tmp/xmllint-pkg
@@ -51,22 +52,23 @@ apt-get download libxml2-utils && dpkg-deb -x libxml2-utils*.deb /tmp/xmllint-pk
 
 ## Next Steps
 
-1. **Build #205 GUI apps** — hexchat, geany, pidgin, nedit (GTK3 is now available!)
-2. **Build #204 IPC/heavy** — dbus, dbus-glib, icu, cyrus-sasl
-3. **Build #203 remaining** — fossil, mercurial
-4. **Test GTK3 on IRIX** — copy RPMs to chroot, verify libgtk-3.so loads
-5. **Low priority**: `drop_buildrequires_if_unavailable` engine feature
+1. **Build #205 GUI apps** -- hexchat, geany, pidgin, nedit (GTK3 verified)
+2. **Build #204 IPC/heavy** -- dbus, dbus-glib, icu, cyrus-sasl
+3. **Build #203 remaining** -- fossil, mercurial
+4. **Rebuild remaining ~50 pre-fix libraries** in staging (exposed CRT, 3-LOAD segments from before fixes)
+5. **Update `rules/methods/bundles.md`** -- document the self-extracting .run format (currently only covers .tar.gz)
+6. **Low priority**: `drop_buildrequires_if_unavailable` engine feature
 
 ### Batch Progress
 
 | Batch | Status |
 |-------|--------|
-| #191–#200 | COMPLETED |
-| #201 GTK3 stack | **DONE** |
+| #191-#200 | COMPLETED |
+| #201 GTK3 stack | DONE -- GUI verified working on IRIX |
 | #202 Build tools | DONE (gdb skipped) |
 | #203 Dev tools pt2 | re2c/yasm/quilt DONE; fossil/mercurial PENDING |
 | #204 IPC/heavy | PENDING |
-| #205 GUI apps | PENDING — can start now (GTK3 available) |
+| #205 GUI apps | UNBLOCKED -- GTK3 verified |
 
 ### Blocked/Skipped Packages
 
@@ -81,23 +83,25 @@ apt-get download libxml2-utils && dpkg-deb -x libxml2-utils*.deb /tmp/xmllint-pk
 
 ## Recent Work
 
-### Session 53: GTK3 built (continuation of 52)
+### Session 59: Bundle extraction fix + full rebuild
 
-- Built GTK3 3.24.41 after 12 iterations fixing: XSetIMValues missing, xcookie union member (5 files), atk-bridge.h, sincos in tests, meson response file expansion, demo/example file list cleanup
-- Key fixes: `irix-cc` response file expansion, expanded `Xge.h` with XGetEventData/XFreeEventData/XSetIMValues stubs, disabled demos/examples in meson
-- Updated `rules/INDEX.md` with "Meson Cross-Builds" section
+- **Root cause**: `.run` scripts used bare `tar`/`mkdir` without full paths. User's IRIX `.bash_profile` had ancient DIDBS environment (`/usr/didbs/current/bin` first in PATH), shadowing system commands. Bare `tar` resolved to DIDBS tar instead of `/sbin/tar`.
+- **Fix**: `SELF_EXTRACTING_TEMPLATE` in `bundle.py` now uses `/sbin/tar`, `/sbin/mkdir`, `/usr/sbin/gzcat`, `/bin/tail`, `/bin/pwd`. Uses `cd "$dest"` instead of `-C` flag. `$0` resolved to absolute path before `cd`.
+- **Also fixed**: Staging-only libs (libgcc_s, libstdc++) no longer trigger misleading "may need SGUG-RSE" warning.
+- All 28 bundles (21 individual + 7 suites) rebuilt and verified.
+- INDEX.md updated with "Shell scripts must use full paths" invariant.
+- User removed ancient DIDBS `.bash_profile` from IRIX host.
 
-### Session 52: GTK3 stack dependencies + GTK3 prep
+### Session 58: GTK3 verified working + staging/chroot sync fix
 
-- Built 6 X11 extension libraries (libXcomposite, libXcursor, libXdamage, libXi, libXinerama, libXrandr)
-- Rebuilt libepoxy with GLX support (`-Dglx=yes -Dx11=true`)
-- Provisioned native glib tools for meson cross-builds
-- Created comprehensive `rules/packages/gtk3.yaml` with ~160 lines of rules
+- 12 libraries mismatched between staging and chroot: pango x4, cairo x2, gio, bz2, jpeg, pixman, zlib, intl. Redeployed all.
+- test_gtk3 renders successfully. FONTCONFIG_FILE override for non-chroot apps.
+- INDEX.md updated with staging/chroot mismatch pattern.
 
-### Session 51: GDB investigation + skip decision
+### Session 57: 3-LOAD-segment crash + PHDRS FILEHDR fix
 
-- Investigated GDB 14.2 — no IRIX native debug support in this version
-- Added `-z norelro` to irix-ld, `gl_cv_malloc_ptrdiff=yes` pattern
+- Fixed irix-shared.lds with PHDRS block (IRIX rld needs exactly 2 LOAD segments).
+- Rebuilt 6 packages: pixman, bzip2, zlib-ng, pango, cairo, libjpeg-turbo.
 
 ---
 
@@ -114,3 +118,20 @@ apt-get download libxml2-utils && dpkg-deb -x libxml2-utils*.deb /tmp/xmllint-pk
 | Compat functions | `compat/catalog.yaml` |
 | Workspace paths & workflow | `CLAUDE.md` |
 | SGUG RSE reference | `/home/edodd/projects/github/sgug-rse` |
+
+---
+
+## Post-Compaction Checklist (READ THIS FIRST)
+
+You just woke up from a context compaction. You WILL get basic things wrong unless you re-anchor now.
+
+1. **Mogrix invocation**: `uv run mogrix <command>` — not `mogrix`, not `python -m mogrix`
+2. **Grep INDEX.md** before attempting ANY fix: `Grep pattern="keyword" path="rules/INDEX.md"` — the answer is probably already there
+3. **Read GENERIC_SUMMARY.md** before starting any new package
+4. **Paths are different things**:
+   - `/opt/sgug-staging/` = cross-compilation sysroot (on Linux build host)
+   - `/opt/chroot` = IRIX test chroot (on IRIX host, accessed via MCP tools)
+   - These are NOT the same. Don't mix them up.
+5. **Chroot is root-owned**. Everything in `/opt/chroot` is owned by root. Don't be surprised by permission errors.
+6. **IRIX access**: Use MCP tools (`irix_exec`, `irix_copy_to`, `irix_read_file`, `irix_par`). NEVER raw SSH.
+7. **Compat functions**: Grep `compat/catalog.yaml` before writing a new one — it probably already exists.

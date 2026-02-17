@@ -19,7 +19,7 @@ extern "C" {
 #endif
 
 /* getrandom() stub - always returns -1 with ENOSYS to force /dev/urandom fallback */
-static inline ssize_t getrandom(void *buf, size_t buflen, unsigned int flags)
+static __inline__ ssize_t getrandom(void *buf, size_t buflen, unsigned int flags)
 {
     (void)buf;
     (void)buflen;

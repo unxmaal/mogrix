@@ -127,6 +127,10 @@ generic:
     # and zero-timeout cases. These tests can't run cross-compiled.
     gl_cv_func_select_detects_ebadf: "yes"
     gl_cv_func_select_supports0: "yes"
+    # Autoconf 2.72+ checks whether the compiler can detect undeclared
+    # builtins. This test links a conftest and fails with our cross-
+    # compiler (undefined main). Tell configure no special flags needed.
+    ac_cv_c_undeclared_builtin_options: "none needed"
 
   # Common compat functions needed by most packages.
   # IRIX libc lacks these POSIX/BSD functions. Static archive linking

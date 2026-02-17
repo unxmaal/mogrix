@@ -1,5 +1,7 @@
 package: pcre2
 rules:
+  ac_cv_overrides:
+    ac_cv_func_memmove: 'yes'
   configure_flags:
     add:
     - --enable-pcre2-16
@@ -8,9 +10,7 @@ rules:
   spec_replacements:
   - pattern: '%bcond_with pcre2_enables_sealloc'
     replacement: '# bcond_with pcre2_enables_sealloc removed - no JIT on IRIX'
-  - pattern: "%ifarch s390 sparc64 sparcv9\n    --disable-jit \\\n    --disable-pcre2grep-jit \\\n%else\n    --enable-jit \\\n    --enable-pcre2grep-jit \\\n%endif\n    --disable-bsr-anycrlf \\\n    --disable-coverage\
-      \ \\\n    --disable-ebcdic \\\n    --disable-fuzz-support \\\n%if %{with pcre2_enables_sealloc}\n    --enable-jit-sealloc \\\n%else\n    --disable-jit-sealloc \\\n%endif"
-    replacement: "    --disable-jit \\\n    --disable-pcre2grep-jit \\\n    --disable-bsr-anycrlf \\\n    --disable-coverage \\\n    --disable-ebcdic \\\n    --disable-fuzz-support \\\n    --disable-jit-sealloc\
-      \ \\"
+  - pattern: "%ifarch s390 sparc64 sparcv9\n    --disable-jit \\\n    --disable-pcre2grep-jit \\\n%else\n    --enable-jit \\\n    --enable-pcre2grep-jit \\\n%endif\n    --disable-bsr-anycrlf \\\n    --disable-coverage \\\n    --disable-ebcdic \\\n    --disable-fuzz-support \\\n%if %{with pcre2_enables_sealloc}\n    --enable-jit-sealloc \\\n%else\n    --disable-jit-sealloc \\\n%endif"
+    replacement: "    --disable-jit \\\n    --disable-pcre2grep-jit \\\n    --disable-bsr-anycrlf \\\n    --disable-coverage \\\n    --disable-ebcdic \\\n    --disable-fuzz-support \\\n    --disable-jit-sealloc \\"
   - pattern: '    --enable-percent-zt \'
     replacement: '    --disable-percent-zt \'

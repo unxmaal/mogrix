@@ -1,11 +1,14 @@
 package: libjpeg-turbo
 rules:
+  drop_buildrequires:
+  - nasm
   spec_replacements:
   - pattern: "%{cmake} -DCMAKE_SKIP_RPATH:BOOL=YES \\\n         -DCMAKE_SKIP_INSTALL_RPATH:BOOL=YES \\\n%ifarch s390x\n         -DFLOATTEST:STRING=\"fp-contract\" \\\n%endif\n         -DENABLE_STATIC:BOOL=NO\n\
       \n%cmake_build"
     replacement: "mkdir -p _build && cd _build\ncmake .. \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=lib32 \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_C_FLAGS=\"%{optflags}\"\
-      \ \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SKIP_RPATH:BOOL=YES \\\n  -DCMAKE_SKIP_INSTALL_RPATH:BOOL=YES\
-      \ \\\n  -DENABLE_STATIC:BOOL=NO \\\n  -DWITH_SIMD:BOOL=OFF \\\n  -DWITH_JAVA:BOOL=OFF\nmake %{?_smp_mflags} -C ."
+      \ \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat -lm\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  -DCMAKE_SKIP_RPATH:BOOL=YES \\\n  -DCMAKE_SKIP_INSTALL_RPATH:BOOL=YES\
+      \ \\\n  -DENABLE_STATIC:BOOL=NO \\\n  -DWITH_SIMD:BOOL=OFF \\\n  -DWITH_JAVA:BOOL=OFF \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_SYSTEM_PROCESSOR=mips \\\n  -DCMAKE_SIZEOF_VOID_P=4\nmake %{?_smp_mflags}\
+      \ -C ."
   - pattern: '%cmake_install'
     replacement: make -C _build DESTDIR=$RPM_BUILD_ROOT install
   - pattern: case `uname -i` in

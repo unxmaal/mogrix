@@ -31,7 +31,14 @@ CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
 # (not "struct __timespec"). IRIX sys/timespec.h only maps __timespec→timespec
 # when __TIME_H__ is set. Without this, signal.h (and other headers) can include
 # sys/timespec.h before time.h, leaving the struct with the wrong name.
-CLANG_FLAGS="$CLANG_FLAGS -include $SYSROOT/usr/include/time.h"
+# BUT: skip for assembly files (.S/.s) — the assembler can't parse C declarations.
+_has_asm_source=false
+for _arg in "$@"; do
+    case "$_arg" in *.S|*.s) _has_asm_source=true; break ;; esac
+done
+if [ "$_has_asm_source" = "false" ]; then
+    CLANG_FLAGS="$CLANG_FLAGS -include $SYSROOT/usr/include/time.h"
+fi
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"

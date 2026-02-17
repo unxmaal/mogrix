@@ -120,12 +120,12 @@ typedef struct {
 extern "C" {
 #endif
 
-static inline intmax_t imaxabs(intmax_t j)
+static __inline__ intmax_t imaxabs(intmax_t j)
 {
     return j < 0 ? -j : j;
 }
 
-static inline imaxdiv_t imaxdiv(intmax_t numer, intmax_t denom)
+static __inline__ imaxdiv_t imaxdiv(intmax_t numer, intmax_t denom)
 {
     imaxdiv_t result;
     result.quot = numer / denom;
