@@ -13,6 +13,26 @@ rules:
     # IRIX has ctime_r in libc, but meson cross-compile can't detect it.
     # The static fallback in cairo-ps-surface.c conflicts with IRIX's extern declaration.
     - "sed -i '/^#ifndef HAVE_CTIME_R$/,/^#endif$/d' src/cairo-ps-surface.c"
+    # === Disable XRender support in xlib backend ===
+    # IRIX X server lacks the RENDER extension (confirmed: 31 extensions, no RENDER).
+    # Cairo with XRender compiled in crashes when trying to use RENDER protocol
+    # on a server that doesn't support it. Disable at build time so cairo uses
+    # pure xlib (XPutImage) for blitting — slower but works everywhere.
+    # Change dependency to required:false so xlib backend builds without xrender.
+    - "sed -i \"s/dependency('xrender', required: get_option('xlib')/dependency('xrender', required: false/\" meson.build"
+    # Also hide xrender.pc so meson can't find it even with required:false auto-detect
+    - "sed -i \"s/dependency('xrender'/dependency('xrender-disabled'/\" meson.build"
+    # === Disable MIT-SHM (X shared memory) ===
+    # IRIX IPC_RMID does NOT defer segment deletion — it destroys immediately.
+    # Cairo calls shmctl(IPC_RMID) before the X server finishes reading the SHM
+    # segment, causing the X server to error when it tries to access destroyed memory.
+    # Small segments (4KB paints) survive by luck; large ones (512KB stroke fallback) fail.
+    # Fix: remove XShm header checks so HAVE_X11_EXTENSIONS_XSHM_H is never set,
+    # causing all SHM functions in cairo-xlib-surface-shm.c to be stubbed out.
+    # Cairo will use regular XPutImage/XGetImage instead — slower but correct on IRIX.
+    - "sed -i \"/XShm.h/d\" meson.build"
+    - "sed -i \"/shmproto.h/d\" meson.build"
+    - "sed -i \"/shmstr.h/d\" meson.build"
 
   drop_buildrequires:
     - gtk-doc

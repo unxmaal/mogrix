@@ -1,0 +1,90 @@
+package: gtkterm
+upstream:
+  url: https://github.com/wvdakker/gtkterm/archive/refs/tags/1.3.1.tar.gz
+  version: "1.3.1"
+  type: tarball
+  build_system: meson
+  license: "GPL-2.0-or-later"
+  summary: "GTK+ serial port terminal"
+  source_dir: gtkterm-1.3.1
+
+add_source:
+  - irix_serial_compat.h
+
+rules:
+  drop_buildrequires:
+    - "meson"
+    - "gettext"
+
+  prep_commands:
+    # === Remove libgudev dependency (Linux-only, not needed on IRIX) ===
+    # Remove gudev dependency declaration from top-level meson.build
+    - "sed -i \"/gudev_deps/d\" meson.build"
+    # Remove gudev from executable dependencies in src/meson.build
+    - "sed -i \"/gudev_deps/d\" src/meson.build"
+    # Stub out device_monitor.c (uses gudev for USB hotplug detection)
+    # IRIX has static serial ports — no hotplug needed
+    - "echo 'void device_monitor_start(void) {}' > src/device_monitor.c"
+    # === Copy IRIX serial compat header ===
+    - "cp %{_sourcedir}/irix_serial_compat.h src/irix_serial_compat.h"
+    # Include compat header in files that need it
+    - "sed -i '1i #include \"irix_serial_compat.h\"' src/serial.c"
+    - "sed -i '1i #include \"irix_serial_compat.h\"' src/buffer.c"
+    # === Fix asm/termios.h include (IRIX uses sys/ioctl.h for TIOCM_*) ===
+    # interface.c conditionally includes asm/termios.h for modem control signals
+    - "sed -i 's|#.*include <asm/termios.h>|#include <sys/ioctl.h>  /* IRIX: TIOCM_* are here */|' src/interface.c"
+    # Also add compat header to interface.c in case it needs CRTSCTS
+    - "sed -i '1i #include \"irix_serial_compat.h\"' src/interface.c"
+    # === Remove POSIX feature test macros that conflict with IRIX ===
+    - "sed -i \"/_GNU_SOURCE/d\" meson.build || true"
+    - "sed -i \"/_XOPEN_SOURCE/d\" meson.build || true"
+    # === Link mogrix compat library ===
+    # Meson doesn't pick up $LIBS, so add to link_args in src/meson.build
+    # XGE stubs (XESetWireToEventCookie etc.) are now built into libXi.so.6
+    # via xge_compat.c — no separate stub library needed.
+    - "sed -i \"s/install : true/install : true,\\n\\tlink_args : ['-L' + meson.source_root() + '\\/mogrix-compat', '-lmogrix-compat']/\" src/meson.build"
+    # === Fix IRIX rld crash: remove export_dynamic ===
+    # meson.build has export_dynamic:true which puts ALL symbols in .dynsym.
+    # This inflates MIPS_SYMTABNO from ~353 to 588, exceeding rld's internal
+    # table limits (~300-400 entries) and causing SIGSEGV during rld init.
+    - "sed -i 's/export_dynamic : true,//' src/meson.build"
+    # === Fix NEEDED library order for IRIX rld ===
+    # Put VTE (C++ lib) before GTK3 (heavy deps) in link order.
+    - "perl -i -0pe 's/gtk_deps,\\n\\t\\tvte_deps,/vte_deps,\\n\\t\\tgtk_deps,/' src/meson.build"
+    # === IRIX serial port paths ===
+    # IRIX serial ports are /dev/ttyf1, /dev/ttyf2 (not /dev/ttyS0, /dev/ttyUSB0)
+    - "sed -i 's|/dev/ttyS0|/dev/ttyf1|g' src/parsecfg.c src/term_config.c || true"
+
+  export_vars:
+    MOGRIX_NO_DLMALLOC: "1"
+
+  spec_replacements:
+    # Replace entire %build section with meson cross-compilation
+    - pattern: "%build\n%meson\n%meson_build"
+      replacement: |
+        %build
+        export PATH=/home/edodd/projects/github/unxmaal/mogrix/cross/native-tools:$PATH
+        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          --wrap-mode=nodownload
+        /home/edodd/.local/bin/meson compile -C _build
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Fix %files
+    - pattern: "%{_bindir}/*"
+      replacement: |
+        %{_bindir}/gtkterm
+        %{_datadir}/applications/gtkterm.desktop
+        %{_datadir}/icons/hicolor/*/apps/gtkterm.*
+        %{_mandir}/man1/gtkterm.1*
+
+smoke_test:
+  - command: "/usr/sgug/bin/gtkterm"
+    args: "--help"
+    expect: "gtkterm"

@@ -72,7 +72,7 @@ The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl
 | `rules/GENERIC_SUMMARY.md` | What generic.yaml already handles (read before writing rules) |
 | `rules/INDEX.md` | Problem lookup — grep, don't read whole file |
 | `rules/methods/mogrix-workflow.md` | How to run mogrix |
-| `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging |
+| `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging, mogrix-test MCP tools |
 | `rules/methods/compat-functions.md` | Adding compat functions |
 | `rules/methods/text-replacement.md` | safepatch vs sed |
 | `rules/methods/patch-creation.md` | Creating patches |
@@ -80,6 +80,8 @@ The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl
 | `rules/methods/task-tracking.md` | Task tracking + agent orchestration for batch builds |
 | `compat/catalog.yaml` | Compat function registry |
 | `HANDOFF.md` | Current session state |
+| `tools/mogrix-test-server.py` | MCP test harness (test_bundle, test_binary, check_deps, par_trace, screenshot) |
+| `test-results/*.json` | Stored test results |
 
 ---
 
@@ -91,6 +93,8 @@ uv run mogrix <command>
 ```
 
 **IRIX connection:** Use MCP tools (`irix_exec`, `irix_copy_to`, `irix_read_file`, `irix_par`) or fallback `tools/irix-exec.sh "command"`. **Never SSH as root directly.**
+
+**IRIX testing:** Use mogrix-test MCP tools (`test_bundle`, `test_binary`, `check_deps`, `par_trace`, `screenshot`). See `rules/methods/irix-testing.md`.
 
 **IRIX shell:** Always use `/bin/sh`, not bash. Use `LD_LIBRARYN32_PATH`.
 

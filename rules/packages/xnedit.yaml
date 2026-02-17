@@ -7,11 +7,14 @@ upstream:
   license: "GPL-2.0-only"
   summary: "Fast X11 text editor based on NEdit with Unicode support"
   source_dir: xnedit-1.6.1
+add_source:
+  - fix_class_recs.c
 rules:
   export_vars:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    MOGRIX_NO_DLMALLOC: "1"
   prep_commands:
     # Fix hardcoded Linux paths in Makefile.linux for cross-compilation
     - "sed -i 's|-I/usr/X11R6/include|-I/opt/sgug-staging/usr/sgug/include|g' makefiles/Makefile.linux"
@@ -21,10 +24,23 @@ rules:
     - "sed -i 's|$(C_OPT_FLAGS)|$(C_OPT_FLAGS) -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -DEDITRES|' makefiles/Makefile.linux"
     # Add -lXmu for EDITRES and -lgen for IRIX, add compat library
     - "sed -i 's|-lXrender|-lXmu -lXrender|' makefiles/Makefile.linux"
+    # Replace DropDown.h with ComboBox.h (IRIX Motif has ComboBox, not DropDown)
+    - "sed -i 's|#include <Xm/DropDown.h>|#include <Xm/ComboBox.h>|' source/window.c"
+    # Remove post-build binary execution (can't run MIPS on x86)
+    - "sed -i '/@source\\/xnedit -V/d' Makefile"
+    # Copy fix_class_recs.c and add to OBJS (R_MIPS_REL32 workaround for widget ClassRec)
+    - "cp %{_sourcedir}/fix_class_recs.c source/fix_class_recs.c"
+    - "sed -i 's|filter.o|filter.o fix_class_recs.o|' source/Makefile.common"
   spec_replacements:
     # Use make linux with cross-compiler
     - pattern: "%make_build"
       replacement: "make linux CC=%{__cc} AR=%{__ar} ARFLAGS=-urs"
+    # Add desktop file and icon to %files
+    - pattern: "%{_bindir}/*"
+      replacement: |
+        %{_bindir}/*
+        %{_datadir}/applications/xnedit.desktop
+        %{_datadir}/icons/xnedit.png
 smoke_test:
 - command: "/usr/sgug/bin/xnedit"
   args: "--version"
