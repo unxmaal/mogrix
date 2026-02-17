@@ -1,2 +1,66 @@
-# scrot
+# scrot - command line screen capture utility (FC40: 1.8.1)
+# Uses autotools, depends on imlib2, libbsd, X11, Xext, Xcomposite, Xinerama, Xfixes
+# IRIX has strlcpy/strlcat natively in libc; err/errx/warn/warnx via compat.
+# With those available, libbsd is not needed.
 package: scrot
+
+rules:
+  inject_compat_functions:
+    - err
+
+  drop_buildrequires:
+    - autoconf-archive
+    - "pkgconfig(libbsd)"
+    - "pkgconfig(x11)"
+    - "pkgconfig(xext)"
+    - "pkgconfig(xcomposite)"
+    - "pkgconfig(xinerama)"
+
+  # Tell configure that functions exist (cross-compile can't run test programs).
+  # BSD funcs: IRIX has strlcpy/strlcat natively; err/errx/warn/warnx via compat.
+  # Required funcs: getopt_long via compat; others are in IRIX libc.
+  ac_cv_overrides:
+    ac_cv_func_strlcpy: "yes"
+    ac_cv_func_strlcat: "yes"
+    ac_cv_func_err: "yes"
+    ac_cv_func_errx: "yes"
+    ac_cv_func_warn: "yes"
+    ac_cv_func_warnx: "yes"
+    ac_cv_func_getopt_long: "yes"
+    ac_cv_func_getsubopt: "yes"
+    ac_cv_func_gethostname: "yes"
+    ac_cv_func_select: "yes"
+    ac_cv_func_strdup: "yes"
+    ac_cv_func_strerror: "yes"
+    ac_cv_func_strndup: "yes"
+    ac_cv_func_strtol: "yes"
+
+  # Set CFLAGS before configure so it skips its own SCROT_FLAGS block
+  # (which adds -flto, producing LLVM bitcode incompatible with IRIX linker).
+  # configure.ac: AS_IF([test "x$orig_CFLAGS" = "x"], [...SCROT_FLAGS...])
+  export_vars:
+    CFLAGS: "-O2 -g -Wall -Wextra"
+
+  spec_replacements:
+    # The original spec has all pkgconfig deps on one line:
+    #   BuildRequires:  pkgconfig(imlib2) pkgconfig(libbsd) ...
+    # drop_buildrequires can't remove pkgconfig(imlib2) when it's the first
+    # package on a multi-dep line. Replace the whole original line before
+    # drop_buildrequires runs (spec_replacements runs first in the emitter).
+    - pattern: "BuildRequires:  pkgconfig(imlib2) pkgconfig(libbsd) pkgconfig(x11) pkgconfig(xext) pkgconfig(xcomposite) pkgconfig(xinerama)"
+      replacement: "# pkgconfig deps handled by staging sysroot"
+    # Skip autoreconf — the source tarball ships a working configure script,
+    # and autoreconf needs autoconf-archive (AX_APPEND_COMPILE_FLAGS etc.)
+    # which isn't available on the build host. The pre-generated configure works fine.
+    - pattern: "autoreconf -if"
+      replacement: "# autoreconf skipped — using pre-generated configure (needs autoconf-archive)"
+    # scrot.png doesn't exist in the source tree root but is listed in %doc.
+    # make install also installs docs to /usr/sgug/share/doc/scrot/ causing
+    # "unpackaged files" error. Remove scrot.png from %doc and use %{_docdir}/%{name}/
+    # to reference the make-installed docs instead of letting RPM copy from source.
+    - pattern: "%doc AUTHORS ChangeLog README.md scrot.png FAQ CONTRIBUTING.md TODO.md"
+      replacement: "%doc AUTHORS ChangeLog README.md FAQ CONTRIBUTING.md TODO.md"
+
+  # Remove duplicate docs installed by 'make install' (RPM %doc handles docs separately)
+  install_cleanup:
+    - "rm -rf %{buildroot}%{_docdir}/%{name}"

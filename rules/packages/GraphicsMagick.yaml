@@ -1,0 +1,136 @@
+# GraphicsMagick - image processing suite for IRIX
+package: GraphicsMagick
+
+rules:
+  drop_buildrequires:
+    - jasper-devel
+    - librsvg2-devel
+    - libwmf-devel
+    - lpr
+    - p7zip
+    - xdg-utils
+    - urw-base35-fonts-legacy
+    - jbigkit-devel
+    - time
+    - perl-devel
+    - perl(ExtUtils::MakeMaker)
+    - libtool-ltdl-devel
+  drop_requires:
+    - urw-base35-fonts-legacy
+    - urw-fonts
+  drop_subpackages:
+    - perl
+    - doc
+  prep_commands:
+    # libjpeg-turbo defines C_LOSSLESS_SUPPORTED/D_LOSSLESS_SUPPORTED but uses
+    # different API (no jpeg_simple_lossless, no JPROC_*, no process field).
+    # Undef these AFTER jpeglib.h include so GraphicsMagick uses simpler code paths.
+    - perl -pi -e 'if (/^#include "jpeglib\.h"/) { $_ .= "#undef C_LOSSLESS_SUPPORTED\n#undef D_LOSSLESS_SUPPORTED\n" }' coders/jpeg.c
+  spec_replacements:
+    # Disable perl globally - set perl to 0
+    - pattern: |
+        %if ! 0%{?flatpak}
+        %global perl 1
+        %endif
+      replacement: |
+        %global perl 0
+    # Remove urw_font_bundle conditional block - we don't need fonts
+    - pattern: |
+        %if 0%{?rhel} > 7
+        %global urw_font_bundle 1
+        %endif
+
+        %if 0%{?urw_font_bundle}
+        %global urw_font_path %{_datadir}/GraphicsMagick-%{version}/urw-fonts
+        %else
+        %global urw_font_path %{_datadir}/X11/fonts/urw-fonts
+        BuildRequires: urw-base35-fonts-legacy
+        Requires: urw-base35-fonts-legacy
+        %endif
+      replacement: |
+        %global urw_font_path %{_datadir}/GraphicsMagick-%{version}/config
+    # Replace modules with without-modules
+    - pattern: "           --with-modules \\"
+      replacement: "           --without-modules \\"
+    # Replace perl conditional with simple --without-perl
+    - pattern: "%if 0%{?flatpak}\n           --without-perl \\\n%else\n           --with-perl \\\n           --with-perl-options=\"INSTALLDIRS=vendor %{?perl_prefix}\" \\\n%endif"
+      replacement: "           --without-perl \\"
+    # Replace threads, wmf, add extra disables
+    - pattern: "           --with-threads \\\n           --with-wmf \\"
+      replacement: "           --without-threads \\\n           --without-wmf \\\n           --without-jasper \\\n           --without-jbig \\\n           --without-trio \\"
+    # Remove gs-font-dir (no fonts bundled), add libtool fix after configure
+    - pattern: "           --with-gs-font-dir=%{urw_font_path}\n\n%make_build"
+      replacement: "           --without-gslib\n\n$MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1\n\n%make_build"
+    # Remove perl build step
+    - pattern: "%if 0%{?perl}\n%make_build perl-build\n%endif"
+      replacement: "# Perl build skipped for IRIX"
+    # Remove urw font bundle install
+    - pattern: |
+        %if 0%{?urw_font_bundle}
+        mkdir -p %{buildroot}%{urw_font_path}/
+        install -p -m644 urw-fonts/* \
+          %{buildroot}%{urw_font_path}/
+        %endif
+      replacement: |
+        # urw font bundle skipped for IRIX
+    # Remove urw font bundle prep
+    - pattern: |
+        %if 0%{?urw_font_bundle}
+        mkdir -p urw-fonts
+        tar --directory=urw-fonts/ -xf %{SOURCE1}
+        rm -f urw-fonts/ChangeLog urw-fonts/README* urw-fonts/fonts*
+        %endif
+      replacement: |
+        # urw font bundle prep skipped for IRIX
+    # Remove multilib header hack (MIPS is not in multilib_archs)
+    - pattern: "%ifarch %{multilib_archs}\nmv %{buildroot}%{_includedir}/GraphicsMagick/magick/magick_types.h \\\n   %{buildroot}%{_includedir}/GraphicsMagick/magick/magick_types-%{__isa_bits}.h\n\ncat >%{buildroot}%{_includedir}/GraphicsMagick/magick/magick_types.h <<EOF\n#ifndef MAGICK_TYPES_MULTILIB\n#define MAGICK_TYPES_MULTILIB\n\n#include <bits/wordsize.h>\n\n#if __WORDSIZE == 32\n# include \"magick/magick_types-32.h\"\n#elif __WORDSIZE == 64\n# include \"magick/magick_types-64.h\"\n#else\n# error \"unexpected value for __WORDSIZE macro\"\n#endif\n\n#endif\nEOF\n%endif"
+      replacement: |
+        # multilib header hack skipped for IRIX (single arch)
+    # Remove perl-related install commands
+    - pattern: |
+        %if 0%{?perl}
+        %make_install -C PerlMagick
+
+        # perlmagick: fix perl path of demo files
+        %{__perl} -MExtUtils::MakeMaker -e 'MY->fixin(@ARGV)' PerlMagick/demo/*.pl
+
+        find %{buildroot} -name "*.bs" |xargs rm -fv
+        find %{buildroot} -name ".packlist" |xargs rm -fv
+        find %{buildroot} -name "perllocal.pod" |xargs rm -fv
+
+        ls -l %{buildroot}%{perl_vendorarch}/auto/Graphics/Magick/Magick.so
+        chmod 755 %{buildroot}%{perl_vendorarch}/auto/Graphics/Magick/Magick.so
+
+        # perlmagick: build files list
+        find %{buildroot}/%{_libdir}/perl* -type f -print \
+            | sed "s@^{buildroot}@@g" > perl-pkg-files
+        find %{buildroot}%{perl_vendorarch} -type d -print \
+            | sed "s@^%{buildroot}@%dir @g" \
+            | grep -v '^%dir %{perl_vendorarch}$' \
+            | grep -v '/auto$' >> perl-pkg-files
+        if [ -z perl-pkg-files ] ; then
+            echo "ERROR: EMPTY FILE LIST"
+            exit -1
+        fi
+        %endif
+      replacement: |
+        # Perl install skipped for IRIX
+    # Fix brace expansion bashism in prep - POSIX sh doesn't support {a,b,c}
+    - pattern: "for f in ChangeLog.{2006,2008,2009,2012} NEWS.txt ; do\n    iconv -f iso-8859-2 -t utf8 < $f > $f.utf8\n    touch -r $f $f.utf8 ; mv -f $f.utf8 $f\ndone"
+      replacement: "for f in ChangeLog.2006 ChangeLog.2008 ChangeLog.2009 ChangeLog.2012 NEWS.txt ; do\n    iconv -f iso-8859-2 -t utf8 < $f > $f.utf8\n    touch -r $f $f.utf8 ; mv -f $f.utf8 $f\ndone"
+    # Remove data/doc files that won't exist and remove doc files (dropped subpkg)
+    - pattern: "rm -rfv %{buildroot}%{_datadir}/GraphicsMagick\n# Keep config\nrm -rfv %{buildroot}%{_datadir}/%{name}-%{version}/[a-b,d-z,A-Z]*"
+      replacement: |
+        # Cleanup data directory - keep config only
+        rm -rfv %{buildroot}%{_datadir}/GraphicsMagick 2>/dev/null || true
+        rm -rfv %{buildroot}%{_datadir}/%{name}-%{version}/[a-b,d-z,A-Z]* 2>/dev/null || true
+        # Remove doc files (doc subpackage dropped for IRIX)
+        rm -rfv %{buildroot}%{_pkgdocdir}/ChangeLog*
+        rm -rfv %{buildroot}%{_pkgdocdir}/NEWS.txt
+        rm -rfv %{buildroot}%{_pkgdocdir}/www/
+    # Fix devel package .so names - quantum library names add -Q16 suffix
+    # Both non-Q16 symlinks and -Q16 symlinks exist
+    - pattern: "%{_libdir}/libGraphicsMagick.so\n%{_libdir}/libGraphicsMagickWand.so"
+      replacement: "%{_libdir}/libGraphicsMagick.so\n%{_libdir}/libGraphicsMagick-Q16.so\n%{_libdir}/libGraphicsMagickWand.so\n%{_libdir}/libGraphicsMagickWand-Q16.so"
+    - pattern: "%{_libdir}/libGraphicsMagick++.so"
+      replacement: "%{_libdir}/libGraphicsMagick++.so\n%{_libdir}/libGraphicsMagick++-Q16.so"

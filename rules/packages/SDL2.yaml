@@ -1,0 +1,204 @@
+# SDL2 - Simple DirectMedia Layer 2 (cmake-based)
+# Cross-compile for IRIX 6.5 with X11+OpenGL video, no audio backends
+package: SDL2
+
+rules:
+  drop_buildrequires:
+    - mesa-libGL-devel
+    - mesa-libGLU-devel
+    - mesa-libEGL-devel
+    - mesa-libGLES-devel
+    - libXext-devel
+    - libX11-devel
+    - libXi-devel
+    - libXrandr-devel
+    - libXrender-devel
+    - libXScrnSaver-devel
+    - libXinerama-devel
+    - libXcursor-devel
+    - "pkgconfig(libusb-1.0)"
+    - "pkgconfig(libpulse-simple)"
+    - "pkgconfig(jack)"
+    - "pkgconfig(libpipewire-0.3)"
+    - "pkgconfig(dbus-1)"
+    - "pkgconfig(ibus-1.0)"
+    - "pkgconfig(libdecor-0)"
+    - "pkgconfig(wayland-client)"
+    - "pkgconfig(wayland-egl)"
+    - "pkgconfig(wayland-cursor)"
+    - "pkgconfig(wayland-protocols)"
+    - "pkgconfig(wayland-scanner)"
+    - "pkgconfig(xkbcommon)"
+    - vulkan-devel
+    - mesa-libgbm-devel
+    - libdrm-devel
+    - git-core
+
+  drop_requires:
+    - "libdecor-0.so.0"
+    - "libwayland-client"
+    - mesa-libEGL-devel
+    - mesa-libGLES-devel
+    - libX11-devel
+
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+
+  prep_commands:
+    # Remove the wayland-prefer patch (we disable wayland entirely)
+    - "rm -f SDL2-2.30.1-prefer-wayland.patch || true"
+    # Remove fcitx/ibus input method support (needs dbus)
+    - "sed -i 's|#define SDL_USE_IME 1|/* #undef SDL_USE_IME */|' include/SDL_config.h.cmake || true"
+    # IRIX X11R6.3 has no Xutf8 functions (X_HAVE_UTF8_STRING not defined)
+    # SDL2 code uses SDL_X11_HAVE_UTF8 without guarding with #ifdef X_HAVE_UTF8_STRING
+    # Fix: add fallback #define SDL_X11_HAVE_UTF8 0 at end of SDL_x11dyn.h
+    - "perl -pi -e 's|^(#endif .* !defined SDL_x11dyn_h_)|#ifndef X_HAVE_UTF8_STRING\\n#define SDL_X11_HAVE_UTF8 0\\n#endif\\n$1|' src/video/x11/SDL_x11dyn.h"
+    # IRIX XEvent union lacks xcookie member (pre-X11R7.5)
+    # SDL2 accesses xev->xcookie. Include Xge.h and replace &xev->xcookie with cast.
+    - "perl -pi -e 's/&(\\w+)->xcookie\\b/(XGenericEventCookie*)$1/g' src/video/x11/SDL_x11events.c"
+    - "perl -pi -e 's/(\\w+)->xcookie\\./((XGenericEventCookie*)$1)->/g' src/video/x11/SDL_x11events.c"
+    - "perl -pi -e 's/(?<!&)(\\w+)->xcookie\\b/(*((XGenericEventCookie*)$1))/g' src/video/x11/SDL_x11events.c"
+    - "sed -i '1i #include <X11/extensions/Xge.h>' src/video/x11/SDL_x11events.c"
+    # IRIX vfork == fork, and SGUG unistd.h doesn't declare vfork.
+    # Simply replace vfork() with fork() in this file.
+    - "sed -i 's/vfork()/fork()/g' src/misc/unix/SDL_sysurl.c"
+    # Replace -idirafter with -isystem for khronos includes
+    # -idirafter is added to CMAKE_C_FLAGS and leaks into link commands where irix-ld chokes on it
+    - "sed -i 's/-idirafter/-isystem/g' CMakeLists.txt"
+    # Add stub Xutf8 function pointer declarations when X_HAVE_UTF8_STRING is not defined
+    # SDL2_X11_HAVE_UTF8 is 0 so these never execute, but compiler needs declarations
+    - "sed -i '/#include \"SDL_x11video.h\"/a #ifndef X_HAVE_UTF8_STRING\\nstatic void (*X11_Xutf8DrawString)(Display*, Drawable, XFontSet, GC, int, int, const char*, int) = NULL;\\nstatic int (*X11_Xutf8TextExtents)(XFontSet, const char*, int, XRectangle*, XRectangle*) = NULL;\\n#endif' src/video/x11/SDL_x11messagebox.c"
+
+  spec_replacements:
+    # Remove libdecor BuildRequires (uses RPM macro that drop_buildrequires can't match)
+    - pattern: "BuildRequires:  pkgconfig(libdecor-%{libdecor_majver})"
+      replacement: "# BuildRequires libdecor removed for IRIX"
+
+    # Remove Patch1 (wayland-prefer patch we don't need)
+    - pattern: "Patch1:         SDL2-2.30.1-prefer-wayland.patch"
+      replacement: "# Patch1 removed (wayland disabled for IRIX)"
+
+    # Remove the rich dependency on libdecor
+    - pattern: "# Ensure libdecor is pulled in when libwayland-client is (rhbz#1992804)\nRequires:       (libdecor-%{libdecor_majver}.so.%{libdecor_majver}%{libsymbolsuffix} if libwayland-client)"
+      replacement: "# libdecor/wayland deps removed for IRIX"
+
+    # Remove devel subpackage deps on mesa/X11 (not packaged separately on IRIX)
+    - pattern: "Requires:       mesa-libEGL-devel%{?_isa}\nRequires:       mesa-libGLES-devel%{?_isa}\nRequires:       libX11-devel%{?_isa}"
+      replacement: "# mesa/X11 devel deps removed for IRIX"
+
+    # Replace entire %build section: LDFLAGS + cmake + cmake_build
+    - pattern: "%build\n# Deal with new CMake policy around whitespace in LDFLAGS...\nexport LDFLAGS=\"%{shrink:%{build_ldflags}}\"\n\n%cmake \\\n    -DSDL_DLOPEN=ON \\\n    -DSDL_VIDEO_KMSDRM=ON \\\n    -DSDL_ARTS=OFF \\\n    -DSDL_ESD=OFF \\\n    -DSDL_NAS=OFF \\\n    -DSDL_PULSEAUDIO_SHARED=ON \\\n    -DSDL_JACK_SHARED=ON \\\n    -DSDL_PIPEWIRE_SHARED=ON \\\n    -DSDL_ALSA=ON \\\n    -DSDL_VIDEO_WAYLAND=ON \\\n    -DSDL_LIBDECOR_SHARED=ON \\\n    -DSDL_VIDEO_VULKAN=ON \\\n    -DSDL_SSE3=OFF \\\n    -DSDL_RPATH=OFF \\\n    -DSDL_STATIC=ON \\\n    -DSDL_STATIC_PIC=ON \\\n%ifarch ppc64le\n    -DSDL_ALTIVEC=OFF \\\n%endif\n\n%cmake_build"
+      replacement: |
+        %build
+        # Cross-compile SDL2 with cmake for IRIX
+        # Create cmake initial cache to handle space-containing values
+        cat > /tmp/sdl2-irix-cache.cmake << 'CACHEEOF'
+        set(CMAKE_SYSTEM_NAME "Linux" CACHE STRING "")
+        set(CMAKE_SYSTEM_PROCESSOR "mips" CACHE STRING "")
+        set(CMAKE_C_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
+        set(CMAKE_CXX_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
+        set(CMAKE_EXE_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -lgen" CACHE STRING "")
+        set(CMAKE_SHARED_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -lgen" CACHE STRING "")
+        set(CMAKE_FIND_ROOT_PATH "/opt/sgug-staging/usr/sgug;/opt/irix-sysroot/usr" CACHE STRING "")
+        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY "ONLY" CACHE STRING "")
+        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE "ONLY" CACHE STRING "")
+        set(THREADS_PTHREAD_ARG "0" CACHE STRING "")
+        set(CMAKE_HAVE_THREADS_LIBRARY 1 CACHE BOOL "")
+        set(CMAKE_USE_PTHREADS_INIT 1 CACHE BOOL "")
+        set(CMAKE_THREAD_LIBS_INIT "-lpthread" CACHE STRING "")
+        set(CMAKE_SIZEOF_VOID_P 4 CACHE STRING "")
+        # Pre-seed cross-compilation check results for IRIX
+        set(HAVE_DLOPEN_IN_LIBC 0 CACHE BOOL "")
+        set(HAVE_DLOPEN_IN_LIBDL 1 CACHE BOOL "")
+        set(HAVE_DLOPEN 1 CACHE BOOL "")
+        set(HAVE_PTHREADS 1 CACHE BOOL "")
+        set(HAVE_RECURSIVE_MUTEXES 1 CACHE BOOL "")
+        set(HAVE_PTHREADS_SEM 1 CACHE BOOL "")
+        set(HAVE_SEM_TIMEDWAIT 0 CACHE BOOL "")
+        set(HAVE_PTHREAD_H 1 CACHE BOOL "")
+        set(HAVE_PTHREAD_NP_H 0 CACHE BOOL "")
+        set(HAVE_PTHREAD_SETNAME_NP 0 CACHE BOOL "")
+        set(HAVE_PTHREAD_SET_NAME_NP 0 CACHE BOOL "")
+        set(HAVE_O_CLOEXEC 0 CACHE BOOL "")
+        set(HAVE_CLOCK_GETTIME 0 CACHE BOOL "")
+        set(HAVE_NANOSLEEP 1 CACHE BOOL "")
+        set(HAVE_LINUX_INPUT_H 0 CACHE BOOL "")
+        set(HAVE_LIBUDEV_H 0 CACHE BOOL "")
+        set(HAVE_INPUT_EVENTS 0 CACHE BOOL "")
+        set(HAVE_INPUT_KD 0 CACHE BOOL "")
+        set(HAVE_INOTIFY 0 CACHE BOOL "")
+        set(HAVE_INOTIFY_INIT 0 CACHE BOOL "")
+        set(HAVE_INOTIFY_INIT1 0 CACHE BOOL "")
+        set(HAVE_FCITX 0 CACHE BOOL "")
+        set(HAVE_GCC_WALL 1 CACHE BOOL "")
+        set(HAVE_GCC_FVISIBILITY 1 CACHE BOOL "")
+        set(HAVE_GCC_WDECLARATION_AFTER_STATEMENT 1 CACHE BOOL "")
+        set(HAVE_SIGNAL_H 1 CACHE BOOL "")
+        set(HAVE_SETJMP 1 CACHE BOOL "")
+        set(HAVE_GCC_ATOMICS 1 CACHE BOOL "")
+        set(HAVE_GCC_SYNC_LOCK_TEST_AND_SET 1 CACHE BOOL "")
+        set(HAVE_XGENERICEVENT 1 CACHE BOOL "")
+        set(SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS 1 CACHE BOOL "")
+        set(SDL_VIDEO_DRIVER_X11_HAS_XKBKEYCODETOKEYSYM 1 CACHE BOOL "")
+        CACHEEOF
+        cmake -B _build -S . \
+          -C /tmp/sdl2-irix-cache.cmake \
+          -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
+          -DCMAKE_C_COMPILER=%{__cc} \
+          -DCMAKE_CXX_COMPILER=/opt/sgug-staging/usr/sgug/bin/irix-cxx \
+          -DCMAKE_AR=%{__ar} \
+          -DCMAKE_RANLIB=%{__ranlib} \
+          -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+          -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
+          -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
+          -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DTHREADS_PREFER_PTHREAD_FLAG=OFF \
+          -DSDL_DLOPEN=ON \
+          -DSDL_ARTS=OFF \
+          -DSDL_ESD=OFF \
+          -DSDL_NAS=OFF \
+          -DSDL_OSS=OFF \
+          -DSDL_ALSA=OFF \
+          -DSDL_PULSEAUDIO=OFF \
+          -DSDL_JACK=OFF \
+          -DSDL_PIPEWIRE=OFF \
+          -DSDL_SNDIO=OFF \
+          -DSDL_DISKAUDIO=ON \
+          -DSDL_DUMMYAUDIO=ON \
+          -DSDL_VIDEO_X11=ON \
+          -DSDL_VIDEO_X11_XCURSOR=ON \
+          -DSDL_VIDEO_X11_XFIXES=ON \
+          -DSDL_VIDEO_X11_XINPUT=ON \
+          -DSDL_VIDEO_X11_XRANDR=ON \
+          -DSDL_VIDEO_X11_XSCRNSAVER=OFF \
+          -DSDL_VIDEO_OPENGL=ON \
+          -DSDL_VIDEO_OPENGL_GLX=ON \
+          -DSDL_VIDEO_OPENGLES=OFF \
+          -DSDL_VIDEO_WAYLAND=OFF \
+          -DSDL_VIDEO_KMSDRM=OFF \
+          -DSDL_VIDEO_VULKAN=OFF \
+          -DSDL_DBUS=OFF \
+          -DSDL_IBUS=OFF \
+          -DSDL_HIDAPI_JOYSTICK=OFF \
+          -DSDL_VIRTUAL_JOYSTICK=ON \
+          -DSDL_HAPTIC=OFF \
+          -DSDL_POWER=OFF \
+          -DSDL_SENSOR=OFF \
+          -DSDL_SSE3=OFF \
+          -DSDL_RPATH=OFF \
+          -DSDL_STATIC=ON \
+          -DSDL_STATIC_PIC=ON \
+          -DSDL_SHARED=ON \
+          -DSDL_TEST=ON \
+          -DSDL_TESTS=OFF \
+          -DSDL_CLOCK_GETTIME=OFF \
+          -DUNIX=1
+        make -C _build %{?_smp_mflags}
+
+    # Replace %cmake_install and remove cmake-installed license (RPM %license handles it)
+    - pattern: "%cmake_install"
+      replacement: "make -C _build install DESTDIR=%{buildroot}\nrm -rf %{buildroot}%{_datadir}/licenses/SDL2"

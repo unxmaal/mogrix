@@ -2,8 +2,10 @@
 
 > **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
 > Read `rules/GENERIC_SUMMARY.md` when starting a package. Grep `rules/INDEX.md` for specific problem keywords. Do NOT read the full INDEX.md. Expand the search with broader search terms or `-C` context lines if needed.
-> Also check `compat/catalog.yaml`, `HANDOFF.md`, `plan.md`.
+> Also check `HANDOFF.md`, `plan.md`.
 > If you don't know what to do, check `rules/methods/before-you-start.md`.
+>
+> **When you hit a compile/link error for a missing function**: Grep `compat/catalog.yaml` for it BEFORE writing a fix. We likely already have a compat implementation — it just needs to be compiled/linked. Also grep `compat/include/` and `compat/` for the symbol name. Many IRIX-missing POSIX functions (pselect, posix_spawn, getline, mkdtemp, etc.) already have implementations.
 
 ---
 

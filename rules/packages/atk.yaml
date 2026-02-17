@@ -1,0 +1,18 @@
+package: atk
+upstream:
+  url: https://download.gnome.org/sources/atk/2.36/atk-2.36.0.tar.xz
+  version: "2.36.0"
+  type: tarball
+  build_system: meson
+  license: LGPL-2.1-or-later
+  summary: "Interfaces for accessibility support"
+  source_dir: atk-2.36.0
+rules:
+  drop_buildrequires:
+    - gobject-introspection-devel
+    - gtk-doc
+    - gi-docgen
+  meson_flags:
+    add:
+      - -Dintrospection=false
+      - -Ddocs=false

@@ -10,6 +10,9 @@ rules:
     # csi-trace utility links basename from libgen.h but it doesn't resolve
     # in cross-compile. We don't need it (tools subpackage removed).
     - "sed -i \"s/conf.get('HAVE_LIBGEN_H', 0) == 1/false/\" util/cairo-script/meson.build"
+    # IRIX has ctime_r in libc, but meson cross-compile can't detect it.
+    # The static fallback in cairo-ps-surface.c conflicts with IRIX's extern declaration.
+    - "sed -i '/^#ifndef HAVE_CTIME_R$/,/^#endif$/d' src/cairo-ps-surface.c"
 
   drop_buildrequires:
     - gtk-doc
@@ -90,4 +93,3 @@ rules:
     # Remove tools %files section
     - pattern: "%files tools\n%{_bindir}/cairo-trace\n%{_libdir}/cairo/"
       replacement: "# tools files removed (MIPS binaries)"
-

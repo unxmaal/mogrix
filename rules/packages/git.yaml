@@ -3,10 +3,183 @@ rules:
   drop_buildrequires:
   - libsecret-devel
   - httpd
+  - rubygem-asciidoctor
+  - asciidoc
+  - xmlto
+  - docbook5-style-xsl
+  - linkchecker
+  - perl-podlators
+  - "perl(File::Compare)"
+  - tcl
+  - tk
   spec_replacements:
+  # Allow unpackaged files (gitweb, gitk completion installed by make but not used on IRIX)
+  - pattern: "Name:           git"
+    replacement: "%define _unpackaged_files_terminate_build 0\nName:           git"
+  # Fix brace expansion (not supported in /bin/sh)
   - pattern: rm -rf perl/Git/LoadCPAN{.pm,/}
     replacement: rm -rf perl/Git/LoadCPAN.pm perl/Git/LoadCPAN/
   - pattern: mv contrib/{contacts,subtree}/git-*.txt Documentation/
     replacement: mv contrib/contacts/git-*.txt contrib/subtree/git-*.txt Documentation/
   - pattern: rm -rf %{buildroot}%{_pkgdocdir}/contrib/{contacts,credential}/
     replacement: rm -rf %{buildroot}%{_pkgdocdir}/contrib/contacts/ %{buildroot}%{_pkgdocdir}/contrib/credential/
+  # Disable docs — no asciidoc/xmlto available
+  - pattern: "%bcond_without docs"
+    replacement: "%bcond_with docs"
+  # Disable libsecret — not available on IRIX
+  - pattern: "%bcond_without              libsecret"
+    replacement: "%bcond_with              libsecret"
+  # Disable CVS subpackage
+  - pattern: "%bcond_without              cvs"
+    replacement: "%bcond_with              cvs"
+  # Disable python (no python3 on IRIX)
+  - pattern: "%bcond_without              python3"
+    replacement: "%bcond_with              python3"
+  # Disable p4 (needs python)
+  - pattern: "%bcond_without              p4"
+    replacement: "%bcond_with              p4"
+  # Add CC, NO_GETTEXT, NO_TCLTK, CURL_CONFIG, and path info to config.mak
+  # _MOGRIX_NO_GETOPT_STRUCT_OPTION: git defines its own 'struct option' in
+  # parse-options.h which conflicts with our compat getopt.h struct option.
+  # Git doesn't use getopt_long — it has its own option parser.
+  - pattern: "GNU_ROFF = 1"
+    replacement: |
+      GNU_ROFF = 1
+      CC = %{__cc}
+      AR = /opt/cross/bin/llvm-ar
+      CFLAGS += -D_MOGRIX_NO_GETOPT_STRUCT_OPTION
+      NO_GETTEXT = YesPlease
+      NO_TCLTK = YesPlease
+      NO_SVN_TESTS = YesPlease
+      NO_MEMMEM = YesPlease
+      NO_STRCASESTR = YesPlease
+      HAVE_CLOCK_GETTIME =
+      HAVE_CLOCK_MONOTONIC =
+      HAVE_SYNC_FILE_RANGE =
+      HAVE_GETDELIM =
+      NO_MKDTEMP = YesPlease
+      NO_SETENV = YesPlease
+      NO_UNSETENV = YesPlease
+      CURL_CONFIG = /opt/sgug-staging/usr/sgug/bin/curl-config
+      EXTLIBS += -lgen
+  # Remove contrib builds that need asciidoc or unavailable deps
+  - pattern: "%make_build -C contrib/contacts/ all"
+    replacement: "# contacts build disabled (needs asciidoc)"
+  - pattern: "%make_build -C contrib/subtree/ all"
+    replacement: "# subtree all disabled (needs asciidoc for docs)"
+  - pattern: "%make_build -C contrib/credential/netrc/"
+    replacement: "# credential/netrc disabled"
+  - pattern: "%make_build -C contrib/diff-highlight/"
+    replacement: "# diff-highlight disabled"
+  - pattern: "%make_install -C contrib/contacts"
+    replacement: "# contacts install disabled"
+  # Disable credential/netrc install (build was disabled above)
+  - pattern: "install -pm 755 contrib/credential/netrc/git-credential-netrc \\\n    %{buildroot}%{gitexecdir}"
+    replacement: "# credential-netrc install disabled"
+  - pattern: "mv contrib/credential/netrc ."
+    replacement: "# mv contrib/credential/netrc disabled"
+  # Disable subtree install (build was disabled above)
+  - pattern: "%make_install -C contrib/subtree"
+    replacement: "# subtree install disabled"
+  # Disable diff-highlight install (build was disabled above)
+  - pattern: "install -Dpm 0755 contrib/diff-highlight/diff-highlight \\\n    %{buildroot}%{_datadir}/git-core/contrib/diff-highlight"
+    replacement: "# diff-highlight install disabled"
+  # Replace pushd/popd with POSIX cd (not available in /bin/sh)
+  - pattern: "pushd contrib > /dev/null\nln -s ../../../git-core/contrib/hooks\npopd > /dev/null"
+    replacement: "# contrib/hooks symlink skipped (directory exists)"
+  - pattern: "pushd %{buildroot}%{gitexecdir} >/dev/null\nif cmp -s git-gui git-citool 2>/dev/null; then\n    ln -svf git-gui git-citool\nfi\npopd >/dev/null"
+    replacement: "# git-gui/citool symlink disabled (no GUI)"
+  # Disable desktop-file-install (no desktop on IRIX)
+  - pattern: "desktop-file-install --dir=%{buildroot}%{_datadir}/applications %{SOURCE12}"
+    replacement: "# desktop-file-install disabled"
+  # Fix brace expansion in find commands (not supported in /bin/sh)
+  - pattern: "(find %{buildroot}{%{_bindir},%{_libexecdir}} -type f -o -type l | grep -vE \"$exclude_re\" | sed -e s@^%{buildroot}@@) > bin-man-doc-files"
+    replacement: "(find %{buildroot}%{_bindir} %{buildroot}%{_libexecdir} -type f -o -type l | grep -vE \"$exclude_re\" | sed -e s@^%{buildroot}@@) > bin-man-doc-files"
+  - pattern: "(find %{buildroot}{%{_bindir},%{_libexecdir}} -mindepth 1 -type d | grep -vE \"$exclude_re\" | sed -e 's@^%{buildroot}@%dir @') >> bin-man-doc-files"
+    replacement: "(find %{buildroot}%{_bindir} %{buildroot}%{_libexecdir} -mindepth 1 -type d | grep -vE \"$exclude_re\" | sed -e 's@^%{buildroot}@%dir @') >> bin-man-doc-files"
+  # Replace perl_vendorlib with hardcoded path (macro not available in cross builds)
+  - pattern: "(find %{buildroot}%{perl_vendorlib} -type f | sed -e s@^%{buildroot}@@) > perl-git-files"
+    replacement: "touch perl-git-files perl-git-svn-files  # perl modules not useful on IRIX"
+  - pattern: "(find %{buildroot}%{perl_vendorlib} -mindepth 1 -type d | sed -e 's@^%{buildroot}@%dir @') >> perl-git-files"
+    replacement: "# perl vendorlib find disabled"
+  - pattern: "grep Git/SVN perl-git-files > perl-git-svn-files"
+    replacement: "# Git/SVN grep disabled (perl disabled)"
+  - pattern: "sed -i \"/Git\\/SVN/ d\" perl-git-files"
+    replacement: "# Git/SVN sed disabled"
+  # Disable systemd unit install (no systemd on IRIX)
+  - pattern: "install -Dp -m 0644 %{SOURCE16} %{buildroot}%{_unitdir}/git.socket"
+    replacement: "# systemd unit install disabled"
+  - pattern: "perl -p \\\n    -e \"s|\\@GITEXECDIR\\@|%{gitexecdir}|g;\" \\\n    -e \"s|\\@BASE_PATH\\@|%{_localstatedir}/lib/git|g;\" \\\n    %{SOURCE15} > %{buildroot}%{_unitdir}/git@.service"
+    replacement: "# systemd service install disabled"
+  # Fix gitk symlink (may already exist from git-gui install)
+  - pattern: "ln -s git %{buildroot}%{bash_completions_dir}/gitk"
+    replacement: "ln -sf git %{buildroot}%{bash_completions_dir}/gitk"
+  # Disable find_lang output cat (no lang file in cross build)
+  - pattern: "cat %{name}.lang >> bin-man-doc-files"
+    replacement: "touch %{name}.lang  # no lang file in cross build"
+  # Remove systemd units from %files (not installed)
+  - pattern: "%{_unitdir}/git.socket"
+    replacement: "# systemd unit removed"
+  - pattern: "%{_unitdir}/git@.service"
+    replacement: "# systemd service removed"
+  - pattern: "%{?systemd_requires}"
+    replacement: "# systemd requires removed"
+  # Empty perl-Git files (perl not available on IRIX)
+  - pattern: "%files -n perl-Git -f perl-git-files"
+    replacement: "%files -n perl-Git\n# perl disabled"
+  - pattern: "%files -n perl-Git-SVN -f perl-git-svn-files"
+    replacement: "%files -n perl-Git-SVN\n# perl-svn disabled"
+  # Remove hooks from git %files to avoid duplication (already in core via git-core/)
+  - pattern: "%{_datadir}/git-core/contrib/hooks/update-paranoid\n%{_datadir}/git-core/contrib/hooks/setgitperms.perl"
+    replacement: ""
+  - pattern: "%exclude %{_datadir}/git-core/contrib/hooks/update-paranoid\n%exclude %{_datadir}/git-core/contrib/hooks/setgitperms.perl"
+    replacement: ""
+  # Fix contrib/hooks mv failure (already installed by make install)
+  - pattern: "mv contrib/hooks %{buildroot}%{_datadir}/git-core/contrib"
+    replacement: "cp -a contrib/hooks/* %{buildroot}%{_datadir}/git-core/contrib/hooks/ 2>/dev/null || true"
+  # Remove diff-highlight from %files (build disabled)
+  # In %files git subpkg: diff-highlight is followed by empty line
+  - pattern: "%{_datadir}/git-core/contrib/diff-highlight\n\n%{_datadir}/git-core"
+    replacement: "%{_datadir}/git-core"
+  # In %files git-core subpkg: %exclude diff-highlight followed by empty line
+  - pattern: "%exclude %{_datadir}/git-core/contrib/diff-highlight\n\n%exclude %{_datadir}/git-core"
+    replacement: "%exclude %{_datadir}/git-core"
+  # Skip diff-highlight cleanup (not built)
+  - pattern: "rm -rf contrib/diff-highlight/{Makefile,diff-highlight,*.perl,t}"
+    replacement: "# diff-highlight cleanup skipped"
+  # Empty gitk %files (no Tcl/Tk on IRIX)
+  - pattern: "%files -n gitk\n%{_pkgdocdir}/*gitk*.txt\n%{_bindir}/*gitk*\n%{_datadir}/gitk\n%{bash_completions_dir}/gitk\n%{?with_docs:%{_mandir}/man1/*gitk*.1*}\n%{?with_docs:%{_pkgdocdir}/*gitk*.html}"
+    replacement: "%files -n gitk\n# gitk disabled (no Tcl/Tk)"
+  # Empty git-gui %files
+  - pattern: "%files gui\n%{gitexecdir}/git-gui*\n%{gitexecdir}/git-citool\n%{_datadir}/applications/*git-gui.desktop\n%{_datadir}/git-gui/\n%{_pkgdocdir}/git-gui.txt\n%{_pkgdocdir}/git-citool.txt\n%{?with_docs:%{_mandir}/man1/git-gui.1*}\n%{?with_docs:%{_pkgdocdir}/git-gui.html}\n%{?with_docs:%{_mandir}/man1/git-citool.1*}\n%{?with_docs:%{_pkgdocdir}/git-citool.html}"
+    replacement: "%files gui\n# git-gui disabled (no Tcl/Tk)"
+  # Empty gitweb %files
+  - pattern: "%files -n gitweb\n%{_pkgdocdir}/*.gitweb\n%{_pkgdocdir}/gitweb*.txt\n%{?with_docs:%{_mandir}/man1/gitweb.1*}\n%{?with_docs:%{_mandir}/man5/gitweb.conf.5*}\n%{?with_docs:%{_pkgdocdir}/gitweb*.html}\n%config(noreplace)%{_sysconfdir}/gitweb.conf\n%config(noreplace)%{_sysconfdir}/httpd/conf.d/%{gitweb_httpd_conf}\n%{_localstatedir}/www/git/"
+    replacement: "%files -n gitweb\n# gitweb disabled"
+  # Empty subtree %files (build was disabled)
+  - pattern: "%files subtree\n%{gitexecdir}/git-subtree\n%{_pkgdocdir}/git-subtree.txt\n%{?with_docs:%{_mandir}/man1/git-subtree.1*}\n%{?with_docs:%{_pkgdocdir}/git-subtree.html}"
+    replacement: "%files subtree\n# subtree build disabled"
+  # Skip gitweb config install (gitweb disabled)
+  - pattern: "mkdir -p %{buildroot}%{_sysconfdir}/httpd/conf.d"
+    replacement: "# gitweb httpd config skipped"
+  - pattern: "install -pm 0644 %{SOURCE13} %{buildroot}%{_sysconfdir}/httpd/conf.d/%{gitweb_httpd_conf}"
+    replacement: "# gitweb httpd conf install skipped"
+  - pattern: "sed \"s|@PROJECTROOT@|%{_localstatedir}/lib/git|g\" \\\n    %{SOURCE14} > %{buildroot}%{_sysconfdir}/gitweb.conf"
+    replacement: "# gitweb.conf install skipped"
+  # Fix brace expansion in doc find
+  - pattern: "find %{buildroot}%{_pkgdocdir}/{contrib,RelNotes} -type f \\\n        | grep -o \"%{_pkgdocdir}.*$\""
+    replacement: "find %{buildroot}%{_pkgdocdir}/contrib %{buildroot}%{_pkgdocdir}/RelNotes -type f 2>/dev/null \\\n        | grep -o \"%{_pkgdocdir}.*$\""
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+  prep_commands:
+  # IRIX unistd.h declares atfork_parent/atfork_prepare — rename git's internal ones
+  - sed -i 's/atfork_parent/git_atfork_parent/g; s/atfork_prepare/git_atfork_prepare/g' run-command.c
+  # IRIX fileno macro has expansion issues with void* — cast and use direct field access
+  - sed -i 's/fileno(result)/(((FILE *)result)->_file)/g' http.c
+  # Remove Linux-specific HAVE_SYSINFO and PROCFS from config.mak.uname (directly appends to BASIC_CFLAGS, can't override from config.mak)
+  - sed -i '/HAVE_SYSINFO\|PROCFS_EXECUTABLE_PATH\|HAVE_PLATFORM_PROCINFO/d' config.mak.uname
+  ac_cv_overrides:
+    ac_cv_header_sys_random_h: "no"
+    ac_cv_func_getrandom: "no"

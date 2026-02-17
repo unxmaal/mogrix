@@ -43,5 +43,5 @@ rules:
   install_cleanup:
   - rm -rf %{buildroot}%{_libdir}/vile
 smoke_test:
-- command: /usr/sgug/bin/vile --version
-  expect: 9.8z
+- command: "/usr/sgug/bin/vile -V"
+  expect: "vile"

@@ -1,3 +1,25 @@
-# json-c - C JSON library
-# Uses cmake but also has autotools fallback in older versions
+# json-c - C JSON library (cmake-based)
 package: json-c
+rules:
+  drop_subpackages:
+  - doc
+  drop_buildrequires:
+  - ninja-build
+  - hardlink
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+  spec_replacements:
+  # Remove doxygen prep step (no doxygen available)
+  - pattern: "# Remove pre-built html documentation.\nrm -fr doc/html\n\n# Update Doxyfile.\ndoxygen -s -u doc/Doxyfile.in"
+    replacement: "# Remove pre-built html documentation.\nrm -fr doc/html"
+  # Replace cmake macros with raw cross-compilation cmake
+  - pattern: "%cmake \\\n  -DBUILD_STATIC_LIBS:BOOL=OFF       \\\n  -DCMAKE_BUILD_TYPE:STRING=RELEASE  \\\n  -DCMAKE_C_FLAGS_RELEASE:STRING=\"\"  \\\n  -DDISABLE_BSYMBOLIC:BOOL=OFF       \\\n  -DDISABLE_WERROR:BOOL=ON           \\\n  -DENABLE_RDRAND:BOOL=ON            \\\n  -DENABLE_THREADING:BOOL=ON         \\\n  -G Ninja\n%cmake_build --target all doc"
+    replacement: "cmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DBUILD_STATIC_LIBS:BOOL=OFF \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DDISABLE_BSYMBOLIC:BOOL=OFF \\\n  -DDISABLE_WERROR:BOOL=ON \\\n  -DENABLE_RDRAND:BOOL=OFF \\\n  -DENABLE_THREADING:BOOL=ON \\\n  -DUNIX=1\ncd _build && make %{?_smp_mflags}"
+  # Replace cmake install
+  - pattern: '%cmake_install'
+    replacement: 'make -C _build install DESTDIR=%{buildroot}'
+  # Remove doc installation (no doxygen output)
+  - pattern: "# Documentation\nmkdir -p %{buildroot}%{_pkgdocdir}\ncp -a %{__cmake_builddir}/doc/html ChangeLog README README.* \\\n  %{buildroot}%{_pkgdocdir}\nhardlink -cfv %{buildroot}%{_pkgdocdir}"
+    replacement: "# Documentation (html skipped - no doxygen)\nmkdir -p %{buildroot}%{_pkgdocdir}\ncp -a ChangeLog README README.* %{buildroot}%{_pkgdocdir} || true"

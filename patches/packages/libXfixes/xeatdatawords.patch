@@ -1,0 +1,17 @@
+--- a/src/Xfixesint.h
++++ b/src/Xfixesint.h
+@@ -27,6 +27,14 @@
+ #include <stdio.h>
+ #include <X11/Xlib.h>
+ #include <X11/Xlibint.h>
++
++/* IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6).
++ * It's a simple wrapper around _XEatData that converts words to bytes. */
++#ifndef _XEatDataWords
++static inline void _XEatDataWords(Display *dpy, unsigned long n)
++{ _XEatData(dpy, n * 4); }
++#endif
++
+ #include <X11/Xutil.h>
+ #include "Xfixes.h"
+ #include <X11/extensions/xfixesproto.h>

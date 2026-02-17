@@ -11,6 +11,8 @@ smoke_test:
 # Old m4.sgifixes.patch no longer needed
 
 rules:
+  export_vars:
+    CFLAGS: "%{optflags} -DWCHAR_MAX=0x7fffffff"
   # IRIX wchar.h hides C99/XPG5 functions behind _WCHAR_CORE_EXTENSIONS_1
   # (requires __c99 or _XOPEN_SOURCE>=500, neither set with clang).
   # Tell configure they're missing so gnulib provides its own replacements.
@@ -23,5 +25,10 @@ rules:
     # generic.yaml sets ac_cv_header_sys_random_h=no, so gnulib won't see
     # our compat getrandom. Let gnulib provide its own replacement.
     ac_cv_func_getrandom: "no"
+    # IRIX has sigprocmask — tell gnulib so it doesn't provide its own
+    # replacement which has a hardcoded NSIG<=32 constraint (IRIX has NSIG=65)
+    ac_cv_func_sigprocmask: "yes"
+    ac_cv_func_sigaction: "yes"
+    ac_cv_member_struct_sigaction_sa_sigaction: "yes"
 
 

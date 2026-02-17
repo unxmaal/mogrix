@@ -1,0 +1,22 @@
+package: libXinerama
+
+upstream:
+  url: https://xorg.freedesktop.org/archive/individual/lib/libXinerama-1.1.4.tar.bz2
+  version: "1.1.4"
+  type: tarball
+  build_system: autoconf
+  license: MIT
+  summary: "X Xinerama extension library"
+  source_dir: libXinerama-1.1.4
+
+add_source:
+  - xeatdatawords.patch
+
+rules:
+  # X.org uses its own malloc(0) test, not the standard autoconf one
+  ac_cv_overrides:
+    xorg_cv_malloc0_returns_null: "no"
+
+  # IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6)
+  prep_commands:
+    - "patch -p1 < %{_sourcedir}/xeatdatawords.patch"

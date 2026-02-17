@@ -1,0 +1,31 @@
+package: xnedit
+upstream:
+  url: https://github.com/unixwork/xnedit/archive/refs/tags/v1.6.1.tar.gz
+  version: "1.6.1"
+  type: tarball
+  build_system: makefile
+  license: "GPL-2.0-only"
+  summary: "Fast X11 text editor based on NEdit with Unicode support"
+  source_dir: xnedit-1.6.1
+rules:
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+  prep_commands:
+    # Fix hardcoded Linux paths in Makefile.linux for cross-compilation
+    - "sed -i 's|-I/usr/X11R6/include|-I/opt/sgug-staging/usr/sgug/include|g' makefiles/Makefile.linux"
+    - "sed -i 's|-I/usr/include/X11|-I/opt/sgug-staging/usr/sgug/include/X11|g' makefiles/Makefile.linux"
+    - "sed -i 's|-L/usr/X11R6/lib|-L/opt/sgug-staging/usr/sgug/lib32|g' makefiles/Makefile.linux"
+    # Add compat include path and EDITRES support
+    - "sed -i 's|$(C_OPT_FLAGS)|$(C_OPT_FLAGS) -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -DEDITRES|' makefiles/Makefile.linux"
+    # Add -lXmu for EDITRES and -lgen for IRIX, add compat library
+    - "sed -i 's|-lXrender|-lXmu -lXrender|' makefiles/Makefile.linux"
+  spec_replacements:
+    # Use make linux with cross-compiler
+    - pattern: "%make_build"
+      replacement: "make linux CC=%{__cc} AR=%{__ar} ARFLAGS=-urs"
+smoke_test:
+- command: "/usr/sgug/bin/xnedit"
+  args: "--version"
+  expect: "XNEdit"

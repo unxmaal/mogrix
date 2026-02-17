@@ -11,6 +11,12 @@
 #ifndef _CLANG_COMPAT_SYS_TIME_H
 #define _CLANG_COMPAT_SYS_TIME_H
 
+/* Include <time.h> FIRST to ensure struct timespec is properly defined.
+ * The _NO_XOPEN5 workaround below prevents time_core.h from including
+ * sys/timespec.h. Pre-including <time.h> sets __TIME_H__ which makes
+ * sys/timespec.h define struct timespec under the correct name. */
+#include <time.h>
+
 /* Save and override XOPEN flags to get extern select() instead of static */
 #pragma push_macro("_NO_XOPEN4")
 #pragma push_macro("_NO_XOPEN5")

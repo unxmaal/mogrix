@@ -1,0 +1,168 @@
+package: gtk3
+
+rules:
+  drop_buildrequires:
+    - "pkgconfig(atk-bridge-2.0)"
+    - "pkgconfig(avahi-gobject)"
+    - "pkgconfig(colord)"
+    - "pkgconfig(egl)"
+    - "pkgconfig(gobject-introspection-1.0)"
+    - "pkgconfig(tracker-sparql-3.0)"
+    - "pkgconfig(wayland-client)"
+    - "pkgconfig(wayland-cursor)"
+    - "pkgconfig(wayland-egl)"
+    - "pkgconfig(wayland-protocols)"
+    - "pkgconfig(xkbcommon)"
+    - "cups-devel"
+    # desktop-file-utils handled by generic rules
+    - "gtk-doc"
+    - "meson"
+    - "gettext"
+
+  drop_requires:
+    - "adwaita-icon-theme"
+    - "hicolor-icon-theme"
+    - "gtk-update-icon-cache"
+    - "libwayland-client"
+    - "libwayland-cursor"
+    - "gdk-pixbuf2-modules"
+    - "dconf"
+    - "libcanberra-gtk3"
+    - "tracker-miners"
+    - "gtk2-immodules"
+    - "gtk-immodules-imsettings"
+
+  prep_commands:
+    # Disable wayland backend in meson.build
+    - "sed -i \"s/subdir('wayland')/#subdir('wayland')/\" gdk/meson.build || true"
+    # Remove POSIX feature test macros that conflict with IRIX headers
+    - "sed -i \"/_POSIX_C_SOURCE/d\" meson.build || true"
+    - "sed -i \"/_XOPEN_SOURCE/d\" meson.build || true"
+    # Make atk-bridge-2.0 optional (IRIX has no AT-SPI2 accessibility bus)
+    - "sed -i \"s/dependency('atk-bridge-2.0', version: at_spi2_atk_req)/dependency('atk-bridge-2.0', version: at_spi2_atk_req, required: false)/\" meson.build"
+    # Guard atk-bridge pkgconfig reference
+    - "sed -i \"s/atk_pkgs += \\[.atk-bridge-2.0.\\]/if atkbridge_dep.found()\\n    atk_pkgs += ['atk-bridge-2.0']\\n  endif/\" meson.build"
+    # IRIX XEvent union lacks xcookie member (pre-X11R7.5).
+    # Add Xge.h include and replace ->xcookie with cast through XGenericEventCookie*.
+    # Files: gdkdevicemanager-xi2.c, gdkdisplay-x11.c, gdkeventsource.c, gdkwindow-x11.c, gtkdnd.c
+    - "for f in gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c; do sed -i '1i #include <X11/extensions/Xge.h>' $f; done"
+    # Pattern: &var->xcookie → (XGenericEventCookie*)var
+    - "perl -pi -e 's/&(\\w+)->xcookie\\b/(XGenericEventCookie*)$1/g' gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c"
+    # Pattern: var->xcookie.member → ((XGenericEventCookie*)var)->member
+    - "perl -pi -e 's/(\\w+)->xcookie\\./((XGenericEventCookie*)$1)->/g' gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c"
+    # Pattern: var->xcookie (standalone, no & prefix, no . suffix) → (*((XGenericEventCookie*)var))
+    - "perl -pi -e 's/(?<!&)(\\w+)->xcookie\\b/(*((XGenericEventCookie*)$1))/g' gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c"
+    # Add missing keysym include for XK_Escape etc. in gdkdnd-x11.c
+    - "sed -i '/#include.*Xlib.h/a #include <X11/keysym.h>' gdk/x11/gdkdnd-x11.c"
+    # IRIX Xlib.h lacks XSetIMValues — now declared in Xge.h
+    - "sed -i '/#include.*gtkimcontextxim.h/a #include <X11/extensions/Xge.h>' modules/input/gtkimcontextxim.c"
+    # IRIX lacks sincos (GNU extension) — add inline stub for tests/gtkgears.c
+    - "sed -i '/#include.*math.h/a static inline void sincos(double x, double *s, double *c) { *s = sin(x); *c = cos(x); }' tests/gtkgears.c"
+    # No atk-bridge (AT-SPI2 accessibility bus) on IRIX — stub out include and init call
+    - "sed -i 's|#include <atk-bridge.h>|/* atk-bridge not available on IRIX */|' gtk/a11y/gtkaccessibility.c"
+    - "sed -i 's|atk_bridge_adaptor_init.*|/* atk_bridge_adaptor_init disabled for IRIX */|' gtk/a11y/gtkaccessibility.c"
+
+  spec_replacements:
+    # Replace entire %build section (meson commands)
+    - pattern: "%build\nexport CFLAGS='-fno-strict-aliasing %optflags'\n%meson \\\n%if 0%{?with_broadway}\n        -Dbroadway_backend=true \\\n%endif\n        -Dbuiltin_immodules=wayland,waylandgtk \\\n        -Dcolord=yes \\\n%if 0%{?with_cloudproviders}\n        -Dcloudproviders=true \\\n%endif\n        -Dgtk_doc=true \\\n        -Dinstalled_tests=true \\\n        -Dman=true \\\n        -Dtracker3=true \\\n        -Dxinerama=yes \\\n%meson_build"
+      replacement: |
+        %build
+        export PATH=/home/edodd/projects/github/unxmaal/mogrix/cross/native-tools:$PATH
+        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          -Dbroadway_backend=false \
+          -Dwayland_backend=false \
+          -Dx11_backend=true \
+          -Dcolord=no \
+          -Dgtk_doc=false \
+          -Dinstalled_tests=false \
+          -Dman=false \
+          -Dtracker3=false \
+          -Dintrospection=false \
+          -Dxinerama=yes \
+          -Dprint_backends=file \
+          -Dbuiltin_immodules=xim \
+          -Dcloudproviders=false \
+          -Ddemos=false \
+          -Dexamples=false \
+          --wrap-mode=nodownload
+        /home/edodd/.local/bin/meson compile -C _build
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Remove gtk-query-immodules rename and man page creation (no multilib on IRIX, man disabled)
+    - pattern: "(cd $RPM_BUILD_ROOT%{_bindir}\n mv gtk-query-immodules-3.0 gtk-query-immodules-3.0-%{__isa_bits}\n)\n\necho \".so man1/gtk-query-immodules-3.0.1\" > $RPM_BUILD_ROOT%{_mandir}/man1/gtk-query-immodules-3.0-%{__isa_bits}.1"
+      replacement: "# No multilib rename on IRIX — keep original name"
+
+    # Remove %check (desktop-file-validate not available)
+    - pattern: "%check\ndesktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop"
+      replacement: "# check disabled for IRIX cross-build"
+
+    # Remove transfiletriggers
+    - pattern: "%transfiletriggerin -- %{_libdir}/gtk-3.0/3.0.0/immodules\ngtk-query-immodules-3.0-%{__isa_bits} --update-cache &>/dev/null || :\n\n%transfiletriggerpostun -- %{_libdir}/gtk-3.0/3.0.0/immodules\ngtk-query-immodules-3.0-%{__isa_bits} --update-cache &>/dev/null || :"
+      replacement: "# transfiletriggers removed for IRIX"
+
+    # Fix main %files: remove girepository, fix man pages, remove broadway
+    - pattern: "%{_libdir}/girepository-1.0\n%ghost %{_libdir}/gtk-3.0/%{bin_version}/immodules.cache\n%{_mandir}/man1/gtk-query-immodules-3.0*\n%{_mandir}/man1/gtk-launch.1*"
+      replacement: "%ghost %{_libdir}/gtk-3.0/%{bin_version}/immodules.cache"
+
+    # Fix main %files: remove broadway block and fix query-immodules name
+    - pattern: "%if 0%{?with_broadway}\n%{_bindir}/broadwayd\n%{_mandir}/man1/broadwayd.1*\n%endif"
+      replacement: "# broadway disabled for IRIX"
+
+    # Fix main %files: fix query-immodules binary name (no isa_bits suffix)
+    - pattern: "%{_bindir}/gtk-query-immodules-3.0*"
+      replacement: "%{_bindir}/gtk-query-immodules-3.0"
+
+    # Remove exampleapp gschema (examples disabled)
+    - pattern: "%{_datadir}/glib-2.0/schemas/org.gtk.exampleapp.gschema.xml\n"
+      replacement: ""
+
+    # Remove printbackends from %files (no CUPS, file backend may not produce files)
+    - pattern: "%{_libdir}/gtk-3.0/%{bin_version}/printbackends"
+      replacement: "%{_libdir}/gtk-3.0/%{bin_version}/printbackends"
+
+    # Fix %files devel: remove gir, man pages, demo binaries/icons/desktops (demos disabled)
+    - pattern: "%{_datadir}/gir-1.0\n%{_datadir}/glib-2.0/schemas/org.gtk.Demo.gschema.xml\n%{_datadir}/gtk-3.0/gtkbuilder.rng\n%{_datadir}/gtk-3.0/valgrind/\n%{_mandir}/man1/gtk3-demo.1*\n%{_mandir}/man1/gtk3-demo-application.1*\n%{_mandir}/man1/gtk3-icon-browser.1*\n%{_mandir}/man1/gtk3-widget-factory.1*\n%{_mandir}/man1/gtk-builder-tool.1*\n%{_mandir}/man1/gtk-encode-symbolic-svg.1*\n%{_mandir}/man1/gtk-query-settings.1*"
+      replacement: "%{_datadir}/gtk-3.0/gtkbuilder.rng\n%{_datadir}/gtk-3.0/valgrind/"
+
+    # Remove demo binaries from %files devel (demos disabled)
+    - pattern: "%{_bindir}/gtk3-demo\n%{_bindir}/gtk3-icon-browser"
+      replacement: "# demo binaries removed for IRIX"
+
+    - pattern: "%{_datadir}/applications/gtk3-demo.desktop\n%{_datadir}/applications/gtk3-icon-browser.desktop\n%{_datadir}/applications/gtk3-widget-factory.desktop\n%{_datadir}/icons/hicolor/*/apps/gtk3-demo.png\n%{_datadir}/icons/hicolor/*/apps/gtk3-demo-symbolic.symbolic.png\n%{_datadir}/icons/hicolor/*/apps/gtk3-widget-factory.png\n%{_datadir}/icons/hicolor/*/apps/gtk3-widget-factory-symbolic.symbolic.png\n%{_bindir}/gtk3-demo-application\n%{_bindir}/gtk3-widget-factory"
+      replacement: "# demo/example desktop files and icons removed for IRIX"
+
+    # Remove devel-docs subpackage declaration
+    - pattern: "%package devel-docs\nSummary: Developer documentation for GTK+\nRequires: gtk3 = %{version}-%{release}\n\n%description devel-docs\nThis package contains developer documentation for version 3 of the GTK+\nwidget toolkit."
+      replacement: "# devel-docs subpackage removed for IRIX"
+
+    # Remove %files devel-docs
+    - pattern: "%files devel-docs\n%{_datadir}/gtk-doc"
+      replacement: "# devel-docs files removed for IRIX"
+
+    # Remove tests subpackage declaration
+    - pattern: "%package tests\nSummary: Tests for the %{name} package\nRequires: %{name}%{?_isa} = %{version}-%{release}\n\n%description tests\nThe %{name}-tests package contains tests that can be used to verify\nthe functionality of the installed %{name} package."
+      replacement: "# tests subpackage removed for IRIX"
+
+    # Remove %files tests
+    - pattern: "%files tests\n%{_libexecdir}/installed-tests/\n%{_datadir}/installed-tests/"
+      replacement: "# tests files removed for IRIX"
+
+    # Remove immodules subpackage requirement for gtk2-immodules/imsettings
+    - pattern: "# for im-cedilla.conf\n%if 0%{?fedora} >= 38 || 0%{?rhel} > 9\nRequires: gtk-immodules-imsettings\n%else\nRequires: gtk2-immodules%{?_isa}\n%endif"
+      replacement: "# im-cedilla.conf deps removed for IRIX"
+
+    # Fix immodule-xim subpackage - XIM is built as builtin, not separate .so
+    # The im-xim module is built into libgtk when using -Dbuiltin_immodules=xim
+    - pattern: "%files immodule-xim\n%{_libdir}/gtk-3.0/%{bin_version}/immodules/im-xim.so"
+      replacement: "# immodule-xim is builtin, no separate .so"
+
+    # Remove gtk-update-icon-cache subpackage (cross-compiled binary, not useful for host)
+    - pattern: "%files -n gtk-update-icon-cache\n%license COPYING\n%{_bindir}/gtk-update-icon-cache\n%{_mandir}/man1/gtk-update-icon-cache.1*"
+      replacement: "%files -n gtk-update-icon-cache\n%license COPYING\n%{_bindir}/gtk-update-icon-cache"

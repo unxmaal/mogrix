@@ -15,6 +15,13 @@ rules:
   - gpm-devel
   - libsodium-devel
   - glibc-gconv-extra
+  - ncurses-devel
+  - autoconf
+  - gettext
+  - libtool
+  - make
+  - hunspell-devel
+  - lua-devel
   drop_subpackages:
   - spell
   remove_lines:
@@ -24,6 +31,7 @@ rules:
   prep_commands:
   - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' src/libvterm/src/encoding.c
   - sed -i '1i#ifdef OP_NONE\n#undef OP_NONE\n#endif' src/structs.h
+  - sed -i '/struct pollfd.*for poll/d; /extern int.*poll(struct pollfd/d' src/osdef1.h.in
   spec_replacements:
   - pattern: '%bcond_without gui'
     replacement: '%bcond_with gui'
@@ -107,5 +115,9 @@ rules:
       export vim_cv_bcopy_handles_overlap=yes
 
       export vim_cv_memcpy_handles_overlap=yes
+
+      export ac_cv_func_sigvec=no
+
+      export ac_cv_func_strerror=yes
 
       '

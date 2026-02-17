@@ -3,13 +3,38 @@
  *
  * Wrapper that includes the real stdio.h and adds GNU extensions
  * for IRIX compatibility.
+ *
+ * IRIX gates C99 stdio declarations (snprintf, vfscanf, etc.) behind
+ * _SGIAPI and _NO_ANSIMODE expression-macros that use defined() in
+ * expansion (UB in clang). Force the gates open so IRIX always provides
+ * these declarations.
  */
 
 #ifndef _MOGRIX_COMPAT_STDIO_H
 #define _MOGRIX_COMPAT_STDIO_H
 
-/* Include the real IRIX stdio.h */
+/*
+ * Force IRIX stdio_core.h to expose C99 declarations.
+ * Pre-include standards.h so its include guard prevents it from
+ * re-defining _SGIAPI inside #include_next.
+ *
+ * IMPORTANT: Do NOT force __c99 here — IRIX wchar.h includes stdio.h
+ * transitively, and __c99=1 would cause dual vsscanf declarations
+ * (char* vs va_list) in stdio_core.h to conflict.
+ */
+#include <standards.h>
+
+#pragma push_macro("_SGIAPI")
+#pragma push_macro("_NO_ANSIMODE")
+#undef _SGIAPI
+#define _SGIAPI 1
+#undef _NO_ANSIMODE
+#define _NO_ANSIMODE 1
+
 #include_next <stdio.h>
+
+#pragma pop_macro("_NO_ANSIMODE")
+#pragma pop_macro("_SGIAPI")
 
 #include <sys/types.h>
 
@@ -76,11 +101,8 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream);
 #endif
 
 /*
- * snprintf/vsnprintf - C99 formatted print with size limit
- *
- * IRIX libc has these declared in internal/stdio_core.h when
- * internal headers are included. We only declare them if not
- * already present.
+ * snprintf/vsnprintf/vfscanf/vscanf/vsscanf are now provided by IRIX
+ * stdio_core.h via the forced _SGIAPI=1 gate above.
  */
 #include <stdarg.h>
 

@@ -78,8 +78,10 @@ for arg in "$@"; do
             # autoconf probes this to find library directories.
             ;;
         --version-script=*|--version-script)
-            # Skip GNU symbol versioning — IRIX rld doesn't support .gnu.version* sections.
-            # Version scripts create VERNEED/VERSYM dynamic tags that crash rld during dlopen.
+            # Skip user-provided GNU symbol versioning — IRIX rld doesn't support
+            # .gnu.version* sections. Version scripts create VERNEED/VERSYM dynamic
+            # tags that crash rld during dlopen. We add our own CRT version script
+            # internally (see crt-hide.ver) and strip-verneed cleans up the sections.
             case "$arg" in
                 --version-script) skip_next=1 ;;
             esac
@@ -117,6 +119,12 @@ if [ "$is_shared" = "1" ]; then
     CRTBEGIN=$STAGING/lib32/crtbeginS.o
     CRTEND=$STAGING/lib32/crtendS.o
     DSOHANDLE=$STAGING/lib32/dso_handle.o
+    # crt-hide.ver: Force CRT symbols local to fix BFD ld MIPS n32 bug where
+    # .hidden visibility is lost. Without this, __CTOR_END__ goes in the GLOBAL
+    # GOT and rld resolves it to the executable's __CTOR_END__, breaking all
+    # shared library constructors (glib gobject_init, etc.). strip-verneed
+    # removes the resulting .gnu.version sections post-link.
+    CRT_HIDE="$(dirname "$0")/../crt/crt-hide.ver"
 
     # Find the output file name from -o flag (needed for post-link strip-verneed)
     output_file=""
@@ -140,6 +148,7 @@ if [ "$is_shared" = "1" ]; then
     # libcrypto.so.3. This matches the executable case (LLD) ordering.
     $GNULD \
       -Bsymbolic-functions \
+      --version-script="$CRT_HIDE" \
       -T "$LDSCRIPT" \
       $CRTBEGIN \
       $DSOHANDLE \
@@ -170,22 +179,43 @@ else
     # Linked ONLY into executables. Shared libraries leave malloc/free undefined
     # so rld resolves them to the executable's single dlmalloc, preventing
     # cross-heap corruption (each .so had its own dlmalloc → abort in free).
-    DLMALLOC=$STAGING/lib32/dlmalloc.o
+    if [ "$MOGRIX_NO_DLMALLOC" = "1" ]; then
+        DLMALLOC=""
+    else
+        DLMALLOC=$STAGING/lib32/dlmalloc.o
+    fi
+    # safe_mem: Byte-safe memory/string functions (memcmp, strcmp, _Hash_bytes).
+    # IRIX libc/libstdc++ optimized versions use word-aligned reads that overread
+    # past buffer end into unmapped pages, causing SIGSEGV. These byte-by-byte
+    # implementations avoid overreads. Linked into executables so dynamic symbol
+    # resolution overrides the library versions for all code in the process.
+    SAFEMEM=$STAGING/lib32/safe_mem.o
 
     # --image-base=0x1000000: Move binary above rld quickstart table (0x200000)
     # Default base 0x10000 gives only 1.8MB of brk heap; 0x1000000 gives 176MB
     # See rules/methods/irix-address-space.md for full address map
     # --disable-new-dtags: Emit DT_RPATH (0xf) instead of DT_RUNPATH (0x1d).
     # IRIX rld only recognizes DT_RPATH; DT_RUNPATH is ignored.
+    # --export-dynamic-symbol=__rld_obj_head: IRIX rld symbol that the executable
+    # must define. crt1.o provides it as COMMON, but LLD doesn't export COMMON
+    # symbols to .dynsym by default. libC.so.2 and libGLcore.so reference it;
+    # without this, any binary loading those libraries gets "unresolvable symbol".
+    # -z norelro: IRIX rld doesn't support GNU_RELRO. Without this, LLD creates
+    # a separate LOAD segment for .data.rel.ro with a GNU_RELRO header.
+    # Large C++ binaries (GDB) with hundreds of RTTI relocations in .data.rel.ro
+    # crash during static init when the RELRO segment is separate from .got/.data.
     exec $LLD \
       --allow-shlib-undefined \
       --disable-new-dtags \
+      --export-dynamic-symbol=__rld_obj_head \
       --image-base=0x1000000 \
+      -z norelro \
       -dynamic-linker /lib32/rld \
       $CRT1 \
       $CRTBEGIN \
       $DSOHANDLE \
       $DLMALLOC \
+      $SAFEMEM \
       $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \

@@ -29,7 +29,7 @@ struct option {
 /* Minimal getopt_long implementation using getopt
  * This is a simplified version that ignores long options and falls back to getopt
  */
-static inline int getopt_long(int argc, char * const argv[],
+static __inline__ int getopt_long(int argc, char * const argv[],
                               const char *optstring,
                               const struct option *longopts,
                               int *longindex)
@@ -41,7 +41,7 @@ static inline int getopt_long(int argc, char * const argv[],
 }
 
 /* getopt_long_only - same as getopt_long in our minimal impl */
-static inline int getopt_long_only(int argc, char * const argv[],
+static __inline__ int getopt_long_only(int argc, char * const argv[],
                                    const char *optstring,
                                    const struct option *longopts,
                                    int *longindex)

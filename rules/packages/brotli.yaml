@@ -1,9 +1,23 @@
+# brotli - Lossless compression algorithm (cmake-based)
 package: brotli
 rules:
   drop_subpackages:
-  - python3-brotli
+  - "python*"
+  drop_buildrequires:
+  - devtoolset-7-toolchain
+  - devtoolset-7-libatomic-devel
+  - cmake3
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
   spec_replacements:
-  - pattern: '%py3_build'
-    replacement: 'true # skip python build'
+  # Replace entire RHEL7-conditional cmake build block with raw cross-compilation
+  - pattern: "%if 0%{?rhel} == 7\n. /opt/rh/devtoolset-7/enable\n%cmake3 \\\n    -DCMAKE_INSTALL_PREFIX=\"%{_prefix}\" \\\n    -DCMAKE_INSTALL_LIBDIR=\"%{_libdir}\"\n%cmake3_build\n%else\n%cmake \\\n    -DCMAKE_INSTALL_PREFIX=\"%{_prefix}\" \\\n    -DCMAKE_INSTALL_LIBDIR=\"%{_libdir}\"\n%cmake_build\n%endif\n%py3_build"
+    replacement: "cmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DUNIX=1\ncd _build && make %{?_smp_mflags}"
+  # Replace entire RHEL7-conditional cmake install block
+  - pattern: "%if 0%{?rhel} == 7\n. /opt/rh/devtoolset-7/enable\n%cmake3_install\n%else\n%cmake_install\n%endif"
+    replacement: "make -C _build install DESTDIR=%{buildroot}"
+  # Skip python install
   - pattern: '%py3_install'
     replacement: 'true # skip python install'

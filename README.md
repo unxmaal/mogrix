@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms C/C++ software into working IRIX packages. It supports Fedora 40 SRPMs, upstream git repos, and tarball downloads — handling the entire pipeline from source fetch through cross-compilation to deployable RPMs and self-contained app bundles.
 
-**Current Status:** 105+ source packages cross-compiled for IRIX (290+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **tcsh** (C shell), **Qt5** (5.15.13), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **20 app bundles** (5 suites + 15 individual) created as self-extracting `.run` installers that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+**Current Status:** 120+ source packages cross-compiled for IRIX (300+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **tcsh** (C shell), **Qt5** (5.15.13), **GTK3** (3.24.41), **nedit** (Motif text editor rendering on IRIX native Motif), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **154 app bundles** created as self-extracting `.run` installers that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -424,6 +424,9 @@ All commands use `uv run mogrix` (or activate the venv first with `source .venv/
 | `mogrix audit-rules` | Scan package rules for duplicates and class candidates |
 | `mogrix score-rules` | Score package rules by complexity |
 | `mogrix bundle <package>` | Create self-contained IRIX app bundle |
+| `mogrix create-srpm <package>` | Generate SRPM from upstream git/tarball source |
+
+MCP test tools (via mogrix-test server): `test_bundle`, `test_binary`, `check_deps`, `par_trace`, `test_report`, `screenshot`. See [IRIX Testing](#irix-testing-mcp-test-harness).
 
 ## Dependency Handling
 
@@ -842,8 +845,9 @@ make clean
 | 122 | tcsh | 6.24.10 | C shell |
 | 123 | bc | 1.07.1 | Arbitrary precision calculator |
 | 124 | jq | 1.7.1 | JSON processor |
+| 125 | nedit | 5.7 | Classic Motif text editor (first cross-compiled Motif app!) |
 
-145 package rule files exist, with 40+ pending future builds.
+145+ package rule files exist, with 40+ pending future builds.
 
 ## Known Limitations
 
@@ -865,7 +869,7 @@ make clean
 - **pthread_sigmask** - In libpthread, not libc. Must explicitly link `-lpthread` when gnulib provides a replacement.
 - **C++ cmath/specfun** - GCC 9 c++config.h enables C99 math TR1 and specfun, but IRIX libm lacks these. Must disable in c++config.h.
 - **wchar_t in C++ mode** - IRIX stdlib.h tries to typedef wchar_t, but it's a C++ keyword. Fix: `-D_WCHAR_T`.
-- **R_MIPS_REL32 relocations** - Function pointers in static data crash IRIX rld. Replace with dispatch functions (switch/strcmp).
+- **R_MIPS_REL32 relocations** - Function pointers in static data crash IRIX rld. Replace with dispatch functions (switch/strcmp). In large executables, rld may silently skip some R_MIPS_REL32 relocs (e.g. widget ClassRec superclass pointers left as NULL). Workaround: `__attribute__((constructor))` function that patches broken fields at startup. See nedit.yaml.
 - **sockaddr_storage** - Hidden when `_XOPEN_SOURCE` is set in compat headers. Define explicitly in socket.h overlay.
 - **autoreconf overwrites prep_commands** - Patches to `configure` in `%prep` are undone by `autoreconf` in `%build`. Use spec_replacements to inject fixes after autoreconf.
 - **update-alternatives** - Doesn't exist on IRIX. Drop `Requires(post/preun/postun)` for packages that use it.
@@ -935,6 +939,51 @@ If dlmalloc was accidentally linked into a shared library, each .so gets its own
 
 IRIX has `pthread_sigmask` in libpthread, not libc. Add `LIBS="$LIBS -lpthread"` to configure environment and set `ac_cv_func_pthread_sigmask: "yes"` in ac_cv_overrides.
 
+## IRIX Testing (MCP Test Harness)
+
+Mogrix includes a dedicated MCP test server (`tools/mogrix-test-server.py`) that provides structured testing of bundles and binaries on IRIX hardware. It runs alongside the main `irix` MCP server and stores results as JSON in `test-results/`.
+
+### Available Test Tools
+
+| Tool | Description |
+|------|-------------|
+| `test_bundle` | Deploy a `.run` bundle to IRIX, auto-discover binaries, run smoke tests from YAML, return structured pass/fail report |
+| `test_binary` | Run a single binary on IRIX with optional args. Returns exit code, stdout, stderr, crash/signal info |
+| `check_deps` | Check library dependencies WITHOUT running. Reports each NEEDED soname and whether it resolves |
+| `par_trace` | Run command under IRIX `par` (syscall tracer) with intelligent output parsing |
+| `test_report` | Return stored test results. Omit package name for summary of all tested packages |
+| `screenshot` | Capture the IRIX X11 display as PNG for visual verification of GUI apps |
+
+### GUI App Testing Workflow
+
+For graphical applications (nedit, aterm, GTK3 apps), the test harness supports visual verification:
+
+1. Launch the app via `test_binary` with `DISPLAY=:0` and `host_mode=true`
+2. Capture the screen via `screenshot` with a delay for rendering
+3. View the PNG to confirm the window rendered correctly
+
+### Configuration
+
+The test server is configured in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "mogrix-test": {
+      "command": "python3",
+      "args": ["tools/mogrix-test-server.py"],
+      "env": {
+        "IRIX_HOST": "192.168.0.81",
+        "IRIX_USER": "root",
+        "IRIX_CHROOT": "/opt/chroot"
+      }
+    }
+  }
+}
+```
+
+See `rules/methods/irix-testing.md` for full documentation.
+
 ## Integration with Agentic AI
 
 Mogrix is designed for effective collaboration with AI coding assistants like Claude Code. The project includes structured documentation (`rules/INDEX.md`, `HANDOFF.md`, `rules/methods/*.md`) that AI agents can reference to understand patterns and make informed decisions.
@@ -993,8 +1042,10 @@ AI assistants are powerful tools, but they have fundamental limitations:
 | `rules/INDEX.md` | Package lookup, method links - **read first** |
 | `HANDOFF.md` | Current state, recent fixes, known issues |
 | `rules/methods/*.md` | Process documentation (text replacement, IRIX testing, etc.) |
+| `rules/methods/irix-testing.md` | IRIX testing methods including mogrix-test MCP tools |
 | `rules/packages/*.yaml` | Existing package rules - patterns to follow |
 | `compat/catalog.yaml` | Available compat functions |
+| `test-results/*.json` | Stored test results from mogrix-test MCP server |
 
 The goal is augmented intelligence: human judgment directing AI capability, with verification at every step.
 

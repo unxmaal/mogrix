@@ -1,0 +1,17 @@
+--- a/src/Xinerama.c
++++ b/src/Xinerama.c
+@@ -28,6 +28,14 @@
+ #endif
+
+ #include <X11/Xlibint.h>
++
++/* IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6).
++ * It's a simple wrapper around _XEatData that converts words to bytes. */
++#ifndef _XEatDataWords
++static inline void _XEatDataWords(Display *dpy, unsigned long n)
++{ _XEatData(dpy, n * 4); }
++#endif
++
+ #include <X11/Xutil.h>
+ #include <X11/extensions/Xext.h>
+ #include <X11/extensions/extutil.h>

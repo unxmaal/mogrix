@@ -1,0 +1,18 @@
+package: xorg-x11-proto-devel
+
+upstream:
+  url: https://www.x.org/pub/individual/proto/xorgproto-2019.1.tar.bz2
+  version: "2019.1"
+  type: tarball
+  build_system: autotools
+  license: MIT
+  summary: "X.Org X11 Protocol headers"
+  source_dir: xorgproto-2019.1
+
+add_source:
+  - xorgproto.irixfixes.patch
+
+rules:
+  # Apply IRIX fixes from SGUG RSE (byteorder.h path, Xfuncs.h, Xos.h)
+  prep_commands:
+    - "patch -p1 < %{_sourcedir}/xorgproto.irixfixes.patch"

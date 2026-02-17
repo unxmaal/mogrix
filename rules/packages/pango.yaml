@@ -11,9 +11,13 @@ rules:
   - pkgconfig(libthai)
   spec_replacements:
   - pattern: "%meson \\\n  -Dinstall-tests=true \\\n  -Dgtk_doc=true\n\n%meson_build"
-    replacement: "MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\nexport PATH=/opt/sgug-staging/usr/sgug/bin:$PATH\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS\
-      \ \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  -Dgtk_doc=false \\\n  -Dintrospection=disabled \\\n  -Dinstall-tests=false \\\n  -Dlibthai=disabled \\\n  -Dcairo=enabled \\\n  -Dfreetype=enabled\
-      \ \\\n  -Dfontconfig=enabled \\\n  -Dxft=enabled \\\n  -Dc_link_args=\"-L$COMPAT_DIR -lmogrix-compat\" \\\n  --wrap-mode=nodownload\n/home/edodd/.local/bin/meson compile -C _build\n"
+    replacement: "MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n# Create build-machine native file so meson finds host tools correctly\nmkdir -p _build_native_pkgconfig\n\
+      cat > _build_native_pkgconfig/glib-2.0.pc << 'GLIBPC'\nprefix=/opt/faketemp/glib-dev-bin/usr\nbindir=${prefix}/bin\ndatadir=${prefix}/share\nName: GLib\nDescription: Build-machine GLib stub for cross-compile\n\
+      Version: 2.80.0\nLibs:\nCflags:\nglib_genmarshal=${bindir}/glib-genmarshal\nglib_mkenums=${bindir}/glib-mkenums\ngobject_query=${bindir}/gobject-query\nGLIBPC\ncat > _build_native.ini << 'NATIVEOF'\n\
+      [binaries]\npkgconfig = '/usr/bin/pkg-config'\n\n[built-in options]\npkg_config_path = ['_build_native_pkgconfig']\nNATIVEOF\nexport PATH=/opt/faketemp/glib-dev-bin/usr/bin:/opt/sgug-staging/usr/sgug/bin:$PATH\n\
+      /home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --native-file=_build_native.ini \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  -Dgtk_doc=false \\\n  -Dintrospection=disabled\
+      \ \\\n  -Dinstall-tests=false \\\n  -Dlibthai=disabled \\\n  -Dcairo=enabled \\\n  -Dfreetype=enabled \\\n  -Dfontconfig=enabled \\\n  -Dxft=enabled \\\n  -Dc_link_args=\"-L$COMPAT_DIR -lmogrix-compat\"\
+      \ \\\n  --wrap-mode=nodownload\n/home/edodd/.local/bin/meson compile -C _build\n"
   - pattern: '%meson_install'
     replacement: DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild
   - pattern: "PANGOXFT_SO=$RPM_BUILD_ROOT%{_libdir}/libpangoxft-1.0.so\nif ! test -e $PANGOXFT_SO; then\n        echo \"$PANGOXFT_SO not found; did not build with Xft support?\"\n        ls $RPM_BUILD_ROOT%{_libdir}\n\

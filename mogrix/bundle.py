@@ -63,7 +63,7 @@ case "$dir" in
     /*) ;;
     *)  dir="`/bin/pwd`/$dir" ;;
 esac
-LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}"
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
 {terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
 """
@@ -75,7 +75,7 @@ case "$dir" in
     /*) ;;
     *)  dir="`/bin/pwd`/$dir" ;;
 esac
-LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}"
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
 {terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
 """
@@ -98,8 +98,10 @@ TRAMPOLINE_EXCLUDE_GLOBAL: set[str] = {
 }
 
 # Self-extracting installer: shell script header + appended tar.gz payload.
-# Uses only Bourne shell builtins available on base IRIX 6.5:
-#   /bin/sh, /usr/sbin/gzcat, tail +N, tar, mkdir, echo
+# Uses only commands available on base IRIX 6.5 (full paths to avoid PATH issues):
+#   /bin/sh, /bin/tail, /usr/sbin/gzcat, /sbin/tar, /sbin/mkdir, /bin/pwd
+# NOTE: IRIX native tar does NOT support -C flag. Must cd first, then extract.
+# $0 is resolved to absolute path before cd so tail can still find the script.
 SELF_EXTRACTING_TEMPLATE = """\
 #!/bin/sh
 # Mogrix self-extracting bundle: {display_name}
@@ -108,15 +110,17 @@ SELF_EXTRACTING_TEMPLATE = """\
 # install_dir defaults to current directory
 BUNDLE="{bundle_dir_name}"
 SKIP={payload_line}
+self="$0"
+case "$self" in /*) ;; *) self="`/bin/pwd`/$self" ;; esac
 dest="$1"
 xonly=false
 case "$1" in --extract-only) xonly=true; dest="$2" ;; esac
 if [ -z "$dest" ]; then dest=`/bin/pwd`; fi
 case "$dest" in /*) ;; *) dest="`/bin/pwd`/$dest" ;; esac
-mkdir -p "$dest" 2>/dev/null
+/sbin/mkdir -p "$dest" 2>/dev/null
 if [ ! -d "$dest" ]; then echo "Error: cannot create $dest" >&2; exit 1; fi
 echo "Installing $BUNDLE to $dest ..."
-/bin/tail +$SKIP "$0" | /usr/sbin/gzcat | tar xf - -C "$dest"
+cd "$dest" && /bin/tail +$SKIP "$self" | /usr/sbin/gzcat | /sbin/tar xf -
 if [ $? -ne 0 ]; then echo "Error: extraction failed" >&2; exit 1; fi
 if [ "$xonly" = "true" ]; then echo "Extracted to $dest/$BUNDLE"; exit 0; fi
 cd "$dest/$BUNDLE"
@@ -1304,10 +1308,22 @@ class BundleBuilder:
                 "\n[red]Bundle may not work — unresolved dependencies![/red]"
             )
         elif manifest.staging_sonames:
-            console.print(
-                "\n[yellow]Bundle includes non-mogrix libs from staging. "
-                "User may need SGUG-RSE installed for these.[/yellow]"
-            )
+            # libgcc_s and libstdc++ always come from the cross-compiler toolchain;
+            # they're bundled in _lib32/ so the bundle IS self-contained.
+            toolchain_only = manifest.staging_sonames <= {
+                "libgcc_s.so.1", "libstdc++.so.6",
+            }
+            if toolchain_only:
+                console.print(
+                    "\n[bold green]Bundle is self-contained.[/bold green] "
+                    "[dim](toolchain libs from staging)[/dim]"
+                )
+            else:
+                console.print(
+                    "\n[yellow]Bundle includes non-mogrix libs from staging: "
+                    + ", ".join(sorted(manifest.staging_sonames - {"libgcc_s.so.1", "libstdc++.so.6"}))
+                    + "[/yellow]"
+                )
         else:
             console.print("\n[bold green]Bundle is fully self-contained.[/bold green]")
 

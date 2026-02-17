@@ -1,0 +1,75 @@
+package: profanity
+rules:
+  drop_buildrequires:
+  - autoconf-archive
+  - libtool
+  - libnotify-devel
+  - libotr-devel
+  - gpgme-devel
+  - libsignal-protocol-c-devel
+  - libcmocka-devel
+  - python-unversioned-command
+  - python3-devel
+  - python3-sphinx
+  - qrencode-devel
+  configure_disable:
+  - notifications
+  - python-plugins
+  - otr
+  - pgp
+  - omemo
+  - omemo-qrcode
+  - icons-and-clipboard
+  - gdk-pixbuf
+  drop_subpackages:
+  - libs
+  - devel
+  - doc
+  configure_flags:
+    add:
+    - --enable-plugins=no
+    - --without-xscreensaver
+  spec_replacements:
+  # Skip autoreconf (needs autoconf-archive for AX_PTHREAD macro).
+  # Use shipped configure instead.
+  - pattern: 'autoreconf -i -W all'
+    replacement: 'true  # skip autoreconf, use shipped configure'
+  # Add -lgen for basename/dirname (IRIX has them in libgen.so, not libc)
+  # and fix libtool for IRIX after configure
+  - pattern: '%configure'
+    replacement: 'export LIBS="$LIBS -lgen"
+
+      %configure
+
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1'
+  # Remove pushd/popd bashisms - skip doc building entirely (no doxygen/sphinx)
+  - pattern: |
+      # Build HTML documentation
+      pushd apidocs/c/
+      doxygen c-prof.conf  # results are in apidocs/c/html/
+      popd
+      pushd apidocs/python/
+      sphinx-apidoc -f -o . src
+      make html  # results are in apidocs/python/_build/html
+      popd
+      # Remove hidden file generated
+      rm -f apidocs/python/_build/html/.buildinfo
+    replacement: '# Skip documentation build (no doxygen/sphinx on IRIX)'
+  # Remove doc install since we dropped the doc subpackage
+  - pattern: |
+      # Install HTML documentation for the doc subpackage
+      mkdir -p %{buildroot}%{_pkgdocdir}/c/
+      mkdir -p %{buildroot}%{_pkgdocdir}/python/
+      cp -a apidocs/c/html/ %{buildroot}%{_pkgdocdir}/c/
+      cp -a apidocs/python/_build/html/ %{buildroot}%{_pkgdocdir}/python/
+    replacement: '# Doc install removed (doc subpackage dropped for IRIX)'
+  # Remove libprofanity files references (plugins disabled)
+  - pattern: '%{_libdir}/libprofanity.so.*'
+    replacement: '# libprofanity not built (plugins disabled)'
+  - pattern: '%{_libdir}/libprofanity.so'
+    replacement: '# libprofanity not built (plugins disabled)'
+  - pattern: '%{_includedir}/profapi.h'
+    replacement: '# profapi.h not built (plugins disabled)'
+  prep_commands:
+  # Fix %zu format specifiers (IRIX printf doesn't support %z)
+  - sed -i 's/%zu/%lu/g; s/%zd/%ld/g; s/%zx/%lx/g' src/config/color.c src/ui/window.c

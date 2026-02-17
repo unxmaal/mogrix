@@ -36,6 +36,13 @@ extern int optind, opterr, optopt;
 /* Basic getopt function - should be in libc but may need explicit declaration */
 int getopt(int argc, char * const argv[], const char *optstring);
 
+/*
+ * struct option and getopt_long declarations.
+ * Suppressed if _MOGRIX_NO_GETOPT_STRUCT_OPTION is defined — use this
+ * when the application defines its own 'struct option' (e.g. git).
+ */
+#ifndef _MOGRIX_NO_GETOPT_STRUCT_OPTION
+
 /* Option structure for getopt_long */
 struct option {
     const char *name;     /* Long option name */
@@ -66,6 +73,8 @@ int getopt_long_only(int argc, char * const argv[],
                      const char *optstring,
                      const struct option *longopts,
                      int *longindex);
+
+#endif /* _MOGRIX_NO_GETOPT_STRUCT_OPTION */
 
 #ifdef __cplusplus
 }

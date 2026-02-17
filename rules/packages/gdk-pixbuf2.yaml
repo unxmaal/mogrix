@@ -1,0 +1,68 @@
+package: gdk-pixbuf2
+
+rules:
+  drop_buildrequires:
+    - docbook-style-xsl
+    - gi-docgen
+    - libxslt
+    - shared-mime-info
+    - /usr/bin/rst2man
+    - pkgconfig(gobject-introspection-1.0)
+
+  drop_requires:
+    - shared-mime-info
+
+  # Remove _POSIX_C_SOURCE and _XOPEN_SOURCE from meson.build — conflicts with IRIX headers
+  # Make glib-compile-resources optional (only used by tests, which we disable)
+  prep_commands:
+    - "sed -i \"s/add_project_arguments.*_POSIX_C_SOURCE.*language: 'c')/add_project_arguments([ '-D_DEFAULT_SOURCE' ], language: 'c')/\" meson.build"
+    - "sed -i \"s/find_program('glib-compile-resources')/find_program('glib-compile-resources', required: false)/\" meson.build"
+
+  spec_replacements:
+    # Replace %meson + flags + %meson_build with raw meson commands
+    - pattern: "%meson \\\n       -Dgtk_doc=true \\\n       -Dman=true \\\n       %{nil}\n\n%global _smp_mflags -j1\n%meson_build"
+      replacement: |
+        export PATH=/home/edodd/projects/github/unxmaal/mogrix/cross/native-tools:$PATH
+        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          -Dintrospection=disabled \
+          -Dgtk_doc=false \
+          -Ddocs=false \
+          -Dman=false \
+          -Dtests=false \
+          -Dinstalled_tests=false \
+          -Dgio_sniffing=false \
+          -Dc_link_args="-L$COMPAT_DIR -lmogrix-compat" \
+          --wrap-mode=nodownload
+        /home/edodd/.local/bin/meson compile -C _build
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Remove query-loaders rename (no multilib on IRIX) and thumbnailer ref in install
+    - pattern: "# Rename gdk-pixbuf-query-loaders\n(cd $RPM_BUILD_ROOT%{_bindir}\n mv gdk-pixbuf-query-loaders gdk-pixbuf-query-loaders-%{__isa_bits}\n)\n# ... and fix up gdk-pixbuf-query-loaders reference in the .pc file\nsed -i -e 's/gdk-pixbuf-query-loaders/gdk-pixbuf-query-loaders-%{__isa_bits}/' \\\n    $RPM_BUILD_ROOT%{_libdir}/pkgconfig/gdk-pixbuf-2.0.pc"
+      replacement: "# No multilib rename on IRIX"
+
+    # Remove transfiletrigger scripts (not supported in our rpmbuild)
+    - pattern: "%transfiletriggerin -- %{_libdir}/gdk-pixbuf-2.0/2.10.0/loaders\ngdk-pixbuf-query-loaders-%{__isa_bits} --update-cache\n\n%transfiletriggerpostun -- %{_libdir}/gdk-pixbuf-2.0/2.10.0/loaders\ngdk-pixbuf-query-loaders-%{__isa_bits} --update-cache"
+      replacement: "# transfiletriggers removed for IRIX"
+
+    # Fix %files: remove girepository, thumbnailer, man pages; fix query-loaders name
+    - pattern: "%{_libdir}/girepository-1.0\n%dir %{_libdir}/gdk-pixbuf-2.0\n%dir %{_libdir}/gdk-pixbuf-2.0/2.10.0\n%dir %{_libdir}/gdk-pixbuf-2.0/2.10.0/loaders\n%ghost %{_libdir}/gdk-pixbuf-2.0/2.10.0/loaders.cache\n%{_bindir}/gdk-pixbuf-query-loaders-%{__isa_bits}\n%{_bindir}/gdk-pixbuf-thumbnailer\n%{_mandir}/man1/gdk-pixbuf-query-loaders.1*\n%{_datadir}/thumbnailers/"
+      replacement: "%dir %{_libdir}/gdk-pixbuf-2.0\n%dir %{_libdir}/gdk-pixbuf-2.0/2.10.0\n%dir %{_libdir}/gdk-pixbuf-2.0/2.10.0/loaders\n%ghost %{_libdir}/gdk-pixbuf-2.0/2.10.0/loaders.cache\n%{_bindir}/gdk-pixbuf-query-loaders"
+
+    # Fix %files devel: remove gir, man pages, docs
+    - pattern: "%{_datadir}/gir-1.0/\n%{_mandir}/man1/gdk-pixbuf-csource.1*\n%doc %{_datadir}/doc/gdk-pixbuf/\n%doc %{_datadir}/doc/gdk-pixdata/"
+      replacement: ""
+
+    # Remove %files tests subpackage
+    - pattern: "%files tests\n%{_libexecdir}/installed-tests\n%{_datadir}/installed-tests"
+      replacement: "# tests subpackage removed for IRIX"
+
+    # Remove %package tests and its description
+    - pattern: "%package tests\nSummary: Tests for the %{name} package\nRequires: %{name}%{?_isa} = %{version}-%{release}\n\n%description tests\nThe %{name}-tests package contains tests that can be used to verify\nthe functionality of the installed %{name} package."
+      replacement: "# tests subpackage removed for IRIX"

@@ -14,7 +14,7 @@ extern "C" {
 
 /* C99 isblank() - test for blank character (space or tab) */
 #ifndef isblank
-static inline int isblank(int c)
+static __inline__ int isblank(int c)
 {
     return (c == ' ' || c == '\t');
 }

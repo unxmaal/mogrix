@@ -54,7 +54,7 @@
  * isfinite/isnormal/signbit: cmath defines its own constexpr versions
  * in std:: — providing our own at global scope conflicts with
  * `using std::isfinite;` in GCC 9's C++ math.h wrapper. */
-static inline int isinf(double x) { return __builtin_isinf(x); }
+static __inline__ int isinf(double x) { return __builtin_isinf(x); }
 
 #else /* C mode */
 
@@ -210,7 +210,7 @@ static __inline long double scalblnl(long double x, long n) { return __builtin_s
  * IRIX has old-style SGI names (facosh, fatanh, etc.) but NOT
  * the C99 standard names (acoshf, atanhf, etc.).
  * IRIX DOES have: expm1f, log1pf, truncf, hypotf — do NOT redefine those.
- * For functions IRIX declares as `extern`, we can't use static inline
+ * For functions IRIX declares as `extern`, we can't use static __inline__
  * (linkage conflict), so only add functions IRIX completely lacks. */
 static __inline float rintf(float x) { return __builtin_rintf(x); }
 static __inline float logbf(float x) { return __builtin_logbf(x); }

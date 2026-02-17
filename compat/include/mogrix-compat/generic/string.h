@@ -38,6 +38,9 @@ char *strcasestr(const char *haystack, const char *needle);
 /* strsep - BSD extension, token extraction */
 char *strsep(char **stringp, const char *delim);
 
+/* strerror_r - POSIX/GNU thread-safe error string */
+char *strerror_r(int errnum, char *buf, size_t buflen);
+
 /* explicit_bzero - OpenBSD/glibc, zero memory without optimization */
 void explicit_bzero(void *buf, size_t len);
 

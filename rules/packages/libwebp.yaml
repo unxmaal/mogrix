@@ -1,0 +1,44 @@
+# libwebp - WebP image format library (cmake-based)
+package: libwebp
+rules:
+  drop_subpackages:
+  - java
+  - mingw32-libwebp
+  - mingw64-libwebp
+  drop_buildrequires:
+  - freeglut-devel
+  - java-devel
+  - jpackage-utils
+  - swig
+  - mingw32-filesystem
+  - mingw32-gcc
+  - mingw32-binutils
+  - mingw32-giflib
+  - mingw32-libpng
+  - mingw32-libjpeg
+  - mingw64-filesystem
+  - mingw64-gcc
+  - mingw64-binutils
+  - mingw64-giflib
+  - mingw64-libpng
+  - mingw64-libjpeg
+  drop_requires:
+  - java-headless
+  - jpackage-utils
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+  spec_replacements:
+  # Disable mingw build
+  - pattern: '%bcond_without mingw'
+    replacement: '%bcond_with mingw'
+  # Replace cmake macros with raw cross-compilation cmake
+  - pattern: "# Native build\n%cmake\n%cmake_build"
+    replacement: "# Native build (cross-compilation for IRIX)\ncmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DWEBP_BUILD_VWEBP=OFF \\\n  -DBUILD_SHARED_LIBS=ON \\\n  -DUNIX=1\ncd _build && make %{?_smp_mflags}"
+  # Replace cmake install
+  - pattern: "# Native build\n%cmake_install"
+    replacement: "# Native build\nmake -C _build install DESTDIR=%{buildroot}"
+  # Remove vwebp from files (needs freeglut/GL)
+  - pattern: "%{_bindir}/vwebp\n"
+    replacement: ""

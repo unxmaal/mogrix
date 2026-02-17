@@ -30,6 +30,16 @@ rules:
 
   # Fix libtool and luaconf.h for cross-compilation
   spec_replacements:
+    # Engine injects compat source copies inside %if bootstrap block.
+    # Move them outside so they run in the non-bootstrap path too.
+    - pattern: "cp %{SOURCE1} ."
+      replacement: |
+        # Mogrix compat sources (must be outside bootstrap conditional)
+        mkdir -p mogrix-compat
+        for src in %{SOURCE100} %{SOURCE101} %{SOURCE102} %{SOURCE103} %{SOURCE104} %{SOURCE105} %{SOURCE106} %{SOURCE107} %{SOURCE108} %{SOURCE109}; do
+          cp "$src" mogrix-compat/
+        done
+        cp %{SOURCE1} .
     # After libtool configuration, fix for IRIX using generic script + lua-specific soname
     - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
       replacement: |
@@ -45,6 +55,10 @@ rules:
         sed -i 's|@pkgdatadir@|%{_datadir}|g' src/luaconf.h.template
         # Enable LUA_32BITS for IRIX (long long detection is problematic)
         sed -i 's/^#define LUA_32BITS[[:space:]]*0/#define LUA_32BITS 1/' src/luaconf.h.template
+    # The original spec removes .la files without -f, but generic cleanup already
+    # removed them. Make this a no-op to avoid double-removal failure.
+    - pattern: "rm $RPM_BUILD_ROOT%{_libdir}/*.la"
+      replacement: "rm -f $RPM_BUILD_ROOT%{_libdir}/*.la"
     # Add versioned shared library to %files libs (libtool generates .0.0 suffix)
     - pattern: "%{_libdir}/liblua-%{major_version}.so"
       replacement: "%{_libdir}/liblua-%{major_version}.so*"

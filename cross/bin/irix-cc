@@ -27,6 +27,18 @@ CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
 # IRIX's stdio_core.h defines va_list as char* which conflicts with clang builtins
 CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
+# Force-include time.h to ensure struct timespec is defined as "struct timespec"
+# (not "struct __timespec"). IRIX sys/timespec.h only maps __timespec→timespec
+# when __TIME_H__ is set. Without this, signal.h (and other headers) can include
+# sys/timespec.h before time.h, leaving the struct with the wrong name.
+# BUT: skip for assembly files (.S/.s) — the assembler can't parse C declarations.
+_has_asm_source=false
+for _arg in "$@"; do
+    case "$_arg" in *.S|*.s) _has_asm_source=true; break ;; esac
+done
+if [ "$_has_asm_source" = "false" ]; then
+    CLANG_FLAGS="$CLANG_FLAGS -include $SYSROOT/usr/include/time.h"
+fi
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"
@@ -45,6 +57,10 @@ CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_NAMESPACE_STD="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_BEGIN_EXTERN_C="
 CLANG_FLAGS="$CLANG_FLAGS -D__SGI_LIBC_END_EXTERN_C="
+# Use plain string literals for Xt/Motif resource names instead of XtStrings/_XmStrings
+# offset form. The offset form generates R_MIPS_REL32 relocations that IRIX rld doesn't
+# apply in static data sections, leaving raw offsets that crash XrmPermStringToQuark.
+CLANG_FLAGS="$CLANG_FLAGS -DXTSTRINGDEFINES -DXMSTRINGDEFINES"
 # Use .ctors/.dtors instead of .init_array — IRIX rld doesn't support init_array
 CLANG_FLAGS="$CLANG_FLAGS -fno-use-init-array"
 
@@ -56,6 +72,38 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# Expand response files (@file) — meson uses these for large link commands.
+# Shell scripts can't read @file syntax; the linker flag parsing below needs
+# to see the actual arguments. Only expand if an @file argument is present.
+has_rspfile=false
+for arg in "$@"; do
+    case "$arg" in @*) has_rspfile=true; break ;; esac
+done
+if [ "$has_rspfile" = "true" ]; then
+    expanded_args=""
+    for arg in "$@"; do
+        case "$arg" in
+            @*)
+                rspfile="${arg#@}"
+                if [ -f "$rspfile" ]; then
+                    # Response files have all args on one line, space-separated.
+                    # Strip single quotes (meson quotes $ORIGIN rpath args).
+                    expanded_args="$expanded_args $(sed "s/'//g" "$rspfile")"
+                else
+                    expanded_args="$expanded_args $arg"
+                fi
+                ;;
+            *)
+                expanded_args="$expanded_args $arg"
+                ;;
+        esac
+    done
+    # Re-set positional parameters to expanded args
+    # Note: this loses quoting for filenames with spaces, but response files
+    # are only used for link commands which don't have such filenames.
+    set -- $expanded_args
+fi
 
 # Check if this is preprocess-only (-E flag present)
 preprocess_only=false
@@ -96,7 +144,12 @@ elif [ "$link_only" = "true" ]; then
     # Link only - filter out compile-only flags and pass to LLD wrapper
     link_args=""
     next_is_output=false
+    skip_next_arg=false
     for arg in "$@"; do
+        if [ "$skip_next_arg" = "true" ]; then
+            skip_next_arg=false
+            continue
+        fi
         if [ "$next_is_output" = "true" ]; then
             link_args="$link_args -o $arg"
             next_is_output=false
@@ -112,8 +165,14 @@ elif [ "$link_only" = "true" ]; then
                 ld_flag=$(echo "$arg" | sed 's/^-Wl,//' | tr ',' ' ')
                 link_args="$link_args $ld_flag"
                 ;;
+            # Skip two-argument compiler flags (flag + next-arg path)
+            # Must be checked BEFORE the glob patterns below
+            -idirafter|-isystem|-iwithprefix|-iwithprefixbefore|-iprefix|-include|-imacros|-isysroot|-MF|-MT|-MQ)
+                skip_next_arg=true
+                ;;
             # Skip compile-only flags (but not -Wl which is handled above)
-            -D*|-I*|-W*|-O*|-g|-g[0-9]|-ggdb*|-gdwarf*|-gz*|-std=*|-c|-Q*|-f*|-m*)
+            # Handles concatenated forms like -I/path, -isystem/path, -DFOO
+            -D*|-I*|-isystem*|-idirafter*|-iprefix*|-iwithprefix*|-include*|-imacros*|-isysroot*|-W*|-O*|-g|-g[0-9]|-ggdb*|-gdwarf*|-gz*|-std=*|-c|-Q*|-f*|-m*)
                 ;;
             # Skip compiler flags that LLD doesn't understand
             -static|-dynamic|-Bdynamic|-Bstatic|-pedantic|-pedantic-errors)

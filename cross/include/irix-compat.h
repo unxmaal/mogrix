@@ -201,7 +201,7 @@ static int _qsort_r_wrapper(const void *a, const void *b)
     return _qsort_r_compar(a, b, _qsort_r_context);
 }
 
-static inline void qsort_r(void *base, size_t nmemb, size_t size,
+static __inline__ void qsort_r(void *base, size_t nmemb, size_t size,
                            int (*compar)(const void *, const void *, void *),
                            void *arg)
 {
@@ -215,7 +215,7 @@ static inline void qsort_r(void *base, size_t nmemb, size_t size,
 /* strsep is a BSD extension not available in IRIX
  * Provide a simple implementation */
 #ifndef HAVE_STRSEP
-static inline char *strsep(char **stringp, const char *delim)
+static __inline__ char *strsep(char **stringp, const char *delim)
 {
     char *s, *tok;
     const char *spanp;
@@ -257,7 +257,7 @@ extern char *strcpy(char *, const char *);
 extern char *strcat(char *, const char *);
 extern char *strchr(const char *, int);
 
-static inline int setenv(const char *name, const char *value, int overwrite)
+static __inline__ int setenv(const char *name, const char *value, int overwrite)
 {
     char *env;
     size_t len;
@@ -284,7 +284,7 @@ static inline int setenv(const char *name, const char *value, int overwrite)
     return putenv(env);
 }
 
-static inline int unsetenv(const char *name)
+static __inline__ int unsetenv(const char *name)
 {
     char *env;
 
@@ -312,7 +312,7 @@ static inline int unsetenv(const char *name)
 
 /* strchrnul is a GNU extension - like strchr but returns pointer to null terminator if not found */
 #ifndef HAVE_STRCHRNUL
-static inline char *strchrnul(const char *s, int c)
+static __inline__ char *strchrnul(const char *s, int c)
 {
     while (*s && *s != (char)c)
         s++;
@@ -329,7 +329,7 @@ extern int strncasecmp(const char *, const char *, size_t);
 /* strcasestr is a GNU extension - case-insensitive strstr */
 #ifndef HAVE_STRCASESTR
 extern int tolower(int);
-static inline char *strcasestr(const char *haystack, const char *needle)
+static __inline__ char *strcasestr(const char *haystack, const char *needle)
 {
     size_t needle_len;
     if (!needle || !*needle)
@@ -366,7 +366,7 @@ extern void tzset(void);
 /* mktime declaration - matches IRIX */
 extern long mktime(struct tm *);
 
-static inline long timegm(struct tm *tm)
+static __inline__ long timegm(struct tm *tm)
 {
     long result;
     char *tz;

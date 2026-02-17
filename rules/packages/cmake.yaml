@@ -1,0 +1,17 @@
+package: cmake
+upstream:
+  url: https://github.com/Kitware/CMake/releases/download/v3.28.2/cmake-3.28.2.tar.gz
+  version: "3.28.2"
+  type: tarball
+  build_system: cmake
+  license: "BSD-3-Clause AND MIT-open-group AND Zlib AND Apache-2.0"
+  summary: "Cross-platform make system"
+  source_dir: cmake-3.28.2
+rules:
+  inject_compat_functions:
+  - mkdtemp
+  - stpcpy
+  export_vars:
+    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
