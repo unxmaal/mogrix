@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms C/C++ software into working IRIX packages. It supports Fedora 40 SRPMs, upstream git repos, and tarball downloads — handling the entire pipeline from source fetch through cross-compilation to deployable RPMs and self-contained app bundles.
 
-**Current Status:** 120+ source packages cross-compiled for IRIX (300+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **tcsh** (C shell), **Qt5** (5.15.13), **GTK3** (3.24.41), **nedit** (Motif text editor rendering on IRIX native Motif), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **154 app bundles** created as self-extracting `.run` installers that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+**Current Status:** 145+ source packages cross-compiled for IRIX (400+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **tcsh** (C shell), **Qt5** (5.15.13), **GTK3** (3.24.41), **gtkterm** (GTK3 terminal emulator — first GTK3 GUI app on IRIX!), **nedit** (Motif text editor rendering on IRIX native Motif), **xnedit** (XNEdit Motif text editor with Xt constructor workaround), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **161+ app bundles** created as self-extracting `.run` installers that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -567,6 +567,7 @@ rules:
 | `reallocarray` | Overflow-checked array allocation |
 | `openpty` | Open pseudo-terminal (wraps IRIX `_getpty()`) |
 | `pselect` | Synchronous I/O multiplexing with signal mask |
+| `bsearch` | POSIX-compliant binary search (IRIX libc crashes on nmemb=0). Also in libmogrix_compat.so for shared lib override. |
 | `err` / `errx` / `warn` / `warnx` | BSD error reporting functions |
 | `sqlite3_stub` | Stub sqlite3 for optional features |
 
@@ -655,7 +656,7 @@ make clean
 
 ## Package Rules Status
 
-105+ source packages cross-compiled for IRIX across multiple phases (124 packages with rules):
+145+ source packages cross-compiled for IRIX across multiple phases (165+ packages with rules):
 
 ### Phase 1: Bootstrap (14 packages)
 
@@ -847,7 +848,25 @@ make clean
 | 124 | jq | 1.7.1 | JSON processor |
 | 125 | nedit | 5.7 | Classic Motif text editor (first cross-compiled Motif app!) |
 
-145+ package rule files exist, with 40+ pending future builds.
+### Sessions 48-75: GTK3 Stack, Batch Builds, and More (20+ packages)
+
+| # | Package | Version | Description |
+|---|---------|---------|-------------|
+| 126 | libtiff | 4.6.0 | TIFF image library |
+| 127 | libepoxy | 1.5.10 | OpenGL function pointer management |
+| 128 | at-spi2-core | 2.52.0 | Accessibility toolkit |
+| 129 | gdk-pixbuf2 | 2.42.10 | Image loading library |
+| 130 | gtk3 | 3.24.41 | GTK 3 toolkit |
+| 131 | vte291 | 0.74.2 | VTE terminal widget |
+| 132 | gtkterm | 1.3.1 | GTK3 serial terminal (first GTK3 GUI app on IRIX!) |
+| 133 | xnedit | 1.6.1 | XNEdit Motif text editor (Xt constructor workaround) |
+| 134 | screen | 4.9.1 | Terminal multiplexer |
+| 135 | feh | 3.10.2 | Image viewer |
+| 136 | scrot | 1.10 | Screenshot utility |
+| 137 | cmake | 3.28.3 | Build system |
+| 138 | p11-kit | 0.25.3 | PKCS#11 module manager |
+
+165+ package rule files exist.
 
 ## Known Limitations
 
@@ -867,6 +886,9 @@ make clean
 - **`-z separate-code`** - Produces 3 LOAD segments in shared libraries, corrupting IRIX rld internal state on dlopen. Use custom linker script for standard 2-segment (RE+RW) layout.
 - **GNU symbol versioning** - `--version-script` creates `.gnu.version` tags that crash IRIX rld (predates GNU versioning). Filtered by irix-ld.
 - **pthread_sigmask** - In libpthread, not libc. Must explicitly link `-lpthread` when gnulib provides a replacement.
+- **IRIX bsearch(nmemb=0)** - IRIX libc's bsearch() crashes when called with nmemb=0. It underflows nmemb-1 to 0xFFFFFFFF and dereferences a garbage pointer. This crashes GTK3 (property_cache bsearch on empty cache). Fix: `libmogrix_compat.so` preloaded via `_RLDN32_LIST`.
+- **IRIX rld symbol preemption** - IRIX rld does NOT preempt shared library symbols from the executable's .dynsym (unlike Linux). When libgtk-3.so calls bsearch, rld resolves through NEEDED chain to libc.so.1, never checking the executable. Compat function overrides for buggy libc functions must be in a preloaded .so via `_RLDN32_LIST=libmogrix_compat.so:DEFAULT`, not just linked into the executable.
+- **Bundler -devel RPM exclusion** - Bundle `-devel` RPMs are excluded, which means unversioned .so symlinks (e.g. `libz.so` from zlib-ng-compat-devel) are missing. The bundler auto-creates these by reading ELF SONAME headers.
 - **C++ cmath/specfun** - GCC 9 c++config.h enables C99 math TR1 and specfun, but IRIX libm lacks these. Must disable in c++config.h.
 - **wchar_t in C++ mode** - IRIX stdlib.h tries to typedef wchar_t, but it's a C++ keyword. Fix: `-D_WCHAR_T`.
 - **R_MIPS_REL32 relocations** - Function pointers in static data crash IRIX rld. Replace with dispatch functions (switch/strcmp). In large executables, rld may silently skip some R_MIPS_REL32 relocs (e.g. widget ClassRec superclass pointers left as NULL). Workaround: `__attribute__((constructor))` function that patches broken fields at startup. See nedit.yaml.
@@ -930,6 +952,14 @@ Also check for `--export-dynamic` in link commands — large dynamic symbol tabl
 **Binary crashes during normal operation (not at startup)**
 
 Likely dlmalloc/libc allocator mismatch. libc functions like `strdup`, `asprintf`, `getline` allocate with libc malloc, but our code frees with dlmalloc. Inject compat `strdup`/`strndup` etc. via `inject_compat_functions`.
+
+**GTK3 app crashes with SIGSEGV at 0x7fffffe0**
+
+This is the IRIX bsearch(nmemb=0) bug. The bundler automatically includes `libmogrix_compat.so` and sets `_RLDN32_LIST` in wrapper scripts. If running manually outside a bundle, set:
+```sh
+_RLDN32_LIST=/path/to/libmogrix_compat.so:DEFAULT
+export _RLDN32_LIST
+```
 
 **ABORT during TLS or cross-library calls**
 

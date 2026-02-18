@@ -1,0 +1,61 @@
+--- a/dpi/https.c
++++ b/dpi/https.c
+@@ -166,21 +166,29 @@
+    }
+
+    /*Set directory to load certificates from*/
+-   /*FIXME - provide for sysconfdir variables and such*/
+    if (exit_error == 0){
+-      if (SSL_CTX_load_verify_locations(
+-         ssl_context, NULL, "/etc/ssl/certs/" ) == 0){
+-         MSG("Error opening system x509 certificate location\n");
+-         exit_error = 1;
++      const char *cert_file = getenv("SSL_CERT_FILE");
++      const char *cert_dir = getenv("SSL_CERT_DIR");
++      int certs_loaded = 0;
++
++      if (cert_file || cert_dir) {
++         if (SSL_CTX_load_verify_locations(ssl_context, cert_file, cert_dir))
++            certs_loaded = 1;
++      }
++      if (!certs_loaded) {
++         /* Fallback: use OpenSSL compiled-in defaults */
++         if (SSL_CTX_set_default_verify_paths(ssl_context))
++            certs_loaded = 1;
++      }
++      if (!certs_loaded) {
++         MSG("Error: no system x509 certificates found\n");
+       }
+    }
+
++   /* Load user certificates (optional, non-fatal) */
+    if (exit_error == 0){
+       snprintf(buf, 4095, "%s/.dillo/certs/", dGethomedir());
+-      if (SSL_CTX_load_verify_locations(ssl_context, NULL, buf )==0){
+-         MSG("Error opening user x509 certificate location\n");
+-         exit_error = 1;
+-      }
++      SSL_CTX_load_verify_locations(ssl_context, NULL, buf);
+    }
+
+    if (exit_error == 0){
+@@ -296,6 +304,9 @@
+    }
+
+    if (exit_error == 0){
++      /* Set SNI hostname so virtual-hosted servers return the right cert */
++      if (root_url)
++         SSL_set_tlsext_host_name(ssl_connection, root_url);
+       /*Actually do SSL connection handshake*/
+       if (SSL_connect(ssl_connection) != 1){
+          MSG("SSL_connect failed\n");
+--- a/dpid/dpidc.c
++++ b/dpid/dpidc.c
+@@ -1,6 +1,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>  /* for exit */
+ #include <string.h>  /* for bzero */
++#include <strings.h> /* for bzero on IRIX */
+ #include <unistd.h>  /* for read and write */
+ #include <ctype.h>   /* for isxdigit */
+ #include <sys/types.h>

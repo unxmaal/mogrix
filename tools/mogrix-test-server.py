@@ -828,7 +828,7 @@ class MogrixTestServer:
             script = gen.generate(tests)
 
             # Deploy to IRIX (host mode — bundles are self-contained)
-            remote_dir = "/tmp/mogrix-test"
+            remote_dir = "/usr/people/edodd/apps"
             ok, msg = self.ssh.deploy_dir(bundle_dir, remote_dir)
             if not ok:
                 return self._tool_error(

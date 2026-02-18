@@ -1,0 +1,50 @@
+package: dillo
+
+add_patch:
+  - dillo-openssl.patch
+  - dillo.irixfixes.patch
+
+upstream:
+  url: file:///tmp/dillo-srpm-extract/dillo-3.0.5.tar.bz2
+  version: "3.0.5"
+  type: tarball
+  build_system: autoconf
+  license: GPLv3+
+  summary: "Very small and fast GUI web browser"
+  source_dir: dillo-3.0.5
+
+rules:
+  configure_flags:
+    add:
+      - --enable-ssl
+      - --disable-xft
+    remove:
+      - --enable-ipv6
+
+  export_vars:
+    CFLAGS: "-pthread -fcommon"
+    CXXFLAGS: "-pthread -fcommon"
+    LIBS: "-lgcc_s -lc -lm -lpthread"
+    FLTK_CONFIG: "/opt/sgug-staging/usr/sgug/bin/fltk-config"
+
+  drop_buildrequires:
+    - perl-generators
+    - desktop-file-utils
+    - libXft-devel
+    - gettext
+    - gcc-c++
+    - gcc
+
+  drop_requires:
+    - wget
+    - xorg-x11-fonts-ISO8859-1-100dpi
+    - xorg-x11-fonts-ISO8859-1-75dpi
+
+  prep_commands:
+    # Use static FLTK linking to avoid R_MIPS_REL32 vtable relocation issues on IRIX
+    # Replace fltk-config --ldflags with explicit static archive path
+    - "sed -i 's|LIBFLTK_LIBS=`$FLTK_CONFIG --ldflags`|LIBFLTK_LIBS=\"-Wl,-Bstatic -lfltk -lfltk_images -lfltk_forms -Wl,-Bdynamic -lXcursor -lpthread -lX11\"|' configure.ac"
+
+  explicit_provides:
+    - "dillo"
+    - "webclient"

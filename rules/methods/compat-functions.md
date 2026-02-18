@@ -88,6 +88,45 @@ inject_compat_functions:
 
 ---
 
+## Overriding Libc Functions in Shared Libraries
+
+> **CRITICAL**: `inject_compat_functions` links compat code into **executables only** (static archive).
+> On IRIX, this does NOT override libc calls made from shared libraries.
+> IRIX rld resolves shared lib → shared lib calls through NEEDED chains only,
+> never checking the executable's .dynsym. This is fundamentally different from Linux.
+
+If a compat function needs to override a **buggy libc function called from shared libraries**
+(e.g. `bsearch` called from `libgtk-3.so`), it must also go into `libmogrix_compat.so`:
+
+### Adding to libmogrix_compat.so
+
+1. Write the compat function as normal in `compat/` and register in `catalog.yaml`
+2. Cross-compile as shared library:
+   ```bash
+   irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
+       compat/stdlib/bsearch.c \
+       # add more .c files here as needed
+   ```
+3. Deploy to staging:
+   ```bash
+   cp /tmp/libmogrix_compat.so /opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.so
+   ```
+4. The bundler automatically includes it in `_lib32/` and sets `_RLDN32_LIST=libmogrix_compat.so:DEFAULT` in wrapper scripts
+
+### When a function needs the .so (not just the .a)
+
+- The buggy libc function is called from **shared libraries** (not just executables)
+- Example: `bsearch` — called from `libgtk-3.so`, `libglib-2.0.so`, etc.
+- If only called from executables, `inject_compat_functions` alone is sufficient
+
+### When inject_compat_functions alone is sufficient
+
+- The function is **missing entirely** from IRIX libc (e.g. `getline`, `asprintf`)
+- The linker resolves undefined symbols from the compat archive at build time
+- No libc version exists to compete with at runtime
+
+---
+
 ## IRIX-Specific Quirks
 
 ### vsnprintf(NULL, 0) Returns -1

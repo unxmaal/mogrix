@@ -1,0 +1,11 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -244,7 +244,7 @@
+ 	    GLDSONAME="libfltk_gl.so.$FL_DSO_VERSION"
+ 	    IMGDSONAME="libfltk_images.so.$FL_DSO_VERSION"
+ 	    CAIRODSONAME="libfltk_cairo.so.$FL_DSO_VERSION"
+-	    DSOCOMMAND="\$(CXX) \$(DSOFLAGS) -Wl,-soname,\$@,-set_version,sgi1.1 \$(LDLIBS) -shared $DEBUGFLAG -o"
++	    DSOCOMMAND="\$(CXX) \$(DSOFLAGS) \$(LDLIBS) -shared $DEBUGFLAG -o"
+ 	    if test "x$libdir" != "x/usr/lib" -a "x$libdir" != "x/usr/lib32" -a "x$libdir" != "x/usr/lib64"; then
+ 		    DSOLINK="-Wl,-rpath,$libdir"
+ 	    fi

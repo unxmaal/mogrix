@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-18 (session 75)
-**Status**: ~161 bundles shipping. gtkterm now runs successfully from self-contained bundle on IRIX. GTK3 apps unblocked.
+**Last Updated**: 2026-02-18 (session 76)
+**Status**: ~161 bundles shipping. Dillo web browser with working HTTPS on IRIX. GTK3, FLTK apps all functional.
 
 ---
 
@@ -25,21 +25,21 @@
 
 ## Current State
 
-### gtkterm: FULLY WORKING (session 75)
+### Dillo 3.0.5: FULLY WORKING with HTTPS (session 76)
 
-Screenshot-confirmed running on IRIX from self-contained bundle. GTK3 UI, menus, and VTE terminal widget all rendering correctly.
+User-confirmed browsing HTTPS sites (google.com, news.ycombinator.com, mogrix.unxmaal.com) on IRIX. Three fixes required:
 
-Key fixes this session:
-1. **IRIX bsearch crash (GTK3 blocker)** — IRIX libc bsearch() crashes when nmemb=0 (underflows nmemb-1 to 0xFFFFFFFF). Root cause of GTK3 SIGSEGV in `_gtk_style_context_peek_style_property` → bsearch on empty property_cache. Created `compat/stdlib/bsearch.c` (POSIX-compliant replacement), added to generic.yaml `inject_compat_functions` so ALL packages get it.
-2. **IRIX rld does NOT preempt exe symbols** — Linking bsearch.o into the executable is insufficient. IRIX rld resolves shared lib calls through NEEDED chains only, never checking the executable's .dynsym (unlike Linux). Fix: built `libmogrix_compat.so` (in staging at `/usr/sgug/lib32/`), preloaded via `_RLDN32_LIST=libmogrix_compat.so:DEFAULT` in bundle wrappers. Bundler auto-includes this .so and sets the env var.
-3. **Bundler zlib issue (3 bugs in bundle.py)** — resolve_deps() now checks mogrix-built RPMs BEFORE IRIX sysroot; new `_create_soname_symlinks()` creates missing unversioned .so symlinks; fixed `_prune_unused_libs()` to walk symlink chains step-by-step.
+1. **SNI support** — Dillo 3.0.5 never sent SNI. Added `SSL_set_tlsext_host_name()` before `SSL_connect()`. Without this, CDN-hosted sites return wrong cert or reject.
+2. **DPI daemon path fix** — dpid couldn't find DPI plugins (hardcoded `/usr/sgug/lib32/dillo/dpi/`). Bundle wrapper now creates `~/.dillo/dpidrc` pointing to bundle's DPI dir, plus `~/.dillo/dpid` wrapper script with `LD_LIBRARYN32_PATH` (dillo fork+exec's dpid directly, bypassing bundle wrapper).
+3. **SSL cert loading** — Replaced hardcoded `/etc/ssl/certs/` dir with `SSL_CERT_FILE`/`SSL_CERT_DIR` env vars + `SSL_CTX_set_default_verify_paths()` fallback. Bundle sets `SSL_CERT_FILE`.
 
-### xnedit 1.6.1: FULLY WORKING (session 74)
+Also: static FLTK linking (avoids C++ vtable R_MIPS_REL32 SIGSEGV), `-fcommon`, auto-generated `dillorc` with IRIX bitmap fonts.
 
-Three bugs fixed in sessions 72-74. All in `rules/packages/xnedit.yaml` + `patches/packages/xnedit/fix_class_recs.c`:
-1. **BadMatch on X_CreateWindow** — forced default 24-bit visual
-2. **SIGBUS in create_image** — misaligned `uint32_t*` cast, fixed with memcpy
-3. **SIGSEGV at PC=0 in VertLayout** — ClassRec `_XtInherit` not resolved by rld, fixed via pointer arithmetic
+All fixes stored in rules: `rules/packages/dillo.yaml`, `patches/packages/dillo/dillo.irixfixes.patch`, `mogrix/bundle.py`.
+
+### Test harness: deploy path changed
+
+`tools/mogrix-test-server.py` now deploys bundles to `/usr/people/edodd/apps/` instead of `/tmp/mogrix-test/`. **Restart the MCP server for this to take effect.**
 
 ### Tool: `mogrix check-elf`
 
@@ -54,10 +54,10 @@ uv run mogrix check-elf --generate-fix <rpm>
 
 ## Next Steps
 
-1. **Build more GTK3 apps** — bsearch fix is generic, GTK3 apps should work now
-2. **Run `mogrix check-elf` on any new Xt/Motif package** before deploying to IRIX
-3. **check-elf plan** exists in `.claude/plans/` — wasn't worked on this session
-4. **Find more buildable packages** — check `packages_plan.md`
+1. **Build more packages** — check `packages_plan.md` for candidates
+2. **Build more GTK3 apps** — bsearch fix is generic, GTK3 apps should work now
+3. **Run `mogrix check-elf`** on any new Xt/Motif package before deploying to IRIX
+4. **check-elf plan** exists in `.claude/plans/` — implements `--generate-fix` scaffold
 5. **Investigate dash SIGSEGV, rsync SIGABRT, cwebp/dwebp crashes**
 
 ### Dropped/Blocked
@@ -72,24 +72,27 @@ uv run mogrix check-elf --generate-fix <rpm>
 
 ## Recent Work
 
+### Session 76: Dillo + FLTK (web browser with HTTPS)
+
+- Built FLTK 1.3.11 as upstream package (`rules/packages/fltk.yaml`, `specs/packages/fltk.spec`)
+- Built Dillo 3.0.5 as upstream package with OpenSSL support
+- Fixed C++ vtable R_MIPS_REL32 SIGSEGV via static FLTK linking (`-Wl,-Bstatic`)
+- Added SNI, SSL cert path flexibility, dpid bundle support to `dillo.irixfixes.patch`
+- Added dillo-specific wrapper logic to `mogrix/bundle.py` (dpidrc, dpid wrapper, dillorc)
+- Changed test harness deploy path from `/tmp/mogrix-test` to `~edodd/apps/`
+- Added 5 new patterns to `rules/INDEX.md` (C++ vtable, -fcommon, fltk-config, fonts, SNI, dpid)
+
 ### Session 75: gtkterm Working + bsearch Fix + Bundler Fixes
 
-- Discovered IRIX libc bsearch() crashes on nmemb=0 (underflows to 0xFFFFFFFF)
-- Created `compat/stdlib/bsearch.c`, added to `compat/catalog.yaml` and `rules/generic.yaml` inject_compat_functions
-- Discovered IRIX rld does NOT preempt exe symbols for shared lib calls — built `libmogrix_compat.so` and preloaded via `_RLDN32_LIST`
-- Fixed 3 bugs in `mogrix/bundle.py`: dep resolution priority, soname symlink creation, pruner symlink chain handling
-- Added `_RLDN32_LIST` support to bundle wrapper templates + auto-include `libmogrix_compat.so`
-- gtkterm verified running on IRIX via screenshot — GTK3 UI fully functional from self-contained bundle
+- Discovered IRIX libc bsearch() crashes on nmemb=0 — created `compat/stdlib/bsearch.c`
+- Built `libmogrix_compat.so` preloaded via `_RLDN32_LIST` (IRIX rld doesn't preempt exe symbols)
+- Fixed 3 bugs in `mogrix/bundle.py`: dep resolution, soname symlinks, pruner chains
+- gtkterm verified running on IRIX — GTK3 UI fully functional
 
 ### Session 74: xnedit SIGBUS/SIGSEGV Fixed + check-elf Tool
 
-- Fixed SIGBUS (misaligned pointer in create_image) and SIGSEGV (NULL preLayoutProc via _XtInherit)
-- Built `mogrix check-elf` tool to detect ClassRec relocation issues proactively
-- Files: `mogrix/analyzers/elf.py`, CLI in `mogrix/cli.py`
-
-### Session 73: Batch Build Wave — 7 Packages
-
-Built screen, lua, feh, vim, scrot, cmake, p11-kit. All bundled and tested. INDEX.md updated with 10 new patterns.
+- Fixed SIGBUS (misaligned pointer) and SIGSEGV (NULL _XtInherit in ClassRec)
+- Built `mogrix check-elf` tool: `mogrix/analyzers/elf.py`, CLI in `mogrix/cli.py`
 
 ---
 

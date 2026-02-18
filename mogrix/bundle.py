@@ -929,6 +929,43 @@ class BundleBuilder:
                 'SSL_CERT_FILE="$dir/etc/pki/tls/certs/ca-bundle.crt"'
             )
             extra_env_lines.append("export SSL_CERT_FILE")
+        # dillo: dpid needs dpidrc pointing to bundle's DPI directory, and
+        # dillo launches dpid via execl(~/.dillo/dpid) so we need a wrapper
+        # there too. Also write dillorc with IRIX bitmap fonts.
+        dillo_dpi_dir = bundle_dir / "_lib32" / "dillo" / "dpi"
+        if dillo_dpi_dir.is_dir():
+            extra_env_lines.append(
+                '# Set up dillo DPI daemon config for bundle\n'
+                '_dillo_home="$HOME/.dillo"\n'
+                '/bin/mkdir -p "$_dillo_home" 2>/dev/null\n'
+                '# dpidrc: tell dpid where DPI plugins live\n'
+                'echo "dpi_dir=$dir/_lib32/dillo/dpi" > "$_dillo_home/dpidrc"\n'
+                'echo "proto.file=file/file.dpi" >> "$_dillo_home/dpidrc"\n'
+                'echo "proto.ftp=ftp/ftp.filter.dpi" >> "$_dillo_home/dpidrc"\n'
+                'echo "proto.https=https/https.filter.dpi" >> "$_dillo_home/dpidrc"\n'
+                'echo "proto.data=datauri/datauri.filter.dpi" >> "$_dillo_home/dpidrc"\n'
+                '# dpid wrapper: dillo exec()s ~/.dillo/dpid directly\n'
+                'cat > "$_dillo_home/dpid" << DPID_EOF\n'
+                '#!/bin/sh\n'
+                'LD_LIBRARYN32_PATH="$dir/_lib32:/usr/lib32"\n'
+                'export LD_LIBRARYN32_PATH\n'
+                '_RLDN32_LIST=libmogrix_compat.so:DEFAULT\n'
+                'export _RLDN32_LIST\n'
+                'exec "$dir/_bin/dpid" "\\$@"\n'
+                'DPID_EOF\n'
+                '/bin/chmod 755 "$_dillo_home/dpid"\n'
+                '# dillorc: IRIX bitmap fonts (no Xft/DejaVu)\n'
+                'if [ ! -f "$_dillo_home/dillorc" ]; then\n'
+                '  cat > "$_dillo_home/dillorc" << DILLORC_EOF\n'
+                'font_serif="times"\n'
+                'font_sans_serif="helvetica"\n'
+                'font_cursive="helvetica"\n'
+                'font_fantasy="helvetica"\n'
+                'font_monospace="courier"\n'
+                'font_factor=1.0\n'
+                'DILLORC_EOF\n'
+                'fi'
+            )
         # libevent: IRIX /dev/poll backend crashes — force poll() instead
         lib32_dir = bundle_dir / "_lib32"
         if lib32_dir.is_dir() and any(
