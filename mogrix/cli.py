@@ -342,12 +342,14 @@ def _convert_srpm_full(
             patches_pkg_dir = PATCHES_DIR / "packages" / spec.name
             for patch_name in result.add_patches:
                 patch_path = patches_pkg_dir / patch_name
+                if not patch_path.exists():
+                    patch_path = PATCHES_DIR / "shared" / patch_name
                 if patch_path.exists():
                     dest_file = out_path / patch_name
                     shutil.copy2(patch_path, dest_file)
                     patch_files.append(patch_name)
                 else:
-                    console.print(f"[yellow]Warning:[/yellow] Patch not found: {patch_path}")
+                    console.print(f"[yellow]Warning:[/yellow] Patch not found: {patch_name} (checked packages/{spec.name}/ and shared/)")
             if patch_files:
                 console.print(f"[bold]Patches added:[/bold] {len(patch_files)} files ({', '.join(patch_files)})")
 
@@ -357,12 +359,15 @@ def _convert_srpm_full(
             patches_pkg_dir = PATCHES_DIR / "packages" / spec.name
             for source_name in result.add_sources:
                 source_path = patches_pkg_dir / source_name
+                if not source_path.exists():
+                    # Fallback to shared patches directory
+                    source_path = PATCHES_DIR / "shared" / source_name
                 if source_path.exists():
                     dest_file = out_path / source_name
                     shutil.copy2(source_path, dest_file)
                     source_files.append(source_name)
                 else:
-                    console.print(f"[yellow]Warning:[/yellow] Source not found: {source_path}")
+                    console.print(f"[yellow]Warning:[/yellow] Source not found: {source_name} (checked packages/{spec.name}/ and shared/)")
             if source_files:
                 console.print(f"[bold]Sources added:[/bold] {len(source_files)} files ({', '.join(source_files)})")
 

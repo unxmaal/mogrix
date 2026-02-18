@@ -10,6 +10,8 @@ upstream:
 
 add_source:
   - irix_serial_compat.h
+  - mogrix_crash_handler.c
+  - mogrix_crash_handler.h
 
 rules:
   drop_buildrequires:
@@ -27,6 +29,11 @@ rules:
     - "echo 'void device_monitor_start(void) {}' > src/device_monitor.c"
     # === Copy IRIX serial compat header ===
     - "cp %{_sourcedir}/irix_serial_compat.h src/irix_serial_compat.h"
+    # === Copy crash handler (shared diagnostic, fenced behind MOGRIX_CRASH_DEBUG=1) ===
+    - "cp %{_sourcedir}/mogrix_crash_handler.c src/mogrix_crash_handler.c"
+    - "cp %{_sourcedir}/mogrix_crash_handler.h src/mogrix_crash_handler.h"
+    # Add crash handler to meson sources list
+    - "sed -i \"s/'device_monitor.h',/'device_monitor.h',\\n\\t'mogrix_crash_handler.c',\\n\\t'mogrix_crash_handler.h',/\" src/meson.build"
     # Include compat header in files that need it
     - "sed -i '1i #include \"irix_serial_compat.h\"' src/serial.c"
     - "sed -i '1i #include \"irix_serial_compat.h\"' src/buffer.c"
@@ -54,9 +61,6 @@ rules:
     # === IRIX serial port paths ===
     # IRIX serial ports are /dev/ttyf1, /dev/ttyf2 (not /dev/ttyS0, /dev/ttyUSB0)
     - "sed -i 's|/dev/ttyS0|/dev/ttyf1|g' src/parsecfg.c src/term_config.c || true"
-
-  export_vars:
-    MOGRIX_NO_DLMALLOC: "1"
 
   spec_replacements:
     # Replace entire %build section with meson cross-compilation

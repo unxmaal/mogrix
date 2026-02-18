@@ -7,7 +7,7 @@
 # string/     : strdup, strndup, strcasestr, strsep, basename
 # stdio/      : getline, asprintf, funopen (BSD cookie I/O - USE THIS, not fopencookie),
 #               dprintf, open_memstream
-# stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r
+# stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r, bsearch
 # runtime/    : stpcpy, spawn (posix_spawn/posix_spawnp/file_actions)
 # dicl/       : openat-compat.c (17 POSIX "at" functions: openat, fstatat, futimens, etc.)
 # functions/  : getopt_long
@@ -197,6 +197,12 @@ functions:
     file: stdlib/mkdtemp.c
     header: stdlib.h
     description: Create a unique temporary directory (BSD/POSIX)
+
+  bsearch:
+    file: stdlib/bsearch.c
+    header: stdlib.h
+    description: POSIX-compliant bsearch (IRIX libc crashes on nmemb=0)
+    notes: IRIX bsearch underflows nmemb-1 when nmemb=0, causing SIGSEGV
 
   qsort_r:
     file: stdlib/qsort_r.c

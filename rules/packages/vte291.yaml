@@ -37,11 +37,24 @@ rules:
     # Add sys/ioctl.h, termios.h, and posix_openpt declaration to pty.cc
     # IRIX has posix_openpt in libc but no header declaration
     - "sed -i '1i #include <sys/ioctl.h>\\n#include <termios.h>\\nextern \"C\" int posix_openpt(int flags);' src/pty.cc"
-    # O_CLOEXEC -> FD_CLOEXEC for posix_openpt on IRIX
-    - "sed -i 's/O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC/O_RDWR | O_NOCTTY | O_NONBLOCK | FD_CLOEXEC/' src/pty.cc"
-    - "sed -i 's/O_RDWR | O_NOCTTY | O_CLOEXEC/O_RDWR | O_NOCTTY | FD_CLOEXEC/' src/pty.cc"
+    # Remove O_CLOEXEC from posix_openpt on IRIX (not supported).
+    # FD_CLOEXEC=1=O_WRONLY on IRIX — must NOT be ORed into open() flags.
+    # The non-linux fallback path applies CLOEXEC via fcntl after open succeeds.
+    - "sed -i 's/O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC/O_RDWR | O_NOCTTY | O_NONBLOCK/' src/pty.cc"
+    - "sed -i 's/O_RDWR | O_NOCTTY | O_CLOEXEC/O_RDWR | O_NOCTTY/' src/pty.cc"
+    # === IRIX STREAMS PTY modules ===
+    # IRIX PTY slaves are STREAMS devices (isastream()=1) but ptem/ldterm are
+    # NOT auto-pushed. Without them: no line discipline, no echo, no ^C signals.
+    # VTE only handles this for Solaris (__sun). Add __sgi for IRIX.
+    # Also add stropts.h include (needed for isastream/I_FIND/I_PUSH).
+    - "sed -i 's/#if defined(__sun) && defined(HAVE_STROPTS_H)/#if (defined(__sun) || defined(__sgi)) \\&\\& defined(HAVE_STROPTS_H)/' src/pty.cc"
+    - "sed -i '/#include <pty.h>/a #ifdef __sgi\\n#define HAVE_STROPTS_H 1\\n#endif' src/pty.cc"
+    - "sed -i '/#ifdef HAVE_PTY_H/i #ifdef __sgi\\n#include <stropts.h>\\n#endif' src/pty.cc"
     # === IRIX TIOCPKT fixes ===
-    # IRIX uses TIOCPKT_DOSTOP/TIOCPKT_NOSTOP instead of TIOCPKT_STOP/TIOCPKT_START
+    # IRIX defines TIOCPKT_DOSTOP (0x20) and TIOCPKT_NOSTOP (0x10) instead of
+    # Linux TIOCPKT_STOP (0x10) and TIOCPKT_START (0x20). The semantics differ
+    # (IRIX: capability change, Linux: event) but VTE only uses them for cosmetic
+    # scroll lock notification. Map to IRIX equivalents for compilation.
     - "sed -i 's/TIOCPKT_STOP/TIOCPKT_DOSTOP/' src/vte.cc"
     - "sed -i 's/TIOCPKT_START/TIOCPKT_NOSTOP/' src/vte.cc"
     # === W_EXITCODE not available on IRIX ===

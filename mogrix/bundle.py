@@ -65,7 +65,7 @@ case "$dir" in
 esac
 LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
-{terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
+{rld_list_block}{terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
 """
 
 SBIN_WRAPPER_TEMPLATE = """\
@@ -77,7 +77,16 @@ case "$dir" in
 esac
 LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
-{terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
+{rld_list_block}{terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
+"""
+
+# Block for _RLDN32_LIST preload of mogrix compat library.
+# IRIX rld does NOT preempt shared library symbols from the executable
+# (unlike Linux), so compat functions like bsearch must be in a .so that
+# is preloaded via _RLDN32_LIST to override libc's buggy versions.
+RLD_LIST_BLOCK = """\
+_RLDN32_LIST=libmogrix_compat.so:DEFAULT
+export _RLDN32_LIST
 """
 
 TERMINFO_BLOCK = """\
@@ -360,6 +369,65 @@ class BundleBuilder:
                         needed.add(soname)
         return needed
 
+    def _create_soname_symlinks(self, bundle_dir: Path) -> None:
+        """Create missing soname symlinks in _lib32/.
+
+        Some ELF libraries have unversioned SONAMEs (e.g. libz.so) but the
+        runtime RPM only ships versioned files (libz.so.1, libz.so.1.3.0).
+        The unversioned symlink lives in the -devel RPM which is excluded
+        from bundles.  Detect these gaps and create symlinks so rld can
+        resolve the NEEDED entries at runtime.
+        """
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        # Collect all NEEDED sonames from all ELFs in the bundle
+        needed_sonames: set[str] = set()
+        for subdir in ("_bin", "_sbin", "_lib32"):
+            d = bundle_dir / subdir
+            if not d.is_dir():
+                continue
+            for f in d.iterdir():
+                target = f.resolve() if f.is_symlink() else f
+                if target.exists() and self._is_elf(target):
+                    needed_sonames.update(self._readelf_needed(target))
+
+        # For each needed soname missing from _lib32/, try to find a
+        # versioned file that provides it (via ELF SONAME header).
+        created = []
+        for soname in sorted(needed_sonames):
+            soname_path = lib_dir / soname
+            if soname_path.exists():
+                continue
+            # Look for a file whose ELF SONAME matches
+            for candidate in lib_dir.iterdir():
+                if not candidate.name.startswith(soname.split(".so")[0]):
+                    continue
+                target = candidate.resolve() if candidate.is_symlink() else candidate
+                if not target.exists() or not self._is_elf(target):
+                    continue
+                # Check if its SONAME matches what we need
+                result = subprocess.run(
+                    ["readelf", "-d", str(target)],
+                    capture_output=True, text=True,
+                )
+                for line in result.stdout.splitlines():
+                    if "(SONAME)" in line and f"[{soname}]" in line:
+                        # Create symlink to the candidate
+                        soname_path.symlink_to(candidate.name)
+                        created.append(f"{soname} -> {candidate.name}")
+                        break
+                if soname_path.exists():
+                    break
+
+        if created:
+            console.print(
+                f"  [dim]Created {len(created)} soname symlinks:[/dim]"
+            )
+            for s in created:
+                console.print(f"    [dim]{s}[/dim]")
+
     def _prune_unused_libs(self, bundle_dir: Path) -> None:
         """Remove .so files from _lib32/ not NEEDED by any binary in the bundle.
 
@@ -371,8 +439,10 @@ class BundleBuilder:
         if not lib_dir.is_dir():
             return
 
-        # Collect all NEEDED sonames from binaries
-        needed = set()
+        # Collect all NEEDED sonames from binaries.
+        # Always keep libmogrix_compat.so (preloaded via _RLDN32_LIST,
+        # not a NEEDED dependency).
+        needed = {"libmogrix_compat.so"}
         for bin_subdir in ("_bin", "_sbin"):
             d = bundle_dir / bin_subdir
             if not d.is_dir():
@@ -382,7 +452,9 @@ class BundleBuilder:
                     needed.update(self._readelf_needed(f))
 
         # Also check libs themselves — they may depend on other libs
-        # (transitive closure)
+        # (transitive closure).  Walk symlink chains step-by-step so
+        # intermediate links (e.g. libz.so → libz.so.1 → libz.so.1.3.0.zlib-ng)
+        # are all added to the kept set.
         checked = set()
         queue = list(needed)
         while queue:
@@ -391,36 +463,26 @@ class BundleBuilder:
                 continue
             checked.add(soname)
             lib_file = lib_dir / soname
-            if lib_file.exists() and not lib_file.is_symlink() and self._is_elf(lib_file):
+            # Walk symlink chain one hop at a time, adding each name
+            while lib_file.is_symlink():
+                link_target = os.readlink(str(lib_file))
+                checked.add(link_target)
+                lib_file = lib_dir / link_target
+            # Now lib_file is the real file — scan its NEEDEDs
+            if lib_file.exists() and self._is_elf(lib_file):
+                checked.add(lib_file.name)
                 for dep in self._readelf_needed(lib_file):
                     if dep not in checked:
                         queue.append(dep)
-            elif lib_file.is_symlink():
-                target = lib_file.resolve()
-                if target.exists() and self._is_elf(target):
-                    for dep in self._readelf_needed(target):
-                        if dep not in checked:
-                            queue.append(dep)
 
         needed = checked
 
-        # Remove .so files not in the needed set (keep symlinks whose targets
-        # are needed, and real files whose names are needed)
+        # Remove .so files not in the needed set
         removed = []
         for f in sorted(lib_dir.iterdir()):
             if ".so" not in f.name:
                 continue
-            # Keep if this filename is needed
             if f.name in needed:
-                continue
-            # Keep if this is a symlink target of a needed soname
-            is_target = False
-            for n in needed:
-                link = lib_dir / n
-                if link.is_symlink() and link.resolve().name == f.name:
-                    is_target = True
-                    break
-            if is_target:
                 continue
             f.unlink()
             removed.append(f.name)
@@ -636,9 +698,9 @@ class BundleBuilder:
                 for soname in needed:
                     if soname in manifest.irix_sonames:
                         continue
-                    if soname in self._irix_sonames:
-                        manifest.irix_sonames.add(soname)
-                        continue
+                    # Mogrix-built RPMs take priority over IRIX sysroot.
+                    # IRIX may have ancient ABI-incompatible versions of
+                    # libraries we've rebuilt (e.g. libz.so / zlib-ng).
                     if soname in self._soname_to_rpm:
                         dep_rpm = self._soname_to_rpm[soname]
                         if dep_rpm not in visited_rpms:
@@ -646,6 +708,9 @@ class BundleBuilder:
                             for sibling in self._get_sibling_rpms(dep_rpm):
                                 if sibling not in visited_rpms:
                                     queue.append(sibling)
+                        continue
+                    if soname in self._irix_sonames:
+                        manifest.irix_sonames.add(soname)
                         continue
                     # Staging fallback
                     if STAGING_LIB_DIR.is_dir():
@@ -782,6 +847,20 @@ class BundleBuilder:
                     else:
                         shutil.copy2(str(src), str(lib_dir / soname))
 
+        # Include mogrix compat shared library for _RLDN32_LIST preload.
+        # IRIX rld doesn't preempt shared library symbols from the executable,
+        # so compat overrides (e.g. bsearch) must be in a preloaded .so.
+        compat_so_src = STAGING_LIB_DIR / "libmogrix_compat.so"
+        if compat_so_src.exists():
+            lib_dir = bundle_dir / "_lib32"
+            lib_dir.mkdir(exist_ok=True)
+            shutil.copy2(str(compat_so_src), str(lib_dir / "libmogrix_compat.so"))
+
+        # Create missing soname symlinks.  -devel RPMs (excluded from bundles)
+        # often contain unversioned .so symlinks (e.g. libz.so → libz.so.1)
+        # that are needed at runtime when the ELF SONAME is unversioned.
+        self._create_soname_symlinks(bundle_dir)
+
         # Prune _lib32/ to only sonames actually NEEDED by bundle binaries.
         # RPMs include all libs from the package (e.g., ncurses-libs has 14 .so
         # files) but the bundle may only need a few.
@@ -878,6 +957,12 @@ class BundleBuilder:
         manifest.binaries = binaries + [f"sbin/{b}" for b in sbin_binaries]
 
         # Generate wrapper scripts at bundle root, named after the commands
+        # Include _RLDN32_LIST preload if compat .so is in the bundle
+        rld_list_block = ""
+        compat_so = bundle_dir / "_lib32" / "libmogrix_compat.so"
+        if compat_so.exists():
+            rld_list_block = RLD_LIST_BLOCK
+
         for binary in binaries:
             wrapper_path = bundle_dir / binary
             wrapper_path.write_text(
@@ -887,6 +972,7 @@ class BundleBuilder:
                     extra_env_block=extra_env_block,
                     extra_lib_paths=extra_lib_paths,
                     extra_args=extra_args_map.get(binary, ""),
+                    rld_list_block=rld_list_block,
                 )
             )
             wrapper_path.chmod(0o755)
@@ -900,6 +986,7 @@ class BundleBuilder:
                     extra_env_block=extra_env_block,
                     extra_lib_paths=extra_lib_paths,
                     extra_args=extra_args_map.get(binary, ""),
+                    rld_list_block=rld_list_block,
                 )
             )
             wrapper_path.chmod(0o755)

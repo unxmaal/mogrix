@@ -15,7 +15,7 @@
 #   - remove_lines: gpgverify, ldconfig_scriptlets, libdicl exports, systemd scriptlets
 #   - ac_cv_overrides: malloc_0_nonnull, realloc_0_nonnull, gl_cv_cc_wallow, gl_cv_func_select_*
 #   - inject_compat_functions: strdup, strndup, strnlen, getline, getopt_long, asprintf,
-#       vasprintf, setenv, strerror_r, reallocarray, stpcpy
+#       vasprintf, setenv, strerror_r, reallocarray, stpcpy, bsearch
 #   - configure_flags.add: --disable-silent-rules
 #   - rpm_macros: _prefix=/usr/sgug, _libdir=/usr/sgug/lib32
 #   - configure_disable: selinux, systemd, udev, inotify, epoll, etc.
@@ -147,6 +147,7 @@ generic:
     - strerror_r
     - reallocarray
     - stpcpy
+    - bsearch
 
   configure_flags:
     add:

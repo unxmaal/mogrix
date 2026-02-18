@@ -9,7 +9,6 @@ rules:
   - libsignal-protocol-c-devel
   - libcmocka-devel
   - python-unversioned-command
-  - python3-devel
   - python3-sphinx
   - qrencode-devel
   configure_disable:

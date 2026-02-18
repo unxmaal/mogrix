@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-18 (session 74)
-**Status**: ~161 bundles shipping. xnedit fully working (3 bugs fixed). New `mogrix check-elf` tool detects R_MIPS_REL32 issues before deploying to IRIX.
+**Last Updated**: 2026-02-18 (session 75)
+**Status**: ~161 bundles shipping. gtkterm now runs successfully from self-contained bundle on IRIX. GTK3 apps unblocked.
 
 ---
 
@@ -25,39 +25,40 @@
 
 ## Current State
 
-### xnedit 1.6.1: FULLY WORKING
+### gtkterm: FULLY WORKING (session 75)
 
-Three bugs fixed across sessions 72-74. All in `rules/packages/xnedit.yaml` + `patches/packages/xnedit/fix_class_recs.c`:
+Screenshot-confirmed running on IRIX from self-contained bundle. GTK3 UI, menus, and VTE terminal widget all rendering correctly.
 
-1. **BadMatch on X_CreateWindow** (session 72) — forced default 24-bit visual (IRIX offers 30-bit TrueColor that crashes Xft)
-2. **SIGBUS in create_image** (session 74) — `const char*` cast to `uint32_t*` for icon data, misaligned on MIPS. Fixed with memcpy. Also added `__mips` to big-endian `#if` check.
-3. **SIGSEGV at PC=0 in VertLayout** (session 74) — `xmlGridClassRec.grid_class.preLayoutProc` initialized to `_XtInherit` but rld didn't resolve it. Fixed in fix_class_recs.c via pointer arithmetic to reach custom class part.
+Key fixes this session:
+1. **IRIX bsearch crash (GTK3 blocker)** — IRIX libc bsearch() crashes when nmemb=0 (underflows nmemb-1 to 0xFFFFFFFF). Root cause of GTK3 SIGSEGV in `_gtk_style_context_peek_style_property` → bsearch on empty property_cache. Created `compat/stdlib/bsearch.c` (POSIX-compliant replacement), added to generic.yaml `inject_compat_functions` so ALL packages get it.
+2. **IRIX rld does NOT preempt exe symbols** — Linking bsearch.o into the executable is insufficient. IRIX rld resolves shared lib calls through NEEDED chains only, never checking the executable's .dynsym (unlike Linux). Fix: built `libmogrix_compat.so` (in staging at `/usr/sgug/lib32/`), preloaded via `_RLDN32_LIST=libmogrix_compat.so:DEFAULT` in bundle wrappers. Bundler auto-includes this .so and sets the env var.
+3. **Bundler zlib issue (3 bugs in bundle.py)** — resolve_deps() now checks mogrix-built RPMs BEFORE IRIX sysroot; new `_create_soname_symlinks()` creates missing unversioned .so symlinks; fixed `_prune_unused_libs()` to walk symlink chains step-by-step.
 
-Clean build at `xnedit-1.6.1-1-irix-bundle.0218260013.run`. File > Save As, File > Open all working.
+### xnedit 1.6.1: FULLY WORKING (session 74)
 
-### New Tool: `mogrix check-elf`
+Three bugs fixed in sessions 72-74. All in `rules/packages/xnedit.yaml` + `patches/packages/xnedit/fix_class_recs.c`:
+1. **BadMatch on X_CreateWindow** — forced default 24-bit visual
+2. **SIGBUS in create_image** — misaligned `uint32_t*` cast, fixed with memcpy
+3. **SIGSEGV at PC=0 in VertLayout** — ClassRec `_XtInherit` not resolved by rld, fixed via pointer arithmetic
 
-Detects R_MIPS_REL32 relocation issues BEFORE deploying to IRIX. Finds all `*ClassRec` symbols in MIPS ELF binaries and cross-references with R_MIPS_REL32 relocations targeting UNDEF symbols.
+### Tool: `mogrix check-elf`
+
+Detects R_MIPS_REL32 relocation issues BEFORE deploying to IRIX. Run on any Xt/Motif package after build.
 
 ```bash
-uv run mogrix check-elf ~/mogrix_outputs/RPMS/xnedit-1.6.1-1.mips.rpm   # finds 8 ClassRecs, 59 at-risk relocs
-uv run mogrix check-elf --generate-fix <rpm>                              # scaffold fix_class_recs.c
+uv run mogrix check-elf ~/mogrix_outputs/RPMS/<package>.rpm
+uv run mogrix check-elf --generate-fix <rpm>
 ```
-
-Files: `mogrix/analyzers/elf.py`, CLI in `mogrix/cli.py`. Also checks TEXTREL and 3-LOAD-segment shared libs.
-
-### gtkterm/VTE: Still Crashes
-
-93/96 tests pass. VTE widget init crash remains. NOT related to pixman/TLS/rendering.
 
 ---
 
 ## Next Steps
 
-1. **Run `mogrix check-elf` on any new Xt/Motif package** before deploying to IRIX
-2. **Debug VTE crash** — possible causes: pty creation, GnuTLS init, VTE C++ internals
-3. **Find more buildable packages** — check `packages_plan.md`
-4. **Investigate dash SIGSEGV, rsync SIGABRT, cwebp/dwebp crashes**
+1. **Build more GTK3 apps** — bsearch fix is generic, GTK3 apps should work now
+2. **Run `mogrix check-elf` on any new Xt/Motif package** before deploying to IRIX
+3. **check-elf plan** exists in `.claude/plans/` — wasn't worked on this session
+4. **Find more buildable packages** — check `packages_plan.md`
+5. **Investigate dash SIGSEGV, rsync SIGABRT, cwebp/dwebp crashes**
 
 ### Dropped/Blocked
 
@@ -71,22 +72,24 @@ Files: `mogrix/analyzers/elf.py`, CLI in `mogrix/cli.py`. Also checks TEXTREL an
 
 ## Recent Work
 
+### Session 75: gtkterm Working + bsearch Fix + Bundler Fixes
+
+- Discovered IRIX libc bsearch() crashes on nmemb=0 (underflows to 0xFFFFFFFF)
+- Created `compat/stdlib/bsearch.c`, added to `compat/catalog.yaml` and `rules/generic.yaml` inject_compat_functions
+- Discovered IRIX rld does NOT preempt exe symbols for shared lib calls — built `libmogrix_compat.so` and preloaded via `_RLDN32_LIST`
+- Fixed 3 bugs in `mogrix/bundle.py`: dep resolution priority, soname symlink creation, pruner symlink chain handling
+- Added `_RLDN32_LIST` support to bundle wrapper templates + auto-include `libmogrix_compat.so`
+- gtkterm verified running on IRIX via screenshot — GTK3 UI fully functional from self-contained bundle
+
 ### Session 74: xnedit SIGBUS/SIGSEGV Fixed + check-elf Tool
 
-- Diagnosed SIGBUS via SIGBUS handler → PC in `create_image()` at misaligned address 0x10770d1
-- Fixed alignment with memcpy, added `__mips` endianness check
-- Diagnosed SIGSEGV via SIGSEGV+$ra handler → `VertLayout()` calling NULL `preLayoutProc`
-- Fixed `xmlGridClassRec.grid_class.preLayoutProc` via pointer arithmetic in fix_class_recs.c
-- Also patched Tree class grid_class fields (6 `_XtInherit` references)
-- Built `mogrix check-elf` tool to detect these proactively — validated against xnedit (finds all 8 ClassRecs) and nano (zero false positives)
+- Fixed SIGBUS (misaligned pointer in create_image) and SIGSEGV (NULL preLayoutProc via _XtInherit)
+- Built `mogrix check-elf` tool to detect ClassRec relocation issues proactively
+- Files: `mogrix/analyzers/elf.py`, CLI in `mogrix/cli.py`
 
 ### Session 73: Batch Build Wave — 7 Packages
 
 Built screen, lua, feh, vim, scrot, cmake, p11-kit. All bundled and tested. INDEX.md updated with 10 new patterns.
-
-### Session 72: xnedit BadMatch Fixed
-
-FindBestVisual() picks 30-bit TrueColor visual on SGI. Xft/Xrender libs cause BadMatch at depth 30. Fix: force default 24-bit visual.
 
 ---
 
