@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-17 (session 71)
-**Status**: 154 bundles shipping. **Pixman TLS fix: cairo rendering fully works on IRIX.** GTK3 basic windows render correctly. gtkterm/VTE still crash during VTE widget initialization (separate issue from rendering).
+**Last Updated**: 2026-02-18 (session 74)
+**Status**: ~161 bundles shipping. xnedit fully working (3 bugs fixed). New `mogrix check-elf` tool detects R_MIPS_REL32 issues before deploying to IRIX.
 
 ---
 
@@ -19,52 +19,45 @@
 
 **ALWAYS use full mogrix pipeline** (`create-srpm` → `convert` → `build --cross`). Manual linking/ad-hoc compilation introduces dirty state.
 
+**IRIX interactive testing**: Write instructions to `~edodd/instructions.txt` on the IRIX host (NOT chroot). User stores results in `~edodd/output.txt`. Use `irix_host_exec cp` from chroot path to host path.
+
 ---
 
 ## Current State
 
-### GTK3 Rendering: FIXED
+### xnedit 1.6.1: FULLY WORKING
 
-Cairo rendering on IRIX now works — paint, fill, stroke, arc, text all pass. Root cause was `__tls_get_addr` in pixman (IRIX has no TLS support). Fix in `rules/packages/pixman.yaml`: `-Dtls=disabled` + `PIXMAN_NO_TLS`.
+Three bugs fixed across sessions 72-74. All in `rules/packages/xnedit.yaml` + `patches/packages/xnedit/fix_class_recs.c`:
 
-Also disabled MIT-SHM in cairo as precaution (IRIX IPC_RMID semantics differ). Fix in `rules/packages/cairo.yaml`.
+1. **BadMatch on X_CreateWindow** (session 72) — forced default 24-bit visual (IRIX offers 30-bit TrueColor that crashes Xft)
+2. **SIGBUS in create_image** (session 74) — `const char*` cast to `uint32_t*` for icon data, misaligned on MIPS. Fixed with memcpy. Also added `__mips` to big-endian `#if` check.
+3. **SIGSEGV at PC=0 in VertLayout** (session 74) — `xmlGridClassRec.grid_class.preLayoutProc` initialized to `_XtInherit` but rld didn't resolve it. Fixed in fix_class_recs.c via pointer arithmetic to reach custom class part.
 
-Verified with pure-cairo and GTK3 test programs on IRIX. See INDEX.md "GTK3/cairo rendering crash" entry.
+Clean build at `xnedit-1.6.1-1-irix-bundle.0218260013.run`. File > Save As, File > Open all working.
 
-### gtkterm/VTE: Crashes After GTK Init (NEW ISSUE)
+### New Tool: `mogrix check-elf`
 
-GTK3 basic windows work. VTE terminal widget crashes during initialization (~2.5s in, well past gtk_init). NOT related to pixman/TLS/rld. Par trace shows crash after:
-- Icon cache loading
-- Cycle counter access (SGI_CYCLECNTR + /dev/mmem)
-- Random seeding (/dev/urandom)
-- Repeated getpid()/time() loop → SIGSEGV
+Detects R_MIPS_REL32 relocation issues BEFORE deploying to IRIX. Finds all `*ClassRec` symbols in MIPS ELF binaries and cross-references with R_MIPS_REL32 relocations targeting UNDEF symbols.
 
-Also discovered: **IRIX rld is sensitive to NEEDED library ordering** — VTE must come BEFORE GTK in the ELF NEEDED list. When VTE is after GTK, crash before main(). Gtkterm already has correct order (VTE first), so this isn't the current blocker.
+```bash
+uv run mogrix check-elf ~/mogrix_outputs/RPMS/xnedit-1.6.1-1.mips.rpm   # finds 8 ClassRecs, 59 at-risk relocs
+uv run mogrix check-elf --generate-fix <rpm>                              # scaffold fix_class_recs.c
+```
 
-### IRIX rld Library Ordering Bug
+Files: `mogrix/analyzers/elf.py`, CLI in `mogrix/cli.py`. Also checks TEXTREL and 3-LOAD-segment shared libs.
 
-When VTE appears after GTK in NEEDED entries, crashes before main() during GLib's first memory allocation (g_slice_alloc). Same source code + same libraries work when VTE is listed first. Root cause unknown (not symbol conflicts, not SYMTABNO, not GOT overflow). Workaround: ensure VTE is linked before GTK.
+### gtkterm/VTE: Still Crashes
 
-### Key Blockers
-
-| Package | Blocker |
-|---------|---------|
-| **gtkterm** (GUI) | VTE widget init crash (post-rendering-fix) |
-| **xnedit** (GUI) | Needs rebuild with new pixman — may work now |
-| **python3** | Boss fight — extensive patching needed |
+93/96 tests pass. VTE widget init crash remains. NOT related to pixman/TLS/rendering.
 
 ---
 
 ## Next Steps
 
-1. **Test xnedit GUI** — may work now that cairo rendering is fixed. Rebuild if needed.
-2. **Debug VTE crash** — use the mogrix pipeline (NOT ad-hoc test binaries). Possible causes:
-   - VTE pty creation (IRIX has `_getpty()` not `openpty()`)
-   - GnuTLS initialization (crypto/random seeding)
-   - VTE C++ internals accessing bad memory
-3. **Rebuild gtkterm bundle** with new pixman to get updated test results
-4. **Find buildable CLI packages** — 25 packages have rules but no RPMs. Check `packages_plan.md`.
-5. **Investigate dash SIGSEGV, rsync SIGABRT, cwebp/dwebp crashes**
+1. **Run `mogrix check-elf` on any new Xt/Motif package** before deploying to IRIX
+2. **Debug VTE crash** — possible causes: pty creation, GnuTLS init, VTE C++ internals
+3. **Find more buildable packages** — check `packages_plan.md`
+4. **Investigate dash SIGSEGV, rsync SIGABRT, cwebp/dwebp crashes**
 
 ### Dropped/Blocked
 
@@ -72,30 +65,28 @@ When VTE appears after GTK in NEEDED entries, crashes before main() during GLib'
 - fastfetch, htop (too many Linux-specific deps)
 - mupdf (too many missing deps)
 - gdb 14.2 (binary crashes)
+- GraphicsMagick, SDL2 (stopped — too complex)
 
 ---
 
 ## Recent Work
 
-### Session 71: Pixman TLS Fix + Cairo Rendering Works
+### Session 74: xnedit SIGBUS/SIGSEGV Fixed + check-elf Tool
 
-**Root cause found**: `rld: Fatal Error: unresolvable symbol in libpixman-1.so.0: __tls_get_addr`. Pixman uses `__thread` TLS variables. Clang cross-compiles them fine, but IRIX rld can't resolve `__tls_get_addr` at runtime. Lazy resolution means library loading succeeds; crash on first TLS access.
+- Diagnosed SIGBUS via SIGBUS handler → PC in `create_image()` at misaligned address 0x10770d1
+- Fixed alignment with memcpy, added `__mips` endianness check
+- Diagnosed SIGSEGV via SIGSEGV+$ra handler → `VertLayout()` calling NULL `preLayoutProc`
+- Fixed `xmlGridClassRec.grid_class.preLayoutProc` via pointer arithmetic in fix_class_recs.c
+- Also patched Tree class grid_class fields (6 `_XtInherit` references)
+- Built `mogrix check-elf` tool to detect these proactively — validated against xnedit (finds all 8 ClassRecs) and nano (zero false positives)
 
-**Fix**: `rules/packages/pixman.yaml` — `-Dtls=disabled` in meson + `#define PIXMAN_NO_TLS 1` → plain static variables.
+### Session 73: Batch Build Wave — 7 Packages
 
-**Also**: Disabled MIT-SHM in `rules/packages/cairo.yaml` (remove XShm.h checks from meson.build). Precautionary — IRIX IPC_RMID destroys segments immediately.
+Built screen, lua, feh, vim, scrot, cmake, p11-kit. All bundled and tested. INDEX.md updated with 10 new patterns.
 
-**Updated**: `rules/INDEX.md` — corrected GTK3 crash entry, added pixman TLS details.
+### Session 72: xnedit BadMatch Fixed
 
-**Discovered**: IRIX rld library ordering sensitivity. VTE must be before GTK in NEEDED. Added to INDEX.md.
-
-### Session 70: VTE + gtkterm Built, rld Issues Solved
-
-VTE 0.58.3 built. gtkterm 1.3.1 multi-session debugging: export_dynamic removal, libx11_xge_stubs.so for XGE, SYMTABNO limit discovery. All 51 libs load. See `rules/packages/gtkterm.yaml`, `compat/x11_xge_stubs.c`.
-
-### Session 69: xnedit, packages_plan.md
-
-xnedit 1.6.1 built. packages_plan.md rewritten (130+ apps, 21 suites).
+FindBestVisual() picks 30-bit TrueColor visual on SGI. Xft/Xrender libs cause BadMatch at depth 30. Fix: force default 24-bit visual.
 
 ---
 
@@ -106,6 +97,7 @@ xnedit 1.6.1 built. packages_plan.md rewritten (130+ apps, 21 suites).
 | Generic rules summary | `rules/GENERIC_SUMMARY.md` (read this first) |
 | Problem lookup | `rules/INDEX.md` (grep, don't read whole file) |
 | Test harness | `tools/mogrix-test-server.py` + `.mcp.json` |
+| ELF relocation checker | `mogrix/analyzers/elf.py` — run `mogrix check-elf` |
 | Package plan & tiers | `packages_plan.md` |
 | Agent orchestration | `rules/methods/task-tracking.md` |
 | Package rules | `rules/packages/<name>.yaml` |
@@ -129,3 +121,4 @@ xnedit 1.6.1 built. packages_plan.md rewritten (130+ apps, 21 suites).
 8. **Always use full mogrix pipeline** for builds — manual compilation creates dirty state.
 9. **Deploy irix-ld after editing**: `cp cross/bin/irix-ld /opt/sgug-staging/usr/sgug/bin/irix-ld`
 10. **GSettings schemas**: Run `glib-compile-schemas` in chroot after installing GTK3 apps.
+11. **Run `mogrix check-elf`** on Xt/Motif packages after build to catch ClassRec relocation issues.

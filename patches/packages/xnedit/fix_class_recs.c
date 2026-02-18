@@ -27,7 +27,6 @@
 #include <Xm/PrimitiveP.h>
 #include <Xm/PushBP.h>
 #include <Xm/LabelP.h>
-
 /* _XtInherit and _XtInheritTranslations from libXt.so */
 extern void _XtInherit(void);
 extern int _XtInheritTranslations;
@@ -84,6 +83,23 @@ static void fix_class_superclass(void)
         xmlGridClassRec.manager_class.translations = (XtTranslations)&_XtInheritTranslations;
     if (xmlGridClassRec.manager_class.parent_process == (XmParentProcessProc)0)
         xmlGridClassRec.manager_class.parent_process = (XmParentProcessProc)_XtInherit;
+    /*
+     * Fix xmlGridClassRec grid_class part — extends beyond XmManagerClassRec.
+     * XmLGridClassPart layout: { int initialRows, int initialCols,
+     *   preLayoutProc, int rowRecSize, rowNewProc, rowFreeProc,
+     *   getRowValueMaskProc, getRowValueProc, setRowValuesProc,
+     *   int columnRecSize, columnNewProc, columnFreeProc,
+     *   getColumnValueMaskProc, getColumnValueProc, setColumnValuesProc,
+     *   setCellValuesResizeProc, cellActionProc }
+     * preLayoutProc is at offset 8 (2 ints) from start of grid_class.
+     * We can't use the full type since GridP.h is a Microline-private header.
+     */
+    {
+        void **pp = (void **)((char *)&xmlGridClassRec
+                    + sizeof(XmManagerClassRec) + 2 * sizeof(int));
+        if (*pp == (void *)0)
+            *pp = (void *)_XtInherit;
+    }
 
     /*
      * Fix xmlTreeClassRec (Tree.c) — Grid subclass
@@ -111,6 +127,37 @@ static void fix_class_superclass(void)
         xmlTreeClassRec.manager_class.translations = (XtTranslations)&_XtInheritTranslations;
     if (xmlTreeClassRec.manager_class.parent_process == (XmParentProcessProc)0)
         xmlTreeClassRec.manager_class.parent_process = (XmParentProcessProc)_XtInherit;
+    /*
+     * Fix xmlTreeClassRec grid_class part — Tree extends Grid.
+     * Grid_class fields at offsets (each void* = 4 bytes on n32):
+     *   +0: initialRows (int), +4: initialCols (int),
+     *   +8: preLayoutProc, +12: rowRecSize (int),
+     *   +16: rowNewProc, +20: rowFreeProc,
+     *   +24: getRowValueMaskProc, +28: getRowValueProc,
+     *   +32: setRowValuesProc, +36: columnRecSize (int),
+     *   +40: columnNewProc, +44: columnFreeProc,
+     *   +48: getColumnValueMaskProc, +52: getColumnValueProc,
+     *   +56: setColumnValuesProc, +60: setCellValuesResizeProc,
+     *   +64: cellActionProc
+     * Tree sets rowFreeProc(+20), columnNewProc(+40), columnFreeProc(+44),
+     * getColumnValueMaskProc(+48), getColumnValueProc(+52),
+     * setColumnValuesProc(+56) to _XtInherit.
+     */
+    {
+        char *base = (char *)&xmlTreeClassRec + sizeof(XmManagerClassRec);
+        void **rowFree = (void **)(base + 20);
+        void **colNew = (void **)(base + 40);
+        void **colFree = (void **)(base + 44);
+        void **getColValMask = (void **)(base + 48);
+        void **getColVal = (void **)(base + 52);
+        void **setColVals = (void **)(base + 56);
+        if (*rowFree == (void *)0) *rowFree = (void *)_XtInherit;
+        if (*colNew == (void *)0) *colNew = (void *)_XtInherit;
+        if (*colFree == (void *)0) *colFree = (void *)_XtInherit;
+        if (*getColValMask == (void *)0) *getColValMask = (void *)_XtInherit;
+        if (*getColVal == (void *)0) *getColVal = (void *)_XtInherit;
+        if (*setColVals == (void *)0) *setColVals = (void *)_XtInherit;
+    }
 
     /*
      * Fix xmlProgressClassRec (Progress.c) — Primitive subclass

@@ -26,6 +26,19 @@ rules:
     - "sed -i 's|-lXrender|-lXmu -lXrender|' makefiles/Makefile.linux"
     # Replace DropDown.h with ComboBox.h (IRIX Motif has ComboBox, not DropDown)
     - "sed -i 's|#include <Xm/DropDown.h>|#include <Xm/ComboBox.h>|' source/window.c"
+    # === IRIX BadMatch fix: force default visual ===
+    # SGI IRIX offers 30-bit TrueColor visuals. FindBestVisual picks these
+    # as the "best" visual, but creating child windows at depth 30 causes
+    # BadMatch (X_CreateWindow) on the IRIX X server when Xft/Xrender
+    # libraries are loaded. The exact interaction is unclear, but the fix
+    # is confirmed: force the default 24-bit visual. nedit (no Xft) works
+    # with 30-bit; xnedit (has Xft) does not. Both use the same FindBestVisual.
+    - "perl -i -0pe 's/\\/\\* If results have already been computed.*?if \\(cachedVisual != NULL\\).*?\\}/\\/\\* IRIX: force default visual — 30-bit TrueColor causes BadMatch *\\/\\n    {\\n\\t*visual = cachedVisual = DefaultVisual(display, DefaultScreen(display));\\n\\t*depth = cachedDepth = DefaultDepth(display, DefaultScreen(display));\\n\\t*colormap = cachedColormap = DefaultColormap(display, DefaultScreen(display));\\n\\treturn True;\\n    }/s' util/misc.c"
+    # Fix SIGBUS in create_image: icon data is const char* cast to uint32_t*,
+    # causing misaligned access on MIPS. Use memcpy for safe aligned read.
+    - "sed -i 's|uint32_t pixel = src\\[i\\];|uint32_t pixel; memcpy(\\&pixel, data + i*4, 4);|' util/filedialog.c"
+    # MIPS/IRIX is big-endian like SPARC — add to endianness check
+    - "sed -i 's#defined(__sparc) || defined(__sparc__)#defined(__sparc) || defined(__sparc__) || defined(__mips) || defined(_MIPS_ARCH)#' util/filedialog.c"
     # Remove post-build binary execution (can't run MIPS on x86)
     - "sed -i '/@source\\/xnedit -V/d' Makefile"
     # Copy fix_class_recs.c and add to OBJS (R_MIPS_REL32 workaround for widget ClassRec)
@@ -43,5 +56,5 @@ rules:
         %{_datadir}/icons/xnedit.png
 smoke_test:
 - command: "/usr/sgug/bin/xnedit"
-  args: "--version"
+  args: "-V"
   expect: "XNEdit"

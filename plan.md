@@ -4,7 +4,7 @@ Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fed
 
 ## Current Status (2026-02-17)
 
-**120+ source packages cross-compiled for IRIX (300+ RPMs). 154 bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
+**120+ source packages cross-compiled for IRIX (300+ RPMs). 154 bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. **GTK3 cairo rendering fully works on IRIX** — paint, fill, stroke, arc, text all verified (pixman TLS fix + cairo SHM disable). Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
 
 All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app bundles (.tar.gz or self-extracting .run) for IRIX. 145+ package rule files. Suites: mogrix-essentials, mogrix-extras, mogrix-net, mogrix-smallweb, mogrix-fun. Individual bundles: bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2 — all tested on IRIX.
 
@@ -155,7 +155,7 @@ Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX print
 Derived from `mogrix roadmap aterm` analysis. Built in tiers of increasing complexity. All tiers complete. aterm is the first X11 graphical application, openssh is the first network service.
 
 **Installed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype, aterm, openssh, unzip, zip, nano, rsync (21 installed).
-**Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman, uuid (7 staged).
+**Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman (TLS disabled — `PIXMAN_NO_TLS`), uuid (7 staged).
 
 ### Sessions 7-11: Batch Build + New Packages (18 packages)
 

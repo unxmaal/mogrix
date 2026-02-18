@@ -1304,6 +1304,101 @@ def validate_rules(rules_dir: str | None, compat_dir: str | None):
         raise SystemExit(1)
 
 
+@main.command("check-elf")
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option(
+    "--generate-fix",
+    "-g",
+    is_flag=True,
+    help="Generate a fix_class_recs.c scaffold to stdout",
+)
+@click.option(
+    "--json-output",
+    is_flag=True,
+    help="Machine-readable JSON output",
+)
+def check_elf(paths: tuple[str, ...], generate_fix: bool, json_output: bool):
+    """Check MIPS ELF binaries for IRIX relocation issues.
+
+    Detects R_MIPS_REL32 relocations in widget ClassRec structures that
+    IRIX rld may silently fail to resolve, leaving function pointers NULL.
+
+    PATHS can be RPM files, directories, or individual ELF binaries.
+    """
+    from mogrix.analyzers.elf import check_path, format_results, generate_fix_scaffold
+
+    all_results = []
+    for p in paths:
+        path = Path(p)
+        console.print(f"[bold]Checking:[/bold] {path.name}")
+        results = check_path(path)
+        all_results.extend(results)
+
+    if not all_results:
+        console.print("No MIPS ELF binaries found.")
+        return
+
+    if generate_fix:
+        print(generate_fix_scaffold(all_results))
+        return
+
+    if json_output:
+        import json
+
+        data = []
+        for r in all_results:
+            entry = {
+                "binary": str(r.binary_path),
+                "type": r.elf_type,
+                "rel32_total": r.rel32_total,
+                "rel32_undef": r.rel32_undef,
+                "class_recs": [
+                    {
+                        "name": f.name,
+                        "address": f"0x{f.address:08x}",
+                        "size": f.size,
+                        "at_risk_relocs": [
+                            {
+                                "offset": f"+0x{rel.offset - f.address:03x}",
+                                "symbol": rel.sym_name,
+                            }
+                            for rel in f.at_risk_relocs
+                        ],
+                    }
+                    for f in r.class_rec_findings
+                ],
+                "warnings": r.warnings,
+            }
+            data.append(entry)
+        print(json.dumps(data, indent=2))
+        return
+
+    console.print(format_results(all_results))
+
+    # Summary
+    total_findings = sum(len(r.class_rec_findings) for r in all_results)
+    total_relocs = sum(r.total_at_risk_relocs for r in all_results)
+    total_warnings = sum(len(r.warnings) for r in all_results)
+
+    if total_findings:
+        console.print(
+            f"[bold yellow]⚠ {total_findings} ClassRec(s) with "
+            f"{total_relocs} at-risk relocations[/bold yellow]"
+        )
+        console.print(
+            "  Action: Create fix_class_recs.c with "
+            "__attribute__((constructor)) patches."
+        )
+        console.print(
+            "  Run with --generate-fix for a scaffold."
+        )
+        raise SystemExit(1)
+    elif total_warnings:
+        console.print(f"[yellow]{total_warnings} warning(s)[/yellow]")
+    else:
+        console.print("[bold green]✓ No IRIX relocation issues found[/bold green]")
+
+
 @main.command("audit-rules")
 @click.option(
     "--rules-dir",

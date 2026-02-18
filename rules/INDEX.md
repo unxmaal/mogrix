@@ -67,7 +67,8 @@
 | update-alternatives | Doesn't exist on IRIX, blocks rpm install | spec_replacements | rules/packages/* | Drop Requires(post/preun/postun) |
 | Compat header conflicts | Unconditional decls clash with static versions | ac_cv_overrides + inject_compat | rules/packages/* | Override ac_cv_func_X="yes" |
 | R_MIPS_REL32 crashes rld | Function pointers in static data | add_patch | patches/packages/* | Dispatch functions (switch/strcmp) |
-| R_MIPS_REL32 partial failure | IRIX rld silently skips some R_MIPS_REL32 relocs in large executables; superclass/method pointers in widget ClassRec structs left as NULL | add_source + prep_commands | patches/packages/nedit/fix_class_recs.c | `__attribute__((constructor))` function patches broken fields at startup. Declare extern class records as parent type (e.g. XmManagerClassRec) to avoid needing private headers. Check fields `== NULL` then assign GOT-resolved values. Small test binaries resolve same symbols fine — issue is binary-size-dependent. See nedit.yaml |
+| R_MIPS_REL32 partial failure | IRIX rld silently skips some R_MIPS_REL32 relocs in large executables; superclass/method pointers in widget ClassRec structs left as NULL | add_source + prep_commands | patches/packages/nedit/fix_class_recs.c | `__attribute__((constructor))` function patches broken fields at startup. Declare extern class records as parent type (e.g. XmManagerClassRec) to avoid needing private headers. Check fields `== NULL` then assign GOT-resolved values. Small test binaries resolve same symbols fine — issue is binary-size-dependent. **Also affects custom class parts** (e.g. XmLGridClassPart.preLayoutProc) — use pointer arithmetic `(char*)&classRec + sizeof(ParentClassRec) + field_offset` when private headers aren't available. See nedit.yaml, xnedit.yaml |
+| MIPS alignment SIGBUS | Casting `char*` to `uint32_t*` and dereferencing crashes on MIPS (requires 4-byte alignment). Common in icon/pixel data processing where `const char*` arrays aren't guaranteed aligned. | prep_commands (sed) | rules/packages/* | Replace `src[i]` with `memcpy(&pixel, data + i*4, 4)`. Also check endianness: MIPS is big-endian like SPARC — add `defined(__mips)` to big-endian `#if` checks. See xnedit.yaml |
 | Long double crash | IRIX MIPS n32 has no 128-bit long double | ac_cv_overrides | rules/packages/* | `ac_cv_type_long_double_wider: "no"` |
 | IRIX libgen.so | dirname/basename in libgen.so, not libc | spec_replacements | rules/packages/* | `LIBS="$LIBS -lgen"` before %configure |
 | Cross-build doc generation | Build tries to run MIPS binary for docs | spec_replacements | rules/packages/* | Override make vars to empty, remove doc from `all:` target |
@@ -93,6 +94,7 @@
 | IRIX rld strict UND resolution | "unresolvable symbol" even when symbol exists in already-loaded DSO | Add explicit NEEDED | rules/packages/libxcb.yaml | IRIX rld does NOT search already-loaded DSOs for UND symbols unless there's a direct NEEDED chain. libxcb had UND `_XLockMutex_fn` from libX11 but no NEEDED libX11. Fix: `-lX11` in LDFLAGS. |
 | IRIX lacks endian.h | `#include <endian.h>` or `<sys/endian.h>` fails; no byte-order macros | **GLOBAL: dicl-clang-compat/endian.h** | cross/include/dicl-clang-compat/endian.h | Provided globally — no per-package fix needed. Defines BYTE_ORDER, htobe16/32/64, htole16/32, be16toh/32toh/64toh, le16toh/32toh and bswap helpers. MIPS big-endian: htobe/betoh are no-ops. |
 | rld SYMTABNO limit for executables | SIGSEGV during rld init (first 7 syscalls, before any library loads) | Remove `export_dynamic:true`, use `MOGRIX_NO_DLMALLOC=1` | rules/packages/gtkterm.yaml, cross/bin/irix-ld | IRIX rld has undocumented SYMTABNO limit for executables (~350-400 entries). Meson's `export_dynamic:true` exports ALL application symbols to .dynsym, inflating SYMTABNO (gtkterm: 588→353 after removal). dlmalloc adds ~20 exports. gtk-launch (103) works, vte binary (299) works, gtkterm at 353 is borderline. **Key symptom**: small test binaries with same libs work; only large binaries crash. Related to but different from the per-library GOT limit (line 85). |
+| IRIX rld NEEDED ordering sensitivity | SIGSEGV before main() when library ordering in ELF NEEDED is wrong. Crash during GLib g_slice_alloc (first mmap after library loading). | Ensure VTE linked BEFORE GTK | rules/packages/gtkterm.yaml | When `libvte-2.91.so.0` appears AFTER `libgtk-3.so.0` in executable NEEDED entries, crash before main(). Same binary works when VTE is FIRST. Not symbol conflicts, not SYMTABNO, not GOT overflow. Root cause unknown (rld initialization order bug?). **Workaround**: `-lvte-2.91` before `-lgtk-3` on link line. May affect other complex library combinations. **Key symptom**: identical source code links + runs fine with VTE first, crashes with VTE last. |
 | IRIX X11R6 lacks XGE extension | `rld: Fatal Error: unresolvable symbol in libXi.so.6: XESetWireToEventCookie` (logged to syslog, exit 1) | `libx11_xge_stubs.so` | compat/x11_xge_stubs.c, staging lib32 | IRIX ships X11R6 which predates XGE (X Generic Event, X11R7.1+). libXi.so.6 imports `XESetWireToEventCookie` and `XESetCopyEventCookie` from libX11. Stub .so returns NULL (no previous handler). Must link with `--no-as-needed -lx11_xge_stubs --as-needed` since exe doesn't directly reference the symbols. |
 | GTK3/cairo rendering crash on IRIX | SIGSEGV or exit(1) during first cairo compositing (stroke, arc, text). paint/fill(rect) work; stroke/arc/text crash. `rld: Fatal Error: unresolvable symbol in libpixman-1.so.0: __tls_get_addr` in syslog. | **FIXED** — disable TLS in pixman + disable MIT-SHM in cairo | rules/packages/pixman.yaml, rules/packages/cairo.yaml | **Root cause: pixman uses `__thread` TLS variables. IRIX rld has no TLS support.** Clang compiles `__thread` fine but generated code calls `__tls_get_addr` at runtime, which IRIX rld can't resolve. Lazy resolution means library loading succeeds; crash happens on first access to TLS variable. pixman fast-paths (paint, rect fill) avoid TLS; general compositing (stroke, arc, text) accesses TLS → crash. **Fix**: `-Dtls=disabled` in meson + `#define PIXMAN_NO_TLS 1` → plain static variables. MIT-SHM also disabled in cairo as precaution (IRIX IPC_RMID semantics). |
 | IRIX IPC_RMID destroys SHM immediately | MIT-SHM between client and X server fails. shmctl(IPC_RMID) destroys segment even if other processes attached. | Disable MIT-SHM at build time | rules/packages/cairo.yaml | `ipc_rmid_deferred_release = false` in meson cross file only controls cleanup order, NOT whether SHM is used. Must disable SHM header detection entirely. Affects any library using MIT-SHM for X11. |
@@ -127,6 +129,7 @@
 | Link order: -l before objects | Linker errors for symbols from static archives | move -l flags to after $libs | rules/packages/* | Custom build systems (like ninja configure.py) put LDFLAGS before objects in link command. Static archive `-l` flags in LDFLAGS get discarded because no references exist yet. Fix: put `-L` paths in LDFLAGS, sed the link rule to append `-l` flags after `$libs`. See ninja-build.yaml |
 | drop_subpackages unexpanded macros | drop_subpackages doesn't match names with unexpanded RPM macros | glob pattern | rules/packages/* | `python%{python3_pkgversion}-%{name}` won't match `python3-brotli`. Use glob: `"python*"`. See brotli.yaml |
 | ninja-build bootstrap cross-compile | configure.py --bootstrap tries to run MIPS binary | prep_commands sed | rules/packages/ninja-build.yaml | configure.py runs `subprocess.check_call(rebuild_args)` after bootstrap. Sed to `pass # skip: cross-compiled binary`. Also needs `--force-pselect` (no ppoll), getloadavg stub. See ninja-build.yaml |
+| xnedit BadMatch on X_CreateWindow | BadMatch (X_CreateWindow serial ~2410) launching GUI on IRIX | add_patch or prep_commands | rules/packages/xnedit.yaml | SGI IRIX X server offers 30-bit TrueColor visuals. FindBestVisual() picks depth 30 as "best", but child window creation at depth 30 fails BadMatch when Xft/Xrender libs are loaded. nedit 5.7 (same FindBestVisual, same Microline widgets, same libXm.so.2) works fine at depth 30 because it does NOT link Xft/Xrender/fontconfig/freetype. IRIX X server has NO RENDER extension (xdpyinfo confirms). XmVersion=2001 (Motif 2.1) so USE_XFT render table code (nedit.c:170 conditional) is never true — USE_XFT=0 has no practical effect. What doesn't fix it: USE_XFT=0, DISABLE_XNE_TEXTFIELD, -xrm visualID overrides, bundling SGUG libXm.so.2. **Fix**: patch util/misc.c FindBestVisual() to return DefaultVisual/DefaultDepth/DefaultColormap immediately, forcing 24-bit. |
 
 ---
 
@@ -363,3 +366,35 @@ When a Makefile uses `CFLAGS += -DPREFIX=... -DPACKAGE=...`, passing `CFLAGS=val
 **Problem: IRIX scandir function pointer type mismatch**
 IRIX `scandir()` uses `int (*)(dirent_t *)` instead of POSIX `int (*)(const struct dirent *)`. Causes incompatible-function-pointer-types errors.
 **Fix:** Add `-Wno-incompatible-function-pointer-types` to CFLAGS. See feh.yaml.
+
+**Problem: osdef.h socket prototype conflicts (screen)**
+Generated `osdef.h` declares `connect()`/`bind()`/`accept()` with `int` length parameters, but IRIX socket headers use `socklen_t`. Conflicting type errors.
+**Fix:** Run `make osdef.h` first, then sed to delete conflicting declarations, then run full `make`. See screen.yaml.
+
+**Problem: %{_rundir} / %{_tmpfilesdir} macros undefined in cross-compile**
+Systemd-specific RPM macros not defined in IRIX cross-compilation environment.
+**Fix:** Replace `%{_rundir}/pkg` with `%{_localstatedir}/run/pkg`. Remove entire tmpfiles.d blocks. See screen.yaml.
+
+**Problem: poll() conflicting types (vim)**
+Source declares `poll(struct pollfd *, long, int)` but IRIX declares `poll(struct pollfd *, nfds_t, int)` where `nfds_t = unsigned long`.
+**Fix:** `sed` to remove the poll declaration from the source, letting the IRIX system header provide it. See vim.yaml.
+
+**Problem: sigvec() detection on IRIX (vim)**
+IRIX has `sigvec()` but `struct sigvec` is behind `_BSD_SIGNALS` guards. Configure detects the function, but compilation fails with "incomplete type".
+**Fix:** `ac_cv_func_sigvec=no` — makes the app use standard `signal()` path instead. See vim.yaml.
+
+**Problem: -flto produces LLVM bitcode incompatible with IRIX linker**
+Autotools `AX_APPEND_COMPILE_FLAGS` or configure adds `-flto` when CFLAGS is empty. LLVM bitcode objects are incompatible with ld.lld-irix-18.
+**Fix:** Set CFLAGS to a non-empty value via `export_vars` so configure skips its SCROT_FLAGS/optimization block. See scrot.yaml.
+
+**Problem: pkgconfig() first on multi-dep BuildRequires line (engine bug)**
+`drop_buildrequires` can't remove `pkgconfig(foo)` when it's the first item on a multi-package BuildRequires line.
+**Fix:** Use `spec_replacements` to remove the entire line before `drop_buildrequires` phase runs. See scrot.yaml.
+
+**Problem: Meson cross-compilation for IRIX**
+`%meson` macro doesn't exist on build host; meson cross-compile needs a cross file with compat lib/pthread link args.
+**Fix:** Use explicit `meson setup _build --cross-file=...` with package-specific cross file. Copy `cross/meson-irix-cross.ini`, add link args. Replace `%meson_build`→`meson compile -C _build`, `%meson_install`→`DESTDIR=$RPM_BUILD_ROOT meson install -C _build --no-rebuild`. See p11-kit.yaml.
+
+**Problem: CMAKE_ROOT resolution fails in mogrix bundles**
+cmake resolves data directory by stripping `bin` suffix from exe_dir. Bundle binaries are in `_bin/` not `bin/`, so resolution produces wrong prefix.
+**Fix:** Patch `Source/cmSystemTools.cxx` to add fallback: try `exe_dir/../share/cmake-<version>` when standard resolution fails. See specs/packages/cmake.spec.
