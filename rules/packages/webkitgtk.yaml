@@ -1,0 +1,63 @@
+package: webkitgtk
+upstream:
+  url: https://webkitgtk.org/releases/webkitgtk-2.42.5.tar.xz
+  version: "2.42.5"
+  type: tarball
+  build_system: cmake
+  license: LGPLv2+
+  summary: "GTK port of the WebKit rendering engine"
+  source_dir: webkitgtk-2.42.5
+add_source:
+  - irix_pthread_compat.h
+rules:
+  inject_compat_functions:
+    - strdup
+    - getline
+    - mkdtemp
+    - strerror_r
+    - memmem
+  prep_commands:
+    # Use host preprocessor for IDL code generation (cross-compiler includes
+    # IRIX-compat stdarg.h with 'typedef char *va_list' that breaks IDL parser)
+    - sed -i 's|\\\"${CMAKE_CXX_COMPILER}\\\" -E -P -x c++|\\\"/usr/bin/g++\\\" -E -P -x c++|' Source/cmake/WebKitCompilerFlags.cmake
+    # IRIX PTHREAD_KEYS_MAX is _sysconf() (runtime), WebKit needs constexpr
+    - sed -i 's/static constexpr ThreadSpecificKey InvalidThreadSpecificKey = PTHREAD_KEYS_MAX/static constexpr ThreadSpecificKey InvalidThreadSpecificKey = 128/' Source/WTF/wtf/ThreadingPrimitives.h
+    # IRIX lacks MAP_FILE — it's 0 on all modern systems (just means "map from file")
+    - sed -i 's/MAP_FILE | //' Source/WTF/wtf/FileSystem.cpp
+    # IRIX lacks pthread_getattr_np (GNU) and pthread_attr_getstack (POSIX.1-2001).
+    # Include compat header that provides inline wrappers using IRIX's separate functions.
+    - cp %{_sourcedir}/irix_pthread_compat.h Source/WTF/wtf/irix_pthread_compat.h
+    - perl -i -pe 's{^(#include <pthread\.h>)}{$1\n#include "irix_pthread_compat.h"}' Source/WTF/wtf/StackBounds.cpp
+    # Include sys/resource.h and unistd.h for IRIX too (needed by getrlimit in compat header)
+    - sed -i '0,/#if OS(LINUX)/s/#if OS(LINUX)/#if OS(LINUX) || defined(__sgi)/' Source/WTF/wtf/StackBounds.cpp
+    # IRIX C++ name collision: struct flock vs flock() function.
+    # Add extern "C" flock prototype before the USE(FILE_LOCK) section.
+    - perl -i -pe 's{^(#if USE\(FILE_LOCK\))}{#ifdef __sgi\nextern "C" int flock(int, int);\n#endif\n$1}' Source/WTF/wtf/posix/FileSystemPOSIX.cpp
+    # IRIX lacks MAP_ANON — anonymous mmap uses /dev/zero instead.
+    # Define MAP_ANON as 0 and open /dev/zero as fd.
+    - perl -i -pe 's{^(#include <sys/mman\.h>)}{$1\n#ifdef __sgi\n#include <fcntl.h>\n#ifndef MAP_ANON\n#define MAP_ANON 0\n#endif\n#endif}' Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+    - perl -i -pe 's{int fd = -1;}{int fd = -1;\n#ifdef __sgi\n    fd = open("/dev/zero", O_RDWR);\n#endif}' Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+    # IRIX lacks CLOCK_THREAD_CPUTIME_ID — fall back to getrusage for per-thread CPU time
+    - perl -i -pe 's{int ret = clock_gettime\(CLOCK_THREAD_CPUTIME_ID, &ts\);}{struct rusage ru;\n    int ret = getrusage(RUSAGE_SELF, \&ru);\n    ts.tv_sec = ru.ru_utime.tv_sec + ru.ru_stime.tv_sec;\n    ts.tv_nsec = (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) * 1000;}' Source/WTF/wtf/posix/CPUTimePOSIX.cpp
+    # CMAKE_SYSTEM_NAME is "Linux" (cmake has no IRIX support), so WebKit
+    # includes Linux-specific sources. Remove them and use generic fallbacks.
+    - sed -i '/linux\/RealTimeThreads.h/d' Source/WTF/wtf/PlatformGTK.cmake
+    # Disable Linux-specific sources — we set CMAKE_SYSTEM_NAME=Linux because cmake
+    # has no IRIX support, but we need generic fallbacks, not Linux procfs/cgroups code.
+    - sed -i 's/CMAKE_SYSTEM_NAME MATCHES "Linux"/FALSE/' Source/WTF/wtf/PlatformGTK.cmake
+    - sed -i 's/CMAKE_SYSTEM_NAME MATCHES "Linux"/FALSE/' Source/cmake/OptionsGTK.cmake
+    # CLoop interpreter: t6 and t7 registers not declared but referenced by UNUSED_VARIABLE
+    - sed -i 's/CLoopRegister t0, t1, t2, t3, t5, sp, cfr, lr, pc;/CLoopRegister t0, t1, t2, t3, t5, t6, t7, sp, cfr, lr, pc;/' Source/JavaScriptCore/llint/LowLevelInterpreter.cpp
+    # IRIX mincore takes caddr_t (char*) not void* — add cast
+    - sed -i 's/auto result = mincore(pageStart,/auto result = mincore(reinterpret_cast<caddr_t>(pageStart),/' Source/JavaScriptCore/heap/BlockDirectory.cpp
+    # MIPS clang backend can't guarantee tail call elimination — disable MUST_TAIL_CALL
+    - sed -i 's/__has_cpp_attribute(clang::musttail)/0/' Source/WTF/wtf/Compiler.h
+    # MIPS branch range: ColorConversion.cpp and ColorLuminance.cpp expand to huge template
+    # functions via callOnUnderlyingType. LLVM's MIPS assembler can't relax 16-bit branch
+    # offsets, causing "out of range PC16 fixup". Compile these at -O1 to reduce code size.
+    - perl -i -pe 'BEGIN{$done=0} if(!$done && /^WEBKIT_FRAMEWORK\(WebCore\)/){print "set_source_files_properties(platform/graphics/ColorConversion.cpp platform/graphics/ColorLuminance.cpp PROPERTIES COMPILE_FLAGS \"-O1\")\n"; $done=1}' Source/WebCore/CMakeLists.txt
+    # IRIX lacks MSG_NOSIGNAL — define as 0 (like macOS does). Use SIG_IGN SIGPIPE instead.
+    - sed -i 's/#if OS(DARWIN)/#if OS(DARWIN) || defined(__sgi)/' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # write(SerializableErrorType) is inside #if ENABLE(WEB_CRYPTO) but called unconditionally.
+    # Add an unconditional version outside the #if block.
+    - perl -i -pe 's{^(    void write\(DestinationColorSpaceTag tag\))}{    void write(SerializableErrorType errorType)\n    {\n        writeLittleEndian<uint8_t>(m_buffer, static_cast<uint8_t>(errorType));\n    }\n\n$1}' Source/WebCore/bindings/js/SerializedScriptValue.cpp

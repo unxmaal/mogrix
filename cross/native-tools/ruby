@@ -1,0 +1,4 @@
+#!/bin/sh
+export LD_LIBRARY_PATH=/tmp/ruby-pkg/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+export RUBYLIB=/tmp/ruby-pkg/usr/lib/x86_64-linux-gnu/ruby/3.2.0:/tmp/ruby-pkg/usr/lib/ruby/3.2.0:$RUBYLIB
+exec /tmp/ruby-pkg/usr/bin/ruby3.2 "$@"

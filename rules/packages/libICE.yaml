@@ -1,0 +1,11 @@
+package: libICE
+rules:
+  spec_replacements:
+    # Set ACLOCAL_PATH so autoreconf finds xorg-macros.m4 from staging
+    - pattern: "autoreconf -v --install --force"
+      replacement: "export ACLOCAL_PATH=/opt/sgug-staging/usr/sgug/share/aclocal:$ACLOCAL_PATH\nautoreconf -v --install --force"
+    # ldconfig macros don't exist on IRIX
+    - pattern: "%ldconfig_post"
+      replacement: "# ldconfig_post removed"
+    - pattern: "%ldconfig_postun"
+      replacement: "# ldconfig_postun removed"

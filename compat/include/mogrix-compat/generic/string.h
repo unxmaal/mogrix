@@ -44,6 +44,10 @@ char *strerror_r(int errnum, char *buf, size_t buflen);
 /* explicit_bzero - OpenBSD/glibc, zero memory without optimization */
 void explicit_bzero(void *buf, size_t len);
 
+/* memmem - GNU extension, find byte sequence in memory */
+void *memmem(const void *haystack, size_t haystacklen,
+             const void *needle, size_t needlelen);
+
 #ifdef __cplusplus
 }
 #endif

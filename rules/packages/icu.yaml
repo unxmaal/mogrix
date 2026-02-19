@@ -1,0 +1,131 @@
+package: icu
+
+rules:
+  # ICU needs strdup compat for dlmalloc heap consistency
+  inject_compat_functions:
+    - strdup
+
+  # Drop doc subpackage — doxygen not available cross-compiling
+  drop_subpackages:
+    - doc
+
+  # Drop python3 — used only for endianness detection in spec
+  drop_buildrequires:
+    - python3
+
+  spec_replacements:
+    # Replace Fedora 40 %{gsub} macro (not available in older rpmbuild)
+    # ICU 74.2 -> dash: 74-2, underscore: 74_2
+    - pattern: "%define version_dash %{gsub %{version} %. -}"
+      replacement: "%define version_dash 74-2"
+    - pattern: "%define version_underscore %{gsub %{version} %. _}"
+      replacement: "%define version_underscore 74_2"
+
+    # Force big-endian (MIPS is big-endian) — replaces python3 detection
+    - pattern: '%{!?endian: %global endian %(%{__python3} -c "import sys;print (0 if sys.byteorder==''big'' else 1)")}'
+      replacement: '%global endian 0'
+
+    # Skip doc building (no doxygen)
+    - pattern: '%make_build doc'
+      replacement: '# doc build skipped (no doxygen for cross-compile)'
+
+    # Skip doc install
+    - pattern: 'make %{?_smp_mflags} -C source install-doc docdir=__docs'
+      replacement: '# doc install skipped'
+
+    # Drop libicu-doc files section content (docs not built)
+    - pattern: '%doc source/__docs/%{name}/html/*'
+      replacement: '# docs not built'
+
+    # icu-config multilib rename uses __isa_bits which may not be defined
+    - pattern: 'mv icu-config icu-config-%{__isa_bits}'
+      replacement: 'mv icu-config icu-config-32'
+
+    # Replace pushd/popd with cd (pushd is bash-only, rpmbuild uses /bin/sh)
+    - pattern: "pushd source"
+      replacement: "cd source"
+    - pattern: "popd"
+      replacement: "cd .."
+
+    # ICU cross-compilation: replace "cd source / autoconf / ... / %configure"
+    # with a two-stage build.
+    # Pattern 1: Replace "cd source" + autoconf with host build + cross setup
+    - pattern: "cd source\nautoconf"
+      replacement: |-
+        # === STEP 1: Build native host ICU (for cross-compilation tools) ===
+        # Save cross-compile env, build host ICU in clean subshell
+        _SAVED_LIBS="$LIBS"
+        _SAVED_CPPFLAGS="$CPPFLAGS"
+        cd source
+        autoconf
+        cd ..
+        mkdir -p host-build
+        cd host-build
+        unset CC CXX AR RANLIB LD PKG_CONFIG_LIBDIR PKG_CONFIG_SYSROOT_DIR MOGRIX_ROOT
+        unset ac_cv_func_malloc_0_nonnull ac_cv_func_realloc_0_nonnull
+        CC=gcc CXX=g++ CFLAGS="-O2" CXXFLAGS="-O2" CPPFLAGS="" LDFLAGS="" LIBS="" \
+          ../source/configure --disable-samples --disable-tests --with-data-packaging=library
+        LIBS="" CPPFLAGS="" make %{?_smp_mflags}
+        HOST_ICU_DIR=$(pwd)
+        cd ..
+
+        # === STEP 2: Cross-compile ICU for IRIX (MIPS n32, big-endian) ===
+        # Restore cross-compile env
+        export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc
+        export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx
+        export AR=/opt/cross/bin/llvm-ar
+        export RANLIB=/opt/cross/bin/llvm-ranlib
+        export LD=/opt/sgug-staging/usr/sgug/bin/irix-ld
+        export PKG_CONFIG_LIBDIR=/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig
+        export PKG_CONFIG_SYSROOT_DIR=/opt/sgug-staging
+        export MOGRIX_ROOT="/home/edodd/projects/github/unxmaal/mogrix"
+        export LIBS="$_SAVED_LIBS"
+        export CPPFLAGS="$_SAVED_CPPFLAGS"
+        mkdir -p cross-build
+        cd cross-build
+        # autoconf already run
+
+    # Pattern 2: Replace %configure $OPTIONS with manual cross-configure
+    # (spec_replacements run BEFORE configure_disable/configure_flags_add,
+    #  so at this point the line is just "%configure $OPTIONS")
+    - pattern: "%configure $OPTIONS"
+      replacement: |-
+        ../source/configure \
+          --prefix=/usr/sgug \
+          --exec-prefix=/usr/sgug \
+          --bindir=/usr/sgug/bin \
+          --sbindir=/usr/sgug/sbin \
+          --libdir=/usr/sgug/lib32 \
+          --includedir=/usr/sgug/include \
+          --datadir=/usr/sgug/share \
+          --mandir=/usr/sgug/share/man \
+          --infodir=/usr/sgug/share/info \
+          --sysconfdir=/usr/sgug/etc \
+          --host=mips-irix6.5 \
+          --build=x86_64-linux-gnu \
+          --with-cross-build=$HOST_ICU_DIR \
+          --disable-tests \
+          $OPTIONS
+
+    # Pattern 3: Make mh-linux sed tolerant (we're in cross-build, not source)
+    - pattern: "sed -i 's|-nodefaultlibs -nostdlib||' config/mh-linux"
+      replacement: |-
+        sed -i 's|-nodefaultlibs -nostdlib||' config/mh-linux 2>/dev/null || true
+        # Fix genccode assembly type for cross-compilation.
+        # When cross-compiling, genccode can't produce cross-endian ELF objects.
+        # Set assembly type to 'gcc' so it outputs .S assembly files instead.
+        # icudefs.mk is the source of truth; pkgdataMakefiles read $(GENCCODE_ASSEMBLY) from it.
+        sed -i 's/^GENCCODE_ASSEMBLY = *$/GENCCODE_ASSEMBLY = -a gcc/' icudefs.mk
+
+    # Fix %install to use cross-build directory
+    - pattern: "%make_install %{?_smp_mflags} -C source"
+      replacement: "%make_install %{?_smp_mflags} -C cross-build"
+
+  prep_commands:
+    # Fix %zu/%zd/%zx format specifiers — IRIX libc is pre-C99, %zu corrupts varargs -> SIGSEGV
+    # size_t is 4 bytes (unsigned int) on MIPS n32, so %u/%d/%x are safe replacements
+    - "find source -name '*.c' -o -name '*.cpp' -o -name '*.h' | xargs sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' 2>/dev/null || :"
+    # IRIX sys/param.h defines TICK as a macro (10000000 nanoseconds per tick).
+    # ICU rbnf.cpp uses TICK as a local char16_t constant name -> narrowing error.
+    # Rename ICU's TICK to ICU_TICK to avoid collision with IRIX macro.
+    - "sed -i 's/\\bTICK\\b/ICU_TICK/g' source/i18n/rbnf.cpp"

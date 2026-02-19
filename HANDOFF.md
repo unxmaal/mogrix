@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-18 (session 76)
-**Status**: ~161 bundles shipping. Dillo web browser with working HTTPS on IRIX. GTK3, FLTK apps all functional.
+**Last Updated**: 2026-02-18 (session 77)
+**Status**: ~161 bundles shipping. ICU 74.2 cross-compiled and tested on IRIX (16/16 binaries pass). Dillo web browser with working HTTPS. GTK3, FLTK apps all functional.
 
 ---
 
@@ -54,15 +54,14 @@ uv run mogrix check-elf --generate-fix <rpm>
 
 ## Next Steps
 
-1. **Build more packages** — check `packages_plan.md` for candidates
-2. **Build more GTK3 apps** — bsearch fix is generic, GTK3 apps should work now
+1. **WebKitGTK investigation** — User wants to explore building WebKitGTK 2.38.x for a real browser on IRIX (with Surf or Epiphany frontend). GTK3 is already working. ICU 74.2 is now built and tested. Start by running `uv run mogrix roadmap webkit2gtk3` to see current dep status. Key concerns: JavaScriptCore (JIT needs interpreter-only mode for MIPS), libsoup, 176MB brk heap limit (dlmalloc mmap has 1.2GB so should be OK). See `plan.md` "Long-Term: Modern Browser" section and `plan_for_roadmap.md` for the roadmap command design.
+2. **Build more packages** — check `packages_plan.md` for candidates
 3. **Run `mogrix check-elf`** on any new Xt/Motif package before deploying to IRIX
-4. **check-elf plan** exists in `.claude/plans/` — implements `--generate-fix` scaffold
-5. **Investigate dash SIGSEGV, rsync SIGABRT, cwebp/dwebp crashes**
+4. **Investigate dash SIGSEGV, rsync SIGABRT, cwebp/dwebp crashes**
 
 ### Dropped/Blocked
 
-- dbus, dbus-glib, icu, cyrus-sasl (pointless on IRIX)
+- dbus, dbus-glib, cyrus-sasl (pointless on IRIX)
 - fastfetch, htop (too many Linux-specific deps)
 - mupdf (too many missing deps)
 - gdb 14.2 (binary crashes)
@@ -71,6 +70,17 @@ uv run mogrix check-elf --generate-fix <rpm>
 ---
 
 ## Recent Work
+
+### Session 77: ICU 74.2 Cross-Compiled for IRIX
+
+- Built ICU 74.2 from Fedora SRPM (`rules/packages/icu.yaml`)
+- Two-stage cross-compilation: host build (x86 gcc) then cross-build (MIPS irix-cc) with `--with-cross-build`
+- Fixed 8 issues: %{gsub} macro, pushd/popd, env var isolation, C++ cmath hidden functions, TICK macro collision, %zu format strings, genccode cross-endian assembly
+- Added comprehensive math.h extern declarations to `cross/include/dicl-clang-compat/math.h` (fixes _XOPEN_SOURCE hiding IRIX libm functions globally)
+- All 16 ICU binaries pass on IRIX (test_bundle 16/16)
+- RPMs: `icu-74.2-1.mips.rpm`, `libicu-74.2-1.mips.rpm`, `libicu-devel-74.2-1.mips.rpm`
+- ICU removed from Dropped/Blocked list — now a WebKitGTK prerequisite fulfilled
+- Added 6 new patterns to `rules/INDEX.md`
 
 ### Session 76: Dillo + FLTK (web browser with HTTPS)
 
@@ -88,11 +98,6 @@ uv run mogrix check-elf --generate-fix <rpm>
 - Built `libmogrix_compat.so` preloaded via `_RLDN32_LIST` (IRIX rld doesn't preempt exe symbols)
 - Fixed 3 bugs in `mogrix/bundle.py`: dep resolution, soname symlinks, pruner chains
 - gtkterm verified running on IRIX — GTK3 UI fully functional
-
-### Session 74: xnedit SIGBUS/SIGSEGV Fixed + check-elf Tool
-
-- Fixed SIGBUS (misaligned pointer) and SIGSEGV (NULL _XtInherit in ClassRec)
-- Built `mogrix check-elf` tool: `mogrix/analyzers/elf.py`, CLI in `mogrix/cli.py`
 
 ---
 

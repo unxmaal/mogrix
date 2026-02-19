@@ -48,6 +48,10 @@ functions:
     file: string/strsep.c
     header: string.h
     description: Extract token from string (BSD extension)
+  memmem:
+    file: string/memmem.c
+    header: string.h
+    description: Find byte sequence in memory (GNU extension)
 
   stpcpy:
     file: runtime/stpcpy.c

@@ -238,4 +238,62 @@ static __inline long double atanhl(long double x) { return __builtin_atanhl(x); 
 static __inline long double cbrtl(long double x) { return __builtin_cbrtl(x); }
 static __inline long double expm1l(long double x) { return __builtin_expm1l(x); }
 
+/* ================================================================
+ * Functions that EXIST in IRIX libm but are hidden by _XOPEN_SOURCE.
+ *
+ * When _XOPEN_SOURCE >= 500 is defined (e.g. by ICU's uposixdefs.h),
+ * IRIX standards.h changes _XOPEN4UX, _SGIAPI, etc. so that many
+ * math functions IRIX normally declares become invisible even though
+ * they're in libm.a.
+ *
+ * We re-declare them unconditionally so C++ <cmath> can always find them.
+ * Use extern "C" in C++ mode to match the C linkage in libm.
+ *
+ * Functions already declared via static __inline above are NOT repeated here.
+ * ================================================================ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* --- double variants in IRIX libm, hidden by _XOPEN4UX/_SGIAPI guards --- */
+extern double acosh(double);
+extern double asinh(double);
+extern double atanh(double);
+extern double cbrt(double);
+extern double copysign(double, double);
+extern double erf(double);
+extern double erfc(double);
+extern double expm1(double);
+extern double hypot(double, double);
+extern int    ilogb(double);
+extern double lgamma(double);
+extern double log1p(double);
+extern double logb(double);
+extern double nextafter(double, double);
+extern double remainder(double, double);
+extern double rint(double);
+extern double trunc(double);
+
+/* --- float variants in IRIX libm, hidden by feature test macros --- */
+extern float  expm1f(float);
+extern float  log1pf(float);
+extern float  hypotf(float, float);
+extern float  truncf(float);
+
+/* --- long double variants in IRIX libm, hidden by various guards --- */
+extern long double copysignl(long double, long double);
+extern long double erfcl(long double);
+extern long double erfl(long double);
+extern long double hypotl(long double, long double);
+extern long double lgammal(long double);
+extern long double log1pl(long double);
+extern long double logbl(long double);
+extern long double nextafterl(long double, long double);
+extern long double rintl(long double);
+extern long double truncl(long double);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* _DICL_MATH_H */
