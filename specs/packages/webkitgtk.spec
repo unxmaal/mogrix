@@ -74,11 +74,13 @@ COMPAT_DIR=$(pwd)/mogrix-compat
 /usr/bin/cmake -B _build -S . \
   -DCMAKE_TOOLCHAIN_FILE=/home/edodd/projects/github/unxmaal/mogrix/cross/cmake-irix-toolchain.cmake \
   -DPORT=GTK \
-  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_BUILD_TYPE=MinSizeRel \
   -DCMAKE_INSTALL_PREFIX=%{_prefix} \
   -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
-  -DCMAKE_C_FLAGS="%{optflags}" \
-  -DCMAKE_CXX_FLAGS="%{optflags}" \
+  -DCMAKE_C_FLAGS="" \
+  -DCMAKE_CXX_FLAGS="" \
+  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
   -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -L$COMPAT_DIR -lpthread -lm -lmogrix_compat -lmogrix-compat" \
   -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -lpthread -lm" \
   \
@@ -125,7 +127,7 @@ COMPAT_DIR=$(pwd)/mogrix-compat
   -DUSE_JPEGXL=OFF \
   -DUSE_LCMS=OFF \
   \
-  -DENABLE_UNIFIED_BUILDS=OFF \
+  -DENABLE_UNIFIED_BUILDS=ON \
   -DUSE_SYSTEM_MALLOC=ON \
   -DENABLE_MINIBROWSER=ON \
   -DENABLE_API_TESTS=OFF \

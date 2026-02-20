@@ -80,6 +80,21 @@ export LD_LIBRARYN32_PATH
 {rld_list_block}{terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
 """
 
+# Wrapper for libexec binaries (WebKitGTK MiniBrowser, etc.).
+# The binary stays in libexec/<subpath>; the wrapper is at the bundle root.
+# Uses the binary's basename as the wrapper name.
+LIBEXEC_WRAPPER_TEMPLATE = """\
+#!/bin/sh
+dir=`/bin/dirname "$0"`
+case "$dir" in
+    /*) ;;
+    *)  dir="`/bin/pwd`/$dir" ;;
+esac
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
+export LD_LIBRARYN32_PATH
+{rld_list_block}{terminfo_block}{extra_env_block}exec "$dir/{libexec_path}" "$@"
+"""
+
 # Block for _RLDN32_LIST preload of mogrix compat library.
 # IRIX rld does NOT preempt shared library symbols from the executable
 # (unlike Linux), so compat functions like bsearch must be in a .so that
@@ -440,15 +455,22 @@ class BundleBuilder:
             return
 
         # Collect all NEEDED sonames from binaries.
-        # Always keep libmogrix_compat.so (preloaded via _RLDN32_LIST,
-        # not a NEEDED dependency).
-        needed = {"libmogrix_compat.so"}
+        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps).
+        needed = {"libmogrix_compat.so", "irix_rld_stubs.so"}
         for bin_subdir in ("_bin", "_sbin"):
             d = bundle_dir / bin_subdir
             if not d.is_dir():
                 continue
             for f in d.iterdir():
                 if self._is_elf(f) or (f.is_symlink() and self._is_elf(f.resolve())):
+                    needed.update(self._readelf_needed(f))
+
+        # Also scan libexec/ recursively — packages like WebKitGTK put
+        # their main binaries there (MiniBrowser, WebKitWebProcess, etc.)
+        libexec_dir = bundle_dir / "libexec"
+        if libexec_dir.is_dir():
+            for f in libexec_dir.rglob("*"):
+                if f.is_file() and (self._is_elf(f) or (f.is_symlink() and self._is_elf(f.resolve()))):
                     needed.update(self._readelf_needed(f))
 
         # Also check libs themselves — they may depend on other libs
@@ -856,6 +878,16 @@ class BundleBuilder:
             lib_dir.mkdir(exist_ok=True)
             shutil.copy2(str(compat_so_src), str(lib_dir / "libmogrix_compat.so"))
 
+        # Include rld stubs library for _RLDN32_LIST preload.
+        # Provides stub implementations for symbols below IRIX rld's GOTSYM
+        # threshold (e.g. g_power_profile_monitor_* in libgio). Built without
+        # CRT objects (no DT_INIT) to avoid SIGILL on _RLDN32_LIST preload.
+        rld_stubs_src = STAGING_LIB_DIR / "irix_rld_stubs.so"
+        if rld_stubs_src.exists():
+            lib_dir = bundle_dir / "_lib32"
+            lib_dir.mkdir(exist_ok=True)
+            shutil.copy2(str(rld_stubs_src), str(lib_dir / "irix_rld_stubs.so"))
+
         # Create missing soname symlinks.  -devel RPMs (excluded from bundles)
         # often contain unversioned .so symlinks (e.g. libz.so → libz.so.1)
         # that are needed at runtime when the ELF SONAME is unversioned.
@@ -994,11 +1026,16 @@ class BundleBuilder:
         manifest.binaries = binaries + [f"sbin/{b}" for b in sbin_binaries]
 
         # Generate wrapper scripts at bundle root, named after the commands
-        # Include _RLDN32_LIST preload if compat .so is in the bundle
-        rld_list_block = ""
-        compat_so = bundle_dir / "_lib32" / "libmogrix_compat.so"
-        if compat_so.exists():
-            rld_list_block = RLD_LIST_BLOCK
+        # Build _RLDN32_LIST from all preload libraries in the bundle
+        rld_list_libs = []
+        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so"):
+            if (bundle_dir / "_lib32" / preload_name).exists():
+                rld_list_libs.append(preload_name)
+        if rld_list_libs:
+            rld_list_value = ":".join(rld_list_libs) + ":DEFAULT"
+            rld_list_block = f"_RLDN32_LIST={rld_list_value}\nexport _RLDN32_LIST\n"
+        else:
+            rld_list_block = ""
 
         for binary in binaries:
             wrapper_path = bundle_dir / binary
@@ -1027,6 +1064,30 @@ class BundleBuilder:
                 )
             )
             wrapper_path.chmod(0o755)
+
+        # Generate wrappers for libexec/ binaries (e.g. MiniBrowser).
+        # These are placed at the bundle root using the binary's basename.
+        libexec_dir = bundle_dir / "libexec"
+        if libexec_dir.is_dir():
+            for f in libexec_dir.rglob("*"):
+                if f.is_file() and self._is_elf(f):
+                    rel_path = f.relative_to(bundle_dir)
+                    wrapper_name = f.name
+                    # Avoid colliding with existing wrappers
+                    if (bundle_dir / wrapper_name).exists():
+                        continue
+                    wrapper_path = bundle_dir / wrapper_name
+                    wrapper_path.write_text(
+                        LIBEXEC_WRAPPER_TEMPLATE.format(
+                            libexec_path=str(rel_path),
+                            terminfo_block=terminfo_block,
+                            extra_env_block=extra_env_block,
+                            extra_lib_paths=extra_lib_paths,
+                            rld_list_block=rld_list_block,
+                        )
+                    )
+                    wrapper_path.chmod(0o755)
+                    binaries.append(wrapper_name)
 
         # Determine which binaries belong to the target/explicitly-included
         # packages (not transitive dependencies). Only these get trampolines

@@ -15,12 +15,16 @@
 /* ---- .ctors sentinel (start of array) ---- */
 	.section .ctors,"aw",@progbits
 	.p2align 2
+	.type	__CTOR_LIST__,@object
+	.size	__CTOR_LIST__,4
 __CTOR_LIST__:
 	.4byte	0xffffffff
 
 /* ---- .dtors sentinel (start of array) ---- */
 	.section .dtors,"aw",@progbits
 	.p2align 2
+	.type	__DTOR_LIST__,@object
+	.size	__DTOR_LIST__,4
 __DTOR_LIST__:
 	.4byte	0xffffffff
 

@@ -23,7 +23,9 @@ LD="${STAGING}/bin/irix-ld"
 # 3. IRIX sysroot headers (pristine IRIX)
 #
 # Define IRIX C++ namespace macros as empty for C code
-CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3"
+# -mxgot: 32-bit GOT offsets. Without this, LLD creates secondary GOTs for
+# large libraries that IRIX rld cannot displace, causing SIGSEGV.
+CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3 -mxgot"
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
 # IRIX's stdio_core.h defines va_list as char* which conflicts with clang builtins
 CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"

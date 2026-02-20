@@ -39,5 +39,9 @@ set(ENV{PKG_CONFIG_PATH} "")
 set(ENV{PKG_CONFIG_LIBDIR} "/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig")
 set(ENV{PKG_CONFIG_SYSROOT_DIR} "/opt/sgug-staging")
 
-set(CMAKE_C_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca")
-set(CMAKE_CXX_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca")
+# -mxgot: Use 32-bit GOT offsets (lui/addiu pairs) instead of 16-bit.
+# Without this, LLD creates "secondary GOTs" for large libraries (>16K entries).
+# IRIX rld does NOT displace secondary GOT entries, causing SIGSEGV at runtime.
+# -mxgot eliminates secondary GOTs so all entries are in the primary GOT that rld handles.
+set(CMAKE_C_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca -mxgot")
+set(CMAKE_CXX_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca -mxgot")

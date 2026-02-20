@@ -13,9 +13,15 @@
 # ============================================================================
 #
 # Selects the appropriate linker based on the build type:
-# - Shared libraries (-shared flag): Uses GNU ld with -z separate-code
-#   Forces 3 LOAD segments (R/RE/RW) so IRIX rld can handle small .so files
-#   Without this, small libs get a single RWE segment that crashes rld
+# - Shared libraries (-shared flag): Uses LLD 18 with IRIX-specific flags
+#   --no-rosegment: Merge R and RE into single RE segment (2-segment layout)
+#   -z norelro: IRIX rld doesn't support GNU_RELRO
+#   --image-base=0x5ffe0000: Non-zero DT_MIPS_BASE_ADDRESS (required by IRIX rld)
+#   -Bsymbolic-functions: Keep global GOT under rld's ~4370 entry limit
+#   Previously used GNU ld (BFD), but BFD has a multi-GOT bug with
+#   -Bsymbolic-functions that corrupts ~30% of function-call GOT entries
+#   in large libraries (WebKit). LLD's independent multi-GOT implementation
+#   avoids this bug. Set MOGRIX_USE_BFDLD_SHARED=1 to use BFD ld instead.
 # - Executables: Uses LLD 18 with IRIX patches (ld.lld-irix-18)
 #   LLD 18 fixes the relocation bug in LLD 14 for external data symbols
 #   --image-base=0x1000000 moves binary above rld quickstart table at 0x200000
@@ -103,28 +109,9 @@ done
     STRIP_VERNEED="${STRIP_VERNEED:-$(dirname "$0")/strip-verneed}"
 
 if [ "$is_shared" = "1" ]; then
-    # Shared library: use GNU ld with custom linker script
-    # The linker script redirects .init_array → .ctors (IRIX rld ignores .init_array)
-    # and provides a standard 2-segment (RE + RW) layout that IRIX rld expects.
-    #
-    # NOTE: -z separate-code produces 3 LOAD segments (R + RE + RW) which
-    # corrupts IRIX rld internal state on dlopen. IRIX rld only handles 2-segment
-    # shared libraries correctly (RE + RW). Do NOT use -z separate-code.
-    #
-    # Link crtbeginS.o/crtendS.o (PIC versions) for .ctors/.init support.
-    # crtbeginS.o provides .init code that walks .ctors at DSO load time.
-    # strip-verneed removes DT_INIT_ARRAY/DT_FLAGS_1/DT_VERNEED tags post-link
-    # (IRIX rld crashes on GNU extensions it doesn't recognize).
-    LDSCRIPT=$STAGING/lib32/irix-shared.lds
     CRTBEGIN=$STAGING/lib32/crtbeginS.o
     CRTEND=$STAGING/lib32/crtendS.o
     DSOHANDLE=$STAGING/lib32/dso_handle.o
-    # crt-hide.ver: Force CRT symbols local to fix BFD ld MIPS n32 bug where
-    # .hidden visibility is lost. Without this, __CTOR_END__ goes in the GLOBAL
-    # GOT and rld resolves it to the executable's __CTOR_END__, breaking all
-    # shared library constructors (glib gobject_init, etc.). strip-verneed
-    # removes the resulting .gnu.version sections post-link.
-    CRT_HIDE="$(dirname "$0")/../crt/crt-hide.ver"
 
     # Find the output file name from -o flag (needed for post-link strip-verneed)
     output_file=""
@@ -137,32 +124,74 @@ if [ "$is_shared" = "1" ]; then
         case "$a" in -o) next_is_output=1 ;; esac
     done
 
-    # -Bsymbolic-functions: bind internal function calls locally.
-    # IRIX rld has a ~4370 global GOT entry limit per shared library.
-    # Without this, large C++ libs (Qt5Gui: 5364, Qt5Widgets: 8567) exceed
-    # the limit and crash rld. -Bsymbolic-functions moves defined FUNC
-    # symbols from global to local GOT, typically reducing count by 50-65%.
-    # Build-system -L flags (in $filtered_args) must come BEFORE sysroot -L flags
-    # so the build directory's libraries are found first. Otherwise, building
-    # libssl.so finds IRIX native libcrypto.so.0.9.7 instead of the just-built
-    # libcrypto.so.3. This matches the executable case (LLD) ordering.
-    $GNULD \
-      -Bsymbolic-functions \
-      --version-script="$CRT_HIDE" \
-      -T "$LDSCRIPT" \
-      $CRTBEGIN \
-      $DSOHANDLE \
-      $filtered_args \
-      -L$STAGING/lib32 \
-      -L$SYSROOT/lib32 \
-      -L$SYSROOT/usr/lib32 \
-      $CRTEND
-    rc=$?
+    if [ "$MOGRIX_USE_BFDLD_SHARED" = "1" ]; then
+        # Fallback: GNU ld (BFD) with custom linker script.
+        # WARNING: BFD ld has a multi-GOT bug with -Bsymbolic-functions that
+        # corrupts ~30% of function-call GOT entries in large libraries.
+        # Only use this for small libraries or debugging.
+        LDSCRIPT=$STAGING/lib32/irix-shared.lds
+        CRT_HIDE="$(dirname "$0")/../crt/crt-hide.ver"
+        $GNULD \
+          -Bsymbolic-functions \
+          --version-script="$CRT_HIDE" \
+          -T "$LDSCRIPT" \
+          $CRTBEGIN \
+          $DSOHANDLE \
+          $filtered_args \
+          -L$STAGING/lib32 \
+          -L$SYSROOT/lib32 \
+          -L$SYSROOT/usr/lib32 \
+          $CRTEND
+        rc=$?
+    else
+        # Default: LLD 18 for shared libraries.
+        # LLD's independent multi-GOT implementation avoids BFD's corruption bug.
+        # Flags:
+        #   --no-rosegment: Merge R+RE into single RE segment (IRIX rld needs 2-segment)
+        #   -z norelro: IRIX rld doesn't support GNU_RELRO
+        #   --image-base=0x5ffe0000: IRIX rld requires non-zero DT_MIPS_BASE_ADDRESS
+        #   -Bsymbolic-functions: Keep global GOT under rld ~4370 entry limit
+        #   --allow-shlib-undefined: IRIX libc TLS refs can't resolve at link time
+        #   --mips-got-size=1048576: Force all GOT entries into the primary GOT.
+        #     IRIX rld only processes primary GOT entries (described by DT_MIPS_LOCAL_GOTNO/
+        #     GOTSYM/SYMTABNO). Secondary GOTs use GNU R_MIPS_REL32 relocations that IRIX
+        #     rld ignores, leaving entries at 0 → SIGSEGV. Default 0xfff0 (16K entries)
+        #     splits at ~4000 entries; 1048576 allows up to 262K entries (enough for WebKit).
+        # crtbeginS.o provides .init → .ctors walker; crtendS.o provides sentinels.
+        # LLD properly handles .hidden visibility on CRT symbols (no version script
+        # needed, unlike BFD which loses .hidden and needs crt-hide.ver workaround).
+        $LLD \
+          -Bsymbolic-functions \
+          --no-rosegment \
+          -z norelro \
+          --image-base=0x5ffe0000 \
+          --allow-shlib-undefined \
+          --mips-got-size=1048576 \
+          $CRTBEGIN \
+          $DSOHANDLE \
+          $filtered_args \
+          -L$STAGING/lib32 \
+          -L$SYSROOT/lib32 \
+          -L$SYSROOT/usr/lib32 \
+          $CRTEND
+        rc=$?
+    fi
 
     # Strip GNU version sections (VERNEED/VERSYM) — IRIX rld crashes on these.
+    # Generated when linking against versioned libs (libstdc++, glibc).
     # Only strip if linking succeeded and output file exists.
     if [ "$rc" = "0" ] && [ -n "$output_file" ] && [ -f "$output_file" ]; then
         python3 "$STRIP_VERNEED" "$output_file" >/dev/null 2>&1 || true
+    fi
+
+    # Fix anonymous R_MIPS_REL32 relocations for IRIX rld compatibility.
+    # LLD emits these with sym_idx=0 (anonymous), but IRIX rld's fix_all_defineds()
+    # skips index 0. Also fixes named R_MIPS_REL32 addend formula mismatch
+    # (IRIX rld gives addend+displacement instead of st_value+addend+displacement).
+    # Safe for all libraries — exits early if no anonymous R_MIPS_REL32 found.
+    FIX_ANON_RELOCS="${FIX_ANON_RELOCS:-$(dirname "$0")/fix-anon-relocs}"
+    if [ "$rc" = "0" ] && [ -n "$output_file" ] && [ -f "$output_file" ]; then
+        python3 "$FIX_ANON_RELOCS" "$output_file" "$output_file" >/dev/null 2>&1 || true
     fi
     exit $rc
 else

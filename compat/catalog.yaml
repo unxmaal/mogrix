@@ -8,7 +8,7 @@
 # stdio/      : getline, asprintf, funopen (BSD cookie I/O - USE THIS, not fopencookie),
 #               dprintf, open_memstream
 # stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r, bsearch
-# runtime/    : stpcpy, spawn (posix_spawn/posix_spawnp/file_actions)
+# runtime/    : __muloti4, stpcpy, spawn (posix_spawn/posix_spawnp/file_actions)
 # dicl/       : openat-compat.c (17 POSIX "at" functions: openat, fstatat, futimens, etc.)
 # functions/  : getopt_long
 # unistd/     : getprogname, setprogname
@@ -52,6 +52,11 @@ functions:
     file: string/memmem.c
     header: string.h
     description: Find byte sequence in memory (GNU extension)
+
+  __muloti4:
+    file: runtime/muloti4.c
+    header: none
+    description: 128-bit multiply with overflow detection (LLVM compiler-rt)
 
   stpcpy:
     file: runtime/stpcpy.c
@@ -252,6 +257,23 @@ functions:
     file: error/err.c
     header: err.h
     description: BSD warning reporting (no errno variant)
+
+  # sys functions
+  mincore:
+    file: sys/mincore.c
+    header: sys/mman.h
+    description: Stub mincore for IRIX (reports all pages as resident)
+    source_patterns:
+      - pattern: '\bmincore\s*\('
+        note: "IRIX lacks mincore — inject compat stub (all pages resident)"
+
+  socketpair:
+    file: sys/socketpair.c
+    header: sys/socket.h
+    description: AF_UNIX socketpair with SOCK_SEQPACKET→SOCK_STREAM fallback for IRIX
+    note: "IRIX AF_UNIX does not support SOCK_SEQPACKET. This complete reimplementation
+      uses socket/bind/listen/connect/accept. In libmogrix_compat.so, preloaded via
+      _RLDN32_LIST. Used by WebKit IPC."
 
   # error functions
   strerror_r:

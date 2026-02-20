@@ -273,6 +273,9 @@ If you see open("/"), open("usr") but never open("sgug") for a path like /usr/sg
 5. **NEVER replace libraries that running services use** - sshd uses libz, libssl
 6. **NEVER put files in /tmp on Linux** - put files in /home/edodd/projects/github/unxmaal/mogrix/tmp
 7. **NEVER reference paths outside /usr/sgug** - mogrix-converted packages must be fully self-contained under /usr/sgug. Config files must not reference /etc, /var, /lib, or any path outside /usr/sgug. IRIX is old and fragile; reinstalling is painful. We never touch the base IRIX OS filesystem.
+8. **NEVER write ad-hoc wrapper scripts for IRIX testing** — use the mogrix-test MCP tools (`test_bundle`, `test_binary`, `par_trace`, `screenshot`). They handle permissions, paths, environment, and output capture correctly. Writing one-off scripts leads to permission errors, wrong paths, and wasted debugging time.
+9. **NEVER assume `/tmp` is writable on IRIX** — the `edodd` user cannot write to `/tmp`. Use `/usr/people/edodd/tmp/` for user-writable temp files on the IRIX host.
+10. **NEVER forget bundle file permissions** — extracted bundles may be owned by root and unreadable by `edodd`. The mogrix-test MCP server handles this correctly; ad-hoc testing does not.
 
 ### Path Rooting Rule
 
