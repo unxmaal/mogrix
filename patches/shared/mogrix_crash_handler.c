@@ -1,15 +1,35 @@
 /*
  * mogrix_crash_handler.c - Generic crash diagnostic handler for IRIX
  *
- * Installs signal handlers for SIGSEGV, SIGBUS, SIGABRT, SIGFPE that
- * dump registers, stack, and crash context to stderr. Designed for
- * cross-compiled MIPS n32 binaries running on IRIX 6.5.
+ * Installs signal handlers for SIGSEGV, SIGBUS, SIGABRT, SIGFPE, SIGPIPE,
+ * SIGILL, SIGTRAP that dump registers, stack, and crash context to BOTH
+ * stderr and a log file. Designed for cross-compiled MIPS n32 binaries
+ * running on IRIX 6.5.
  *
  * Self-initializing: __attribute__((constructor)) calls mogrix_crash_init()
  * before main(). Only activates when MOGRIX_CRASH_DEBUG=1 is set.
  *
+ * Output goes to:
+ *   1. stderr (may be swallowed by parent process like GSubprocess)
+ *   2. $MOGRIX_CRASH_DIR/mogrix_crash_<pid>.log (reliable — always works)
+ *      Default MOGRIX_CRASH_DIR: current working directory
+ *
+ * Also installs atexit() handler to detect clean exits (exit() without
+ * any signal). If the process dies and there's no log file at all, the
+ * library wasn't loaded (check _RLDN32_LIST).
+ *
  * Uses _rld_new_interface(_RLD_DLADDR) to resolve crash addresses to
  * library names and symbols — no manual address mapping needed.
+ *
+ * Usage:
+ *   Method 1 (preload via libmogrix_compat.so — recommended):
+ *     export MOGRIX_CRASH_DEBUG=1
+ *     export MOGRIX_CRASH_DIR=/usr/people/edodd  # optional
+ *     <run your bundle normally>
+ *
+ *   Method 2 (compile into a specific package):
+ *     add_source: [mogrix_crash_handler.c, mogrix_crash_handler.h]
+ *     # Then add mogrix_crash_handler.c to the build
  */
 
 #include <signal.h>
@@ -44,14 +64,30 @@ __attribute__((weak)) void *_rld_new_interface(unsigned long op, ...);
 typedef void *(*rld_fn_t)(unsigned long, ...);
 static rld_fn_t rld_dladdr_fn = 0;
 
+/* Log file fd — set in signal handler or atexit handler before output */
+static int log_fd = -1;
+
+/* Crash log directory (from MOGRIX_CRASH_DIR, default ".") */
+static char crash_dir[256] = ".";
+
+/* Whether we're initialized */
+static int initialized = 0;
+
+
 /* ---------- async-signal-safe output helpers ---------- */
+/* All output goes to BOTH stderr AND log_fd (if open) */
+
+static void wbuf(const char *buf, size_t len) {
+    write(STDERR_FILENO, buf, len);
+    if (log_fd >= 0) write(log_fd, buf, len);
+}
 
 static void ws(const char *s) {
-    if (s) write(STDERR_FILENO, s, strlen(s));
+    if (s) wbuf(s, strlen(s));
 }
 
 static void wc(char c) {
-    write(STDERR_FILENO, &c, 1);
+    wbuf(&c, 1);
 }
 
 static void whex32(unsigned int val) {
@@ -66,7 +102,7 @@ static void whex32(unsigned int val) {
     buf[7] = hex[(val >>  8) & 0xf];
     buf[8] = hex[(val >>  4) & 0xf];
     buf[9] = hex[(val      ) & 0xf];
-    write(STDERR_FILENO, buf, 10);
+    wbuf(buf, 10);
 }
 
 static void wdec(int val) {
@@ -84,6 +120,39 @@ static void wreg(const char *name, unsigned int val) {
     ws(name);
     whex32(val);
     wc('\n');
+}
+
+/* ---------- path construction (async-signal-safe) ---------- */
+
+static void build_crash_path(char *buf, size_t bufsz, const char *suffix) {
+    const char *dir = crash_dir;
+    int pid = getpid();
+    char pidbuf[12];
+    int pidlen = 0;
+    int pval = pid;
+    int i, j;
+
+    /* Convert PID to string */
+    if (pval == 0) { pidbuf[pidlen++] = '0'; }
+    else { while (pval > 0) { pidbuf[pidlen++] = '0' + (pval % 10); pval /= 10; } }
+    /* Reverse */
+    for (i = 0; i < pidlen / 2; i++) {
+        char t = pidbuf[i];
+        pidbuf[i] = pidbuf[pidlen - 1 - i];
+        pidbuf[pidlen - 1 - i] = t;
+    }
+
+    /* Construct: <dir>/mogrix_<suffix>_<pid>.log */
+    i = 0;
+    while (*dir && i < (int)bufsz - 1) buf[i++] = *dir++;
+    if (i > 0 && buf[i-1] != '/') buf[i++] = '/';
+
+    { const char *p = "mogrix_"; while (*p && i < (int)bufsz - 1) buf[i++] = *p++; }
+    { const char *p = suffix;    while (*p && i < (int)bufsz - 1) buf[i++] = *p++; }
+    buf[i++] = '_';
+    for (j = 0; j < pidlen && i < (int)bufsz - 1; j++) buf[i++] = pidbuf[j];
+    { const char *p = ".log";    while (*p && i < (int)bufsz - 1) buf[i++] = *p++; }
+    buf[i] = '\0';
 }
 
 /* ---------- address resolution via IRIX rld ---------- */
@@ -120,7 +189,7 @@ static void resolve_addr(unsigned int addr, const char *label) {
             ws(")");
         }
     } else {
-        ws(" (unknown — dladdr failed)");
+        ws(" (unknown -- dladdr failed)");
     }
     wc('\n');
 }
@@ -132,6 +201,11 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     unsigned int pc, ra, sp, gp;
     unsigned int *stack;
     int i;
+    char path[512];
+
+    /* Open log file for this crash */
+    build_crash_path(path, sizeof(path), "crash");
+    log_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 
     ws("\n");
     ws("======================================================\n");
@@ -145,8 +219,13 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
         case SIGBUS:  ws("SIGBUS (bus error)"); break;
         case SIGABRT: ws("SIGABRT (abort)"); break;
         case SIGFPE:  ws("SIGFPE (floating point exception)"); break;
+        case SIGPIPE: ws("SIGPIPE (broken pipe)"); break;
+        case SIGILL:  ws("SIGILL (illegal instruction)"); break;
+        case SIGTRAP: ws("SIGTRAP (trace trap)"); break;
         default:      ws("signal "); wdec(sig); break;
     }
+    ws("\nPID: ");
+    wdec(getpid());
     ws("\n");
 
     if (sig == SIGSEGV) {
@@ -166,10 +245,16 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
             default: ws("code="); wdec(si->si_code); break;
         }
         ws("\n");
+    } else if (sig == SIGPIPE) {
+        ws("SIGPIPE: write to a pipe/socket with no reader.\n");
+        ws("  Common cause: MSG_NOSIGNAL is 0 on IRIX (no effect).\n");
+        ws("  Fix: SIG_IGN SIGPIPE at process start, handle EPIPE returns.\n");
     }
 
     ws("Fault addr: ");
     whex32((unsigned int)(unsigned long)si->si_addr);
+    ws("\nLog file: ");
+    ws(path);
     ws("\n\n");
 
     /* Key registers — cast from machreg_t (64-bit on n32) to 32-bit */
@@ -237,6 +322,10 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     }
     if (ra == 0) {
         ws("  RA is NULL -- corrupted return address or top-level crash\n");
+    }
+    if (sig == SIGPIPE) {
+        ws("  SIGPIPE in subprocess -- parent probably closed the IPC socket\n");
+        ws("  Or: this process wrote to a pipe/socket before the reader connected\n");
     }
     ws("\n");
 
@@ -307,18 +396,51 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
 
     ws("======================================================\n\n");
 
+    /* Close log file before re-raising */
+    if (log_fd >= 0) { close(log_fd); log_fd = -1; }
+
     /* Re-raise with default handler to get core dump */
     signal(sig, SIG_DFL);
     raise(sig);
+}
+
+/* ---------- atexit handler ---------- */
+
+static void exit_handler(void) {
+    char path[512];
+    if (!initialized) return;
+
+    build_crash_path(path, sizeof(path), "exit");
+    log_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+
+    ws("[mogrix] Process exiting normally (atexit handler)\n");
+    ws("PID: ");
+    wdec(getpid());
+    ws("\nLog dir: ");
+    ws(crash_dir);
+    ws("\n");
+
+    if (log_fd >= 0) { close(log_fd); log_fd = -1; }
 }
 
 /* ---------- initialization ---------- */
 
 void mogrix_crash_init(void) {
     const char *env = getenv("MOGRIX_CRASH_DEBUG");
+    const char *dir_env;
     struct sigaction sa;
+    char path[512];
 
     if (!env || env[0] == '0' || env[0] == '\0') return;
+
+    /* Set crash log directory */
+    dir_env = getenv("MOGRIX_CRASH_DIR");
+    if (dir_env && dir_env[0] != '\0') {
+        size_t len = strlen(dir_env);
+        if (len >= sizeof(crash_dir)) len = sizeof(crash_dir) - 1;
+        memcpy(crash_dir, dir_env, len);
+        crash_dir[len] = '\0';
+    }
 
     /* Cache rld function pointer for dladdr resolution.
      * _rld_new_interface is weak — always present on IRIX at runtime. */
@@ -333,9 +455,43 @@ void mogrix_crash_init(void) {
     sigaction(SIGBUS, &sa, NULL);
     sigaction(SIGABRT, &sa, NULL);
     sigaction(SIGFPE, &sa, NULL);
+    sigaction(SIGPIPE, &sa, NULL);
+    sigaction(SIGILL, &sa, NULL);
+    sigaction(SIGTRAP, &sa, NULL);
+
+    /* Register atexit handler for clean exit detection */
+    atexit(exit_handler);
+
+    initialized = 1;
+
+    /* Write init confirmation to both stderr and a log file */
+    build_crash_path(path, sizeof(path), "init");
+    log_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 
     ws("[mogrix] Crash handler installed (MOGRIX_CRASH_DEBUG=1)\n");
+    ws("  PID: ");
+    wdec(getpid());
+    ws("\n  Signals: SEGV BUS ABRT FPE PIPE ILL TRAP\n");
+    ws("  Log dir: ");
+    ws(crash_dir);
+    ws("\n  Crash logs: ");
+    ws(crash_dir);
+    ws("/mogrix_crash_<pid>.log\n");
+
+    if (log_fd >= 0) { close(log_fd); log_fd = -1; }
 }
+
+/*
+ * NOTE: _exit() interposition does NOT work on IRIX.
+ * When libc's exit() internally calls _exit(), IRIX rld does not set up
+ * $t9 for the interposed function, causing GP to be wrong → SIGBUS.
+ * This is a fundamental limitation of IRIX rld symbol interposition for
+ * internal libc calls.
+ *
+ * To detect _exit() calls from subprocesses, use par tracing instead:
+ *   par -si MiniBrowser about:blank  (traces child processes too)
+ *   Look for "exit" syscall in child process output.
+ */
 
 /* Auto-initialize before main() */
 __attribute__((constructor))

@@ -105,7 +105,15 @@ If a compat function needs to override a **buggy libc function called from share
    ```bash
    irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
        compat/stdlib/bsearch.c \
-       # add more .c files here as needed
+       compat/sys/socketpair.c \
+       compat/sys/mincore.c \
+       compat/runtime/muloti4.c \
+       compat/runtime/divti3.c \
+       compat/stdlib/mkdtemp.c \
+       compat/error/strerror_r.c \
+       compat/string/memmem.c \
+       patches/shared/mogrix_crash_handler.c \
+       -I compat/include -I patches/shared
    ```
 3. Deploy to staging:
    ```bash

@@ -74,7 +74,7 @@
 | Compat header conflicts | Unconditional decls clash with static versions | ac_cv_overrides + inject_compat | rules/packages/* | Override ac_cv_func_X="yes" |
 | R_MIPS_REL32 crashes rld | Function pointers in static data | add_patch | patches/packages/* | Dispatch functions (switch/strcmp) |
 | R_MIPS_REL32 anonymous relocs | LLD emits R_MIPS_REL32 with sym_idx=0 (anonymous); IRIX rld fix_all_defineds() skips index 0 entirely; pointers stay at link-time values → SIGSEGV under address displacement | post-link fix-anon-relocs | cross/bin/fix-anon-relocs (called by irix-ld) | Two-symbol approach: repoint anonymous entries to two DEFINED .dynsym entries with STV_PROTECTED, sort .rel.dyn by sym_idx, assign one entry to solo sym (position [0]) and rest to bulk sym. Also fixes named R_MIPS_REL32 addend formula (IRIX gives addend+disp, not st_value+addend+disp) by pre-adding st_value to all addends. Clears .MIPS.msym so rld rebuilds via find_reloc. Safe for all .so files. |
-| SOCK_SEQPACKET AF_UNIX | IRIX AF_UNIX doesn't support SOCK_SEQPACKET (errno 120); WebKit IPC uses socketpair(AF_UNIX, SOCK_SEQPACKET) → abort() | compat socketpair in libmogrix_compat.so | compat/sys/socketpair.c | Full AF_UNIX socketpair reimplementation using socket/bind/listen/connect/accept; SOCK_SEQPACKET→SOCK_STREAM. Also add source patch to webkitgtk.yaml (sed SOCK_SEQPACKET check). |
+| SOCK_SEQPACKET AF_UNIX | IRIX AF_UNIX doesn't support SOCK_SEQPACKET (errno 120); WebKit IPC uses socketpair(AF_UNIX, SOCK_SEQPACKET) → abort() | compat socketpair in libmogrix_compat.so | compat/sys/socketpair.c | Full AF_UNIX socketpair reimplementation using socket/bind/listen/connect/accept; SOCK_SEQPACKET→SOCK_STREAM. **Both sockets must be bind()ed to named paths** — unnamed sockets cause `getsockname()` to return addrlen=0 on IRIX, and GLib's `g_socket_new_from_fd()` fails (no SO_DOMAIN on IRIX to detect address family). This was the root cause of WebKit subprocess death. |
 | R_MIPS_REL32 partial failure | IRIX rld silently skips some R_MIPS_REL32 relocs in large executables; superclass/method pointers in widget ClassRec structs left as NULL | add_source + prep_commands | patches/packages/nedit/fix_class_recs.c | `__attribute__((constructor))` function patches broken fields at startup. Declare extern class records as parent type (e.g. XmManagerClassRec) to avoid needing private headers. Check fields `== NULL` then assign GOT-resolved values. Small test binaries resolve same symbols fine — issue is binary-size-dependent. **Also affects custom class parts** (e.g. XmLGridClassPart.preLayoutProc) — use pointer arithmetic `(char*)&classRec + sizeof(ParentClassRec) + field_offset` when private headers aren't available. See nedit.yaml, xnedit.yaml |
 | MIPS alignment SIGBUS | Casting `char*` to `uint32_t*` and dereferencing crashes on MIPS (requires 4-byte alignment). Common in icon/pixel data processing where `const char*` arrays aren't guaranteed aligned. | prep_commands (sed) | rules/packages/* | Replace `src[i]` with `memcpy(&pixel, data + i*4, 4)`. Also check endianness: MIPS is big-endian like SPARC — add `defined(__mips)` to big-endian `#if` checks. See xnedit.yaml |
 | Long double crash | IRIX MIPS n32 has no 128-bit long double | ac_cv_overrides | rules/packages/* | `ac_cv_type_long_double_wider: "no"` |
@@ -142,6 +142,7 @@
 | FONTCONFIG_FILE for non-chroot apps | fontconfig reads SGUG-RSE's `/usr/sgug/etc/fonts/fonts.conf` (20+ conf.d includes) → SIGABRT. Or reads wrong font dirs | `FONTCONFIG_FILE` env var | Bundle wrappers | When running cross-compiled apps outside the chroot (direct IRIX console with LD_LIBRARYN32_PATH), fontconfig finds SGUG-RSE's config at its compiled-in path. Our fontconfig 2.15.0 is incompatible with SGUG-RSE's config format. Fix: set `FONTCONFIG_FILE` pointing to a standalone config with just `<dir>/usr/lib/X11/fonts/Type1</dir>` and `<cachedir>/tmp/fc-cache</cachedir>`. Bundle wrappers should set this automatically. |
 | gnulib SIG_ATOMIC_MAX missing | `SIG_ATOMIC_MAX undeclared` in gnulib-generated code | **GLOBAL: compat stdint.h** | compat/include/mogrix-compat/generic/stdint.h | gnulib's include_next chain blocks IRIX stdint.h via `__STDINT_H__` guard. Fix: define SIG_ATOMIC_MIN/MAX in compat header |
 | gnulib signal.h vs IRIX (sigaction, sigprocmask, NSIG) | `redefinition of 'sigaction'`, `verify_NSIG_constraint negative size`, `sigset_t` bitwise ops fail | ac_cv_overrides + safepatch | rules/packages/libpipeline.yaml | gnulib generates replacement signal.h when configure can't detect sigaction/sigprocmask (cross-compile failure). IRIX has both — force via `ac_cv_func_sigaction: "yes"`, `ac_cv_func_sigprocmask: "yes"`. NSIG=65 trips gnulib's `NSIG<=32` assertion — patch out. Any package using gnulib signal module will hit this. |
+| IRIX lacks /proc/self/fd — GLib fdwalk broken | Child processes die immediately, IPC sockets closed on exec, subprocess can't communicate with parent | prep_commands patch | rules/packages/webkitgtk.yaml | **HIGH-LEVEL RULE — affects ALL apps using GLib/GSubprocess/g_spawn to launch child processes.** GLib's `g_fdwalk_set_cloexec` uses `/proc/self/fd` to enumerate fds; IRIX has no `/proc/self/fd`. Fallback brute-force iteration clobbers fds that should be inherited. Symptom: parent sees EOF on IPC socket, child exits immediately. Fix for WebKit: skip `SetCloexecOnClient` in `ProcessLauncherGLib.cpp`. General fix needed: patch GLib's fdwalk or provide `/proc/self/fd` emulation. Any app using `g_subprocess_launcher_take_fd()` or `g_spawn_async_with_fds()` will hit this. |
 | gnulib clearenv/setenv detection | Build uses wrong fallback for clearenv | ac_cv_overrides | rules/packages/libpipeline.yaml | IRIX lacks clearenv but has setenv. Force `ac_cv_func_clearenv: "no"`, `ac_cv_func_setenv: "yes"` so gnulib's conditional compilation picks the right code path. |
 | _XOPEN_SOURCE hides math.h functions | C++ cmath errors: expm1, log1p, logb, cbrt, hypot, etc. undeclared when `_XOPEN_SOURCE` is set | **GLOBAL: dicl-clang-compat/math.h** | cross/include/dicl-clang-compat/math.h | IRIX math.h hides these behind `_XOPEN4UX` and `_SGIAPI` guards. When `_XOPEN_SOURCE` is defined (e.g. ICU's uposixdefs.h sets it to 600), these become FALSE, hiding functions IRIX libm actually provides. Fix: extern declarations in dicl-clang-compat/math.h for all hidden libm functions (double/float/long double). Already deployed globally. |
 | IRIX sys/param.h TICK macro | `narrowing conversion` or macro expansion collision with code using `TICK` as identifier | prep_commands (sed) | rules/packages/icu.yaml | IRIX sys/param.h defines `#define TICK 10000000` (nanoseconds per tick). Any source using `TICK` as a variable/enum name gets macro-expanded. Fix: rename the source identifier (e.g. `sed -i 's/\bTICK\b/ICU_TICK/g'`). Cannot `#undef TICK` at file top because sys/param.h is included transitively after that point. |
@@ -224,6 +225,16 @@ Only facts NOT already covered in the Problem Reference table above. For package
 | SSL_CERT_FILE is OpenSSL-only | gnutls ignores it; use app-specific CA config | mogrix/bundle.py |
 | Bundle must include libz.so | IRIX ships zlib 1.1.4; modern libpng (1.6+) needs zlib 1.2+. "libpng error: bad parameters to zlib" → abort. Bundle libz.so from staging | xscreensaver-gl-hacks bundle |
 
+## Debugging: Crash Handler (mogrix_crash_handler)
+
+| Keyword | Description | Fix | Source |
+|---------|-------------|-----|--------|
+| silent crash / no stderr / subprocess dies | Process dies without any output. GSubprocess may swallow stderr. Use crash handler preloaded via libmogrix_compat.so | `export MOGRIX_CRASH_DEBUG=1 MOGRIX_CRASH_DIR=/usr/people/edodd` — check mogrix_crash_<pid>.log and mogrix_init_<pid>.log | patches/shared/mogrix_crash_handler.c |
+| SIGPIPE silent kill | IRIX MSG_NOSIGNAL is 0 (no effect). Any write to closed pipe/socket = SIGPIPE = silent death. Crash handler catches SIGPIPE and reports the call site | Enable crash handler, check for SIGPIPE in crash log. Fix: `signal(SIGPIPE, SIG_IGN)` at process start + handle EPIPE returns | patches/shared/mogrix_crash_handler.c |
+| mogrix_init_<pid>.log missing | Crash handler didn't load — _RLDN32_LIST not set or libmogrix_compat.so not in _lib32/ | Check bundle wrapper sets `_RLDN32_LIST=libmogrix_compat.so:DEFAULT` and .so is in bundle's _lib32/ | mogrix/bundle.py |
+| mogrix_exit_<pid>.log only (no crash) | Process called exit() without a signal. Check parent process for why it requested shutdown | Look at parent's IPC logs, check if parent saw an error and killed the child | patches/shared/mogrix_crash_handler.c |
+| Recompiling libmogrix_compat.so | After editing crash handler or compat sources, rebuild and deploy the .so | See `rules/methods/irix-testing.md` "Debugging with Crash Handler" section for full build command | compat/, patches/shared/ |
+
 ## Anti-Patterns
 
 | Anti-Pattern | Why It's Wrong | Do This Instead |
@@ -237,7 +248,10 @@ Only facts NOT already covered in the Problem Reference table above. For package
 | Running large builds as background Bash commands | Build output (tens of thousands of lines) floods context on completion — unrecoverable, no chance to compact | Use haiku sub-agents: `Task(model="haiku")` that redirects output to `/tmp/<pkg>-build.log` and returns only exit code + summary. See `rules/methods/task-tracking.md` Rule 6 |
 | Retrying failed builds in a loop | Each attempt adds more build output to context; 3-4 retries of WebKit = session death | Fix the root cause first (read the error from the log file), then rebuild ONCE. Max 1 retry per session for large packages |
 | `mogrix convert <package-name>` | `convert` takes a file path to an SRPM, not a package name. Fails with "Path does not exist" | `mogrix convert ~/mogrix_inputs/SRPMS/<name>-*.src.rpm` — use `fetch` first if SRPM doesn't exist |
+| Using heredocs or complex shell in `irix_exec` | `irix_exec` runs through csh, which doesn't support heredocs, `export`, or bash syntax. Fails with `Unmatched '` or `Command not found` | Write file locally to `/tmp/`, then `irix_copy_to` + `irix_host_exec cp` to place it. For simple commands use csh syntax (`setenv` not `export`). |
+| Assuming `irix_copy_to` puts files on the IRIX host | `irix_copy_to` copies into the **chroot** (`/opt/chroot/...`), NOT the live host filesystem | After `irix_copy_to`, use `irix_host_exec "cp /opt/chroot/path /usr/people/edodd/path"` to get the file onto the host |
 | `mogrix convert --cross` | `--cross` is a `build` flag, not a `convert` flag. Fails with "No such option" | `mogrix convert <srpm>` then `mogrix build <converted-srpm> --cross` — see `rules/methods/mogrix-workflow.md` |
+| Interposing `_exit()` on IRIX | SIGBUS (BUS_ADRALN) when libc's `exit()` internally calls interposed `_exit()` — IRIX rld doesn't set up `$t9`/GP for internal dispatch to interposed symbols. GP points to libc's GOT, not the interposing library's GOT. Crashes on first GP-relative access | Cannot safely interpose `_exit()` on IRIX. For detecting `_exit()` calls: inject diagnostic `write()` calls at suspected callsites, or use `par -si` tracing. See `patches/shared/mogrix_crash_handler.c` comment |
 
 ## File Locations
 
@@ -254,6 +268,7 @@ Only facts NOT already covered in the Problem Reference table above. For package
 | Hand-written specs | specs/packages/ | Package-specific spec overrides |
 | Bundle fonts | fonts/ | TTF fonts for X11 bundles (Iosevka Nerd Font) |
 | X11 .pc files | /opt/sgug-staging/.../pkgconfig/ | x11.pc, xext.pc, xproto.pc, renderproto.pc |
+| Crash handler | patches/shared/mogrix_crash_handler.{c,h} | Signal handler for IRIX crash diagnostics (in libmogrix_compat.so) |
 | Patches | patches/packages/*/ | Source patches by package |
 | rpmlint config | rpmlint.toml | IRIX-specific rpmlint filters |
 | Source analyzer | mogrix/analyzers/source.py | Ripgrep-based source scanner |
@@ -486,3 +501,20 @@ When a library has an unversioned SONAME (e.g. `libz.so` from zlib-ng), the unve
 Each process writes to `/usr/people/edodd/ipc_<pid>.log` using unbuffered `write()` — safe even on crash. Both MiniBrowser and WebProcess use the same code, so both sides log.
 
 **Files:** `patches/packages/webkitgtk/ipc_debug_log.h`, prep_commands in `rules/packages/webkitgtk.yaml` (marked TEMPORARY).
+
+**IPC log results (2026-02-21):**
+Only MiniBrowser logs exist — WebProcess never creates an ipc log, meaning it dies before IPC init.
+MiniBrowser log shows: OPEN → RECV_ERR errno=11 (EAGAIN) → CLOSE:EOF → INVALIDATE, repeating across sockets 15/20/21. WebProcess opens and immediately closes.
+
+**Root cause hypothesis: GLib g_fdwalk_set_cloexec + missing /proc/self/fd.**
+IRIX has no `/proc/self/fd` (confirmed). GLib's `g_subprocess_launcher` uses `g_fdwalk_set_cloexec` to close-on-exec all fds in the child except those passed via `take_fd`. Without `/proc/self/fd`, GLib falls back to brute-force fd iteration. If this fallback is buggy (off-by-one, wrong exemption list), it will FD_CLOEXEC the IPC socket passed to WebProcess, causing it to be closed on exec. WebProcess then starts with an invalid socket fd, can't read anything, exits immediately. MiniBrowser sees EOF.
+
+**Evidence:**
+- WebProcess runs fine standalone (GTK warning only, exit 1)
+- WebProcess never produces IPC log (dies before IPC init)
+- All connections show EOF (other end hung up = fd was invalid)
+- RECV_ERR errno=11 is EAGAIN (normal for non-blocking socket)
+- `/proc/self` doesn't exist on IRIX, `/proc/self/fd` definitely doesn't
+- `ProcessLauncherGLib.cpp` sets `SetCloexecOnClient | SetCloexecOnServer` and relies on `take_fd` to preserve the client socket through exec
+
+**Proposed fix:** Patch `ProcessLauncherGLib.cpp` `connectionOptions()` to NOT set `SetCloexecOnClient` when `defined(__sgi)`. This matches the LIBWPE path which also avoids client CLOEXEC. Alternative: fix/replace GLib's fdwalk for IRIX.
