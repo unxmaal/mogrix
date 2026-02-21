@@ -6,6 +6,8 @@
 > If you don't know what to do, check `rules/methods/before-you-start.md`.
 >
 > **When you hit a compile/link error for a missing function**: Grep `compat/catalog.yaml` for it BEFORE writing a fix. We likely already have a compat implementation — it just needs to be compiled/linked. Also grep `compat/include/` and `compat/` for the symbol name. Many IRIX-missing POSIX functions (pselect, posix_spawn, getline, mkdtemp, etc.) already have implementations.
+>
+> **When you make a mistake or hit an unexpected error**: Grep `rules/INDEX.md` for keywords from the error BEFORE retrying. We've likely seen it before. After fixing, add the mistake to the relevant rules file and update INDEX.md so it's never repeated.
 
 ---
 

@@ -1,6 +1,6 @@
 # libpipeline - Pipeline manipulation library (FC40: 1.5.7)
 # Simple autoconf build. No external deps. Required by man-db.
-# IRIX fix: clearenv() not available — provide compat implementation.
+# IRIX fix: clearenv() not available — provide compat implementation via ac_cv.
 package: libpipeline
 
 rules:
@@ -8,5 +8,16 @@ rules:
     - check-devel
 
   prep_commands:
-    # IRIX has no clearenv() — provide inline implementation
-    - "$MOGRIX_ROOT/tools/safepatch lib/pipeline.c --old '#include \"pipeline-private.h\"' --insert-after \"$(printf '#ifndef clearenv\\nextern char **environ;\\nstatic inline int clearenv(void) { environ = NULL; return 0; }\\n#endif')\" --no-backup --quiet"
+    # gnulib's generated signal.h conflicts with IRIX:
+    # 1. IRIX has sigaction() and struct sigaction — configure fails to detect it
+    #    during cross-compilation, so gnulib redefines the struct → redefinition error.
+    #    Fix: ac_cv_overrides below forces correct detection.
+    # 2. gnulib asserts NSIG <= 32, but IRIX has NSIG=65 → negative array size error.
+    #    Fix: remove the static assertion.
+    - "$MOGRIX_ROOT/tools/safepatch gl/lib/signal.in.h --old 'typedef int verify_NSIG_constraint[NSIG <= 32 ? 1 : -1];' --new '/* IRIX has NSIG=65 — skip gnulib 32-signal constraint */' --no-backup --quiet"
+
+  ac_cv_overrides:
+    ac_cv_func_sigaction: "yes"
+    ac_cv_func_sigprocmask: "yes"
+    ac_cv_func_clearenv: "no"
+    ac_cv_func_setenv: "yes"

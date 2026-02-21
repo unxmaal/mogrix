@@ -29,8 +29,8 @@ rules:
     - "$MOGRIX_ROOT/tools/safepatch compat/base64.c --old '#include <string.h>' --insert-after \"$(printf '#undef b64_ntop\\n#undef b64_pton')\" --no-backup --quiet"
     # IRIX has no UTF-8 locale — suppress tmux's hard UTF-8 requirement.
     # The setlocale fallback chain still runs; we just don't abort on non-UTF8.
-    - "$MOGRIX_ROOT/tools/safepatch tmux.c --old 'errx(1, \"invalid LC_ALL, LC_CTYPE or LANG\")' --new '(void)0' --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch tmux.c --old 'errx(1, \"need UTF-8 locale.*s)' --new '(void)0' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch tmux.c --old 'errx(1, \"invalid LC_ALL, LC_CTYPE or LANG\")' --new '(void)0' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch tmux.c --old 'errx\\(1, \"need UTF-8 locale.*' --new '(void)0;' --regex --no-backup --quiet"
     # IRIX sendmsg limits iov entries to MSG_MAXIOVLEN (16). imsg-buffer.c uses
     # IOV_MAX (1024 on IRIX) which causes errno 97 when batching >16 messages.
     # Cap at 16 to match IRIX kernel limit.
