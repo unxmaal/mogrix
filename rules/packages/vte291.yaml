@@ -1,0 +1,98 @@
+package: vte291
+upstream:
+  url: https://download.gnome.org/sources/vte/0.58/vte-0.58.3.tar.xz
+  version: "0.58.3"
+  type: tarball
+  build_system: meson
+  license: "LGPL-2.1-or-later"
+  summary: "Terminal emulator library"
+  source_dir: vte-0.58.3
+
+rules:
+  drop_buildrequires:
+    - "gtk-doc"
+    - "meson"
+    - "gettext"
+    - "vala"
+    - "pkgconfig(gobject-introspection-1.0)"
+
+  prep_commands:
+    # === meson.build fixes ===
+    # Remove -fstack-protector flags (IRIX doesn't support them)
+    - "sed -i \"/-fstack-protector/d\" meson.build || true"
+    # Remove _POSIX_C_SOURCE and _XOPEN_SOURCE that conflict with IRIX headers
+    - "sed -i \"/_POSIX_C_SOURCE/d\" meson.build || true"
+    - "sed -i \"/_XOPEN_SOURCE/d\" meson.build || true"
+    # Remove -fno-semantic-interposition (not supported by clang for MIPS)
+    - "sed -i \"/-fno-semantic-interposition/d\" meson.build || true"
+    # VTE uses -Werror in some configs, disable it
+    - "sed -i \"/-Werror/d\" meson.build || true"
+    # Bypass function existence asserts (cross-compilation can't detect them)
+    # All required functions exist on IRIX (posix_openpt via /dev/ptmx, etc.)
+    - "sed -i \"s/assert(cxx.has_function(func), func + ' not found')/# assert bypassed for cross-compilation/\" meson.build"
+    # === GLib 2.80 API compat ===
+    # GLib 2.80 removed volatile from g_once_init_enter — fix template
+    - "sed -i 's/static volatile gsize g_define_type_id__volatile/static gsize g_define_type_id__volatile/' src/vtetypebuiltins.cc.template"
+    # === IRIX PTY fixes (from SGUG-RSE) ===
+    # Add sys/ioctl.h, termios.h, and posix_openpt declaration to pty.cc
+    # IRIX has posix_openpt in libc but no header declaration
+    - "sed -i '1i #include <sys/ioctl.h>\\n#include <termios.h>\\nextern \"C\" int posix_openpt(int flags);' src/pty.cc"
+    # Remove O_CLOEXEC from posix_openpt on IRIX (not supported).
+    # FD_CLOEXEC=1=O_WRONLY on IRIX — must NOT be ORed into open() flags.
+    # The non-linux fallback path applies CLOEXEC via fcntl after open succeeds.
+    - "sed -i 's/O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC/O_RDWR | O_NOCTTY | O_NONBLOCK/' src/pty.cc"
+    - "sed -i 's/O_RDWR | O_NOCTTY | O_CLOEXEC/O_RDWR | O_NOCTTY/' src/pty.cc"
+    # === IRIX STREAMS PTY modules ===
+    # IRIX PTY slaves are STREAMS devices (isastream()=1) but ptem/ldterm are
+    # NOT auto-pushed. Without them: no line discipline, no echo, no ^C signals.
+    # VTE only handles this for Solaris (__sun). Add __sgi for IRIX.
+    # Also add stropts.h include (needed for isastream/I_FIND/I_PUSH).
+    - "sed -i 's/#if defined(__sun) && defined(HAVE_STROPTS_H)/#if (defined(__sun) || defined(__sgi)) \\&\\& defined(HAVE_STROPTS_H)/' src/pty.cc"
+    - "sed -i '/#include <pty.h>/a #ifdef __sgi\\n#define HAVE_STROPTS_H 1\\n#endif' src/pty.cc"
+    - "sed -i '/#ifdef HAVE_PTY_H/i #ifdef __sgi\\n#include <stropts.h>\\n#endif' src/pty.cc"
+    # === IRIX TIOCPKT fixes ===
+    # IRIX defines TIOCPKT_DOSTOP (0x20) and TIOCPKT_NOSTOP (0x10) instead of
+    # Linux TIOCPKT_STOP (0x10) and TIOCPKT_START (0x20). The semantics differ
+    # (IRIX: capability change, Linux: event) but VTE only uses them for cosmetic
+    # scroll lock notification. Map to IRIX equivalents for compilation.
+    - "sed -i 's/TIOCPKT_STOP/TIOCPKT_DOSTOP/' src/vte.cc"
+    - "sed -i 's/TIOCPKT_START/TIOCPKT_NOSTOP/' src/vte.cc"
+    # === W_EXITCODE not available on IRIX ===
+    - "sed -i 's/W_EXITCODE(0, SIGKILL)/SIGKILL/' src/widget.cc"
+    # === pid_t is long on IRIX, fix format specifiers ===
+    # reaper.cc: %d -> %ld for pid
+    - "sed -i 's/Starting to wait for %d/Starting to wait for %ld/' src/reaper.cc"
+    - "sed -i 's/Not waiting for %d/Not waiting for %ld/' src/reaper.cc"
+    # vte.cc: Child[%d] -> Child[%ld]
+    - "sed -i 's/Child\\[%d\\]/Child[%ld]/g' src/vte.cc"
+
+  spec_replacements:
+    # Replace entire %build section with meson cross-compilation
+    - pattern: "%build\n%meson\n%meson_build"
+      replacement: |
+        %build
+        export PATH=/home/edodd/projects/github/unxmaal/mogrix/cross/native-tools:$PATH
+        MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini
+        /home/edodd/.local/bin/meson setup _build \
+          --cross-file=$MOGRIX_CROSS \
+          --prefix=%{_prefix} \
+          --libdir=%{_libdir} \
+          -Dgir=false \
+          -Dvapi=false \
+          -Ddocs=false \
+          -Dgtk3=true \
+          --wrap-mode=nodownload
+        /home/edodd/.local/bin/meson compile -C _build
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Fix %files to include library and headers
+    - pattern: "%{_bindir}/*"
+      replacement: |
+        %{_bindir}/vte-2.91
+        %{_libdir}/libvte-2.91.so*
+        %{_libdir}/pkgconfig/vte-2.91.pc
+        %{_includedir}/vte-2.91/
+        %{_sysconfdir}/profile.d/vte.*

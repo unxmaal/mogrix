@@ -65,7 +65,7 @@ case "$dir" in
 esac
 LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
-{terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
+{rld_list_block}{terminfo_block}{extra_env_block}exec "$dir/_bin/{binary}" {extra_args}"$@"
 """
 
 SBIN_WRAPPER_TEMPLATE = """\
@@ -77,7 +77,31 @@ case "$dir" in
 esac
 LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
 export LD_LIBRARYN32_PATH
-{terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
+{rld_list_block}{terminfo_block}{extra_env_block}exec "$dir/_sbin/{binary}" "$@"
+"""
+
+# Wrapper for libexec binaries (WebKitGTK MiniBrowser, etc.).
+# The binary stays in libexec/<subpath>; the wrapper is at the bundle root.
+# Uses the binary's basename as the wrapper name.
+LIBEXEC_WRAPPER_TEMPLATE = """\
+#!/bin/sh
+dir=`/bin/dirname "$0"`
+case "$dir" in
+    /*) ;;
+    *)  dir="`/bin/pwd`/$dir" ;;
+esac
+LD_LIBRARYN32_PATH="$dir/_lib32{extra_lib_paths}:/usr/lib32"
+export LD_LIBRARYN32_PATH
+{rld_list_block}{terminfo_block}{extra_env_block}exec "$dir/{libexec_path}" "$@"
+"""
+
+# Block for _RLDN32_LIST preload of mogrix compat library.
+# IRIX rld does NOT preempt shared library symbols from the executable
+# (unlike Linux), so compat functions like bsearch must be in a .so that
+# is preloaded via _RLDN32_LIST to override libc's buggy versions.
+RLD_LIST_BLOCK = """\
+_RLDN32_LIST=libmogrix_compat.so:DEFAULT
+export _RLDN32_LIST
 """
 
 TERMINFO_BLOCK = """\
@@ -360,6 +384,65 @@ class BundleBuilder:
                         needed.add(soname)
         return needed
 
+    def _create_soname_symlinks(self, bundle_dir: Path) -> None:
+        """Create missing soname symlinks in _lib32/.
+
+        Some ELF libraries have unversioned SONAMEs (e.g. libz.so) but the
+        runtime RPM only ships versioned files (libz.so.1, libz.so.1.3.0).
+        The unversioned symlink lives in the -devel RPM which is excluded
+        from bundles.  Detect these gaps and create symlinks so rld can
+        resolve the NEEDED entries at runtime.
+        """
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        # Collect all NEEDED sonames from all ELFs in the bundle
+        needed_sonames: set[str] = set()
+        for subdir in ("_bin", "_sbin", "_lib32"):
+            d = bundle_dir / subdir
+            if not d.is_dir():
+                continue
+            for f in d.iterdir():
+                target = f.resolve() if f.is_symlink() else f
+                if target.exists() and self._is_elf(target):
+                    needed_sonames.update(self._readelf_needed(target))
+
+        # For each needed soname missing from _lib32/, try to find a
+        # versioned file that provides it (via ELF SONAME header).
+        created = []
+        for soname in sorted(needed_sonames):
+            soname_path = lib_dir / soname
+            if soname_path.exists():
+                continue
+            # Look for a file whose ELF SONAME matches
+            for candidate in lib_dir.iterdir():
+                if not candidate.name.startswith(soname.split(".so")[0]):
+                    continue
+                target = candidate.resolve() if candidate.is_symlink() else candidate
+                if not target.exists() or not self._is_elf(target):
+                    continue
+                # Check if its SONAME matches what we need
+                result = subprocess.run(
+                    ["readelf", "-d", str(target)],
+                    capture_output=True, text=True,
+                )
+                for line in result.stdout.splitlines():
+                    if "(SONAME)" in line and f"[{soname}]" in line:
+                        # Create symlink to the candidate
+                        soname_path.symlink_to(candidate.name)
+                        created.append(f"{soname} -> {candidate.name}")
+                        break
+                if soname_path.exists():
+                    break
+
+        if created:
+            console.print(
+                f"  [dim]Created {len(created)} soname symlinks:[/dim]"
+            )
+            for s in created:
+                console.print(f"    [dim]{s}[/dim]")
+
     def _prune_unused_libs(self, bundle_dir: Path) -> None:
         """Remove .so files from _lib32/ not NEEDED by any binary in the bundle.
 
@@ -371,8 +454,9 @@ class BundleBuilder:
         if not lib_dir.is_dir():
             return
 
-        # Collect all NEEDED sonames from binaries
-        needed = set()
+        # Collect all NEEDED sonames from binaries.
+        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps).
+        needed = {"libmogrix_compat.so", "irix_rld_stubs.so"}
         for bin_subdir in ("_bin", "_sbin"):
             d = bundle_dir / bin_subdir
             if not d.is_dir():
@@ -381,8 +465,18 @@ class BundleBuilder:
                 if self._is_elf(f) or (f.is_symlink() and self._is_elf(f.resolve())):
                     needed.update(self._readelf_needed(f))
 
+        # Also scan libexec/ recursively — packages like WebKitGTK put
+        # their main binaries there (MiniBrowser, WebKitWebProcess, etc.)
+        libexec_dir = bundle_dir / "libexec"
+        if libexec_dir.is_dir():
+            for f in libexec_dir.rglob("*"):
+                if f.is_file() and (self._is_elf(f) or (f.is_symlink() and self._is_elf(f.resolve()))):
+                    needed.update(self._readelf_needed(f))
+
         # Also check libs themselves — they may depend on other libs
-        # (transitive closure)
+        # (transitive closure).  Walk symlink chains step-by-step so
+        # intermediate links (e.g. libz.so → libz.so.1 → libz.so.1.3.0.zlib-ng)
+        # are all added to the kept set.
         checked = set()
         queue = list(needed)
         while queue:
@@ -391,36 +485,26 @@ class BundleBuilder:
                 continue
             checked.add(soname)
             lib_file = lib_dir / soname
-            if lib_file.exists() and not lib_file.is_symlink() and self._is_elf(lib_file):
+            # Walk symlink chain one hop at a time, adding each name
+            while lib_file.is_symlink():
+                link_target = os.readlink(str(lib_file))
+                checked.add(link_target)
+                lib_file = lib_dir / link_target
+            # Now lib_file is the real file — scan its NEEDEDs
+            if lib_file.exists() and self._is_elf(lib_file):
+                checked.add(lib_file.name)
                 for dep in self._readelf_needed(lib_file):
                     if dep not in checked:
                         queue.append(dep)
-            elif lib_file.is_symlink():
-                target = lib_file.resolve()
-                if target.exists() and self._is_elf(target):
-                    for dep in self._readelf_needed(target):
-                        if dep not in checked:
-                            queue.append(dep)
 
         needed = checked
 
-        # Remove .so files not in the needed set (keep symlinks whose targets
-        # are needed, and real files whose names are needed)
+        # Remove .so files not in the needed set
         removed = []
         for f in sorted(lib_dir.iterdir()):
             if ".so" not in f.name:
                 continue
-            # Keep if this filename is needed
             if f.name in needed:
-                continue
-            # Keep if this is a symlink target of a needed soname
-            is_target = False
-            for n in needed:
-                link = lib_dir / n
-                if link.is_symlink() and link.resolve().name == f.name:
-                    is_target = True
-                    break
-            if is_target:
                 continue
             f.unlink()
             removed.append(f.name)
@@ -428,6 +512,106 @@ class BundleBuilder:
         if removed:
             console.print(
                 f"  [dim]Pruned {len(removed)} unused libs from _lib32/[/dim]"
+            )
+
+    def _strip_rpaths(self, bundle_dir: Path) -> None:
+        """Strip DT_RPATH/DT_RUNPATH from all shared libraries in _lib32/.
+
+        Build-time RPATHs (e.g. /home/user/rpmbuild/BUILD/...) leak into
+        shared libraries and cause IRIX rld to search wrong directories for
+        transitive dependencies, bypassing LD_LIBRARYN32_PATH.  Since
+        bundle wrapper scripts set LD_LIBRARYN32_PATH to _lib32/, RPATHs
+        are unnecessary and harmful.
+
+        Method: parse the ELF .dynamic section and change DT_RPATH (15) /
+        DT_RUNPATH (29) tags to DT_DEBUG (21), which rld ignores.
+        Cannot use DT_NULL (0) because that terminates .dynamic scanning.
+        Works for both big-endian (MIPS) and little-endian ELFs.
+        """
+        import struct
+
+        DT_NULL = 0
+        DT_DEBUG = 21
+        DT_RPATH = 15
+        DT_RUNPATH = 29
+
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        stripped_count = 0
+        for f in sorted(lib_dir.iterdir()):
+            if not f.is_file() or f.is_symlink():
+                continue
+            if ".so" not in f.name:
+                continue
+
+            try:
+                data = bytearray(f.read_bytes())
+            except OSError:
+                continue
+
+            # Quick ELF magic check
+            if data[:4] != b"\x7fELF":
+                continue
+
+            ei_class = data[4]  # 1=32-bit, 2=64-bit
+            ei_data = data[5]  # 1=LE, 2=BE
+            if ei_class == 1:
+                endian = ">" if ei_data == 2 else "<"
+                e_phoff = struct.unpack_from(endian + "I", data, 28)[0]
+                e_phentsize = struct.unpack_from(endian + "H", data, 42)[0]
+                e_phnum = struct.unpack_from(endian + "H", data, 44)[0]
+                ptr_fmt = endian + "iI"  # d_tag (signed), d_val (unsigned)
+                entry_size = 8
+            elif ei_class == 2:
+                endian = ">" if ei_data == 2 else "<"
+                e_phoff = struct.unpack_from(endian + "Q", data, 32)[0]
+                e_phentsize = struct.unpack_from(endian + "H", data, 54)[0]
+                e_phnum = struct.unpack_from(endian + "H", data, 56)[0]
+                ptr_fmt = endian + "qQ"
+                entry_size = 16
+            else:
+                continue
+
+            # Find PT_DYNAMIC program header (type 2)
+            dyn_offset = 0
+            dyn_size = 0
+            PT_DYNAMIC = 2
+            for i in range(e_phnum):
+                ph_start = e_phoff + i * e_phentsize
+                p_type = struct.unpack_from(endian + "I", data, ph_start)[0]
+                if p_type == PT_DYNAMIC:
+                    if ei_class == 1:
+                        dyn_offset = struct.unpack_from(endian + "I", data, ph_start + 4)[0]
+                        dyn_size = struct.unpack_from(endian + "I", data, ph_start + 16)[0]
+                    else:
+                        dyn_offset = struct.unpack_from(endian + "Q", data, ph_start + 8)[0]
+                        dyn_size = struct.unpack_from(endian + "Q", data, ph_start + 32)[0]
+                    break
+
+            if dyn_offset == 0:
+                continue
+
+            # Scan .dynamic entries, zero out DT_RPATH and DT_RUNPATH
+            modified = False
+            pos = dyn_offset
+            while pos + entry_size <= dyn_offset + dyn_size:
+                d_tag = struct.unpack_from(ptr_fmt, data, pos)[0]
+                if d_tag == DT_NULL:
+                    break
+                if d_tag in (DT_RPATH, DT_RUNPATH):
+                    struct.pack_into(ptr_fmt, data, pos, DT_DEBUG, 0)
+                    modified = True
+                pos += entry_size
+
+            if modified:
+                f.write_bytes(data)
+                stripped_count += 1
+
+        if stripped_count:
+            console.print(
+                f"  [dim]Stripped RPATH from {stripped_count} libs in _lib32/[/dim]"
             )
 
     # Common terminal types to keep in trimmed terminfo.
@@ -636,9 +820,9 @@ class BundleBuilder:
                 for soname in needed:
                     if soname in manifest.irix_sonames:
                         continue
-                    if soname in self._irix_sonames:
-                        manifest.irix_sonames.add(soname)
-                        continue
+                    # Mogrix-built RPMs take priority over IRIX sysroot.
+                    # IRIX may have ancient ABI-incompatible versions of
+                    # libraries we've rebuilt (e.g. libz.so / zlib-ng).
                     if soname in self._soname_to_rpm:
                         dep_rpm = self._soname_to_rpm[soname]
                         if dep_rpm not in visited_rpms:
@@ -646,6 +830,9 @@ class BundleBuilder:
                             for sibling in self._get_sibling_rpms(dep_rpm):
                                 if sibling not in visited_rpms:
                                     queue.append(sibling)
+                        continue
+                    if soname in self._irix_sonames:
+                        manifest.irix_sonames.add(soname)
                         continue
                     # Staging fallback
                     if STAGING_LIB_DIR.is_dir():
@@ -782,10 +969,37 @@ class BundleBuilder:
                     else:
                         shutil.copy2(str(src), str(lib_dir / soname))
 
+        # Include mogrix compat shared library for _RLDN32_LIST preload.
+        # IRIX rld doesn't preempt shared library symbols from the executable,
+        # so compat overrides (e.g. bsearch) must be in a preloaded .so.
+        compat_so_src = STAGING_LIB_DIR / "libmogrix_compat.so"
+        if compat_so_src.exists():
+            lib_dir = bundle_dir / "_lib32"
+            lib_dir.mkdir(exist_ok=True)
+            shutil.copy2(str(compat_so_src), str(lib_dir / "libmogrix_compat.so"))
+
+        # Include rld stubs library for _RLDN32_LIST preload.
+        # Provides stub implementations for symbols below IRIX rld's GOTSYM
+        # threshold (e.g. g_power_profile_monitor_* in libgio). Built without
+        # CRT objects (no DT_INIT) to avoid SIGILL on _RLDN32_LIST preload.
+        rld_stubs_src = STAGING_LIB_DIR / "irix_rld_stubs.so"
+        if rld_stubs_src.exists():
+            lib_dir = bundle_dir / "_lib32"
+            lib_dir.mkdir(exist_ok=True)
+            shutil.copy2(str(rld_stubs_src), str(lib_dir / "irix_rld_stubs.so"))
+
+        # Create missing soname symlinks.  -devel RPMs (excluded from bundles)
+        # often contain unversioned .so symlinks (e.g. libz.so → libz.so.1)
+        # that are needed at runtime when the ELF SONAME is unversioned.
+        self._create_soname_symlinks(bundle_dir)
+
         # Prune _lib32/ to only sonames actually NEEDED by bundle binaries.
         # RPMs include all libs from the package (e.g., ncurses-libs has 14 .so
         # files) but the bundle may only need a few.
         self._prune_unused_libs(bundle_dir)
+
+        # Strip build-time RPATHs that break IRIX rld library search.
+        self._strip_rpaths(bundle_dir)
 
         # Strip runtime-unnecessary data directories
         for strip_dir in ("doc", "man", "info", "licenses"):
@@ -850,6 +1064,53 @@ class BundleBuilder:
                 'SSL_CERT_FILE="$dir/etc/pki/tls/certs/ca-bundle.crt"'
             )
             extra_env_lines.append("export SSL_CERT_FILE")
+        # dillo: dpid needs dpidrc pointing to bundle's DPI directory, and
+        # dillo launches dpid via execl(~/.dillo/dpid) so we need a wrapper
+        # there too. Also write dillorc with IRIX bitmap fonts.
+        dillo_dpi_dir = bundle_dir / "_lib32" / "dillo" / "dpi"
+        if dillo_dpi_dir.is_dir():
+            extra_env_lines.append(
+                '# Set up dillo DPI daemon config for bundle\n'
+                '_dillo_home="$HOME/.dillo"\n'
+                '/bin/mkdir -p "$_dillo_home" 2>/dev/null\n'
+                '# dpidrc: tell dpid where DPI plugins live\n'
+                'echo "dpi_dir=$dir/_lib32/dillo/dpi" > "$_dillo_home/dpidrc"\n'
+                'echo "proto.file=file/file.dpi" >> "$_dillo_home/dpidrc"\n'
+                'echo "proto.ftp=ftp/ftp.filter.dpi" >> "$_dillo_home/dpidrc"\n'
+                'echo "proto.https=https/https.filter.dpi" >> "$_dillo_home/dpidrc"\n'
+                'echo "proto.data=datauri/datauri.filter.dpi" >> "$_dillo_home/dpidrc"\n'
+                '# dpid wrapper: dillo exec()s ~/.dillo/dpid directly\n'
+                'cat > "$_dillo_home/dpid" << DPID_EOF\n'
+                '#!/bin/sh\n'
+                'LD_LIBRARYN32_PATH="$dir/_lib32:/usr/lib32"\n'
+                'export LD_LIBRARYN32_PATH\n'
+                '_RLDN32_LIST=libmogrix_compat.so:DEFAULT\n'
+                'export _RLDN32_LIST\n'
+                'exec "$dir/_bin/dpid" "\\$@"\n'
+                'DPID_EOF\n'
+                '/bin/chmod 755 "$_dillo_home/dpid"\n'
+                '# dillorc: IRIX bitmap fonts (no Xft/DejaVu)\n'
+                'if [ ! -f "$_dillo_home/dillorc" ]; then\n'
+                '  cat > "$_dillo_home/dillorc" << DILLORC_EOF\n'
+                'font_serif="times"\n'
+                'font_sans_serif="helvetica"\n'
+                'font_cursive="helvetica"\n'
+                'font_fantasy="helvetica"\n'
+                'font_monospace="courier"\n'
+                'font_factor=1.0\n'
+                'DILLORC_EOF\n'
+                'fi'
+            )
+        # WebKitGTK: WEBKIT_EXEC_PATH tells WebKit where to find subprocess
+        # executables (WebKitWebProcess, WebKitNetworkProcess). Without this,
+        # WebKit uses the compiled-in PKGLIBEXECDIR (/usr/sgug/libexec/webkit2gtk-4.0)
+        # which doesn't exist on the live IRIX host.
+        webkit_libexec = bundle_dir / "libexec" / "webkit2gtk-4.0"
+        if webkit_libexec.is_dir():
+            extra_env_lines.append(
+                'WEBKIT_EXEC_PATH="$dir/libexec/webkit2gtk-4.0"'
+            )
+            extra_env_lines.append("export WEBKIT_EXEC_PATH")
         # libevent: IRIX /dev/poll backend crashes — force poll() instead
         lib32_dir = bundle_dir / "_lib32"
         if lib32_dir.is_dir() and any(
@@ -878,6 +1139,17 @@ class BundleBuilder:
         manifest.binaries = binaries + [f"sbin/{b}" for b in sbin_binaries]
 
         # Generate wrapper scripts at bundle root, named after the commands
+        # Build _RLDN32_LIST from all preload libraries in the bundle
+        rld_list_libs = []
+        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so"):
+            if (bundle_dir / "_lib32" / preload_name).exists():
+                rld_list_libs.append(preload_name)
+        if rld_list_libs:
+            rld_list_value = ":".join(rld_list_libs) + ":DEFAULT"
+            rld_list_block = f"_RLDN32_LIST={rld_list_value}\nexport _RLDN32_LIST\n"
+        else:
+            rld_list_block = ""
+
         for binary in binaries:
             wrapper_path = bundle_dir / binary
             wrapper_path.write_text(
@@ -887,6 +1159,7 @@ class BundleBuilder:
                     extra_env_block=extra_env_block,
                     extra_lib_paths=extra_lib_paths,
                     extra_args=extra_args_map.get(binary, ""),
+                    rld_list_block=rld_list_block,
                 )
             )
             wrapper_path.chmod(0o755)
@@ -900,9 +1173,34 @@ class BundleBuilder:
                     extra_env_block=extra_env_block,
                     extra_lib_paths=extra_lib_paths,
                     extra_args=extra_args_map.get(binary, ""),
+                    rld_list_block=rld_list_block,
                 )
             )
             wrapper_path.chmod(0o755)
+
+        # Generate wrappers for libexec/ binaries (e.g. MiniBrowser).
+        # These are placed at the bundle root using the binary's basename.
+        libexec_dir = bundle_dir / "libexec"
+        if libexec_dir.is_dir():
+            for f in libexec_dir.rglob("*"):
+                if f.is_file() and self._is_elf(f):
+                    rel_path = f.relative_to(bundle_dir)
+                    wrapper_name = f.name
+                    # Avoid colliding with existing wrappers
+                    if (bundle_dir / wrapper_name).exists():
+                        continue
+                    wrapper_path = bundle_dir / wrapper_name
+                    wrapper_path.write_text(
+                        LIBEXEC_WRAPPER_TEMPLATE.format(
+                            libexec_path=str(rel_path),
+                            terminfo_block=terminfo_block,
+                            extra_env_block=extra_env_block,
+                            extra_lib_paths=extra_lib_paths,
+                            rld_list_block=rld_list_block,
+                        )
+                    )
+                    wrapper_path.chmod(0o755)
+                    binaries.append(wrapper_name)
 
         # Determine which binaries belong to the target/explicitly-included
         # packages (not transitive dependencies). Only these get trampolines

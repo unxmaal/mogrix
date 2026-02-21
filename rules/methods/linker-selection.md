@@ -6,18 +6,47 @@ The `cross/bin/irix-ld` wrapper selects linkers based on output type:
 
 | Output Type | Linker | Why |
 |-------------|--------|-----|
-| Shared libraries (`-shared`) | GNU ld + custom linker script + `-Bsymbolic-functions` | Standard 2-segment layout (RE+RW) for IRIX rld |
+| Shared libraries (`-shared`) | LLD 18 + `--no-rosegment -z norelro --image-base=0x5ffe0000` | Clean multi-GOT, 2-segment RE+RW layout |
 | Executables | LLD 18 with patches + `dlmalloc.o` | Correct relocations, mmap-based malloc |
 
-### Shared Library Segment Layout (updated 2026-02-14)
+**BFD ld fallback**: Set `MOGRIX_USE_BFDLD_SHARED=1` for BFD ld (known buggy for large libs).
+
+### Shared Library Segment Layout (updated 2026-02-19)
 
 IRIX rld expects shared libraries with exactly 2 LOAD segments: RE (text) + RW (data/got).
 
-**DO NOT use `-z separate-code`**: Produces 3 LOAD segments (R+RE+RW) which corrupts rld
-internal state on dlopen. Previously used (2026-02-05) but found to cause crashes.
+**LLD flags for correct layout**:
+- `--no-rosegment`: Merge R and RE into single RE segment (otherwise LLD produces R+RE+RW)
+- `-z norelro`: Prevent GNU_RELRO from creating extra LOAD segment
+- `--image-base=0x5ffe0000`: IRIX rld requires non-zero DT_MIPS_BASE_ADDRESS
 
-The custom linker script (`cross/irix-shared.lds`) produces the correct 2-segment layout.
-GNU ld uses it via `-T irix-shared.lds`.
+**CRT objects must have PIC/CPIC flags**: crtbeginS.o and crtendS.o need `.abicalls` directive
+in their .S source files. Without PIC flags, LLD drops EF_MIPS_PIC from the output and
+IRIX rld refuses to load the library ("Cannot Successfully map soname").
+
+**BFD ld fallback**: Uses custom linker script (`cross/irix-shared.lds`) for 2-segment layout.
+DO NOT use `-z separate-code` with BFD ld.
+
+### BFD ld Multi-GOT Bug (discovered 2026-02-19)
+
+BFD ld (GNU ld) has a bug in its MIPS multi-GOT implementation when combined with
+`-Bsymbolic-functions`. For large shared libraries (>64KB GOT, triggering multi-GOT),
+approximately 30% of function-call GOT entries in the orphan region point to data
+(.bss/.data) addresses instead of code (.text) addresses.
+
+**Root cause**: BFD's multi-GOT allocator mixes function and data addresses within
+the same GOT regions. When multiple sub-GOTs exist (each addressable by 16-bit signed
+offset from $gp), function calls that load a GOT entry via `lw $25, X($gp)` + `jalr $25`
+may read a data address instead of a code address, causing SIGSEGV.
+
+**Impact**: 628,864 out of 2,112,132 function-call GOT references were corrupt in
+libwebkit2gtk-4.0.so.37 (29.77% corruption rate). The `got_fixup.c` runtime patcher
+faithfully applied displacement to these corrupt entries, preserving the linker's mistake.
+
+**Fix**: Switched to LLD 18 for shared library linking. LLD's independent multi-GOT
+implementation (`MipsGotSection` with per-file `FileGot` structures and `tryMergeGots`)
+avoids this corruption. BFD ld has a 20+ year history of MIPS multi-GOT bugs
+(Debian #195207, Sourceware #10858, #21334).
 
 ### dlmalloc Architecture (2026-02-14)
 

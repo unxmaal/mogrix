@@ -2,9 +2,9 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-17)
+## Current Status (2026-02-18)
 
-**120+ source packages cross-compiled for IRIX (300+ RPMs). 154 bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
+**145+ source packages cross-compiled for IRIX (400+ RPMs). 161+ bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **gtkterm** (GTK3 terminal emulator) running on IRIX from self-contained bundle — first GTK3 GUI app. **xnedit** (Motif text editor) rendering correctly on IRIX. **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. **GTK3 cairo rendering fully works on IRIX** — paint, fill, stroke, arc, text all verified (pixman TLS fix + cairo SHM disable). Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
 
 All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app bundles (.tar.gz or self-extracting .run) for IRIX. 145+ package rule files. Suites: mogrix-essentials, mogrix-extras, mogrix-net, mogrix-smallweb, mogrix-fun. Individual bundles: bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2 — all tested on IRIX.
 
@@ -155,7 +155,7 @@ Skipped utilities: kill, uptime, stdbuf, pinky, who, users, seq (seq: IRIX print
 Derived from `mogrix roadmap aterm` analysis. Built in tiers of increasing complexity. All tiers complete. aterm is the first X11 graphical application, openssh is the first network service.
 
 **Installed:** pcre2, symlinks, tree-pkg, oniguruma, libffi, tcl, flex, chrpath, libpng, bison, libunistring, gettext, zstd, fontconfig, freetype, aterm, openssh, unzip, zip, nano, rsync (21 installed).
-**Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman, uuid (7 staged).
+**Staged:** expat, nettle, libtasn1, fribidi, libjpeg-turbo, pixman (TLS disabled — `PIXMAN_NO_TLS`), uuid (7 staged).
 
 ### Sessions 7-11: Batch Build + New Packages (18 packages)
 
@@ -218,12 +218,23 @@ Key Qt5 fixes:
 | qtermwidget5 | cmake | qterminal | NEXT |
 | qterminal | cmake | Community target | Blocked on qtermwidget5 |
 
+### Phase 8: GTK3 Apps (IN PROGRESS)
+
+| Package | Build System | Status | Notes |
+|---------|-------------|--------|-------|
+| cairo | meson | COMPLETE | SHM disabled, pixman TLS fix |
+| pango | meson | COMPLETE | Text layout engine |
+| gdk-pixbuf2 | meson | COMPLETE | PNG/JPEG builtin loaders |
+| gtk3 | meson | COMPLETE | GTK 3.24.41 |
+| vte291 | meson | COMPLETE | VTE terminal widget |
+| gtkterm | meson | COMPLETE | GTK3 terminal emulator — first GTK3 GUI app on IRIX! |
+
 ### Batch Builds (Sessions 48+)
 
 | Batch | Content | Status |
 |-------|---------|--------|
 | #191–#200 | 60+ packages (libs, utils, fun) | COMPLETED |
-| #201 GTK3 stack | cairo, pango, gdk-pixbuf, gtk3 | PENDING (image libs ready) |
+| #201 GTK3 stack | cairo, pango, gdk-pixbuf2, gtk3, vte291, gtkterm | COMPLETE — gtkterm is first GTK3 GUI app on IRIX |
 | #202 Build tools | cmake, ninja, doxygen, meson, gdb | DONE (gdb SKIPPED — no IRIX debug support in 14.2) |
 | #203 Dev tools pt2 | re2c, yasm, quilt done; fossil, mercurial | PENDING |
 | #204 IPC/heavy | dbus, dbus-glib, icu, cyrus-sasl | PENDING |
@@ -245,12 +256,9 @@ See `rules/INDEX.md` "Skipped Packages" and `rules/methods/before-you-start.md` 
 
 | Package | Build System | Unblocks |
 |---------|-------------|----------|
-| cairo | meson | pango, gtk2 |
-| pango | meson | gtk2, GUI apps |
 | gd | autotools | graphics, emacs |
 | elfutils | autotools | binutils, debuginfo |
 | libarchive | autotools | cmake, rpm |
-| gtk2 | autotools | GUI apps |
 
 ### Long-Term: Modern Browser
 
@@ -295,7 +303,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | Source-level static analysis (ripgrep, rules-integrated) | Done |
 | Roadmap: transitive dep graph + topo sort (`mogrix roadmap`) | Done |
 | Roadmap: glob pattern drops for impossible ecosystems | Done |
-| 145 package rules + 1 class rule | Done |
+| 165+ package rules + 1 class rule | Done |
 | Rule auditing (`mogrix audit-rules`) | Done |
 | Rule scoring (`mogrix score-rules`) | Done |
 | Batch build (`mogrix batch-build`) | Done |
@@ -309,13 +317,16 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | dlmalloc test suite (`tests/dlmalloc-test.c` — 29 tests) | Done |
 | Upstream package support (`mogrix create-srpm`) | Done |
 | Suite bundles (`mogrix bundle pkg1 pkg2 --name`) | Done |
-| 105+ source packages cross-compiled for IRIX | Done |
-| 20 bundles (5 suites + 15 individual) rebuilt and verified on IRIX | Done |
+| 145+ source packages cross-compiled for IRIX | Done |
+| 161+ bundles (5 suites + 15 individual) rebuilt and verified on IRIX | Done |
 | Qt5 5.15.13 running on IRIX (Core+Gui+Widgets+XcbQpa) | Done |
 | Full GNU userland (coreutils, findutils, tar, make) | Done |
 | Package manager (tdnf) functional on IRIX | Done |
 | C++ cross-compilation (clang++ + GCC 9 libstdc++) | Done |
 | SSH server (openssh) on IRIX | Done |
+| GTK3 apps on IRIX | Done |
+| xnedit (Motif text editor with Xt constructor workaround) | Done |
+| `mogrix check-elf` (proactive R_MIPS_REL32 detection) | Done |
 
 ---
 
@@ -350,6 +361,9 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | R_MIPS_REL32 dispatch pattern | IRIX rld fails on function pointers in static data; use switch/strcmp dispatch |
 | R_MIPS_REL32 constructor workaround | IRIX rld silently skips some R_MIPS_REL32 relocs in large binaries; `__attribute__((constructor))` patches broken class record fields at startup. See nedit.yaml |
 | MOGRIX_NO_DLMALLOC for IRIX native Motif | Apps linking IRIX native libXm.so must disable dlmalloc to avoid cross-heap corruption |
+| `_RLDN32_LIST` for compat preload | IRIX rld does NOT preempt executable symbols for shared lib calls (unlike Linux). Compat overrides for buggy libc functions (bsearch) must be in libmogrix_compat.so, preloaded via `_RLDN32_LIST=libmogrix_compat.so:DEFAULT` |
+| bsearch compat (libc bug) | IRIX bsearch() crashes on nmemb=0 (unsigned underflow). GTK3 blocker. Fix via libmogrix_compat.so preload |
+| Bundler dep resolution: mogrix RPMs first | Check mogrix-built RPMs before IRIX sysroot to prevent ABI-incompatible fallback to ancient system libraries (e.g. zlib-ng vs IRIX zlib) |
 
 ---
 
@@ -373,6 +387,8 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 16. **Qt5 on IRIX:** Qt5 5.15.13 cross-compiled and verified running (`qVersion()` = "5.15.13") ✓
 17. **Motif app on IRIX:** NEdit 5.7 cross-compiled and rendering on IRIX native Motif (constructor workaround for rld relocation failures) ✓
 18. **Structured test harness:** mogrix-test MCP server with bundle testing, dep checking, par tracing, and X11 screenshots ✓
+19. **GTK3 GUI app:** gtkterm running on IRIX with full GTK3 UI, VTE terminal widget, and proper theme rendering ✓
+20. **Proactive ELF analysis:** `mogrix check-elf` detects ClassRec relocation issues before deploying to IRIX ✓
 
 ---
 
@@ -385,3 +401,4 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 | `rules/generic.yaml` | Universal rules for all packages |
 | `rules/methods/before-you-start.md` | Checklist + SGUG-RSE assumptions warning |
 | `compat/catalog.yaml` | Compat function registry |
+| `rules/methods/compat-functions.md` | Compat function workflow including libmogrix_compat.so |

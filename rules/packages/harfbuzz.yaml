@@ -2,7 +2,6 @@ package: harfbuzz
 rules:
   drop_buildrequires:
   - gobject-introspection-devel
-  - libicu-devel
   - graphite2-devel
   - gtk-doc
   spec_replacements:
@@ -11,7 +10,7 @@ rules:
 
       export CXXFLAGS="%{optflags}"
 
-      %configure --disable-static --without-graphite2 --without-gobject --without-glib --disable-introspection --without-cairo --without-icu
+      %configure --disable-static --without-graphite2 --without-gobject --without-glib --disable-introspection --without-cairo --with-icu
 
       '
   - pattern: 'License:        MIT-Modern-Variant'
@@ -21,6 +20,8 @@ rules:
 
       Provides: libharfbuzz-subset.so.0(mips-32)
 
+      Provides: libharfbuzz-icu.so.0(mips-32)
+
       Provides: harfbuzz(mips-32) = %{version}-%{release}
 
       '
@@ -28,17 +29,6 @@ rules:
 
       Requires:       %{name}-icu%{?_isa} = %{version}-%{release}'
     replacement: 'Requires:       %{name} = %{version}-%{release}'
-  - pattern: '%package        icu
-
-      Summary:        Harfbuzz ICU support library
-
-      Requires:       %{name}%{?_isa} = %{version}-%{release}
-
-
-      %description    icu
-
-      This package contains Harfbuzz ICU support library.'
-    replacement: '# icu subpackage removed (ICU not available on IRIX yet)'
   - pattern: '%ldconfig_scriptlets
 
 
@@ -125,20 +115,20 @@ rules:
 
       %{_libdir}/libharfbuzz-cairo.so
 
+      %{_libdir}/libharfbuzz-icu.so
+
       %{_libdir}/libharfbuzz-subset.so
 
       %{_libdir}/pkgconfig/harfbuzz.pc
 
       %{_libdir}/pkgconfig/harfbuzz-cairo.pc
 
+      %{_libdir}/pkgconfig/harfbuzz-icu.pc
+
       %{_libdir}/pkgconfig/harfbuzz-subset.pc
 
       %{_libdir}/cmake/harfbuzz/
 
       '
-  - pattern: '%files icu
-
-      %{_libdir}/libharfbuzz-icu.so.*'
-    replacement: '# icu files removed'
   prep_commands:
   - sed -i 's/^SUBDIRS = src util test perf docs/SUBDIRS = src util docs/' Makefile.in

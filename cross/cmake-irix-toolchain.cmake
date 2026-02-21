@@ -14,7 +14,10 @@ set(CMAKE_RANLIB /opt/cross/bin/llvm-ranlib)
 set(CMAKE_STRIP /opt/cross/bin/llvm-strip)
 
 set(CMAKE_SYSROOT /opt/sgug-staging)
-set(CMAKE_FIND_ROOT_PATH /opt/sgug-staging/usr/sgug)
+# Both paths needed: /opt/sgug-staging re-roots pkg-config hints correctly
+# (e.g. /usr/sgug/lib32 → /opt/sgug-staging/usr/sgug/lib32), while
+# /opt/sgug-staging/usr/sgug provides the default lib32/ search.
+set(CMAKE_FIND_ROOT_PATH /opt/sgug-staging /opt/sgug-staging/usr/sgug)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
@@ -24,5 +27,21 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 set(CMAKE_INSTALL_PREFIX /usr/sgug)
 set(CMAKE_INSTALL_LIBDIR lib32)
 
-set(CMAKE_C_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca")
-set(CMAKE_CXX_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca")
+# Tell cmake to search lib32 (IRIX n32 ABI) in addition to default lib/
+set(CMAKE_SYSTEM_LIBRARY_PATH /usr/sgug/lib32)
+# CMAKE_LIBRARY_PATH helps find_library search lib32 under sysroot
+list(APPEND CMAKE_LIBRARY_PATH /opt/sgug-staging/usr/sgug/lib32)
+
+# Tell pkg-config where to find .pc files for cross-compilation
+# PKG_CONFIG_SYSROOT_DIR prefixes -I/-L paths so cmake IMPORTED_TARGET
+# include dirs exist on disk. find_library still works via CMAKE_SYSTEM_LIBRARY_PATH.
+set(ENV{PKG_CONFIG_PATH} "")
+set(ENV{PKG_CONFIG_LIBDIR} "/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig")
+set(ENV{PKG_CONFIG_SYSROOT_DIR} "/opt/sgug-staging")
+
+# -mxgot: Use 32-bit GOT offsets (lui/addiu pairs) instead of 16-bit.
+# Without this, LLD creates "secondary GOTs" for large libraries (>16K entries).
+# IRIX rld does NOT displace secondary GOT entries, causing SIGSEGV at runtime.
+# -mxgot eliminates secondary GOTs so all entries are in the primary GOT that rld handles.
+set(CMAKE_C_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca -mxgot")
+set(CMAKE_CXX_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -Wno-macro-redefined -Dalloca=__builtin_alloca -mxgot")

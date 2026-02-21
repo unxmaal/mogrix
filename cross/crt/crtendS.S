@@ -4,6 +4,8 @@
  * Identical to crtendT.S. Provides NULL sentinels at the end of .ctors/.dtors.
  */
 
+	.abicalls		/* MIPS PIC ABI — required for shared library compatibility */
+
 /* ---- .ctors NULL sentinel (end of array) ---- */
 	.section .ctors,"aw",@progbits
 	.p2align 2

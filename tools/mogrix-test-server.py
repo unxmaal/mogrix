@@ -710,6 +710,12 @@ class MogrixTestServer:
                                 "Run on host not chroot (default: false)"
                             ),
                         },
+                        "env": {
+                            "type": "object",
+                            "description": (
+                                "Extra env vars, e.g. {\"DISPLAY\": \":0\"}"
+                            ),
+                        },
                     },
                     "required": ["command"],
                 },
@@ -828,7 +834,7 @@ class MogrixTestServer:
             script = gen.generate(tests)
 
             # Deploy to IRIX (host mode — bundles are self-contained)
-            remote_dir = "/tmp/mogrix-test"
+            remote_dir = "/usr/people/edodd/apps"
             ok, msg = self.ssh.deploy_dir(bundle_dir, remote_dir)
             if not ok:
                 return self._tool_error(
@@ -956,12 +962,14 @@ class MogrixTestServer:
         if err:
             return err
 
-        # Build command with env vars
+        # Build command with env vars (double-quote values for sh safety)
         env_prefix = ""
         if env_vars:
             parts = []
             for k, v in env_vars.items():
-                parts.append(f"{k}={v}; export {k}")
+                # Escape any double quotes or backslashes in the value
+                escaped_v = str(v).replace("\\", "\\\\").replace('"', '\\"')
+                parts.append(f'{k}="{escaped_v}"; export {k}')
             env_prefix = "; ".join(parts) + "; "
 
         command = f"{env_prefix}{binary} {cmd_args}"
@@ -1124,6 +1132,7 @@ class MogrixTestServer:
         timeout = args.get("timeout", 30)
         raw = args.get("raw", False)
         host_mode = args.get("host_mode", False)
+        env_vars = args.get("env", {})
 
         if not command:
             return self._tool_error(request_id, "command is required")
@@ -1132,7 +1141,16 @@ class MogrixTestServer:
         if err:
             return err
 
-        par_cmd = f"par -s -SS -l -i {command} 2>&1; true"
+        # Build env prefix if env vars provided
+        env_prefix = ""
+        if env_vars:
+            parts = []
+            for k, v in env_vars.items():
+                escaped_v = str(v).replace("\\", "\\\\").replace('"', '\\"')
+                parts.append(f'{k}="{escaped_v}"; export {k}')
+            env_prefix = "; ".join(parts) + "; "
+
+        par_cmd = f"{env_prefix}par -s -SS -l -i {command} 2>&1; true"
 
         if host_mode:
             rc, stdout, stderr = self.ssh.exec_host(par_cmd, timeout)

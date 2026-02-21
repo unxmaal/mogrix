@@ -1673,10 +1673,16 @@ static int dlmalloc_open_dev_zero(void) {
   }
   return fd;
 }
-#define MMAP_DEFAULT(s) ((dev_zero_fd < 0) ? \
-           (dev_zero_fd = dlmalloc_open_dev_zero(), \
-            mmap(0, (s), MMAP_PROT, MMAP_FLAGS, dev_zero_fd, 0)) : \
-            mmap(0, (s), MMAP_PROT, MMAP_FLAGS, dev_zero_fd, 0))
+/* IRIX mmap can return address 0 (page 0 is mappable). dlmalloc treats
+   0 as valid (only checks for MFAIL=-1), then writes to it → SIGSEGV.
+   This wrapper unmaps address-0 results and returns MFAIL instead. */
+static FORCEINLINE void* dlmalloc_irix_mmap(size_t size) {
+  if (dev_zero_fd < 0) dev_zero_fd = dlmalloc_open_dev_zero();
+  void* ptr = mmap(0, size, MMAP_PROT, MMAP_FLAGS, dev_zero_fd, 0);
+  if (ptr == (void*)0) { munmap(ptr, size); return MFAIL; }
+  return ptr;
+}
+#define MMAP_DEFAULT(s) dlmalloc_irix_mmap(s)
 #endif /* MAP_ANONYMOUS */
 
 #define DIRECT_MMAP_DEFAULT(s) MMAP_DEFAULT(s)

@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""
+Fix MIPS GOT ↔ stub alignment for IRIX rld compatibility.
+
+LLD's MIPS backend sorts .MIPS.stubs and .dynsym global symbols in opposite
+orders. On Linux, the dynamic linker resolves symbols by name so this doesn't
+matter. But IRIX rld uses stub POSITION to determine which symbol to resolve
+during lazy binding: stub[i] → symbol GOTSYM+i. With reversed stubs, every
+external function call resolves to the wrong symbol.
+
+This tool fixes the GOT entries so that GOT[LOCAL_GOTNO + i] points to
+stubs_base + i * stub_size, matching what IRIX rld expects.
+
+Safe for all shared libraries — exits early if stubs are already aligned.
+
+Integration: runs automatically from irix-ld after fix-anon-relocs.
+"""
+
+import struct
+import sys
+
+def fix_got_stubs(path_in, path_out):
+    with open(path_in, 'rb') as f:
+        data = bytearray(f.read())
+
+    # Verify ELF magic and MIPS big-endian 32-bit
+    if data[:4] != b'\x7fELF':
+        return  # Not ELF
+    if data[4] != 1:  # EI_CLASS = ELFCLASS32
+        return
+    if data[5] != 2:  # EI_DATA = ELFDATA2MSB (big-endian)
+        return
+    ei_type = struct.unpack_from('>H', data, 16)[0]
+    if ei_type != 3:  # ET_DYN (shared library)
+        return
+
+    # Parse section headers to find .got and .MIPS.stubs
+    e_shoff = struct.unpack_from('>I', data, 32)[0]
+    e_shentsize = struct.unpack_from('>H', data, 46)[0]
+    e_shnum = struct.unpack_from('>H', data, 48)[0]
+    e_shstrndx = struct.unpack_from('>H', data, 50)[0]
+
+    # Read section header string table
+    shstr_off = struct.unpack_from('>I', data, e_shoff + e_shstrndx * e_shentsize + 16)[0]
+
+    def get_sh_name(sh_offset):
+        name_off = struct.unpack_from('>I', data, sh_offset)[0]
+        end = data.index(0, shstr_off + name_off)
+        return data[shstr_off + name_off:end].decode('ascii', errors='replace')
+
+    got_offset = got_size = got_addr = 0
+    stubs_addr = stubs_size = 0
+
+    for i in range(e_shnum):
+        sh = e_shoff + i * e_shentsize
+        name = get_sh_name(sh)
+        sh_addr = struct.unpack_from('>I', data, sh + 12)[0]
+        sh_off = struct.unpack_from('>I', data, sh + 16)[0]
+        sh_size = struct.unpack_from('>I', data, sh + 20)[0]
+
+        if name == '.got':
+            got_addr = sh_addr
+            got_offset = sh_off
+            got_size = sh_size
+        elif name == '.MIPS.stubs':
+            stubs_addr = sh_addr
+            stubs_size = sh_size
+
+    if got_size == 0 or stubs_size == 0:
+        return  # No GOT or stubs section
+
+    # Parse dynamic section for MIPS tags
+    # Find .dynamic section
+    e_phoff = struct.unpack_from('>I', data, 28)[0]
+    e_phentsize = struct.unpack_from('>H', data, 42)[0]
+    e_phnum = struct.unpack_from('>H', data, 44)[0]
+
+    dyn_offset = 0
+    dyn_size = 0
+    for i in range(e_phnum):
+        ph = e_phoff + i * e_phentsize
+        p_type = struct.unpack_from('>I', data, ph)[0]
+        if p_type == 2:  # PT_DYNAMIC
+            dyn_offset = struct.unpack_from('>I', data, ph + 4)[0]
+            dyn_size = struct.unpack_from('>I', data, ph + 16)[0]
+            break
+
+    if dyn_offset == 0:
+        return
+
+    # Read dynamic tags
+    local_gotno = 0
+    gotsym = 0
+    symtabno = 0
+
+    pos = dyn_offset
+    while pos < dyn_offset + dyn_size:
+        d_tag = struct.unpack_from('>i', data, pos)[0]
+        d_val = struct.unpack_from('>I', data, pos + 4)[0]
+        if d_tag == 0:  # DT_NULL
+            break
+        elif d_tag == 0x7000000a:  # DT_MIPS_LOCAL_GOTNO
+            local_gotno = d_val
+        elif d_tag == 0x70000011:  # DT_MIPS_SYMTABNO
+            symtabno = d_val
+        elif d_tag == 0x70000013:  # DT_MIPS_GOTSYM
+            gotsym = d_val
+        pos += 8
+
+    if local_gotno == 0 or gotsym == 0 or symtabno == 0:
+        return
+
+    num_global = symtabno - gotsym
+    if num_global <= 0:
+        return
+
+    # Determine stub size (typically 16 bytes)
+    num_stubs = stubs_size // 16
+    stub_size = 16
+
+    if num_stubs == 0:
+        return
+
+    # Check if GOT entries are already aligned with expected stubs
+    # Expected: GOT[local_gotno + i] = stubs_addr + i * stub_size
+    first_global_got_off = got_offset + local_gotno * 4
+    current_first = struct.unpack_from('>I', data, first_global_got_off)[0]
+    expected_first = stubs_addr  # stub[0]
+
+    if current_first == expected_first:
+        # Already aligned, nothing to do
+        return
+
+    # Check if it's the reversed pattern
+    # In reversed pattern: GOT[local_gotno + 0] = stubs_addr + (N-1) * stub_size
+    expected_reversed = stubs_addr + (num_stubs - 1) * stub_size
+    if current_first != expected_reversed:
+        # Not the reversed pattern we know how to fix — bail out
+        # (could be partial mismatch from another cause)
+        print(f"WARNING: GOT[{local_gotno}] = 0x{current_first:x}, "
+              f"expected 0x{expected_first:x} or reversed 0x{expected_reversed:x}. "
+              f"Unknown pattern, skipping.", file=sys.stderr)
+        return
+
+    # Fix: rewrite all global GOT entries to match expected stub order
+    fixes = 0
+    for i in range(num_global):
+        got_entry_off = got_offset + (local_gotno + i) * 4
+        if got_entry_off + 4 > len(data):
+            break
+        expected_stub_addr = stubs_addr + i * stub_size
+        current_val = struct.unpack_from('>I', data, got_entry_off)[0]
+        if current_val != expected_stub_addr:
+            struct.pack_into('>I', data, got_entry_off, expected_stub_addr)
+            fixes += 1
+
+    if fixes > 0 and path_out:
+        with open(path_out, 'wb') as f:
+            f.write(data)
+        print(f"fix-got-stubs: fixed {fixes}/{num_global} GOT entries in {path_out}",
+              file=sys.stderr)
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} input.so [output.so]", file=sys.stderr)
+        sys.exit(1)
+    path_in = sys.argv[1]
+    path_out = sys.argv[2] if len(sys.argv) > 2 else sys.argv[1]
+    fix_got_stubs(path_in, path_out)

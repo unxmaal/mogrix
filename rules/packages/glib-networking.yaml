@@ -1,0 +1,73 @@
+package: glib-networking
+rules:
+  prep_commands:
+  - sed -i "/subdir('tests')/d" tls/meson.build
+  drop_buildrequires:
+  - meson
+  - pkgconfig(gsettings-desktop-schemas)
+  - pkgconfig(libproxy-1.0)
+  - ca-certificates
+  - systemd-rpm-macros
+  drop_requires:
+  - ca-certificates
+  - gsettings-desktop-schemas
+  - glib2(x86-32) >= 2.73.3
+  - libproxy-duktape
+  drop_subpackages:
+  - tests
+  spec_replacements:
+  # Remove rpmautospec macros
+  - pattern: '%define autorelease(e:s:pb:n) %{?-p:0.}%{lua:
+
+      \    release_number = 1;
+
+      \    base_release_number = tonumber(rpm.expand("%{?-b*}%{!?-b:1}"));
+
+      \    print(release_number + base_release_number - 1);
+
+      }%{?-e:.%{-e*}}%{?-s:.%{-s*}}%{!?-n:%{?dist}}'
+    replacement: '# autorelease removed'
+  - pattern: '%autorelease'
+    replacement: '1%{?dist}'
+  # Replace meson build with cross-compile
+  - pattern: "%meson \\\n%if !0%{?with_libproxy}\n  -Dlibproxy=disabled \\\n  -Denvironment_proxy=enabled \\\n%endif\n  -Dinstalled_tests=true \\\n  %nil\n%meson_build"
+    replacement: "MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  -Dlibproxy=disabled \\\n  -Denvironment_proxy=enabled \\\n  -Dinstalled_tests=false \\\n  -Dopenssl=disabled \\\n  -Dgnome_proxy=disabled\n/home/edodd/.local/bin/meson compile -C _build"
+  - pattern: '%meson_install'
+    replacement: 'DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild'
+  - pattern: '%meson_test'
+    replacement: '# Tests disabled for cross-compilation'
+  - pattern: '%files -f %{name}.lang'
+    replacement: '%files'
+  # Remove libproxy files
+  - pattern: '%{_libdir}/gio/modules/libgiognomeproxy.so
+
+      %{_libdir}/gio/modules/libgiognutls.so
+
+      %if 0%{?with_libproxy}
+
+      %{_libdir}/gio/modules/libgiolibproxy.so
+
+      %{_libexecdir}/glib-pacrunner
+
+      %{_datadir}/dbus-1/services/org.gtk.GLib.PACRunner.service
+
+      %{_userunitdir}/glib-pacrunner.service
+
+      %else
+
+      %{_libdir}/gio/modules/libgioenvironmentproxy.so
+
+      %endif'
+    replacement: '%{_libdir}/gio/modules/libgiognutls.so
+
+      %{_libdir}/gio/modules/libgioenvironmentproxy.so'
+  - pattern: 'Requires: glib2%{?_isa} >= %{glib2_version}
+
+      Requires: gsettings-desktop-schemas'
+    replacement: 'Requires: glib2%{?_isa} >= %{glib2_version}
+
+      Provides: glib-networking(mips-32) = %{version}-%{release}'
+  install_cleanup:
+  - rm -rf %{buildroot}%{_datadir}/locale
+  - rm -rf %{buildroot}%{_datadir}/dbus-1
+  - rm -f %{buildroot}%{_libdir}/gio/modules/libgiognomeproxy.so

@@ -1,0 +1,21 @@
+package: libSM
+rules:
+  drop_buildrequires:
+    - libuuid-devel
+  configure_flags:
+    remove:
+      - "--with-libuuid"
+    add:
+      - "--without-libuuid"
+  spec_replacements:
+    # Set ACLOCAL_PATH so autoreconf finds xorg-macros.m4 from staging
+    - pattern: "autoreconf -v --install --force"
+      replacement: "export ACLOCAL_PATH=/opt/sgug-staging/usr/sgug/share/aclocal:$ACLOCAL_PATH\nautoreconf -v --install --force"
+    # ldconfig macros don't exist on IRIX
+    - pattern: "%ldconfig_post"
+      replacement: "# ldconfig_post removed"
+    - pattern: "%ldconfig_postun"
+      replacement: "# ldconfig_postun removed"
+  # Force-disable uuid_create detection (false positive from host libs in cross-compile)
+  prep_commands:
+    - "sed -i 's/uuid_create/uuid_create_disabled/g' configure.ac configure 2>/dev/null || :"

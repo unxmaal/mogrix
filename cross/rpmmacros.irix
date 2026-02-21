@@ -66,7 +66,9 @@
 
 # Compiler flags
 # Note: Most flags are handled by the wrapper scripts
-%optflags               -O2
+# -mxgot: Use 32-bit GOT offsets. Without this, LLD creates "secondary GOTs"
+# for large libraries (>16K entries) that IRIX rld cannot displace, causing SIGSEGV.
+%optflags               -O2 -mxgot
 
 # CFLAGS/CXXFLAGS passed to builds
 %build_cflags           %{optflags}

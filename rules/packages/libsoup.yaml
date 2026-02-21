@@ -1,0 +1,47 @@
+package: libsoup
+rules:
+  drop_buildrequires:
+  - meson
+  - pkgconfig(gobject-introspection-1.0)
+  - pkgconfig(sysprof-capture-4)
+  - vala
+  - /usr/bin/ntlm_auth
+  - gtk-doc
+  - glib-networking
+  - krb5-devel
+  drop_requires:
+  - glib2(x86-32) >= 2.58.0
+  - glib-networking(x86-32) >= 2.58.0
+  - glib-networking
+  drop_subpackages:
+  - doc
+  # IRIX sys/socket.h defines sa_len as a macro — rename local variable in soup-socket.c
+  prep_commands:
+  - perl -pi -e 's/\bsa_len\b/sock_addr_len/g' libsoup/soup-socket.c
+  spec_replacements:
+  # Replace meson build with cross-compile
+  - pattern: "%meson %gtkdoc_flags\n%meson_build"
+    replacement: "export PATH=/home/edodd/projects/github/unxmaal/mogrix/cross/native-tools:$PATH\nMOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  -Dgtk_doc=false \\\n  -Dintrospection=disabled \\\n  -Dvapi=disabled \\\n  -Dgssapi=disabled \\\n  -Dntlm=disabled \\\n  -Dsysprof=disabled \\\n  -Dtests=false \\\n  -Dinstalled_tests=false \\\n  -Dtls_check=false \\\n  -Dgnome=false\n/home/edodd/.local/bin/meson compile -C _build"
+  - pattern: '%meson_install'
+    replacement: 'DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild'
+  - pattern: '%find_lang libsoup'
+    replacement: '# find_lang disabled for cross-build'
+  - pattern: '%files -f libsoup.lang'
+    replacement: '%files'
+  # Remove gnome library from main %files (disabled with -Dgnome=false)
+  - pattern: "%{_libdir}/libsoup-2.4.so.1*\n%{_libdir}/libsoup-gnome-2.4.so.1*"
+    replacement: "%{_libdir}/libsoup-2.4.so.1*"
+  # Remove gobject-introspection files from main %files
+  - pattern: "%dir %{_libdir}/girepository-1.0\n%{_libdir}/girepository-1.0/Soup*2.4.typelib"
+    replacement: '# girepository disabled for cross-build'
+  # Replace entire %files devel section to remove gnome, gir, and vala entries
+  - pattern: "%{_includedir}/libsoup-2.4\n%{_includedir}/libsoup-gnome-2.4\n%{_libdir}/libsoup-2.4.so\n%{_libdir}/libsoup-gnome-2.4.so\n%{_libdir}/pkgconfig/*.pc\n%dir %{_datadir}/gir-1.0\n%{_datadir}/gir-1.0/Soup*2.4.gir\n%dir %{_datadir}/vala\n%dir %{_datadir}/vala/vapi\n%{_datadir}/vala/vapi/libsoup-2.4.deps\n%{_datadir}/vala/vapi/libsoup-2.4.vapi"
+    replacement: "%{_includedir}/libsoup-2.4\n%{_libdir}/libsoup-2.4.so\n%{_libdir}/pkgconfig/*.pc"
+  # Fix Requires/Provides
+  - pattern: "Requires: glib2%{?_isa} >= %{glib2_version}\nRequires: glib-networking%{?_isa} >= %{glib2_version}"
+    replacement: "Requires: glib2%{?_isa} >= %{glib2_version}\nProvides: libsoup(mips-32) = %{version}-%{release}\nProvides: libsoup-2.4.so.1\nProvides: pkgconfig(libsoup-2.4)"
+  install_cleanup:
+  - rm -rf %{buildroot}%{_datadir}/locale
+  - rm -rf %{buildroot}%{_libdir}/girepository-1.0
+  - rm -rf %{buildroot}%{_datadir}/gir-1.0
+  - rm -rf %{buildroot}%{_datadir}/vala

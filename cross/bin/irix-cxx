@@ -32,7 +32,9 @@ LD="${STAGING}/bin/irix-ld"
 # 4. SGUG clang compat headers (fix IRIX headers for clang)
 # 5. SGUG staging headers (cross-built packages)
 # 6. IRIX sysroot headers (pristine IRIX)
-CLANG_FLAGS="--target=mips-sgi-irix6.5 -mabi=n32 -march=mips3"
+# -mxgot: 32-bit GOT offsets. Without this, LLD creates secondary GOTs for
+# large libraries that IRIX rld cannot displace, causing SIGSEGV.
+CLANG_FLAGS="--target=mips-sgi-irix6.5 -mabi=n32 -march=mips3 -mxgot"
 # Override _MIPS_ISA - clang sets _MIPS_ISA_MIPS64 which IRIX headers don't recognize
 # (same fix as irix-cc)
 CLANG_FLAGS="$CLANG_FLAGS -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS3"
@@ -51,6 +53,8 @@ CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/dicl-clang-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $SYSROOT/usr/include"
 CLANG_FLAGS="$CLANG_FLAGS -D_SGI_SOURCE -D_SGI_MP_SOURCE -D_SGI_REENTRANT_FUNCTIONS"
+# IRIX is Unix — packages check __unix__ for Unix-specific code paths
+CLANG_FLAGS="$CLANG_FLAGS -Dunix=1 -D__unix__=1 -D__unix=1"
 CLANG_FLAGS="$CLANG_FLAGS -D__sgi=1 -D_LANGUAGE_C_PLUS_PLUS=1 -D_LONGLONG=1"
 # IRIX bool/wchar_t type support flags
 CLANG_FLAGS="$CLANG_FLAGS -D_BOOL -D_WCHAR_T_IS_KEYWORD"

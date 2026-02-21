@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Reorder DT_NEEDED entries in a MIPS N32 ELF executable.
+
+IRIX rld crashes when libgtk-3.so.0 appears before C++ libraries
+(like libvte-2.91.so.0) in the DT_NEEDED list. This is because loading
+GTK3's massive dependency tree first overflows rld's internal tables.
+
+This tool moves specified "heavy" libraries to the end of the NEEDED list,
+ensuring lighter/C++ deps are loaded first by rld.
+
+Usage: reorder-needed [--defer LIB]... <elf-file>
+  --defer LIB    Move LIB to end of NEEDED list (can repeat)
+
+Default deferred libs: libgtk-3.so.0, libgdk-3.so.0
+"""
+import struct
+import sys
+import argparse
+
+DT_NULL = 0
+DT_NEEDED = 1
+
+# Libraries that should appear LAST in NEEDED to avoid rld overflow
+DEFAULT_DEFER = ['libgtk-3.so.0', 'libgdk-3.so.0']
+
+def main():
+    parser = argparse.ArgumentParser(description='Reorder DT_NEEDED entries')
+    parser.add_argument('elf_file', help='ELF binary to modify')
+    parser.add_argument('--defer', action='append', default=None,
+                        help='Library to move to end (repeatable)')
+    args = parser.parse_args()
+
+    defer_set = set(args.defer or DEFAULT_DEFER)
+
+    with open(args.elf_file, 'rb') as f:
+        data = bytearray(f.read())
+
+    # Parse ELF header (32-bit big-endian MIPS)
+    if data[4] != 1 or data[5] != 2:
+        print("Error: expected 32-bit big-endian ELF", file=sys.stderr)
+        sys.exit(1)
+
+    be = '>'
+    e_phoff = struct.unpack_from(f'{be}I', data, 28)[0]
+    e_phentsize = struct.unpack_from(f'{be}H', data, 42)[0]
+    e_phnum = struct.unpack_from(f'{be}H', data, 44)[0]
+
+    # Find PT_DYNAMIC
+    dyn_offset = None
+    dyn_size = None
+    for i in range(e_phnum):
+        ph_off = e_phoff + i * e_phentsize
+        p_type = struct.unpack_from(f'{be}I', data, ph_off)[0]
+        if p_type == 2:
+            dyn_offset = struct.unpack_from(f'{be}I', data, ph_off + 4)[0]
+            dyn_size = struct.unpack_from(f'{be}I', data, ph_off + 16)[0]
+            break
+
+    if dyn_offset is None:
+        print("Error: no PT_DYNAMIC found", file=sys.stderr)
+        sys.exit(1)
+
+    # Find .dynstr: look for DT_STRTAB in dynamic section
+    strtab_addr = None
+    pos = dyn_offset
+    while pos < dyn_offset + dyn_size:
+        d_tag = struct.unpack_from(f'{be}I', data, pos)[0]
+        d_val = struct.unpack_from(f'{be}I', data, pos + 4)[0]
+        if d_tag == 5:  # DT_STRTAB
+            strtab_addr = d_val
+        if d_tag == DT_NULL:
+            break
+        pos += 8
+
+    if strtab_addr is None:
+        print("Error: no DT_STRTAB found", file=sys.stderr)
+        sys.exit(1)
+
+    # Find MIPS_BASE_ADDRESS to convert vaddr to file offset
+    base_addr = struct.unpack_from(f'{be}I', data, 28)[0]  # e_phoff isn't base
+    # Use first LOAD segment's vaddr - offset
+    for i in range(e_phnum):
+        ph_off = e_phoff + i * e_phentsize
+        p_type = struct.unpack_from(f'{be}I', data, ph_off)[0]
+        if p_type == 1:  # PT_LOAD
+            p_offset = struct.unpack_from(f'{be}I', data, ph_off + 4)[0]
+            p_vaddr = struct.unpack_from(f'{be}I', data, ph_off + 8)[0]
+            if strtab_addr >= p_vaddr and strtab_addr < p_vaddr + struct.unpack_from(f'{be}I', data, ph_off + 16)[0]:
+                strtab_file_offset = strtab_addr - p_vaddr + p_offset
+                break
+    else:
+        print("Error: strtab not in any LOAD segment", file=sys.stderr)
+        sys.exit(1)
+
+    def read_string(addr):
+        """Read null-terminated string from dynstr."""
+        off = strtab_file_offset + addr
+        end = data.index(0, off)
+        return data[off:end].decode('ascii')
+
+    # Read all dynamic entries, collecting NEEDED entries
+    entries = []
+    needed_entries = []
+    other_entries = []
+    pos = dyn_offset
+    while pos < dyn_offset + dyn_size:
+        d_tag = struct.unpack_from(f'{be}I', data, pos)[0]
+        d_val = struct.unpack_from(f'{be}I', data, pos + 4)[0]
+        entries.append((d_tag, d_val, pos))
+        if d_tag == DT_NEEDED:
+            name = read_string(d_val)
+            needed_entries.append((d_tag, d_val, name))
+        elif d_tag != DT_NULL:
+            other_entries.append((d_tag, d_val))
+        if d_tag == DT_NULL:
+            break
+        pos += 8
+
+    # Partition NEEDED into front (non-deferred) and back (deferred)
+    front = [(t, v, n) for t, v, n in needed_entries if n not in defer_set]
+    back = [(t, v, n) for t, v, n in needed_entries if n in defer_set]
+
+    if not back:
+        print("No deferred libraries found in NEEDED, nothing to reorder")
+        return
+
+    # Check if already in correct order
+    original_order = [n for _, _, n in needed_entries]
+    new_order = [n for _, _, n in front + back]
+    if original_order == new_order:
+        print("NEEDED already in correct order")
+        return
+
+    # Rebuild dynamic section: reordered NEEDED, then other entries, then NULL padding
+    new_entries = [(t, v) for t, v, _ in front + back]
+    new_entries.extend(other_entries)
+
+    # Pad with NULL to same total size
+    total_slots = len(entries)
+    while len(new_entries) < total_slots:
+        new_entries.append((DT_NULL, 0))
+
+    # Write back
+    pos = dyn_offset
+    for d_tag, d_val in new_entries:
+        struct.pack_into(f'{be}I', data, pos, d_tag)
+        struct.pack_into(f'{be}I', data, pos + 4, d_val)
+        pos += 8
+
+    with open(args.elf_file, 'wb') as f:
+        f.write(data)
+
+    moved = [n for _, _, n in back]
+    print(f"Reordered NEEDED: moved {moved} to end")
+    print(f"New order: {new_order}")
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,104 @@
+package: webkitgtk
+upstream:
+  url: https://webkitgtk.org/releases/webkitgtk-2.42.5.tar.xz
+  version: "2.42.5"
+  type: tarball
+  build_system: cmake
+  license: LGPLv2+
+  summary: "GTK port of the WebKit rendering engine"
+  source_dir: webkitgtk-2.42.5
+add_source:
+  - irix_pthread_compat.h
+  - ipc_debug_log.h
+rules:
+  inject_compat_functions:
+    - strdup
+    - getline
+    - mkdtemp
+    - strerror_r
+    - memmem
+    - mincore
+    - __muloti4
+  prep_commands:
+    # Use host preprocessor for IDL code generation (cross-compiler includes
+    # IRIX-compat stdarg.h with 'typedef char *va_list' that breaks IDL parser)
+    - sed -i 's|\\\"${CMAKE_CXX_COMPILER}\\\" -E -P -x c++|\\\"/usr/bin/g++\\\" -E -P -x c++|' Source/cmake/WebKitCompilerFlags.cmake
+    # IRIX PTHREAD_KEYS_MAX is _sysconf() (runtime), WebKit needs constexpr
+    - sed -i 's/static constexpr ThreadSpecificKey InvalidThreadSpecificKey = PTHREAD_KEYS_MAX/static constexpr ThreadSpecificKey InvalidThreadSpecificKey = 128/' Source/WTF/wtf/ThreadingPrimitives.h
+    # IRIX lacks MAP_FILE — it's 0 on all modern systems (just means "map from file")
+    - sed -i 's/MAP_FILE | //' Source/WTF/wtf/FileSystem.cpp
+    # IRIX lacks pthread_getattr_np (GNU) and pthread_attr_getstack (POSIX.1-2001).
+    # Include compat header that provides inline wrappers using IRIX's separate functions.
+    - cp %{_sourcedir}/irix_pthread_compat.h Source/WTF/wtf/irix_pthread_compat.h
+    - perl -i -pe 's{^(#include <pthread\.h>)}{$1\n#include "irix_pthread_compat.h"}' Source/WTF/wtf/StackBounds.cpp
+    # Include sys/resource.h and unistd.h for IRIX too (needed by getrlimit in compat header)
+    - sed -i '0,/#if OS(LINUX)/s/#if OS(LINUX)/#if OS(LINUX) || defined(__sgi)/' Source/WTF/wtf/StackBounds.cpp
+    # IRIX C++ name collision: struct flock vs flock() function.
+    # Add extern "C" flock prototype before the USE(FILE_LOCK) section.
+    - perl -i -pe 's{^(#if USE\(FILE_LOCK\))}{#ifdef __sgi\nextern "C" int flock(int, int);\n#endif\n$1}' Source/WTF/wtf/posix/FileSystemPOSIX.cpp
+    # IRIX lacks MAP_ANON — anonymous mmap uses /dev/zero instead.
+    # Define MAP_ANON as 0 and open /dev/zero as fd.
+    - perl -i -pe 's{^(#include <sys/mman\.h>)}{$1\n#ifdef __sgi\n#include <fcntl.h>\n#ifndef MAP_ANON\n#define MAP_ANON 0\n#endif\n#endif}' Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+    - perl -i -pe 's{int fd = -1;}{int fd = -1;\n#ifdef __sgi\n    fd = open("/dev/zero", O_RDWR);\n#endif}' Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+    # IRIX lacks CLOCK_THREAD_CPUTIME_ID — fall back to getrusage for per-thread CPU time
+    - perl -i -pe 's{int ret = clock_gettime\(CLOCK_THREAD_CPUTIME_ID, &ts\);}{struct rusage ru;\n    int ret = getrusage(RUSAGE_SELF, \&ru);\n    ts.tv_sec = ru.ru_utime.tv_sec + ru.ru_stime.tv_sec;\n    ts.tv_nsec = (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) * 1000;}' Source/WTF/wtf/posix/CPUTimePOSIX.cpp
+    # CMAKE_SYSTEM_NAME is "Linux" (cmake has no IRIX support), so WebKit
+    # includes Linux-specific sources. Remove them and use generic fallbacks.
+    - sed -i '/linux\/RealTimeThreads.h/d' Source/WTF/wtf/PlatformGTK.cmake
+    # Disable Linux-specific sources — we set CMAKE_SYSTEM_NAME=Linux because cmake
+    # has no IRIX support, but we need generic fallbacks, not Linux procfs/cgroups code.
+    - sed -i 's/CMAKE_SYSTEM_NAME MATCHES "Linux"/FALSE/' Source/WTF/wtf/PlatformGTK.cmake
+    - sed -i 's/CMAKE_SYSTEM_NAME MATCHES "Linux"/FALSE/' Source/cmake/OptionsGTK.cmake
+    # CLoop interpreter: t6 and t7 registers not declared but referenced by UNUSED_VARIABLE
+    - sed -i 's/CLoopRegister t0, t1, t2, t3, t5, sp, cfr, lr, pc;/CLoopRegister t0, t1, t2, t3, t5, t6, t7, sp, cfr, lr, pc;/' Source/JavaScriptCore/llint/LowLevelInterpreter.cpp
+    # IRIX mincore takes caddr_t (char*) not void* — add cast
+    - sed -i 's/auto result = mincore(pageStart,/auto result = mincore(reinterpret_cast<caddr_t>(pageStart),/' Source/JavaScriptCore/heap/BlockDirectory.cpp
+    # MIPS clang backend can't guarantee tail call elimination — disable MUST_TAIL_CALL
+    - sed -i 's/__has_cpp_attribute(clang::musttail)/0/' Source/WTF/wtf/Compiler.h
+    # MIPS branch range: ColorConversion.cpp and ColorLuminance.cpp expand to huge template
+    # functions via callOnUnderlyingType. LLVM's MIPS assembler can't relax 16-bit branch
+    # offsets, causing "out of range PC16 fixup". Exclude from unified builds (@no-unify)
+    # and compile at -O1 to reduce code size.
+    - sed -i 's|platform/graphics/ColorConversion.cpp|platform/graphics/ColorConversion.cpp@no-unify|' Source/WebCore/Sources.txt
+    - sed -i 's|platform/graphics/ColorLuminance.cpp|platform/graphics/ColorLuminance.cpp@no-unify|' Source/WebCore/Sources.txt
+    - perl -i -pe 'BEGIN{$done=0} if(!$done && /^WEBKIT_FRAMEWORK\(WebCore\)/){print "set_source_files_properties(platform/graphics/ColorConversion.cpp platform/graphics/ColorLuminance.cpp PROPERTIES COMPILE_FLAGS \"-O1\")\n"; $done=1}' Source/WebCore/CMakeLists.txt
+    # IRIX lacks MSG_NOSIGNAL — define as 0 (like macOS does). Use SIG_IGN SIGPIPE instead.
+    - sed -i 's/#if OS(DARWIN)/#if OS(DARWIN) || defined(__sgi)/' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # IRIX AF_UNIX doesn't support SOCK_SEQPACKET — fall back to SOCK_STREAM (like macOS).
+    # WebKit uses length-prefixed IPC framing so stream semantics work fine.
+    - sed -i 's/!OS(DARWIN)/!OS(DARWIN) \&\& !defined(__sgi)/' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # --- IPC debug logging (TEMPORARY - remove after root-causing connection drop) ---
+    # All format strings live in ipc_debug_log.h macros to avoid YAML % escaping issues.
+    - cp %{_sourcedir}/ipc_debug_log.h Source/WebKit/Platform/IPC/unix/ipc_debug_log.h
+    - perl -i -pe 's{^(#include <poll\.h>)}{$1\n#include "ipc_debug_log.h"}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log connection opened
+    - perl -i -pe 's{(m_isConnected = true;)}{$1\n    IPC_LOG_OPEN(m_socketDescriptor, getpid());}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log recvmsg error (after EINTR retry)
+    - perl -i -0pe 's{(if \(errno == EINTR\)\n\s+continue;\n\n\s+)(buffer\.shrink)}{$1IPC_LOG_RECV_ERR(errno, socketDescriptor);\n            $2}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log MSG_CTRUNC
+    - perl -i -0pe 's{(if \(message\.msg_flags & MSG_CTRUNC\) \{\n)(\s+// Control data)}{$1            IPC_LOG_CTRUNC(socketDescriptor);\n$2}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log ECONNRESET in readyReadHandler
+    - perl -i -0pe 's{(if \(errno == ECONNRESET\) \{\n\s+)(connectionDidClose\(\);\n\s+return;)}{$1IPC_LOG_CLOSE_CONNRESET(m_socketDescriptor, getpid());\n                $2}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log other recv error in readyReadHandler
+    - perl -i -0pe 's{(safeStrerror\(errno\)\.data\(\)\);\n\s+)(connectionDidClose\(\);)}{$1IPC_LOG_CLOSE_RECV_ERR(errno, m_socketDescriptor, getpid());\n                $2}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log EOF in readyReadHandler
+    - perl -i -0pe 's{(if \(!bytesRead\) \{\n\s+)(connectionDidClose\(\);)}{$1IPC_LOG_CLOSE_EOF(m_socketDescriptor, getpid());\n            $2}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log GLib HUP/ERR/NVAL
+    - perl -i -0pe 's{(if \(condition & G_IO_HUP \|\| condition & G_IO_ERR \|\| condition & G_IO_NVAL\) \{\n\s+)(protectedThis->connectionDidClose)}{$1IPC_LOG_CLOSE_GIO(condition, getpid());\n            $2}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log ECONNRESET in sendOutputMessage
+    - perl -i -0pe 's{(if \(errno == ECONNRESET\)\n#endif\n\s+\{\n\s+)(connectionDidClose)}{$1IPC_LOG_CLOSE_SEND(errno, m_socketDescriptor, getpid());\n            $2}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log other send error (match "Error sending" specifically to avoid matching recv error)
+    - perl -i -pe 's{(WTFLogAlways\("Error sending[^;]+;)}{$1 IPC_LOG_SEND_ERR(errno, m_socketDescriptor, getpid());}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log platformInvalidate
+    - perl -i -pe 's{(m_socketDescriptor = -1;)}{IPC_LOG_INVALIDATE(m_socketDescriptor, getpid()); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log processMessage count (every 50th)
+    - perl -i -pe 's{(processIncomingMessage\(WTFMove\(decoder\)\);)}{$1 { static int _mc=0; if(++_mc==1||_mc%50==0) IPC_LOG_MSG(_mc, getpid()); }}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # --- End IPC debug logging ---
+    # write(SerializableErrorType) is inside #if ENABLE(WEB_CRYPTO) but called unconditionally.
+    # Add an unconditional version outside the #if block.
+    - perl -i -pe 's{^(    void write\(DestinationColorSpaceTag tag\))}{    void write(SerializableErrorType errorType)\n    {\n        writeLittleEndian<uint8_t>(m_buffer, static_cast<uint8_t>(errorType));\n    }\n\n$1}' Source/WebCore/bindings/js/SerializedScriptValue.cpp
+    # WEBKIT_EXEC_PATH: Allow overriding subprocess path at runtime via env var.
+    # WebKit gates this behind DEVELOPER_MODE, but bundles need it to find
+    # WebKitWebProcess/WebKitNetworkProcess relative to the bundle directory.
+    # Move the g_getenv("WEBKIT_EXEC_PATH") check outside the #ifdef.
+    - perl -i -0pe 's{#if ENABLE\(DEVELOPER_MODE\)\n    static const char\* execDirectory = g_getenv\("WEBKIT_EXEC_PATH"\);\n    if \(execDirectory\) \{\n        String processPath = FileSystem::pathByAppendingComponent\(FileSystem::stringFromFileSystemRepresentation\(execDirectory\), StringView::fromLatin1\(processName\)\);\n        if \(FileSystem::fileExists\(processPath\)\)\n            return processPath;\n    \}\n\n    static String executablePath = getExecutablePath}{    static const char* execDirectory = g_getenv("WEBKIT_EXEC_PATH");\n    if (execDirectory) \{\n        String processPath = FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(execDirectory), StringView::fromLatin1(processName));\n        if (FileSystem::fileExists(processPath))\n            return processPath;\n    \}\n\n#if ENABLE(DEVELOPER_MODE)\n    static String executablePath = getExecutablePath}' Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
