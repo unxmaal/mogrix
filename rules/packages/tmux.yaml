@@ -22,27 +22,27 @@ rules:
     # IRIX libc has __b64_ntop/__b64_pton but marked HIDDEN — rld can't
     # resolve at runtime. Force all b64 checks to fail so tmux uses its
     # own compat/base64.c (OpenBSD implementation).
-    - "sed -i 's/found_b64_ntop=yes/found_b64_ntop=no/g' configure"
+    - "$MOGRIX_ROOT/tools/safepatch configure --old 'found_b64_ntop=yes' --new 'found_b64_ntop=no' --count 0 --no-backup --quiet"
     # IRIX resolv.h has #define b64_ntop __b64_ntop — this renames the compat
     # function to __b64_ntop but callers (via compat.h) expect plain b64_ntop.
     # Undef after includes so compat/base64.c defines the plain symbols.
-    - "sed -i 's/#include <string.h>/#include <string.h>\\n#undef b64_ntop\\n#undef b64_pton/' compat/base64.c"
+    - "$MOGRIX_ROOT/tools/safepatch compat/base64.c --old '#include <string.h>' --insert-after $'#undef b64_ntop\\n#undef b64_pton' --no-backup --quiet"
     # IRIX has no UTF-8 locale — suppress tmux's hard UTF-8 requirement.
     # The setlocale fallback chain still runs; we just don't abort on non-UTF8.
-    - "sed -i 's/errx(1, \"invalid LC_ALL, LC_CTYPE or LANG\")/(void)0/' tmux.c"
-    - "sed -i 's/errx(1, \"need UTF-8 locale.*s)/(void)0/' tmux.c"
+    - "$MOGRIX_ROOT/tools/safepatch tmux.c --old 'errx(1, \"invalid LC_ALL, LC_CTYPE or LANG\")' --new '(void)0' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch tmux.c --old 'errx(1, \"need UTF-8 locale.*s)' --new '(void)0' --regex --no-backup --quiet"
     # IRIX sendmsg limits iov entries to MSG_MAXIOVLEN (16). imsg-buffer.c uses
     # IOV_MAX (1024 on IRIX) which causes errno 97 when batching >16 messages.
     # Cap at 16 to match IRIX kernel limit.
-    - "sed -i 's/IOV_MAX/16/g' compat/imsg-buffer.c"
+    - "$MOGRIX_ROOT/tools/safepatch compat/imsg-buffer.c --old 'IOV_MAX' --new '16' --count 0 --no-backup --quiet"
     # Rename local variable that collides with getopt.h macro optional_argument
-    - "sed -i 's/optional_argument/is_optional_arg/g' arguments.c"
+    - "$MOGRIX_ROOT/tools/safepatch arguments.c --old 'optional_argument' --new 'is_optional_arg' --count 0 --no-backup --quiet"
     # IRIX lacks strsignal() — replace all occurrences with literal string
-    - "sed -i 's/strsignal(sig)/\"signal\"/' client.c server.c"
+    - "for f in client.c server.c; do $MOGRIX_ROOT/tools/safepatch $f --old 'strsignal(sig)' --new '\"signal\"' --no-backup --quiet; done"
     # Fix compat/setenv.c — xasprintf is tmux-internal, use standard asprintf;
     # environ needs extern declaration (IRIX has no setenv in libc)
-    - "sed -i 's/xasprintf/asprintf/' compat/setenv.c"
-    - "sed -i '/#include \"compat.h\"/a extern char **environ;' compat/setenv.c"
+    - "$MOGRIX_ROOT/tools/safepatch compat/setenv.c --old 'xasprintf' --new 'asprintf' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch compat/setenv.c --old '#include \"compat.h\"' --insert-after 'extern char **environ;' --no-backup --quiet"
     # Install IRIX forkpty() using _getpty() — tmux detects IRIX as "unknown" platform
     - "cp %{_sourcedir}/forkpty-irix.c compat/forkpty-unknown.c"
 

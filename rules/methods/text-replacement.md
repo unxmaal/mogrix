@@ -81,7 +81,7 @@ Mogrix will:
 **Usage**:
 
 ```bash
-# Basic - expects exactly 1 match
+# Replace mode (default) - expects exactly 1 match
 tools/safepatch libtool \
     --old 'build_libtool_libs=no' \
     --new 'build_libtool_libs=yes'
@@ -92,12 +92,32 @@ tools/safepatch source.c --old 'TODO' --new 'DONE' --count 3
 # Allow any count (0 = unlimited)
 tools/safepatch Makefile --old 'gcc' --new 'irix-cc' --count 0
 
+# Delete entire lines containing text
+tools/safepatch configure.ac --delete-line 'AC_CHECK_LIB(cap,'
+
+# Insert a line after a match
+tools/safepatch main.c --old '#include <stdio.h>' --insert-after '#include "compat.h"'
+
+# Insert a line before a match
+tools/safepatch Makefile --old 'all:' --insert-before 'CFLAGS += -I/opt/sgug'
+
+# Regex mode (treat --old as Perl regex)
+tools/safepatch src.c --old 'pthread_\w+_np' --new 'compat_func' --regex
+
 # Preview without changing
 tools/safepatch --dry-run config.h --old '#define X 0' --new '#define X 1'
 
 # Suppress backup
 tools/safepatch file.txt --old 'foo' --new 'bar' --no-backup
 ```
+
+**Modes**:
+- **Replace** (default): `--old TEXT --new TEXT` — find and replace
+- **Delete line**: `--delete-line TEXT` — remove entire lines containing text
+- **Insert after**: `--old ANCHOR --insert-after TEXT` — add line after anchor
+- **Insert before**: `--old ANCHOR --insert-before TEXT` — add line before anchor
+
+All modes support `--regex` to use Perl regex instead of exact strings.
 
 **Exit codes** (for scripting):
 - 0: Success
@@ -180,6 +200,29 @@ prep_commands:
 | Build-time config changes | `safepatch` | Yes |
 | Spec macro changes | `spec_replacements` in YAML | N/A (mogrix handles) |
 | Trivial/cosmetic | `sed` | **NO** - use only when safe |
+
+---
+
+## Verifying Changes with test-prep
+
+When migrating sed to safepatch, **always verify** with `mogrix test-prep`:
+
+```bash
+# 1. Snapshot baseline BEFORE changing rules
+mogrix test-prep popt
+
+# 2. Modify rules (sed → safepatch)
+# ... edit rules/packages/popt.yaml ...
+
+# 3. Re-convert the SRPM
+mogrix convert ~/mogrix_inputs/SRPMS/popt*.src.rpm
+
+# 4. Compare — must print IDENTICAL
+mogrix test-prep popt --compare
+```
+
+If `--compare` reports differences, investigate before proceeding. Snapshots
+are stored in `~/mogrix_outputs/prep-snapshots/<package>.json`.
 
 ---
 

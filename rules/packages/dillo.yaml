@@ -43,7 +43,7 @@ rules:
   prep_commands:
     # Use static FLTK linking to avoid R_MIPS_REL32 vtable relocation issues on IRIX
     # Replace fltk-config --ldflags with explicit static archive path
-    - "sed -i 's|LIBFLTK_LIBS=`$FLTK_CONFIG --ldflags`|LIBFLTK_LIBS=\"-Wl,-Bstatic -lfltk -lfltk_images -lfltk_forms -Wl,-Bdynamic -lXcursor -lpthread -lX11\"|' configure.ac"
+    - "$MOGRIX_ROOT/tools/safepatch configure.ac --old 'LIBFLTK_LIBS=`$FLTK_CONFIG --ldflags`' --new 'LIBFLTK_LIBS=\"-Wl,-Bstatic -lfltk -lfltk_images -lfltk_forms -Wl,-Bdynamic -lXcursor -lpthread -lX11\"' --no-backup --quiet"
 
   explicit_provides:
     - "dillo"

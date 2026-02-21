@@ -22,8 +22,7 @@ rules:
   - pattern: autoreconf -v
     replacement: AUTOPOINT=true autoreconf -v
   prep_commands:
-  - sed -i 's/gnulib-tests//' Makefile.in || true
-  - sed -i 's/gnulib-tests//' Makefile.am || true
-  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/paxerror.c
-  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/rtapelib.c
-  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' gnu/malloc/dynarray_at_failure.c || true
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --no-backup --quiet || true"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old 'gnulib-tests' --new '' --no-backup --quiet || true"
+  - "for f in lib/paxerror.c lib/rtapelib.c; do $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%x' --count 0 --no-backup --quiet || :; done"
+  - "$MOGRIX_ROOT/tools/safepatch gnu/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet || true; $MOGRIX_ROOT/tools/safepatch gnu/malloc/dynarray_at_failure.c --old '%zd' --new '%d' --count 0 --no-backup --quiet || true; $MOGRIX_ROOT/tools/safepatch gnu/malloc/dynarray_at_failure.c --old '%zx' --new '%x' --count 0 --no-backup --quiet || true"

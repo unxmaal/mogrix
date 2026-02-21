@@ -14,24 +14,24 @@ rules:
   - font(liberationmono)
   - '%{_sbindir}/update-alternatives'
   prep_commands:
-  - sed -i 's/-lrt //' config.mk
-  - sed -i 's/-lutil //' config.mk
-  - sed -i 's|X11INC = /usr/X11R6/include|X11INC = |' config.mk
-  - sed -i 's|X11LIB = /usr/X11R6/lib|X11LIB = |' config.mk
-  - sed -i 's/-lXft/-lXft -lgen/' config.mk
-  - sed -i 's/-D_XOPEN_SOURCE=600//' config.mk
-  - 'sed -i ''/<libutil.h>/a\#else\n #include <time.h>\n #include <sys/termios.h>\n #include <pty.h>\nint pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);'' st.c'
-  - sed -i '1i#ifndef CLOCK_MONOTONIC\n#define CLOCK_MONOTONIC 2 /* CLOCK_SGI_CYCLE */\n#endif' x.c
-  - sed -i '/#include <X11\/XKBlib.h>/a\int pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' x.c
-  - sed -i 's/XICCallback/XIMCallback/g' x.c
-  - sed -i 's/static int xicdestroy/static void xicdestroy/' x.c
-  - sed -i '/^int$/{N;/xicdestroy/s/^int/void/}' x.c
-  - sed -i '/xw\.ime\.xic = NULL/{n;s/return 1;/return;/}' x.c
-  - 'sed -i ''/#include <X11\/XKBlib.h>/a\#define XSetIMValues(...) 0  /* IRIX X11R6.3: not available */'' x.c'
-  - sed -i 's/Xutf8TextListToTextProperty/XmbTextListToTextProperty/g' x.c
-  - sed -i 's/XUTF8StringStyle/XCompoundTextStyle/g' x.c
-  - sed -i '/TIOCSCTTY/s/if (ioctl.*)/if (0)/' st.c
-  - sed -i 's/Liberation Mono/monospace/' config.def.h
+  - $MOGRIX_ROOT/tools/safepatch config.mk --old '-lrt ' --new '' --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch config.mk --old '-lutil ' --new '' --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch config.mk --old 'X11INC = /usr/X11R6/include' --new 'X11INC = ' --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch config.mk --old 'X11LIB = /usr/X11R6/lib' --new 'X11LIB = ' --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch config.mk --old '-lXft' --new '-lXft -lgen' --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch config.mk --old '-D_XOPEN_SOURCE=600' --new '' --no-backup --quiet
+  - "$MOGRIX_ROOT/tools/safepatch st.c --old '<libutil.h>' --insert-after $'#else\\n #include <time.h>\\n #include <sys/termios.h>\\n #include <pty.h>\\nint pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch x.c --insert-top $'#ifndef CLOCK_MONOTONIC\\n#define CLOCK_MONOTONIC 2 /* CLOCK_SGI_CYCLE */\\n#endif' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch x.c --old '#include <X11/XKBlib.h>' --insert-after 'int pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' --no-backup --quiet"
+  - $MOGRIX_ROOT/tools/safepatch x.c --old 'XICCallback' --new 'XIMCallback' --count 0 --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch x.c --old 'static int xicdestroy' --new 'static void xicdestroy' --no-backup --quiet
+  - "$MOGRIX_ROOT/tools/safepatch x.c --old $'int\\nxicdestroy' --new $'void\\nxicdestroy' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch x.c --old $'xw.ime.xic = NULL;\\n\\t\\treturn 1;' --new $'xw.ime.xic = NULL;\\n\\t\\treturn;' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch x.c --old 'int pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' --insert-after '#define XSetIMValues(...) 0  /* IRIX X11R6.3: not available */' --no-backup --quiet"
+  - $MOGRIX_ROOT/tools/safepatch x.c --old 'Xutf8TextListToTextProperty' --new 'XmbTextListToTextProperty' --count 0 --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch x.c --old 'XUTF8StringStyle' --new 'XCompoundTextStyle' --count 0 --no-backup --quiet
+  - "$MOGRIX_ROOT/tools/safepatch st.c --old 'if \\(ioctl.*TIOCSCTTY.*\\)' --new 'if (0) /* TIOCSCTTY not on IRIX */' --regex --no-backup --quiet"
+  - $MOGRIX_ROOT/tools/safepatch config.def.h --old 'Liberation Mono' --new 'monospace' --no-backup --quiet
   spec_replacements:
   - pattern: CFLAGS="%{optflags}" LDFLAGS="%{?__global_ldflags}" make %{?_smp_mflags}
     replacement: "# Build mogrix compat library first (before main build — plain Makefile, not autotools)\nCOMPAT_DIR=$(pwd)/mogrix-compat\nfor f in $COMPAT_DIR/*.c; do\n  %{__cc} %{optflags} -c \"$f\"\

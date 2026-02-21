@@ -463,6 +463,9 @@ class RuleValidator:
         # Check for inline C code in prep_commands
         self._check_inline_c_code(path, rules, result)
 
+        # Check for sed -i usage in prep_commands
+        self._check_sed_usage(path, rules, result)
+
     def _check_rule_conflicts(
         self, path: Path, rules: dict, result: ValidationResult
     ) -> None:
@@ -661,6 +664,41 @@ class RuleValidator:
                             ),
                         )
                     )
+
+    # Pattern to detect sed -i in prep_commands
+    _SED_INPLACE_PATTERN = re.compile(r"\bsed\s+-i\b")
+
+    def _check_sed_usage(
+        self, path: Path, rules: dict, result: ValidationResult
+    ) -> None:
+        """Check for sed -i usage in prep_commands.
+
+        sed -i is a silent-failure risk: if the pattern doesn't match,
+        sed exits 0 and the file is unchanged with no warning. Use
+        safepatch (tools/safepatch) for literal replacements, or perl -i
+        for regex replacements. Both fail loudly when patterns are missing.
+        """
+        prep = rules.get("prep_commands", [])
+        if not isinstance(prep, list):
+            return
+
+        for i, cmd in enumerate(prep):
+            if not isinstance(cmd, str):
+                continue
+
+            if self._SED_INPLACE_PATTERN.search(cmd):
+                result.issues.append(
+                    ValidationIssue(
+                        file=str(path.name),
+                        severity="warning",
+                        message=(
+                            f"prep_commands[{i}]: sed -i detected. "
+                            "Prefer safepatch (exact match, fails if not found) "
+                            "or perl -i (regex, non-zero exit on error). "
+                            "See rules/methods/text-replacement.md."
+                        ),
+                    )
+                )
 
     def _validate_class_rule(self, path: Path, result: ValidationResult) -> None:
         """Validate a class rule file."""

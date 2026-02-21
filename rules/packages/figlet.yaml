@@ -4,7 +4,7 @@ package: figlet
 rules:
   prep_commands:
     # figlet.c uses alloca() without including alloca.h (glibc pulls it in via stdlib.h, IRIX doesn't)
-    - "sed -i '1i#include <alloca.h>' figlet.c"
+    - "$MOGRIX_ROOT/tools/safepatch figlet.c --insert-top '#include <alloca.h>' --no-backup --quiet"
 
   spec_replacements:
     # Fix bash-ism: ${c:0:7} substring expansion not supported in /bin/sh (dash)

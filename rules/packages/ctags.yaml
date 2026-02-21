@@ -9,7 +9,7 @@ rules:
     - seccomp
   prep_commands:
     # Fix missing errno include in acutest test header
-    - "sed -i '1i #include <errno.h>' extra-cmds/acutest.h"
+    - "$MOGRIX_ROOT/tools/safepatch extra-cmds/acutest.h --insert-top '#include <errno.h>' --no-backup --quiet"
   spec_replacements:
     # IRIX scandir uses non-const dirent* — suppress pointer type mismatch
     - pattern: "./autogen.sh"

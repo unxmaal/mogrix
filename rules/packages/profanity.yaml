@@ -71,4 +71,4 @@ rules:
     replacement: '# profapi.h not built (plugins disabled)'
   prep_commands:
   # Fix %zu format specifiers (IRIX printf doesn't support %z)
-  - sed -i 's/%zu/%lu/g; s/%zd/%ld/g; s/%zx/%lx/g' src/config/color.c src/ui/window.c
+  - "for f in src/config/color.c src/ui/window.c; do $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%lu' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%ld' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%lx' --count 0 --no-backup --quiet || :; done"

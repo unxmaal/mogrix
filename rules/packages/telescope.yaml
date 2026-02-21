@@ -47,7 +47,7 @@ rules:
           snprintf(_p, sizeof(_p), "%s/%s", cert_dir, dp->d_name);
           if (stat(_p, \&_st) == -1 || !S_ISREG(_st.st_mode)) continue; }}sg
       ' certs.c
-    - "sed -i '1i #include <limits.h>\\n#include <sys/stat.h>' certs.c"
+    - "$MOGRIX_ROOT/tools/safepatch certs.c --insert-top $'#include <limits.h>\\n#include <sys/stat.h>' --no-backup --quiet"
 
     # fs.c line 122: replace d_type check with stat() check
     - |
@@ -57,26 +57,24 @@ rules:
           snprintf(_fp, sizeof(_fp), "%s/%s", path, names[i]->d_name);
           if (stat(_fp, \&_fst) == 0 \&\& S_ISDIR(_fst.st_mode)) sufx = "/"; }}sg
       ' fs.c
-    - "sed -i '1i #include <limits.h>\\n#include <sys/stat.h>' fs.c"
+    - "$MOGRIX_ROOT/tools/safepatch fs.c --insert-top $'#include <limits.h>\\n#include <sys/stat.h>' --no-backup --quiet"
 
     # Fix buggy compat.h: warn() and warnx() declared with extra int param
     # Declarations say warn(int, const char*, ...) but implementations are
     # warn(const char*, ...) — standard BSD signature. Fix the declarations.
-    - "sed -i 's/void.*warn(int, const char\\*, \\.\\.\\.);/void\\t\\t warn(const char*, ...);/' compat.h"
-    - "sed -i 's/void.*warnx(int, const char\\*, \\.\\.\\.);/void\\t\\t warnx(const char*, ...);/' compat.h"
+    - "$MOGRIX_ROOT/tools/safepatch compat.h --old 'void.*warn\\(int, const char\\*, \\.\\.\\.\\);' --new $'void\\t\\t warn(const char*, ...);' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch compat.h --old 'void.*warnx\\(int, const char\\*, \\.\\.\\.\\);' --new $'void\\t\\t warnx(const char*, ...);' --regex --no-backup --quiet"
 
     # IRIX clock_gettime crashes (no POSIX clock IDs defined, function unreliable).
     # Replace clock_gettime(CLOCK_MONOTONIC, &ts) with gettimeofday wrapper.
     # Also provide timersub macro (BSD, not on IRIX).
-    - |
-      sed -i 's/clock_gettime(CLOCK_MONOTONIC, \&beg)/{ struct timeval _gtv; gettimeofday(\&_gtv, NULL); beg.tv_sec = _gtv.tv_sec; beg.tv_nsec = _gtv.tv_usec * 1000; }; if(0)/g' ev.c
-    - |
-      sed -i 's/clock_gettime(CLOCK_MONOTONIC, \&end)/{ struct timeval _gtv; gettimeofday(\&_gtv, NULL); end.tv_sec = _gtv.tv_sec; end.tv_nsec = _gtv.tv_usec * 1000; }; if(0)/g' ev.c
-    - "sed -i '1i #include <sys/time.h>' ev.c"
+    - "$MOGRIX_ROOT/tools/safepatch ev.c --old 'clock_gettime(CLOCK_MONOTONIC, &beg)' --new '{ struct timeval _gtv; gettimeofday(&_gtv, NULL); beg.tv_sec = _gtv.tv_sec; beg.tv_nsec = _gtv.tv_usec * 1000; }; if(0)' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch ev.c --old 'clock_gettime(CLOCK_MONOTONIC, &end)' --new '{ struct timeval _gtv; gettimeofday(&_gtv, NULL); end.tv_sec = _gtv.tv_sec; end.tv_nsec = _gtv.tv_usec * 1000; }; if(0)' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch ev.c --insert-top '#include <sys/time.h>' --no-backup --quiet"
     # IRIX scandir selector takes (dirent_t *) not (const struct dirent *).
     # Remove const from selector functions and pointer declarations.
-    - "sed -i 's/const struct dirent \\*d/struct dirent *d/g' fs.c"
-    - "sed -i 's/const struct dirent \\*/struct dirent */g' fs.c"
+    - "$MOGRIX_ROOT/tools/safepatch fs.c --old 'const struct dirent *d' --new 'struct dirent *d' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch fs.c --old 'const struct dirent *' --new 'struct dirent *' --count 0 --no-backup --quiet"
 
     # timersub: now provided globally by dicl-clang-compat/sys/time.h
     # (removed inline sed that injected timersub into telescope's compat.h)
@@ -110,26 +108,25 @@ rules:
     # IRIX libc is pre-C99: %zu/%zd/%zx corrupt varargs → SIGSEGV.
     # size_t is unsigned int on IRIX n32, so %zu→%u, %zd→%d, %zx→%x.
     # Only fix runtime files (libgrapheme/gen and test run on Linux host).
-    - "sed -i 's/%\\([0-9]*\\)z\\([udx]\\)/%\\1\\2/g' ui.c cmd.c session.c xwrapper.c"
+    - "for f in ui.c cmd.c session.c xwrapper.c; do $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%x' --count 0 --no-backup --quiet || :; done"
 
     # Bundled libgrapheme: config.mk sets CC=cc (host), need cross-compiler.
     # BUILD_CC stays as host for code generators, CC becomes cross-compiler.
     # Also fix AR/RANLIB and disable shared lib (static only needed).
-    - |
-      sed -i 's|^CC       = cc|CC       = /opt/sgug-staging/usr/sgug/bin/irix-cc|' libgrapheme/config.mk
-    - "sed -i 's|^BUILD_CC = .*|BUILD_CC = gcc|' libgrapheme/config.mk"
-    - "sed -i 's|^AR       = ar|AR       = /opt/cross/bin/llvm-ar|' libgrapheme/config.mk"
-    - "sed -i 's|^RANLIB   = ranlib|RANLIB   = /opt/cross/bin/llvm-ranlib|' libgrapheme/config.mk"
-    - "sed -i 's|^CFLAGS   = .*|CFLAGS   = -std=c99 -Os -Wall|' libgrapheme/config.mk"
-    - "sed -i 's|^SONAME    = .*|SONAME    =|' libgrapheme/config.mk"
-    - "sed -i 's|^SOSYMLINK = .*|SOSYMLINK = false|' libgrapheme/config.mk"
-    - "sed -i 's|^BUILD_CFLAGS.*|BUILD_CFLAGS = -std=c99 -Os|' libgrapheme/config.mk"
-    - "sed -i 's|^BUILD_LDFLAGS.*|BUILD_LDFLAGS =|' libgrapheme/config.mk"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'CC       = cc' --new 'CC       = /opt/sgug-staging/usr/sgug/bin/irix-cc' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^BUILD_CC = .*' --new 'BUILD_CC = gcc' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'AR       = ar' --new 'AR       = /opt/cross/bin/llvm-ar' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'RANLIB   = ranlib' --new 'RANLIB   = /opt/cross/bin/llvm-ranlib' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^CFLAGS   = .*' --new 'CFLAGS   = -std=c99 -Os -Wall' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^SONAME    = .*' --new 'SONAME    =' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^SOSYMLINK = .*' --new 'SOSYMLINK = false' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^BUILD_CFLAGS.*' --new 'BUILD_CFLAGS = -std=c99 -Os' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^BUILD_LDFLAGS.*' --new 'BUILD_LDFLAGS =' --regex --no-backup --quiet"
 
     # IOV_MAX: now provided globally by dicl-clang-compat/limits.h
     # (removed inline sed that injected IOV_MAX into imsg-buffer.c)
 
     # IRIX lacks dprintf (POSIX.1-2008). Replace with fprintf+fflush.
     # Only one use: dprintf(1, ...) for setting xterm title to stdout.
-    - "sed -i 's/dprintf(1, /fprintf(stdout, /g' ui.c"
-    - "sed -i '/current_tab->buffer.title);/a \\\\t\\tfflush(stdout);' ui.c"
+    - "$MOGRIX_ROOT/tools/safepatch ui.c --old 'dprintf(1, ' --new 'fprintf(stdout, ' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch ui.c --old 'current_tab->buffer.title);' --insert-after $'\\t\\tfflush(stdout);' --no-backup --quiet"

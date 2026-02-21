@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-21 (session 95)
-**Status**: WebKit IPC debug logging built and bundled. Bundle ready to deploy to IRIX. Need to identify which `connectionDidClose()` path fires when MiniBrowser reports "WebProcess CRASHED".
+**Last Updated**: 2026-02-21 (session 98)
+**Status**: Sed elimination nearly complete — down to 5 irreducible `sed -i` warnings (from 300+ originally). 29 more seds converted this session across 16 packages. All verified IDENTICAL via test-prep. WebKit IPC debug bundle still ready to deploy.
 
 ---
 
@@ -19,76 +19,73 @@
 8. **Always use full mogrix pipeline** for builds — manual compilation creates dirty state.
 9. **Deploy irix-ld after editing**: `cp cross/bin/irix-ld /opt/sgug-staging/usr/sgug/bin/irix-ld`
 10. **GSettings schemas**: Run `glib-compile-schemas` in chroot after installing GTK3 apps.
-11. **Run `mogrix check-elf`** on Xt/Motif packages after build to catch ClassRec relocation issues.
-12. **NEVER install packages directly to /usr/sgug on the live IRIX system.** Always use `/opt/chroot`.
+11. **NEVER install packages directly to /usr/sgug on the live IRIX system.** Always use `/opt/chroot`.
 
 ---
 
 ## Current State
 
+### Sed Elimination Plan — Progress
+
+**Completed:**
+- `mogrix test-prep` command (snapshot + compare)
+- safepatch extensions (`--delete-line`, `--insert-after`, `--insert-before`, `--insert-top`, `--regex`)
+- `sed -i` validator warning in `mogrix/rules/validator.py`
+- Baseline snapshots for all packages
+- **Task #12: Literal sed→safepatch migration** — ~85+ calls converted in 25+ packages
+- **Tasks #13/#14: Advanced seds** — 29 more seds converted across 16 packages (session 98)
+
+**Conversion techniques used (session 98):**
+- Literal replacements: safepatch `--old/--new`
+- Regex replacements: `--regex` mode (e.g., `\bTICK\b`, `^#if defined \(HAVE_PSELECT\)$`)
+- Multi-line matches: `$'...\n...'` for cross-line patterns
+- Line-number seds: Converted to safepatch regex with `^`/`$` anchors
+- Range deletes: Converted to `perl -0777 -pi -e` or `perl -ni -e`
+- Multi-file bulk: `for f in $(find ...); do safepatch ... || :; done`
+- Context-dependent: Include surrounding text in `--old` for uniqueness
+
+**Verification:** All 16 packages re-verified via test-prep --compare (IDENTICAL).
+
+**Remaining (5 irreducible warnings):**
+- `icu.yaml`: `find|xargs sed` for %zu→%u across hundreds of source files (impractical with safepatch)
+- `pwgen.yaml`: Regex backreference `&` (safepatch can't do this)
+- `qt5-qtbase.yaml`: `find|xargs sed` for %zu across many 3rdparty files
+- `tinc.yaml` (2): Insert before default case `*)` + range append in Makefile.am
+
+These are either bulk operations across many files or use regex features safepatch doesn't support.
+
 ### WebKit IPC Debugging
 
 **Bundle ready to deploy**: `~/mogrix_outputs/bundles/libwebkit2gtk-2.42.5-1-irix-bundle.0221260057.run` (103MB)
 
-**What we know:**
-- MiniBrowser window appears, but WebKitWebProcess "crashes" (IPC connection drops) after 25-47 seconds
-- "WebProcess CRASHED" is misleading — WebProcess receives SIGTERM from MiniBrowser cleanup, NOT SIGSEGV/SIGBUS
-- All IRIX IPC primitives work correctly (SOCK_STREAM, SCM_RIGHTS, poll, shm_open — all tested)
-- GOT overflow is fixed (`-Bsymbolic`, global GOT 4661→3515)
-- All 70+ libraries load successfully
+**What we know:** WebProcess gets SIGTERM (not crash), IPC primitives all work, GOT overflow fixed. WebProcess runs 25-47s before connection drops. Bundle has 12 IPC_LOG injection points writing to `/usr/people/edodd/ipc_<pid>.log`. See INDEX.md for details.
 
-**What's new in this bundle:** 12 IPC_LOG injection points in ConnectionUnix.cpp write to `/usr/people/edodd/ipc_<pid>.log`. Both MiniBrowser and WebProcess sides log. See INDEX.md "WebKit IPC Connection Debugging" section.
-
-**To test:** Deploy bundle → run MiniBrowser → collect `ipc_*.log` files → identify which `CLOSE:*` path fired.
-
-**Previous bundle on IRIX**: `/usr/people/edodd/apps/libwebkit2gtk-2.42.5-1-irix-bundle.0220262009/`
-(has signal_catcher wrapper as WebKitWebProcess — must restore original binary or use new bundle)
-
-### Key Artifacts
-
-| What | Where |
-|------|-------|
-| IPC debug header | `patches/packages/webkitgtk/ipc_debug_log.h` |
-| rld analysis harness | `tools/rld-harness.py` |
-| rld decompilation | `docs/rld/` (4 files) |
-| Signal catcher source | `/tmp/signal_catcher.c` (on build host) |
-| IPC test program | `/tmp/test_ipc.c` (on build host) |
+**Next step:** Deploy → run MiniBrowser → collect logs → identify which CLOSE path fired.
 
 ---
 
 ## Next Steps (prioritized)
 
-1. **Deploy new bundle to IRIX and run MiniBrowser** — collect `ipc_<pid>.log` files from `/usr/people/edodd/`. These will show exactly which close path fires (EOF, ECONNRESET, GIO_HUP, MSG_CTRUNC, send error, etc.) and whether any messages were successfully exchanged first.
-
-2. **Based on IPC logs, fix the root cause** — Likely scenarios:
-   - `CLOSE:EOF` → WebProcess closed its socket (initialization failure, unhandled error)
-   - `CLOSE:GIO_HUP` → Socket hangup (process died, fd leaked/closed)
-   - `CLOSE:ECONNRESET` → Connection reset (OS-level issue)
-   - `MSG_CTRUNC` → SCM_RIGHTS ancillary data truncated (buffer too small for FDs)
-   - No CLOSE log at all → crash in unlogged code path (expand logging)
-
-3. **Once IPC works**, remove temporary debug logging from webkitgtk.yaml.
-
-4. **Fix 5 remaining bundle failures** (independent of MiniBrowser):
-   - cwebp/dwebp/gif2webp: signal 127
-   - gdk-pixbuf-query-loaders/gtk-query-immodules-3.0: rld fatal loading .so modules
+1. **Deploy WebKit IPC debug bundle** — Copy to IRIX, run MiniBrowser, collect logs. Bundle ready at `~/mogrix_outputs/bundles/libwebkit2gtk-2.42.5-1-irix-bundle.0221260057.run`.
+2. **Sed elimination polish** — 5 irreducible warnings remain (bulk find+xargs, regex backrefs). Could add `# safepatch:ok` exception comments or accept as-is.
+3. **New package work** — See smallweb_plan.md for next packages to port.
 
 ---
 
-## Recent Work (session 94-95)
+## Recent Work (sessions 96-98)
 
-- **Determined WebProcess is NOT crashing** — signal catcher (C fork-based wrapper with setpgid, fd cleanup, signal ignoring) confirmed all WebProcess deaths are SIGTERM from MiniBrowser
-- **Tested all IRIX IPC primitives** — comprehensive test_ipc.c: SOCK_STREAM, SCM_RIGHTS, poll, non-blocking — all work (SIGBUS in test 8 was test code bug: unaligned MIPS access)
-- **Tested shm_open** — works in both chroot and host
-- **Added IPC debug logging** — 12 injection points in ConnectionUnix.cpp via `ipc_debug_log.h` macros
-- **Fixed YAML/RPM issues** — `%` in YAML causes parse errors (moved format strings to .h macros); `#` in RPM spec prep commands eaten as comments (use perl not sed)
-- **Built and bundled** — `libwebkit2gtk-2.42.5-1-irix-bundle.0221260057.run` ready for deployment
-- **Updated INDEX.md** with extensive negative knowledge (what's NOT the problem)
+**Session 98 (sed migration — advanced):**
+- Converted 29 more seds across 16 packages: yasm(6), rxvt-unicode(4), st(3), bash(2), qt5-qtbase(2), tinc(2), icu(1), vim(1→2 calls), gdb(1), telescope(1), cairo(1), dash(1), feh(1), openssh(1), p11-kit(1), libxkbcommon(1)
+- Techniques: regex mode, multi-line `$'...\n...'` matches, perl range deletes, for-loop bulk replacement
+- Down to 5 irreducible sed -i warnings (from 34 at start of session, 300+ originally)
+- All 16 packages verified IDENTICAL via test-prep
 
-## Recent Work (session 93)
+**Session 96-97 (sed migration — literals):**
+- Built `mogrix test-prep` command, extended safepatch, added validator
+- Converted ~85+ literal seds across 45+ packages
 
-- Created `tools/rld-harness.py` — reusable bundle analysis tool
-- Fixed global GOT overflow: `-Bsymbolic-functions` → `-Bsymbolic` in irix-ld
+**Session 95 (WebKit IPC + sed planning):**
+- Built WebKit IPC debug bundle with 12-point logging
 
 ---
 
@@ -98,9 +95,14 @@
 # Bundle + test
 uv run mogrix bundle libwebkit2gtk
 
+# Verify sed→safepatch migration
+uv run mogrix test-prep <package> --compare
+
+# Take new baseline snapshot
+uv run mogrix test-prep <package>
+
 # rld analysis harness
 python3 tools/rld-harness.py analyze ~/mogrix_outputs/bundles/<bundle-dir>/
-python3 tools/rld-harness.py got-inspect /path/to/lib.so
 
 # Copy to IRIX host (two-step: chroot then host)
 irix_copy_to local_path /opt/chroot/tmp/file

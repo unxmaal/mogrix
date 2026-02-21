@@ -20,7 +20,7 @@ rules:
     # Define PIXMAN_NO_TLS before the TLS detection block in pixman-compiler.h.
     # Belt-and-suspenders with -Dtls=disabled in meson: ensures pixman uses
     # plain static variables even if pthreads detection fails in cross-compile.
-    - "sed -i '1i #define PIXMAN_NO_TLS 1' pixman/pixman-compiler.h"
+    - "$MOGRIX_ROOT/tools/safepatch pixman/pixman-compiler.h --insert-top '#define PIXMAN_NO_TLS 1' --no-backup --quiet"
 
   spec_replacements:
     # Replace %meson with raw meson commands using our cross file

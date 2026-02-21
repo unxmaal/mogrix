@@ -9,9 +9,4 @@ rules:
 
   prep_commands:
     # IRIX has no clearenv() — provide inline implementation
-    - |
-      sed -i '/#include "pipeline-private.h"/a\
-      #ifndef clearenv\
-      extern char **environ;\
-      static inline int clearenv(void) { environ = NULL; return 0; }\
-      #endif' lib/pipeline.c
+    - "$MOGRIX_ROOT/tools/safepatch lib/pipeline.c --old '#include \"pipeline-private.h\"' --insert-after $'#ifndef clearenv\\nextern char **environ;\\nstatic inline int clearenv(void) { environ = NULL; return 0; }\\n#endif' --no-backup --quiet"

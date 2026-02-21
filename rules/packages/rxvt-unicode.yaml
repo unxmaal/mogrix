@@ -14,11 +14,11 @@ rules:
   drop_requires:
   - startup-notification
   prep_commands:
-  - find src -name '*.C' -o -name '*.h' | xargs sed -i 's/XICCallback/XIMCallback/g'
-  - find src -name '*.C' -o -name '*.h' | xargs sed -i 's/Xutf8TextListToTextProperty/XmbTextListToTextProperty/g'
-  - find src -name '*.C' -o -name '*.h' | xargs sed -i 's/XUTF8StringStyle/XCompoundTextStyle/g'
-  - 'sed -i ''1i#define XSetIMValues(...) 0  /* IRIX X11R6.3: not available */'' src/rxvt.h'
-  - sed -i 's/-D_XOPEN_SOURCE[^ ]*//' configure configure.ac
+  - "for f in $(find src -name '*.C' -o -name '*.h'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'XICCallback' --new 'XIMCallback' --count 0 --no-backup --quiet || :; done"
+  - "for f in $(find src -name '*.C' -o -name '*.h'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'Xutf8TextListToTextProperty' --new 'XmbTextListToTextProperty' --count 0 --no-backup --quiet || :; done"
+  - "for f in $(find src -name '*.C' -o -name '*.h'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'XUTF8StringStyle' --new 'XCompoundTextStyle' --count 0 --no-backup --quiet || :; done"
+  - '$MOGRIX_ROOT/tools/safepatch src/rxvt.h --insert-top ''#define XSetIMValues(...) 0  /* IRIX X11R6.3: not available */'' --no-backup --quiet'
+  - "for f in configure configure.ac; do $MOGRIX_ROOT/tools/safepatch $f --old '-D_XOPEN_SOURCE[^ ]*' --new '' --regex --count 0 --no-backup --quiet || :; done"
   configure_flags:
     add:
     - --disable-pixbuf

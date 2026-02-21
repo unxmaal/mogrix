@@ -37,12 +37,12 @@ rules:
   # IRIX stdio.h defines fileno as a macro like OpenBSD/AIX.
   # ::fileno() breaks because the macro expands to ::((p)->_file).
   # Add __sgi to the existing OpenBSD/AIX guard.
-  - "sed -i 's/defined(__OpenBSD__) || defined(_AIX)/defined(__OpenBSD__) || defined(_AIX) || defined(__sgi)/' deps/spdlog/include/spdlog/details/os-inl.h"
+  - "$MOGRIX_ROOT/tools/safepatch deps/spdlog/include/spdlog/details/os-inl.h --old 'defined(__OpenBSD__) || defined(_AIX)' --new 'defined(__OpenBSD__) || defined(_AIX) || defined(__sgi)' --no-backup --quiet"
   # ghc::filesystem doesn't recognize IRIX. Add __sgi as SVR4 (IRIX is SVR4-based).
-  - "sed -i 's/#elif defined(__HAIKU__)/#elif defined(__sgi)\\n#define GHC_OS_SYS5R4\\n#elif defined(__HAIKU__)/' deps/filesystem/filesystem.hpp"
+  - "$MOGRIX_ROOT/tools/safepatch deps/filesystem/filesystem.hpp --old '#elif defined(__HAIKU__)' --insert-before $'#elif defined(__sgi)\\n#define GHC_OS_SYS5R4' --no-backup --quiet"
   # IRIX lacks TLS (__tls_get_addr). spdlog uses thread_local (disabled via SPDLOG_NO_TLS).
   # Doxygen itself uses THREAD_LOCAL macro — redefine to static (single-threaded use only).
-  - "sed -i 's/#define THREAD_LOCAL thread_local/#define THREAD_LOCAL static/' src/doxygen.h"
+  - "$MOGRIX_ROOT/tools/safepatch src/doxygen.h --old '#define THREAD_LOCAL thread_local' --new '#define THREAD_LOCAL static' --no-backup --quiet"
   export_vars:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig

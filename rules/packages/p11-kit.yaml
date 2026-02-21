@@ -31,50 +31,53 @@ rules:
   # IRIX-specific source fixes (replacing p11-kit.sgifixes.patch for 0.25.3)
   prep_commands:
     # Add sys/time.h include to compat.c and message.c (IRIX needs explicit include)
-    - "sed -i '/#include \"config.h\"/a\\#include <sys/time.h>' common/compat.c common/message.c"
+    - "for f in common/compat.c common/message.c; do $MOGRIX_ROOT/tools/safepatch $f --old '#include \"config.h\"' --insert-after '#include <sys/time.h>' --no-backup --quiet; done"
     # Fix unix-peer.c: IRIX has no SO_PEERCRED, return -1
-    - "sed -i 's/#if defined(SO_PEERCRED)/#if defined(__sgi)\\n\\treturn -1;\\n#elif defined(SO_PEERCRED)/' common/unix-peer.c"
+    - "$MOGRIX_ROOT/tools/safepatch common/unix-peer.c --old '#if defined(SO_PEERCRED)' --new $'#if defined(__sgi)\\n\\treturn -1;\\n#elif defined(SO_PEERCRED)' --no-backup --quiet"
     # Add SGI-specific headers and SUN_LEN to server.c
-    - "sed -i '1i\\#if defined(__sgi)\\n#include <sys/time.h>\\n#include <sys/socket.h>\\n#include <sys/un.h>\\n#define SUN_LEN(ptr) ((size_t)(((struct sockaddr_un *)0)->sun_path) + strlen((ptr)->sun_path))\\n#endif' p11-kit/server.c"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --insert-top $'#if defined(__sgi)\\n#include <sys/time.h>\\n#include <sys/socket.h>\\n#include <sys/un.h>\\n#define SUN_LEN(ptr) ((size_t)(((struct sockaddr_un *)0)->sun_path) + strlen((ptr)->sun_path))\\n#endif' --no-backup --quiet"
     # Add sys/signal.h include after signal.h in server.c
-    - "sed -i '/#include <signal.h>/a\\#include <sys/signal.h>' p11-kit/server.c"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#include <signal.h>' --insert-after '#include <sys/signal.h>' --no-backup --quiet"
     # Fix sighandler_t: add SGI-specific typedef before HAVE_SIGHANDLER_T check
-    - "sed -i 's/#ifdef HAVE_SIGHANDLER_T/#if defined(__sgi)\\ntypedef void (*sighandler_t)(int);\\n#define SIGHANDLER_T sighandler_t\\n#elif defined(HAVE_SIGHANDLER_T)/' p11-kit/server.c"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#ifdef HAVE_SIGHANDLER_T' --new $'#if defined(__sgi)\\ntypedef void (*sighandler_t)(int);\\n#define SIGHANDLER_T sighandler_t\\n#elif defined(HAVE_SIGHANDLER_T)' --no-backup --quiet"
     # Fix bare HAVE_SIG_T / HAVE___SIGHANDLER_T checks (need defined())
-    - "sed -i 's/#elif HAVE_SIG_T/#elif defined(HAVE_SIG_T)/; s/#elif HAVE___SIGHANDLER_T/#elif defined(HAVE___SIGHANDLER_T)/' p11-kit/server.c"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#elif HAVE_SIG_T' --new '#elif defined(HAVE_SIG_T)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#elif HAVE___SIGHANDLER_T' --new '#elif defined(HAVE___SIGHANDLER_T)' --no-backup --quiet"
     # Rename sa_len to my_sa_len in server.c (conflicts with IRIX macro)
-    - "sed -i 's/socklen_t sa_len;/socklen_t my_sa_len;/; s/sa_len = sizeof/my_sa_len = sizeof/g; s/, \\&sa_len)/, \\&my_sa_len)/g' p11-kit/server.c"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old 'socklen_t sa_len;' --new 'socklen_t my_sa_len;' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old 'sa_len = sizeof' --new 'my_sa_len = sizeof' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old ', &sa_len)' --new ', &my_sa_len)' --count 0 --no-backup --quiet"
     # Fix %zu format specifier in lexer.c (IRIX libc doesn't support %zu, size_t is 4 bytes on n32)
-    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' common/lexer.c"
+    - "$MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zu' --new '%u' --count 0 --no-backup --quiet; $MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zd' --new '%d' --count 0 --no-backup --quiet; $MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zx' --new '%x' --count 0 --no-backup --quiet"
     # Patch meson.build: IRIX has nanosleep/dlopen/gmtime_r in libc
     # The meson has_function() check fails due to IRIX header type mismatches (timespec_t etc.)
     # Add 'host_system != irix' guard to each problematic detection line
-    - "sed -i \"s/if not cc.has_function('nanosleep')/if host_system != 'irix' and not cc.has_function('nanosleep')/\" meson.build"
-    - "sed -i \"s/if not cc.has_function('dlopen')/if host_system != 'irix' and not cc.has_function('dlopen')/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"if not cc.has_function('nanosleep')\" --new \"if host_system != 'irix' and not cc.has_function('nanosleep')\" --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"if not cc.has_function('dlopen')\" --new \"if host_system != 'irix' and not cc.has_function('dlopen')\" --no-backup --quiet"
     # gmtime_r check: IRIX has it, but cross-check fails — force-set for IRIX
-    - "sed -i \"s/if cc.has_function('gmtime_r')/if host_system == 'irix' or cc.has_function('gmtime_r')/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"if cc.has_function('gmtime_r')\" --new \"if host_system == 'irix' or cc.has_function('gmtime_r')\" --no-backup --quiet"
     # strerror_r check: IRIX has XSI strerror_r but cross-check may fail
-    - "sed -i \"s/if cc.has_function('strerror_r'/if host_system == 'irix' or cc.has_function('strerror_r'/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"if cc.has_function('strerror_r'\" --new \"if host_system == 'irix' or cc.has_function('strerror_r'\" --no-backup --quiet"
     # Fix timegm conflict: p11-kit compat.h declares timegm when HAVE_TIMEGM is not set,
     # but our mogrix-compat/generic/time.h also declares it. Guard with __sgi check.
-    - "sed -i 's/#ifndef HAVE_TIMEGM/#if !defined(HAVE_TIMEGM) \\&\\& !defined(__sgi)/' common/compat.h"
+    - "$MOGRIX_ROOT/tools/safepatch common/compat.h --old '#ifndef HAVE_TIMEGM' --new '#if !defined(HAVE_TIMEGM) && !defined(__sgi)' --no-backup --quiet"
     # Fix getprogname: IRIX has neither program_invocation_short_name nor __progname.
     # Replace the #error with a simple "unknown" fallback for SGI.
-    - "sed -i 's/#error No way to retrieve short program name/name = \"unknown\"; \\/* IRIX fallback *\\//' common/compat.c"
+    - "$MOGRIX_ROOT/tools/safepatch common/compat.c --old '#error No way to retrieve short program name' --new 'name = \"unknown\"; /* IRIX fallback */' --no-backup --quiet"
     # Fix strerror_r detection: meson incorrectly detects GNU strerror_r for IRIX cross-compile.
     # IRIX has XSI strerror_r. Patch the strerror_r check to force XSI for IRIX.
-    - "sed -i \"s/if cc.compiles(strerror_r_code, name : 'GNU strerror_r check')/if host_system != 'irix' and cc.compiles(strerror_r_code, name : 'GNU strerror_r check')/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"if cc.compiles(strerror_r_code, name : 'GNU strerror_r check')\" --new \"if host_system != 'irix' and cc.compiles(strerror_r_code, name : 'GNU strerror_r check')\" --no-backup --quiet"
     # Python is used for code generation (build-time scripts on host). Must use native python3.
     # meson's import('python').find_installation() finds the cross-target python, which doesn't exist.
     # Replace with find_program('python3') which finds the build-machine python.
-    - "sed -i \"s/^python = import('python').find_installation()/python = find_program('python3')/\" meson.build"
-    - "sed -i 's/^python_version = .*$/# python_version check skipped for IRIX cross/' meson.build"
-    - "sed -i 's/^python_version_req = .*$/# python_version_req skipped/' meson.build"
-    - "sed -i '/^if not python_version/,/^endif/c\\# python version check skipped for IRIX cross' meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"python = import('python').find_installation()\" --new \"python = find_program('python3')\" --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version = .*$' --new '# python_version check skipped for IRIX cross' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version_req = .*$' --new '# python_version_req skipped' --regex --no-backup --quiet"
+    - "perl -0777 -pi -e 's/^if not python_version.*?^endif/# python version check skipped for IRIX cross/ms' meson.build"
     # Create package-specific meson cross file that adds compat library link args
     # and -lpthread (IRIX needs explicit pthread linking)
     - "cp /home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini p11-kit-cross.ini"
-    - "sed -i \"s|c_link_args = \\[\\]|c_link_args = ['-L$(pwd)/mogrix-compat', '-lmogrix-compat', '-lpthread']|\" p11-kit-cross.ini"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit-cross.ini --old 'c_link_args = []' --new \"c_link_args = ['-L$(pwd)/mogrix-compat', '-lmogrix-compat', '-lpthread']\" --no-backup --quiet"
 
   spec_replacements:
     # Skip GPG signature verification (gpgv2 not available on build host)

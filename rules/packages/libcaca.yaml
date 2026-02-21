@@ -32,7 +32,7 @@ rules:
   - for f in %{buildroot}%{_bindir}/*; do test -f "$f" && head -1 "$f" | grep -q '/bin/bash' && bname=$(basename "$f") && for d in src/.libs tools/.libs; do if test -f "$d/$bname"; then cp "$d/$bname" "$f";
     break; fi; done; done
   prep_commands:
-  - sed -i '/#include "common-image.h"/a extern void *_caca_alloc2d(size_t width, size_t height, size_t elem_size);' src/common-image.c
+  - "$MOGRIX_ROOT/tools/safepatch src/common-image.c --old '#include \"common-image.h\"' --insert-after 'extern void *_caca_alloc2d(size_t width, size_t height, size_t elem_size);' --no-backup --quiet"
   export_vars:
     LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
   spec_replacements:

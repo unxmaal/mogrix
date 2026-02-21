@@ -8,7 +8,7 @@ rules:
   # IRIX puts pthread_atfork in unistd.h, not pthread.h
   # Add include so the declaration is visible
   prep_commands:
-    - "sed -i '/#include <pthread.h>/a #include <unistd.h>' src/npth.h.in"
+    - "$MOGRIX_ROOT/tools/safepatch src/npth.h.in --old '#include <pthread.h>' --insert-after '#include <unistd.h>' --no-backup --quiet"
 
   configure_flags:
     add:

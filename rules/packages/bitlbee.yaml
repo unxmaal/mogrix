@@ -119,5 +119,5 @@ rules:
   - pattern: 'Requires:          %{name}%{?_isa} = %{version}-%{release}, pkgconfig'
     replacement: 'Requires:          %{name} = %{version}-%{release}'
   prep_commands:
-  - sed -i -e 's/%10zd/%10d/g' -e 's/%zu/%u/g' -e 's/%zd/%d/g' -e 's/%zx/%x/g' conf.c dcc.c lib/oauth.c lib/oauth2.c protocols/jabber/si.c protocols/twitter/twitter_http.c root_commands.c
-  - sed -i 's/sa_len/saddr_len/g' dcc.c
+  - "for f in conf.c dcc.c lib/oauth.c lib/oauth2.c protocols/jabber/si.c protocols/twitter/twitter_http.c root_commands.c; do $MOGRIX_ROOT/tools/safepatch $f --old '%10zd' --new '%10d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%x' --count 0 --no-backup --quiet || :; done"
+  - "$MOGRIX_ROOT/tools/safepatch dcc.c --old 'sa_len' --new 'saddr_len' --count 0 --no-backup --quiet"

@@ -26,7 +26,7 @@ rules:
     - libutempter-devel
   prep_commands:
     # screen.c uses PATH_MAX but doesn't include <limits.h> — add it
-    - "sed -i '1i #include <limits.h>' screen.c"
+    - "$MOGRIX_ROOT/tools/safepatch screen.c --insert-top '#include <limits.h>' --no-backup --quiet"
   install_cleanup:
     # make install creates screen.old backup — remove it
     - "rm -f %{buildroot}%{_bindir}/screen.old"

@@ -6,7 +6,7 @@ rules:
   prep_commands:
     # Fix clang error: non-void function doesn't return in all paths
     # assert(0) is a no-op with NDEBUG, so add explicit return
-    - "sed -i 's/assert(0);$/assert(0); return XCB_IMAGE_ORDER_MSB_FIRST;/' image/xcb_bitops.h"
+    - "$MOGRIX_ROOT/tools/safepatch image/xcb_bitops.h --old 'assert(0);' --new 'assert(0); return XCB_IMAGE_ORDER_MSB_FIRST;' --no-backup --quiet"
 
   spec_replacements:
     - pattern: "Requires:       %{name}%{?_isa}"

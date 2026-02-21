@@ -141,6 +141,6 @@ rules:
   - pattern: 'Conflicts:        filesystem < 3'
     replacement: ''
   prep_commands:
-  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lalloc.c misc.c shf.c sh.h
+  - "for f in lalloc.c misc.c shf.c sh.h; do $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%x' --count 0 --no-backup --quiet || :; done"
   install_cleanup:
   - rm -rf %{buildroot}%{_datadir}/locale

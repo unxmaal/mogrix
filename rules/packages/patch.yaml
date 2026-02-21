@@ -13,6 +13,6 @@ rules:
   install_cleanup:
   - rm -f %{buildroot}%{_libdir}/charset.alias
   prep_commands:
-  - sed -i 's/gnulib-tests//' Makefile.in || true
-  - sed -i 's/gnulib-tests//' Makefile.am || true
-  - sed -i 's/-lselinux//g' src/Makefile.in || true
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --no-backup --quiet || true"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old 'gnulib-tests' --new '' --no-backup --quiet || true"
+  - "$MOGRIX_ROOT/tools/safepatch src/Makefile.in --old '-lselinux' --new '' --count 0 --no-backup --quiet || true"

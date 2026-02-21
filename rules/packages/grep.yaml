@@ -15,9 +15,9 @@ rules:
     remove:
     - --without-included-regex
   prep_commands:
-  - sed -i 's/%zu/%u/g' lib/malloc/dynarray_at_failure.c
-  - sed -i 's/ gnulib-tests//' Makefile.am
-  - sed -i 's/ tests//' Makefile.am
+  - "$MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old ' gnulib-tests' --new '' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old ' tests' --new '' --no-backup --quiet"
   spec_replacements:
   - pattern: autoreconf -fi
     replacement: AUTOPOINT=true autoreconf -fi

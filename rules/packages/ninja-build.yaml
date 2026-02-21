@@ -23,6 +23,6 @@ rules:
     replacement: "export CXX=\"%{__cxx}\"\nexport AR=\"%{__ar}\"\nexport CXXFLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\"\nexport LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 -L$(pwd)/mogrix-compat\"\n# Patch link rule: compat/gen libs must come AFTER $in/$libs (link order)\nsed -i \"s|\\$cxx \\$ldflags -o \\$out \\$in \\$libs|\\$cxx \\$ldflags -o \\$out \\$in \\$libs -lmogrix-compat -lmogrix_compat -lgen|\" configure.py\npython3 configure.py --bootstrap --verbose --force-pselect\n# Skip ./ninja -v all — can't run MIPS binary on build host"
   prep_commands:
   # Stub out getloadavg (not available on IRIX) — just return -1 (load unknown)
-  - "sed -i 's/if (getloadavg(loadavg, 3) < 0)/if (1)/' src/util.cc"
+  - "$MOGRIX_ROOT/tools/safepatch src/util.cc --old 'if (getloadavg(loadavg, 3) < 0)' --new 'if (1)' --no-backup --quiet"
   # Skip bootstrap rebuild step — can't run MIPS binary on build host
-  - "sed -i 's/subprocess.check_call(rebuild_args)/pass  # skip: cross-compiled binary/' configure.py"
+  - "$MOGRIX_ROOT/tools/safepatch configure.py --old 'subprocess.check_call(rebuild_args)' --new 'pass  # skip: cross-compiled binary' --no-backup --quiet"

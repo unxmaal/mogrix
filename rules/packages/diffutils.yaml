@@ -11,7 +11,7 @@ rules:
     remove:
     - --without-included-regex
   prep_commands:
-  - sed -i 's/gnulib-tests//' Makefile.in
-  - sed -i 's/gnulib-tests//' Makefile.am || true
-  - sed -i 's/#define pI "t"/#define pI ""/' src/system.h
-  - sed -i 's/STAT_TIMESPEC_NS/DISABLED_STAT_TIMESPEC_NS/' src/diff.c
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old 'gnulib-tests' --new '' --no-backup --quiet || true"
+  - "$MOGRIX_ROOT/tools/safepatch src/system.h --old '#define pI \"t\"' --new '#define pI \"\"' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch src/diff.c --old 'STAT_TIMESPEC_NS' --new 'DISABLED_STAT_TIMESPEC_NS' --no-backup --quiet"

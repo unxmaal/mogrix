@@ -19,52 +19,52 @@ rules:
   prep_commands:
     # === meson.build fixes ===
     # Remove -fstack-protector flags (IRIX doesn't support them)
-    - "sed -i \"/-fstack-protector/d\" meson.build || true"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line '-fstack-protector' --no-backup --quiet || true"
     # Remove _POSIX_C_SOURCE and _XOPEN_SOURCE that conflict with IRIX headers
-    - "sed -i \"/_POSIX_C_SOURCE/d\" meson.build || true"
-    - "sed -i \"/_XOPEN_SOURCE/d\" meson.build || true"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line '_POSIX_C_SOURCE' --no-backup --quiet || true"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line '_XOPEN_SOURCE' --no-backup --quiet || true"
     # Remove -fno-semantic-interposition (not supported by clang for MIPS)
-    - "sed -i \"/-fno-semantic-interposition/d\" meson.build || true"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line '-fno-semantic-interposition' --no-backup --quiet || true"
     # VTE uses -Werror in some configs, disable it
-    - "sed -i \"/-Werror/d\" meson.build || true"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line '-Werror' --no-backup --quiet || true"
     # Bypass function existence asserts (cross-compilation can't detect them)
     # All required functions exist on IRIX (posix_openpt via /dev/ptmx, etc.)
-    - "sed -i \"s/assert(cxx.has_function(func), func + ' not found')/# assert bypassed for cross-compilation/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"assert(cxx.has_function(func), func + ' not found')\" --new '# assert bypassed for cross-compilation' --no-backup --quiet"
     # === GLib 2.80 API compat ===
     # GLib 2.80 removed volatile from g_once_init_enter — fix template
-    - "sed -i 's/static volatile gsize g_define_type_id__volatile/static gsize g_define_type_id__volatile/' src/vtetypebuiltins.cc.template"
+    - "$MOGRIX_ROOT/tools/safepatch src/vtetypebuiltins.cc.template --old 'static volatile gsize g_define_type_id__volatile' --new 'static gsize g_define_type_id__volatile' --no-backup --quiet"
     # === IRIX PTY fixes (from SGUG-RSE) ===
     # Add sys/ioctl.h, termios.h, and posix_openpt declaration to pty.cc
     # IRIX has posix_openpt in libc but no header declaration
-    - "sed -i '1i #include <sys/ioctl.h>\\n#include <termios.h>\\nextern \"C\" int posix_openpt(int flags);' src/pty.cc"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --insert-top $'#include <sys/ioctl.h>\\n#include <termios.h>\\nextern \"C\" int posix_openpt(int flags);' --no-backup --quiet"
     # Remove O_CLOEXEC from posix_openpt on IRIX (not supported).
     # FD_CLOEXEC=1=O_WRONLY on IRIX — must NOT be ORed into open() flags.
     # The non-linux fallback path applies CLOEXEC via fcntl after open succeeds.
-    - "sed -i 's/O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC/O_RDWR | O_NOCTTY | O_NONBLOCK/' src/pty.cc"
-    - "sed -i 's/O_RDWR | O_NOCTTY | O_CLOEXEC/O_RDWR | O_NOCTTY/' src/pty.cc"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old 'O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC' --new 'O_RDWR | O_NOCTTY | O_NONBLOCK' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old 'O_RDWR | O_NOCTTY | O_CLOEXEC' --new 'O_RDWR | O_NOCTTY' --no-backup --quiet"
     # === IRIX STREAMS PTY modules ===
     # IRIX PTY slaves are STREAMS devices (isastream()=1) but ptem/ldterm are
     # NOT auto-pushed. Without them: no line discipline, no echo, no ^C signals.
     # VTE only handles this for Solaris (__sun). Add __sgi for IRIX.
     # Also add stropts.h include (needed for isastream/I_FIND/I_PUSH).
-    - "sed -i 's/#if defined(__sun) && defined(HAVE_STROPTS_H)/#if (defined(__sun) || defined(__sgi)) \\&\\& defined(HAVE_STROPTS_H)/' src/pty.cc"
-    - "sed -i '/#include <pty.h>/a #ifdef __sgi\\n#define HAVE_STROPTS_H 1\\n#endif' src/pty.cc"
-    - "sed -i '/#ifdef HAVE_PTY_H/i #ifdef __sgi\\n#include <stropts.h>\\n#endif' src/pty.cc"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#if defined(__sun) && defined(HAVE_STROPTS_H)' --new '#if (defined(__sun) || defined(__sgi)) && defined(HAVE_STROPTS_H)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#include <pty.h>' --insert-after $'#ifdef __sgi\\n#define HAVE_STROPTS_H 1\\n#endif' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#ifdef HAVE_PTY_H' --insert-before $'#ifdef __sgi\\n#include <stropts.h>\\n#endif' --no-backup --quiet"
     # === IRIX TIOCPKT fixes ===
     # IRIX defines TIOCPKT_DOSTOP (0x20) and TIOCPKT_NOSTOP (0x10) instead of
     # Linux TIOCPKT_STOP (0x10) and TIOCPKT_START (0x20). The semantics differ
     # (IRIX: capability change, Linux: event) but VTE only uses them for cosmetic
     # scroll lock notification. Map to IRIX equivalents for compilation.
-    - "sed -i 's/TIOCPKT_STOP/TIOCPKT_DOSTOP/' src/vte.cc"
-    - "sed -i 's/TIOCPKT_START/TIOCPKT_NOSTOP/' src/vte.cc"
+    - "$MOGRIX_ROOT/tools/safepatch src/vte.cc --old 'TIOCPKT_STOP' --new 'TIOCPKT_DOSTOP' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/vte.cc --old 'TIOCPKT_START' --new 'TIOCPKT_NOSTOP' --no-backup --quiet"
     # === W_EXITCODE not available on IRIX ===
-    - "sed -i 's/W_EXITCODE(0, SIGKILL)/SIGKILL/' src/widget.cc"
+    - "$MOGRIX_ROOT/tools/safepatch src/widget.cc --old 'W_EXITCODE(0, SIGKILL)' --new 'SIGKILL' --no-backup --quiet"
     # === pid_t is long on IRIX, fix format specifiers ===
     # reaper.cc: %d -> %ld for pid
-    - "sed -i 's/Starting to wait for %d/Starting to wait for %ld/' src/reaper.cc"
-    - "sed -i 's/Not waiting for %d/Not waiting for %ld/' src/reaper.cc"
+    - "$MOGRIX_ROOT/tools/safepatch src/reaper.cc --old 'Starting to wait for %d' --new 'Starting to wait for %ld' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/reaper.cc --old 'Not waiting for %d' --new 'Not waiting for %ld' --no-backup --quiet"
     # vte.cc: Child[%d] -> Child[%ld]
-    - "sed -i 's/Child\\[%d\\]/Child[%ld]/g' src/vte.cc"
+    - "$MOGRIX_ROOT/tools/safepatch src/vte.cc --old 'Child[%d]' --new 'Child[%ld]' --count 0 --no-backup --quiet"
 
   spec_replacements:
     # Replace entire %build section with meson cross-compilation

@@ -17,19 +17,19 @@ rules:
   prep_commands:
     # Remove _POSIX_C_SOURCE and _XOPEN_SOURCE — they hide IRIX-specific definitions
     # (struct winsize, TIOCSWINSZ, various SGI extensions). _SGI_SOURCE provides everything.
-    - "sed -i 's/-D_POSIX_C_SOURCE=200809L//' config.mk"
-    - "sed -i 's/-D_XOPEN_SOURCE=700//' config.mk"
-    - "sed -i 's/-D_DARWIN_C_SOURCE//' config.mk"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '-D_POSIX_C_SOURCE=200809L' --new '' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '-D_XOPEN_SOURCE=700' --new '' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '-D_DARWIN_C_SOURCE' --new '' --no-backup --quiet"
     # Remove -pedantic — IRIX headers use extensions that trigger warnings-as-errors
-    - "sed -i 's/-pedantic//' config.mk"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '-pedantic' --new '' --no-backup --quiet"
     # IRIX lacks HOST_NAME_MAX and _SC_HOST_NAME_MAX — define HOST_NAME_MAX
     # to trigger the simpler code path (IRIX MAXHOSTNAMELEN is 256)
-    - "sed -i '1i#ifndef HOST_NAME_MAX\\n#define HOST_NAME_MAX 255\\n#endif' src/winwidget.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/winwidget.c --insert-top $'#ifndef HOST_NAME_MAX\\n#define HOST_NAME_MAX 255\\n#endif' --no-backup --quiet"
     # Pre-create empty deps.mk and disable its regeneration rule.
     # The irix-cc wrapper doesn't handle -MM (dependency generation) correctly —
     # it misroutes to compile+link instead of preprocess-only mode.
     - "touch src/deps.mk"
-    - "sed -i '/^deps.mk:/,/>/d' src/Makefile"
+    - "perl -ni -e 'print unless /^deps\\.mk:/ .. />/' src/Makefile"
 
   spec_replacements:
     # Replace the Fedora build command with cross-compilation build.

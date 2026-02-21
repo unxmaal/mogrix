@@ -80,7 +80,7 @@ rules:
 
       sed -i ''/pinky/d; /stdbuf/d; /\/users$/d; /\/who$/d; /\/seq$/d'' supported_utils'
   prep_commands:
-  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' lib/malloc/dynarray_at_failure.c || true
+  - "$MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet || true; $MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zd' --new '%d' --count 0 --no-backup --quiet || true; $MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zx' --new '%x' --count 0 --no-backup --quiet || true"
   install_cleanup:
   - rm -rf %{buildroot}%{_infodir}
   - rm -rf %{buildroot}%{_mandir}

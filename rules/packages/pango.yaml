@@ -1,9 +1,9 @@
 package: pango
 rules:
   prep_commands:
-  - sed -i "s/'-D_POSIX_C_SOURCE=200809L', //" meson.build
-  - sed -i "s/^subdir('tests')/#subdir('tests')/" meson.build
-  - sed -i "s/^subdir('examples')/#subdir('examples')/" meson.build
+  - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"'-D_POSIX_C_SOURCE=200809L', \" --new '' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"subdir('tests')\" --new \"#subdir('tests')\" --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"subdir('examples')\" --new \"#subdir('examples')\" --no-backup --quiet"
   - rm -rf subprojects/*.wrap
   drop_buildrequires:
   - gi-docgen

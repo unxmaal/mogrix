@@ -6,24 +6,25 @@ rules:
 
   prep_commands:
     # Disable Xinerama (not available on IRIX)
-    - "sed -i 's/^XINERAMALIBS.*/#XINERAMALIBS =/' config.mk"
-    - "sed -i 's/^XINERAMAFLAGS.*/#XINERAMAFLAGS =/' config.mk"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '^XINERAMALIBS.*' --new '#XINERAMALIBS =' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '^XINERAMAFLAGS.*' --new '#XINERAMAFLAGS =' --regex --no-backup --quiet"
     # Fix %zu format — IRIX libc doesn't support it (size_t is 4 bytes on n32)
-    - "sed -i 's/%zu/%u/g' dmenu.c"
+    - "$MOGRIX_ROOT/tools/safepatch dmenu.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
     # Remove _XOPEN_SOURCE=700 and _POSIX_C_SOURCE — they hide IRIX functions.
     # _SGI_SOURCE (default) provides all POSIX/XSI/BSD.
-    - "sed -i 's/-D_XOPEN_SOURCE=700//; s/-D_POSIX_C_SOURCE=200809L//' config.mk"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '-D_XOPEN_SOURCE=700' --new '' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '-D_POSIX_C_SOURCE=200809L' --new '' --no-backup --quiet"
     # Fix paths in config.mk for cross-compilation against staging sysroot.
     # X11INC/X11LIB use target paths (/usr/sgug/...) — these are already on the
     # search path via irix-cc's -isystem. FREETYPEINC needs the FULL staging path
     # because /usr/sgug/include/freetype2 is a subdirectory not on the default
     # -isystem list, and -I target-paths don't exist on the build host.
-    - "sed -i 's|X11INC = /usr/X11R6/include|X11INC = /usr/sgug/include|' config.mk"
-    - "sed -i 's|X11LIB = /usr/X11R6/lib|X11LIB = /usr/sgug/lib32|' config.mk"
-    - "sed -i 's|FREETYPEINC = /usr/include/freetype2|FREETYPEINC = /opt/sgug-staging/usr/sgug/include/freetype2|' config.mk"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'X11INC = /usr/X11R6/include' --new 'X11INC = /usr/sgug/include' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'X11LIB = /usr/X11R6/lib' --new 'X11LIB = /usr/sgug/lib32' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'FREETYPEINC = /usr/include/freetype2' --new 'FREETYPEINC = /opt/sgug-staging/usr/sgug/include/freetype2' --no-backup --quiet"
     # IRIX X11R6.3 Xutil.h doesn't transitively include keysym.h like modern X11.
     # dmenu uses XK_Escape, XK_BackSpace etc. without including it directly.
-    - "sed -i '/#include <X11\\/Xft\\/Xft.h>/a\\#include <X11/keysym.h>' dmenu.c"
+    - "$MOGRIX_ROOT/tools/safepatch dmenu.c --old '#include <X11/Xft/Xft.h>' --insert-after '#include <X11/keysym.h>' --no-backup --quiet"
 
   spec_replacements:
     # Replace the Fedora make invocation with cross-compile flags.

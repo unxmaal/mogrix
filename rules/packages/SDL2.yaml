@@ -50,7 +50,7 @@ rules:
     # Remove the wayland-prefer patch (we disable wayland entirely)
     - "rm -f SDL2-2.30.1-prefer-wayland.patch || true"
     # Remove fcitx/ibus input method support (needs dbus)
-    - "sed -i 's|#define SDL_USE_IME 1|/* #undef SDL_USE_IME */|' include/SDL_config.h.cmake || true"
+    - "$MOGRIX_ROOT/tools/safepatch include/SDL_config.h.cmake --old '#define SDL_USE_IME 1' --new '/* #undef SDL_USE_IME */' --no-backup --quiet || true"
     # IRIX X11R6.3 has no Xutf8 functions (X_HAVE_UTF8_STRING not defined)
     # SDL2 code uses SDL_X11_HAVE_UTF8 without guarding with #ifdef X_HAVE_UTF8_STRING
     # Fix: add fallback #define SDL_X11_HAVE_UTF8 0 at end of SDL_x11dyn.h
@@ -60,16 +60,16 @@ rules:
     - "perl -pi -e 's/&(\\w+)->xcookie\\b/(XGenericEventCookie*)$1/g' src/video/x11/SDL_x11events.c"
     - "perl -pi -e 's/(\\w+)->xcookie\\./((XGenericEventCookie*)$1)->/g' src/video/x11/SDL_x11events.c"
     - "perl -pi -e 's/(?<!&)(\\w+)->xcookie\\b/(*((XGenericEventCookie*)$1))/g' src/video/x11/SDL_x11events.c"
-    - "sed -i '1i #include <X11/extensions/Xge.h>' src/video/x11/SDL_x11events.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/video/x11/SDL_x11events.c --insert-top '#include <X11/extensions/Xge.h>' --no-backup --quiet"
     # IRIX vfork == fork, and SGUG unistd.h doesn't declare vfork.
     # Simply replace vfork() with fork() in this file.
-    - "sed -i 's/vfork()/fork()/g' src/misc/unix/SDL_sysurl.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/misc/unix/SDL_sysurl.c --old 'vfork()' --new 'fork()' --count 0 --no-backup --quiet"
     # Replace -idirafter with -isystem for khronos includes
     # -idirafter is added to CMAKE_C_FLAGS and leaks into link commands where irix-ld chokes on it
-    - "sed -i 's/-idirafter/-isystem/g' CMakeLists.txt"
+    - "$MOGRIX_ROOT/tools/safepatch CMakeLists.txt --old '-idirafter' --new '-isystem' --count 0 --no-backup --quiet"
     # Add stub Xutf8 function pointer declarations when X_HAVE_UTF8_STRING is not defined
     # SDL2_X11_HAVE_UTF8 is 0 so these never execute, but compiler needs declarations
-    - "sed -i '/#include \"SDL_x11video.h\"/a #ifndef X_HAVE_UTF8_STRING\\nstatic void (*X11_Xutf8DrawString)(Display*, Drawable, XFontSet, GC, int, int, const char*, int) = NULL;\\nstatic int (*X11_Xutf8TextExtents)(XFontSet, const char*, int, XRectangle*, XRectangle*) = NULL;\\n#endif' src/video/x11/SDL_x11messagebox.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/video/x11/SDL_x11messagebox.c --old '#include \"SDL_x11video.h\"' --insert-after $'#ifndef X_HAVE_UTF8_STRING\\nstatic void (*X11_Xutf8DrawString)(Display*, Drawable, XFontSet, GC, int, int, const char*, int) = NULL;\\nstatic int (*X11_Xutf8TextExtents)(XFontSet, const char*, int, XRectangle*, XRectangle*) = NULL;\\n#endif' --no-backup --quiet"
 
   spec_replacements:
     # Remove libdecor BuildRequires (uses RPM macro that drop_buildrequires can't match)

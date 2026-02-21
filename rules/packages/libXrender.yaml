@@ -41,7 +41,7 @@ rules:
   # Provide as a macro wrapping the older _XEatData function.
   # Inject into Xrenderint.h (included by all source files).
   prep_commands:
-    - "sed -i '/#include.*Xlibint/a\\#ifndef _XEatDataWords\\n#define _XEatDataWords(dpy, n) _XEatData((dpy), (unsigned long)(n) << 2)\\n#endif' src/Xrenderint.h"
+    - "$MOGRIX_ROOT/tools/safepatch src/Xrenderint.h --old '#include.*Xlibint' --insert-after $'#ifndef _XEatDataWords\\n#define _XEatDataWords(dpy, n) _XEatData((dpy), (unsigned long)(n) << 2)\\n#endif' --regex --no-backup --quiet"
 
   install_cleanup:
     - "rm -rf %{buildroot}%{_docdir}"

@@ -39,9 +39,9 @@ rules:
     # Regenerate configure after patching configure.ac
     - "autoconf"
     # Verbose build output
-    - "sed -i '/.SILENT:/d' makeinclude.in"
+    - "$MOGRIX_ROOT/tools/safepatch makeinclude.in --delete-line '.SILENT:' --no-backup --quiet"
     # Skip building fluid (MIPS binary can't run on build host) and test programs
-    - "sed -i 's|DIRS = $(IMAGEDIRS) src $(CAIRODIR) fluid test documentation|DIRS = $(IMAGEDIRS) src $(CAIRODIR)|' Makefile"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile --old 'DIRS = $(IMAGEDIRS) src $(CAIRODIR) fluid test documentation' --new 'DIRS = $(IMAGEDIRS) src $(CAIRODIR)' --no-backup --quiet"
 
   install_cleanup:
     - "rm -rf $RPM_BUILD_ROOT%{_mandir}/cat*"

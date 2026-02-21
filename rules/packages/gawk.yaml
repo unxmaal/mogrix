@@ -17,9 +17,9 @@ rules:
     add:
     - --without-mpfr
   prep_commands:
-  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' node.c re.c support/pma.c builtin.c
-  - sed -i 's/%zu/%u/g' support/malloc/dynarray_at_failure.c
-  - sed -i 's/ test$//' Makefile.am
+  - "for f in node.c re.c support/pma.c builtin.c; do $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%x' --count 0 --no-backup --quiet || :; done"
+  - "$MOGRIX_ROOT/tools/safepatch support/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old ' test' --new '' --no-backup --quiet"
   drop_subpackages:
   - doc
   - all-langpacks

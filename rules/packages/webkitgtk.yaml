@@ -22,17 +22,17 @@ rules:
   prep_commands:
     # Use host preprocessor for IDL code generation (cross-compiler includes
     # IRIX-compat stdarg.h with 'typedef char *va_list' that breaks IDL parser)
-    - sed -i 's|\\\"${CMAKE_CXX_COMPILER}\\\" -E -P -x c++|\\\"/usr/bin/g++\\\" -E -P -x c++|' Source/cmake/WebKitCompilerFlags.cmake
+    - $MOGRIX_ROOT/tools/safepatch Source/cmake/WebKitCompilerFlags.cmake --old '"${CMAKE_CXX_COMPILER}" -E -P -x c++' --new '"/usr/bin/g++" -E -P -x c++' --no-backup --quiet
     # IRIX PTHREAD_KEYS_MAX is _sysconf() (runtime), WebKit needs constexpr
-    - sed -i 's/static constexpr ThreadSpecificKey InvalidThreadSpecificKey = PTHREAD_KEYS_MAX/static constexpr ThreadSpecificKey InvalidThreadSpecificKey = 128/' Source/WTF/wtf/ThreadingPrimitives.h
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/ThreadingPrimitives.h --old 'static constexpr ThreadSpecificKey InvalidThreadSpecificKey = PTHREAD_KEYS_MAX' --new 'static constexpr ThreadSpecificKey InvalidThreadSpecificKey = 128' --no-backup --quiet
     # IRIX lacks MAP_FILE — it's 0 on all modern systems (just means "map from file")
-    - sed -i 's/MAP_FILE | //' Source/WTF/wtf/FileSystem.cpp
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/FileSystem.cpp --old 'MAP_FILE | ' --new '' --no-backup --quiet
     # IRIX lacks pthread_getattr_np (GNU) and pthread_attr_getstack (POSIX.1-2001).
     # Include compat header that provides inline wrappers using IRIX's separate functions.
     - cp %{_sourcedir}/irix_pthread_compat.h Source/WTF/wtf/irix_pthread_compat.h
     - perl -i -pe 's{^(#include <pthread\.h>)}{$1\n#include "irix_pthread_compat.h"}' Source/WTF/wtf/StackBounds.cpp
     # Include sys/resource.h and unistd.h for IRIX too (needed by getrlimit in compat header)
-    - sed -i '0,/#if OS(LINUX)/s/#if OS(LINUX)/#if OS(LINUX) || defined(__sgi)/' Source/WTF/wtf/StackBounds.cpp
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/StackBounds.cpp --old '#if OS(LINUX)' --new '#if OS(LINUX) || defined(__sgi)' --no-backup --quiet
     # IRIX C++ name collision: struct flock vs flock() function.
     # Add extern "C" flock prototype before the USE(FILE_LOCK) section.
     - perl -i -pe 's{^(#if USE\(FILE_LOCK\))}{#ifdef __sgi\nextern "C" int flock(int, int);\n#endif\n$1}' Source/WTF/wtf/posix/FileSystemPOSIX.cpp
@@ -44,29 +44,29 @@ rules:
     - perl -i -pe 's{int ret = clock_gettime\(CLOCK_THREAD_CPUTIME_ID, &ts\);}{struct rusage ru;\n    int ret = getrusage(RUSAGE_SELF, \&ru);\n    ts.tv_sec = ru.ru_utime.tv_sec + ru.ru_stime.tv_sec;\n    ts.tv_nsec = (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) * 1000;}' Source/WTF/wtf/posix/CPUTimePOSIX.cpp
     # CMAKE_SYSTEM_NAME is "Linux" (cmake has no IRIX support), so WebKit
     # includes Linux-specific sources. Remove them and use generic fallbacks.
-    - sed -i '/linux\/RealTimeThreads.h/d' Source/WTF/wtf/PlatformGTK.cmake
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/PlatformGTK.cmake --delete-line 'linux/RealTimeThreads.h' --no-backup --quiet
     # Disable Linux-specific sources — we set CMAKE_SYSTEM_NAME=Linux because cmake
     # has no IRIX support, but we need generic fallbacks, not Linux procfs/cgroups code.
-    - sed -i 's/CMAKE_SYSTEM_NAME MATCHES "Linux"/FALSE/' Source/WTF/wtf/PlatformGTK.cmake
-    - sed -i 's/CMAKE_SYSTEM_NAME MATCHES "Linux"/FALSE/' Source/cmake/OptionsGTK.cmake
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/PlatformGTK.cmake --old 'CMAKE_SYSTEM_NAME MATCHES "Linux"' --new 'FALSE' --count 0 --no-backup --quiet
+    - $MOGRIX_ROOT/tools/safepatch Source/cmake/OptionsGTK.cmake --old 'CMAKE_SYSTEM_NAME MATCHES "Linux"' --new 'FALSE' --count 0 --no-backup --quiet
     # CLoop interpreter: t6 and t7 registers not declared but referenced by UNUSED_VARIABLE
-    - sed -i 's/CLoopRegister t0, t1, t2, t3, t5, sp, cfr, lr, pc;/CLoopRegister t0, t1, t2, t3, t5, t6, t7, sp, cfr, lr, pc;/' Source/JavaScriptCore/llint/LowLevelInterpreter.cpp
+    - $MOGRIX_ROOT/tools/safepatch Source/JavaScriptCore/llint/LowLevelInterpreter.cpp --old 'CLoopRegister t0, t1, t2, t3, t5, sp, cfr, lr, pc;' --new 'CLoopRegister t0, t1, t2, t3, t5, t6, t7, sp, cfr, lr, pc;' --no-backup --quiet
     # IRIX mincore takes caddr_t (char*) not void* — add cast
-    - sed -i 's/auto result = mincore(pageStart,/auto result = mincore(reinterpret_cast<caddr_t>(pageStart),/' Source/JavaScriptCore/heap/BlockDirectory.cpp
+    - $MOGRIX_ROOT/tools/safepatch Source/JavaScriptCore/heap/BlockDirectory.cpp --old 'auto result = mincore(pageStart,' --new 'auto result = mincore(reinterpret_cast<caddr_t>(pageStart),' --no-backup --quiet
     # MIPS clang backend can't guarantee tail call elimination — disable MUST_TAIL_CALL
-    - sed -i 's/__has_cpp_attribute(clang::musttail)/0/' Source/WTF/wtf/Compiler.h
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/Compiler.h --old '__has_cpp_attribute(clang::musttail)' --new '0' --no-backup --quiet
     # MIPS branch range: ColorConversion.cpp and ColorLuminance.cpp expand to huge template
     # functions via callOnUnderlyingType. LLVM's MIPS assembler can't relax 16-bit branch
     # offsets, causing "out of range PC16 fixup". Exclude from unified builds (@no-unify)
     # and compile at -O1 to reduce code size.
-    - sed -i 's|platform/graphics/ColorConversion.cpp|platform/graphics/ColorConversion.cpp@no-unify|' Source/WebCore/Sources.txt
-    - sed -i 's|platform/graphics/ColorLuminance.cpp|platform/graphics/ColorLuminance.cpp@no-unify|' Source/WebCore/Sources.txt
+    - $MOGRIX_ROOT/tools/safepatch Source/WebCore/Sources.txt --old 'platform/graphics/ColorConversion.cpp' --new 'platform/graphics/ColorConversion.cpp@no-unify' --no-backup --quiet
+    - $MOGRIX_ROOT/tools/safepatch Source/WebCore/Sources.txt --old 'platform/graphics/ColorLuminance.cpp' --new 'platform/graphics/ColorLuminance.cpp@no-unify' --no-backup --quiet
     - perl -i -pe 'BEGIN{$done=0} if(!$done && /^WEBKIT_FRAMEWORK\(WebCore\)/){print "set_source_files_properties(platform/graphics/ColorConversion.cpp platform/graphics/ColorLuminance.cpp PROPERTIES COMPILE_FLAGS \"-O1\")\n"; $done=1}' Source/WebCore/CMakeLists.txt
     # IRIX lacks MSG_NOSIGNAL — define as 0 (like macOS does). Use SIG_IGN SIGPIPE instead.
-    - sed -i 's/#if OS(DARWIN)/#if OS(DARWIN) || defined(__sgi)/' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    - $MOGRIX_ROOT/tools/safepatch Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp --old '#if OS(DARWIN)' --new '#if OS(DARWIN) || defined(__sgi)' --no-backup --quiet
     # IRIX AF_UNIX doesn't support SOCK_SEQPACKET — fall back to SOCK_STREAM (like macOS).
     # WebKit uses length-prefixed IPC framing so stream semantics work fine.
-    - sed -i 's/!OS(DARWIN)/!OS(DARWIN) \&\& !defined(__sgi)/' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    - $MOGRIX_ROOT/tools/safepatch Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp --old '!OS(DARWIN)' --new '!OS(DARWIN) && !defined(__sgi)' --no-backup --quiet
     # --- IPC debug logging (TEMPORARY - remove after root-causing connection drop) ---
     # All format strings live in ipc_debug_log.h macros to avoid YAML % escaping issues.
     - cp %{_sourcedir}/ipc_debug_log.h Source/WebKit/Platform/IPC/unix/ipc_debug_log.h

@@ -17,7 +17,7 @@ rules:
       replacement: "# libFLAC++ disabled (no C++ support)"
   prep_commands:
     # microbench uses CLOCK_PROCESS_CPUTIME_ID which doesn't exist on IRIX
-    - "sed -i 's/test microbench oss-fuzz/test oss-fuzz/' Makefile.in"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'test microbench oss-fuzz' --new 'test oss-fuzz' --no-backup --quiet"
   configure_disable:
     - cpplibs
     - examples

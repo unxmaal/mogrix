@@ -1,7 +1,7 @@
 package: glib-networking
 rules:
   prep_commands:
-  - sed -i "/subdir('tests')/d" tls/meson.build
+  - "$MOGRIX_ROOT/tools/safepatch tls/meson.build --delete-line \"subdir('tests')\" --no-backup --quiet"
   drop_buildrequires:
   - meson
   - pkgconfig(gsettings-desktop-schemas)

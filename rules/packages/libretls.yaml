@@ -32,7 +32,7 @@ rules:
     - "cp %{_sourcedir}/arc4random_irix.h compat/arc4random_irix.h"
 
     # 2. Add __sgi case to arc4random.h before the #else fallback
-    - "sed -i 's/^#else$/#elif defined(__sgi)\\n#include \"arc4random_irix.h\"\\n#else/' compat/arc4random.h"
+    - "$MOGRIX_ROOT/tools/safepatch compat/arc4random.h --old '#else' --insert-before $'#elif defined(__sgi)\\n#include \"arc4random_irix.h\"' --no-backup --quiet"
 
     # 3. Install IRIX getentropy (reads /dev/urandom)
     - "cp %{_sourcedir}/getentropy_irix.c compat/getentropy_irix.c"
@@ -40,7 +40,7 @@ rules:
     # 4. Replace Linux getentropy with IRIX version in Makefile.am.
     # Also strip the HOST_LINUX conditional around it — IRIX doesn't match
     # any HOST_* guard, so the file would never be compiled otherwise.
-    - "sed -i 's|compat/getentropy_linux\\.c|compat/getentropy_irix.c|g' Makefile.am"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old 'compat/getentropy_linux.c' --new 'compat/getentropy_irix.c' --count 0 --no-backup --quiet"
     - |
       perl -0777 -pi -e '
         s/if HOST_LINUX\nlibcompat_la_SOURCES \+= compat\/getentropy_irix\.c\nendif/libcompat_la_SOURCES += compat\/getentropy_irix.c/s
@@ -48,4 +48,4 @@ rules:
 
     # 5. Fix MAP_ANON: IRIX has no MAP_ANON or MAP_ANONYMOUS
     # Define MAP_ANON as 0 (our arc4random_irix.h uses /dev/zero instead)
-    - "sed -i 's/#error \"System does not support mapping anonymous pages?\"/#define MAP_ANON 0/' include/compat/sys/mman.h"
+    - "$MOGRIX_ROOT/tools/safepatch include/compat/sys/mman.h --old '#error \"System does not support mapping anonymous pages?\"' --new '#define MAP_ANON 0' --no-backup --quiet"

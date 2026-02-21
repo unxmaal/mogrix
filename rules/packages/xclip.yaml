@@ -7,7 +7,7 @@ rules:
   prep_commands:
     # IRIX X11R6.3 Xmu/Atoms.h doesn't have XA_UTF8_STRING (X11R6.4+).
     # Define it as XInternAtom lookup — functionally identical.
-    - "sed -i '/#include <X11\\/Xmu\\/Atoms.h>/a\\#ifndef XA_UTF8_STRING\\n#define XA_UTF8_STRING(dpy) XInternAtom(dpy, \"UTF8_STRING\", False)\\n#endif' xclip.c xclib.c borked.c"
+    - "for f in xclip.c xclib.c borked.c; do $MOGRIX_ROOT/tools/safepatch $f --old '#include <X11/Xmu/Atoms.h>' --insert-after $'#ifndef XA_UTF8_STRING\\n#define XA_UTF8_STRING(dpy) XInternAtom(dpy, \"UTF8_STRING\", False)\\n#endif' --no-backup --quiet; done"
 
   spec_replacements:
     # rpmbuild uses /bin/sh — ${c:0:7} is a bash substring expansion

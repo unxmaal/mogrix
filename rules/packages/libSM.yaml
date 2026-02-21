@@ -18,4 +18,4 @@ rules:
       replacement: "# ldconfig_postun removed"
   # Force-disable uuid_create detection (false positive from host libs in cross-compile)
   prep_commands:
-    - "sed -i 's/uuid_create/uuid_create_disabled/g' configure.ac configure 2>/dev/null || :"
+    - "for f in configure.ac configure; do $MOGRIX_ROOT/tools/safepatch $f --old 'uuid_create' --new 'uuid_create_disabled' --count 0 --no-backup --quiet || :; done"

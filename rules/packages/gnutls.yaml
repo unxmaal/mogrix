@@ -8,7 +8,7 @@ rules:
   - trousers-devel
   - mingw*
   prep_commands:
-  - sed -i 's/#define _Thread_local __thread/#define _Thread_local/' lib/gthreads.h
+  - $MOGRIX_ROOT/tools/safepatch lib/gthreads.h --old '#define _Thread_local __thread' --new '#define _Thread_local' --no-backup --quiet
   ac_cv_overrides:
     gl_cv_func_working_getdelim: 'yes'
   configure_flags:

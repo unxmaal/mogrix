@@ -128,4 +128,4 @@ rules:
     # IRIX sys/param.h defines TICK as a macro (10000000 nanoseconds per tick).
     # ICU rbnf.cpp uses TICK as a local char16_t constant name -> narrowing error.
     # Rename ICU's TICK to ICU_TICK to avoid collision with IRIX macro.
-    - "sed -i 's/\\bTICK\\b/ICU_TICK/g' source/i18n/rbnf.cpp"
+    - "$MOGRIX_ROOT/tools/safepatch source/i18n/rbnf.cpp --old '\\bTICK\\b' --new 'ICU_TICK' --regex --count 0 --no-backup --quiet"

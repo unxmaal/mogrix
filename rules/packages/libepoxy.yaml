@@ -14,8 +14,8 @@ rules:
 
   # IRIX has no err.h — remove include. IRIX has no RTLD_NOLOAD — define it.
   prep_commands:
-    - "sed -i '/#include <err.h>/d' src/dispatch_common.c"
-    - "sed -i '/^#include <dlfcn.h>/a #ifndef RTLD_NOLOAD\\n#define RTLD_NOLOAD 0x10\\n#endif' src/dispatch_common.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/dispatch_common.c --delete-line '#include <err.h>' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/dispatch_common.c --old '#include <dlfcn.h>' --insert-after $'#ifndef RTLD_NOLOAD\\n#define RTLD_NOLOAD 0x10\\n#endif' --no-backup --quiet"
 
   spec_replacements:
     # Replace %meson + %meson_build

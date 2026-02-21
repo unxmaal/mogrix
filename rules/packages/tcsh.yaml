@@ -72,9 +72,9 @@ rules:
   ac_cv_overrides:
     ac_cv_search_tgetent: -ltinfo
   prep_commands:
-  - sed -i 's/\*-sgi-iri\*/\*-*-iri\*/' configure
-  - sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' sh.h tc.alloc.c ed.defns.c
-  - sed -i 's/defined(__QNXNTO__)/defined(__QNXNTO__) || defined(__sgi)/' ed.term.h
-  - sed -i '1i\#define _SYSTYPE_SVR4 1' system/irix62
+  - "$MOGRIX_ROOT/tools/safepatch configure --old '*-sgi-iri*' --new '*-*-iri*' --no-backup --quiet"
+  - "for f in sh.h tc.alloc.c ed.defns.c; do $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%x' --count 0 --no-backup --quiet || :; done"
+  - "$MOGRIX_ROOT/tools/safepatch ed.term.h --old 'defined(__QNXNTO__)' --new 'defined(__QNXNTO__) || defined(__sgi)' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch system/irix62 --insert-top '#define _SYSTYPE_SVR4 1' --no-backup --quiet"
   install_cleanup:
   - rm -rf %{buildroot}%{_datadir}/locale

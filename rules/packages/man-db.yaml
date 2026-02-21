@@ -15,9 +15,9 @@ rules:
   prep_commands:
     # man-db has broken __sgi code path that references argc out of scope
     # We don't want the vendor /usr/bin/man fallback anyway
-    - "sed -i 's/#if defined _AIX || defined __sgi/#if 0 \\/* disabled for IRIX cross-build *\\//' src/man.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/man.c --old '#if defined _AIX || defined __sgi' --new '#if 0 /* disabled for IRIX cross-build */' --no-backup --quiet"
     # IRIX iconv doesn't support GNU flags (-c, //TRANSLIT) — skip charset conversion
-    - "sed -i 's/if (source && target && !STREQ (source, target))/if (0 \\/* iconv disabled for IRIX *\\/)/' src/man.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/man.c --old 'if (source && target && !STREQ (source, target))' --new 'if (0 /* iconv disabled for IRIX */)' --no-backup --quiet"
   install_cleanup:
     # Remove cron subpackage files (subpackage dropped but install still runs)
     - "rm -rf %{buildroot}%{_sysconfdir}/cron.daily"

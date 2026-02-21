@@ -4,8 +4,8 @@ rules:
     add:
     - --disable-docs
   prep_commands:
-  - sed -i 's/^utime (/fribidi_bench_utime (/' bin/fribidi-benchmark.c
-  - sed -i 's/utime ()/fribidi_bench_utime ()/' bin/fribidi-benchmark.c
+  - $MOGRIX_ROOT/tools/safepatch bin/fribidi-benchmark.c --old 'utime (' --new 'fribidi_bench_utime (' --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch bin/fribidi-benchmark.c --old 'utime ()' --new 'fribidi_bench_utime ()' --no-backup --quiet
   install_cleanup:
   - rm -rf %{buildroot}%{_mandir}/man3
   spec_replacements:

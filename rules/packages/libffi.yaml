@@ -9,7 +9,7 @@ rules:
   # configure.host matches mips-sgi-irix6.* but we're mips-unknown-irix6.5.
   # Widen the pattern to accept any vendor for IRIX.
   prep_commands:
-    - "sed -i 's/mips-sgi-irix5\\.\\* | mips-sgi-irix6\\.\\*/mips*-*-irix5.* | mips*-*-irix6.*/' configure.host"
+    - "$MOGRIX_ROOT/tools/safepatch configure.host --old 'mips-sgi-irix5.* | mips-sgi-irix6.*' --new 'mips*-*-irix5.* | mips*-*-irix6.*' --no-backup --quiet"
 
   # LLVM/Clang 16 integrated assembler bug (fixed in LLVM 18, issue #52785):
   # .cpsetup on N32 incorrectly expands to __gnu_local_gp absolute references

@@ -23,22 +23,22 @@ rules:
     /usr/include: /usr/include
   prep_commands:
   # libiberty/filedescriptor.c uses dup2() without including unistd.h
-  - "sed -i '1i #include <unistd.h>' libiberty/filedescriptor.c"
+  - "$MOGRIX_ROOT/tools/safepatch libiberty/filedescriptor.c --insert-top '#include <unistd.h>' --no-backup --quiet"
   # libiberty/fibheap.c uses LONG_MIN without including limits.h
-  - "sed -i '1i #include <limits.h>' libiberty/fibheap.c"
+  - "$MOGRIX_ROOT/tools/safepatch libiberty/fibheap.c --insert-top '#include <limits.h>' --no-backup --quiet"
   # pex-unix.c pid_t return type mismatch — IRIX pid_t is long, function returns int
   # Fix forward decl (one-line) and definition (two-line)
-  - "sed -i 's/static int pex_unix_wait/static pid_t pex_unix_wait/g' libiberty/pex-unix.c"
-  - "sed -i '/^static int$/{N;s/static int\\npex_unix_wait/static pid_t\\npex_unix_wait/}' libiberty/pex-unix.c"
+  - "$MOGRIX_ROOT/tools/safepatch libiberty/pex-unix.c --old 'static int pex_unix_wait' --new 'static pid_t pex_unix_wait' --count 0 --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch libiberty/pex-unix.c --old $'static int\\npex_unix_wait' --new $'static pid_t\\npex_unix_wait' --no-backup --quiet"
   # gnulib's inttypes.h chain fails to define PRIo64 during cross-compile
   # Add it after __STDC_FORMAT_MACROS in common-defs.h (included by every file)
-  - "sed -i '/__STDC_FORMAT_MACROS/a #ifndef PRIo64\\n#define PRIo64 \"llo\"\\n#endif' gdbsupport/common-defs.h"
+  - "$MOGRIX_ROOT/tools/safepatch gdbsupport/common-defs.h --old '__STDC_FORMAT_MACROS' --insert-after $'#ifndef PRIo64\\n#define PRIo64 \"llo\"\\n#endif' --no-backup --quiet"
   # GDB 14.2 removed IRIX target support — remove IRIX from the obsolete list
-  - "sed -i '/\\*-\\*-irix\\*/d' gdb/configure.tgt"
-  - "sed -i '/\\*-\\*-irix\\*/d' gdb/configure.host"
+  - "$MOGRIX_ROOT/tools/safepatch gdb/configure.tgt --delete-line '*-*-irix*' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch gdb/configure.host --delete-line '*-*-irix*' --no-backup --quiet"
   # IRIX has no TLS (__tls_get_addr) — replace thread_local with static
   # cp-support.c: "static thread_local SIGJMP_BUF" → "static SIGJMP_BUF"
-  - "sed -i 's/static thread_local/static/g' gdb/cp-support.c gdb/event-top.c gdbsupport/safe-strerror.cc"
+  - "for f in gdb/cp-support.c gdb/event-top.c gdbsupport/safe-strerror.cc; do $MOGRIX_ROOT/tools/safepatch $f --old 'static thread_local' --new 'static' --count 0 --no-backup --quiet; done"
   ac_cv_overrides:
     ac_cv_header_fcntl_h: "yes"
   export_vars:

@@ -34,18 +34,18 @@ rules:
 
   prep_commands:
     # Disable wayland backend in meson.build
-    - "sed -i \"s/subdir('wayland')/#subdir('wayland')/\" gdk/meson.build || true"
+    - "$MOGRIX_ROOT/tools/safepatch gdk/meson.build --old \"subdir('wayland')\" --new \"#subdir('wayland')\" --no-backup --quiet || true"
     # Remove POSIX feature test macros that conflict with IRIX headers
-    - "sed -i \"/_POSIX_C_SOURCE/d\" meson.build || true"
-    - "sed -i \"/_XOPEN_SOURCE/d\" meson.build || true"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line '_POSIX_C_SOURCE' --no-backup --quiet || true"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line '_XOPEN_SOURCE' --no-backup --quiet || true"
     # Make atk-bridge-2.0 optional (IRIX has no AT-SPI2 accessibility bus)
-    - "sed -i \"s/dependency('atk-bridge-2.0', version: at_spi2_atk_req)/dependency('atk-bridge-2.0', version: at_spi2_atk_req, required: false)/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"dependency('atk-bridge-2.0', version: at_spi2_atk_req)\" --new \"dependency('atk-bridge-2.0', version: at_spi2_atk_req, required: false)\" --no-backup --quiet"
     # Guard atk-bridge pkgconfig reference
-    - "sed -i \"s/atk_pkgs += \\[.atk-bridge-2.0.\\]/if atkbridge_dep.found()\\n    atk_pkgs += ['atk-bridge-2.0']\\n  endif/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"atk_pkgs += ['atk-bridge-2.0']\" --new $'if atkbridge_dep.found()\\n    atk_pkgs += [\\'atk-bridge-2.0\\']\\n  endif' --no-backup --quiet"
     # IRIX XEvent union lacks xcookie member (pre-X11R7.5).
     # Add Xge.h include and replace ->xcookie with cast through XGenericEventCookie*.
     # Files: gdkdevicemanager-xi2.c, gdkdisplay-x11.c, gdkeventsource.c, gdkwindow-x11.c, gtkdnd.c
-    - "for f in gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c; do sed -i '1i #include <X11/extensions/Xge.h>' $f; done"
+    - "for f in gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c; do $MOGRIX_ROOT/tools/safepatch $f --insert-top '#include <X11/extensions/Xge.h>' --no-backup --quiet; done"
     # Pattern: &var->xcookie → (XGenericEventCookie*)var
     - "perl -pi -e 's/&(\\w+)->xcookie\\b/(XGenericEventCookie*)$1/g' gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c"
     # Pattern: var->xcookie.member → ((XGenericEventCookie*)var)->member
@@ -53,14 +53,14 @@ rules:
     # Pattern: var->xcookie (standalone, no & prefix, no . suffix) → (*((XGenericEventCookie*)var))
     - "perl -pi -e 's/(?<!&)(\\w+)->xcookie\\b/(*((XGenericEventCookie*)$1))/g' gdk/x11/gdkdevicemanager-xi2.c gdk/x11/gdkdisplay-x11.c gdk/x11/gdkeventsource.c gdk/x11/gdkwindow-x11.c gtk/gtkdnd.c"
     # Add missing keysym include for XK_Escape etc. in gdkdnd-x11.c
-    - "sed -i '/#include.*Xlib.h/a #include <X11/keysym.h>' gdk/x11/gdkdnd-x11.c"
+    - "$MOGRIX_ROOT/tools/safepatch gdk/x11/gdkdnd-x11.c --old '#include.*Xlib.h' --insert-after '#include <X11/keysym.h>' --regex --no-backup --quiet"
     # IRIX Xlib.h lacks XSetIMValues — now declared in Xge.h
-    - "sed -i '/#include.*gtkimcontextxim.h/a #include <X11/extensions/Xge.h>' modules/input/gtkimcontextxim.c"
+    - "$MOGRIX_ROOT/tools/safepatch modules/input/gtkimcontextxim.c --old '#include.*gtkimcontextxim.h' --insert-after '#include <X11/extensions/Xge.h>' --regex --no-backup --quiet"
     # IRIX lacks sincos (GNU extension) — add inline stub for tests/gtkgears.c
-    - "sed -i '/#include.*math.h/a static inline void sincos(double x, double *s, double *c) { *s = sin(x); *c = cos(x); }' tests/gtkgears.c"
+    - "$MOGRIX_ROOT/tools/safepatch tests/gtkgears.c --old '#include.*math.h' --insert-after 'static inline void sincos(double x, double *s, double *c) { *s = sin(x); *c = cos(x); }' --regex --no-backup --quiet"
     # No atk-bridge (AT-SPI2 accessibility bus) on IRIX — stub out include and init call
-    - "sed -i 's|#include <atk-bridge.h>|/* atk-bridge not available on IRIX */|' gtk/a11y/gtkaccessibility.c"
-    - "sed -i 's|atk_bridge_adaptor_init.*|/* atk_bridge_adaptor_init disabled for IRIX */|' gtk/a11y/gtkaccessibility.c"
+    - "$MOGRIX_ROOT/tools/safepatch gtk/a11y/gtkaccessibility.c --old '#include <atk-bridge.h>' --new '/* atk-bridge not available on IRIX */' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch gtk/a11y/gtkaccessibility.c --old 'atk_bridge_adaptor_init.*' --new '/* atk_bridge_adaptor_init disabled for IRIX */' --regex --no-backup --quiet"
 
   spec_replacements:
     # Replace entire %build section (meson commands)
