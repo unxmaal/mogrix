@@ -39,7 +39,7 @@ rules:
   # Add __sgi to the existing OpenBSD/AIX guard.
   - "$MOGRIX_ROOT/tools/safepatch deps/spdlog/include/spdlog/details/os-inl.h --old 'defined(__OpenBSD__) || defined(_AIX)' --new 'defined(__OpenBSD__) || defined(_AIX) || defined(__sgi)' --no-backup --quiet"
   # ghc::filesystem doesn't recognize IRIX. Add __sgi as SVR4 (IRIX is SVR4-based).
-  - "$MOGRIX_ROOT/tools/safepatch deps/filesystem/filesystem.hpp --old '#elif defined(__HAIKU__)' --insert-before $'#elif defined(__sgi)\\n#define GHC_OS_SYS5R4' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch deps/filesystem/filesystem.hpp --old '#elif defined(__HAIKU__)' --insert-before \"$(printf '#elif defined(__sgi)\\n#define GHC_OS_SYS5R4')\" --no-backup --quiet"
   # IRIX lacks TLS (__tls_get_addr). spdlog uses thread_local (disabled via SPDLOG_NO_TLS).
   # Doxygen itself uses THREAD_LOCAL macro — redefine to static (single-threaded use only).
   - "$MOGRIX_ROOT/tools/safepatch src/doxygen.h --old '#define THREAD_LOCAL thread_local' --new '#define THREAD_LOCAL static' --no-backup --quiet"

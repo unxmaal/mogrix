@@ -26,7 +26,7 @@ rules:
     # IRIX resolv.h has #define b64_ntop __b64_ntop — this renames the compat
     # function to __b64_ntop but callers (via compat.h) expect plain b64_ntop.
     # Undef after includes so compat/base64.c defines the plain symbols.
-    - "$MOGRIX_ROOT/tools/safepatch compat/base64.c --old '#include <string.h>' --insert-after $'#undef b64_ntop\\n#undef b64_pton' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch compat/base64.c --old '#include <string.h>' --insert-after \"$(printf '#undef b64_ntop\\n#undef b64_pton')\" --no-backup --quiet"
     # IRIX has no UTF-8 locale — suppress tmux's hard UTF-8 requirement.
     # The setlocale fallback chain still runs; we just don't abort on non-UTF8.
     - "$MOGRIX_ROOT/tools/safepatch tmux.c --old 'errx(1, \"invalid LC_ALL, LC_CTYPE or LANG\")' --new '(void)0' --no-backup --quiet"

@@ -87,6 +87,60 @@ After collecting each wave's results:
 3. **Assess context usage.** If past 60%, write HANDOFF.md and either compact or end the session
 4. Never launch new agents when context is tight
 
+### Rule 5: NEVER Run Builds as Background Bash Commands
+
+**This has destroyed multiple sessions.** Background Bash commands (`run_in_background: true`) dump their ENTIRE stdout/stderr into your context when they complete. A WebKit build produces tens of thousands of lines. Multiple background builds = instant context death with no chance to compact.
+
+**What kills you:**
+```
+# NEVER DO THIS — output floods context on completion
+Bash(command="uv run mogrix build webkitgtk", run_in_background=true)
+```
+
+**What also kills you:**
+- Retrying failed builds in a loop (each attempt adds more context)
+- Running multiple background builds of the same package
+- Any background Bash on a large package (WebKit, Qt, GCC, ICU)
+
+### Rule 6: Use Haiku Sub-Agents for Build Monitoring
+
+For builds that take more than a few minutes, delegate to a **haiku model sub-agent**. The sub-agent's context is isolated — when it finishes, only its short summary comes back to you.
+
+**Pattern:**
+```
+Task(
+  subagent_type="Bash",
+  model="haiku",
+  prompt="""
+    Run this build and report results:
+
+    uv run mogrix build <package> > /tmp/<package>-build.log 2>&1
+
+    When it finishes, check the exit code. Then read ONLY the last
+    80 lines of /tmp/<package>-build.log.
+
+    Report back with EXACTLY this format and nothing else:
+    - exit_code: <number>
+    - status: SUCCESS or FAILED
+    - summary: <one sentence — what happened>
+    - error: <if failed, the specific error from the last 80 lines>
+
+    Write full results to build-results/<package>.md.
+    Do NOT paste the build log. Do NOT include more than 5 lines of output.
+  """
+)
+```
+
+**Why this works:**
+- The haiku agent absorbs the build log in its own context (which is discarded)
+- Only the short summary returns to the orchestrator
+- Haiku is cheap and fast — perfect for "run command, check exit code, report"
+- The full log is on disk at `/tmp/<package>-build.log` if you need to investigate
+
+**For quick builds** (< 2 minutes, small packages): regular Bash is fine. The rule is for large packages where output could exceed a few hundred lines.
+
 ### Why These Rules Exist
 
 The failure mode: 5+ agents each return large results → main context fills with accumulated build details → no room for orchestration or handoff → session dies without recovery. The fix: agents are workers that write to disk, the orchestrator is a coordinator that reads from disk. Conversation context only holds the current wave's summary.
+
+A specific sub-failure: background Bash builds of large packages (WebKit, Qt) complete and dump 50,000+ lines into context all at once. This is unrecoverable — there's no chance to compact because the context is already full. The haiku sub-agent pattern isolates the blast radius.

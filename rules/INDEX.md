@@ -232,6 +232,8 @@ Only facts NOT already covered in the Problem Reference table above. For package
 | Duplicating generic.yaml rules in package YAML | Double-application or silent conflict | Check generic.yaml first (see top of this file) |
 | Writing ad-hoc wrapper scripts for IRIX testing | Wrong permissions (`/tmp` not writable by edodd), bundles owned by root, env vars wrong, outputs lost | Use mogrix-test MCP tools (`test_bundle`, `test_binary`, `par_trace`, `screenshot`) — they handle all of this correctly |
 | Assuming `/tmp` is writable on IRIX host | `edodd` user cannot write to `/tmp` on IRIX | Use `/usr/people/edodd/tmp/` for user-writable temp output |
+| Running large builds as background Bash commands | Build output (tens of thousands of lines) floods context on completion — unrecoverable, no chance to compact | Use haiku sub-agents: `Task(model="haiku")` that redirects output to `/tmp/<pkg>-build.log` and returns only exit code + summary. See `rules/methods/task-tracking.md` Rule 6 |
+| Retrying failed builds in a loop | Each attempt adds more build output to context; 3-4 retries of WebKit = session death | Fix the root cause first (read the error from the log file), then rebuild ONCE. Max 1 retry per session for large packages |
 
 ## File Locations
 

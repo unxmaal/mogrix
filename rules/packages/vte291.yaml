@@ -36,7 +36,7 @@ rules:
     # === IRIX PTY fixes (from SGUG-RSE) ===
     # Add sys/ioctl.h, termios.h, and posix_openpt declaration to pty.cc
     # IRIX has posix_openpt in libc but no header declaration
-    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --insert-top $'#include <sys/ioctl.h>\\n#include <termios.h>\\nextern \"C\" int posix_openpt(int flags);' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --insert-top \"$(printf '#include <sys/ioctl.h>\\n#include <termios.h>\\nextern \"C\" int posix_openpt(int flags);')\" --no-backup --quiet"
     # Remove O_CLOEXEC from posix_openpt on IRIX (not supported).
     # FD_CLOEXEC=1=O_WRONLY on IRIX — must NOT be ORed into open() flags.
     # The non-linux fallback path applies CLOEXEC via fcntl after open succeeds.
@@ -48,8 +48,8 @@ rules:
     # VTE only handles this for Solaris (__sun). Add __sgi for IRIX.
     # Also add stropts.h include (needed for isastream/I_FIND/I_PUSH).
     - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#if defined(__sun) && defined(HAVE_STROPTS_H)' --new '#if (defined(__sun) || defined(__sgi)) && defined(HAVE_STROPTS_H)' --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#include <pty.h>' --insert-after $'#ifdef __sgi\\n#define HAVE_STROPTS_H 1\\n#endif' --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#ifdef HAVE_PTY_H' --insert-before $'#ifdef __sgi\\n#include <stropts.h>\\n#endif' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#include <pty.h>' --insert-after \"$(printf '#ifdef __sgi\\n#define HAVE_STROPTS_H 1\\n#endif')\" --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#ifdef HAVE_PTY_H' --insert-before \"$(printf '#ifdef __sgi\\n#include <stropts.h>\\n#endif')\" --no-backup --quiet"
     # === IRIX TIOCPKT fixes ===
     # IRIX defines TIOCPKT_DOSTOP (0x20) and TIOCPKT_NOSTOP (0x10) instead of
     # Linux TIOCPKT_STOP (0x10) and TIOCPKT_START (0x20). The semantics differ

@@ -32,7 +32,7 @@ rules:
     - "cp %{_sourcedir}/arc4random_irix.h compat/arc4random_irix.h"
 
     # 2. Add __sgi case to arc4random.h before the #else fallback
-    - "$MOGRIX_ROOT/tools/safepatch compat/arc4random.h --old '#else' --insert-before $'#elif defined(__sgi)\\n#include \"arc4random_irix.h\"' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch compat/arc4random.h --old '#else' --insert-before \"$(printf '#elif defined(__sgi)\\n#include \"arc4random_irix.h\"')\" --no-backup --quiet"
 
     # 3. Install IRIX getentropy (reads /dev/urandom)
     - "cp %{_sourcedir}/getentropy_irix.c compat/getentropy_irix.c"

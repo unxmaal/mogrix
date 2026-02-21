@@ -69,7 +69,7 @@ rules:
     - "$MOGRIX_ROOT/tools/safepatch CMakeLists.txt --old '-idirafter' --new '-isystem' --count 0 --no-backup --quiet"
     # Add stub Xutf8 function pointer declarations when X_HAVE_UTF8_STRING is not defined
     # SDL2_X11_HAVE_UTF8 is 0 so these never execute, but compiler needs declarations
-    - "$MOGRIX_ROOT/tools/safepatch src/video/x11/SDL_x11messagebox.c --old '#include \"SDL_x11video.h\"' --insert-after $'#ifndef X_HAVE_UTF8_STRING\\nstatic void (*X11_Xutf8DrawString)(Display*, Drawable, XFontSet, GC, int, int, const char*, int) = NULL;\\nstatic int (*X11_Xutf8TextExtents)(XFontSet, const char*, int, XRectangle*, XRectangle*) = NULL;\\n#endif' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/video/x11/SDL_x11messagebox.c --old '#include \"SDL_x11video.h\"' --insert-after \"$(printf '#ifndef X_HAVE_UTF8_STRING\\nstatic void (*X11_Xutf8DrawString)(Display*, Drawable, XFontSet, GC, int, int, const char*, int) = NULL;\\nstatic int (*X11_Xutf8TextExtents)(XFontSet, const char*, int, XRectangle*, XRectangle*) = NULL;\\n#endif')\" --no-backup --quiet"
 
   spec_replacements:
     # Remove libdecor BuildRequires (uses RPM macro that drop_buildrequires can't match)

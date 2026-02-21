@@ -47,7 +47,7 @@ rules:
           snprintf(_p, sizeof(_p), "%s/%s", cert_dir, dp->d_name);
           if (stat(_p, \&_st) == -1 || !S_ISREG(_st.st_mode)) continue; }}sg
       ' certs.c
-    - "$MOGRIX_ROOT/tools/safepatch certs.c --insert-top $'#include <limits.h>\\n#include <sys/stat.h>' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch certs.c --insert-top \"$(printf '#include <limits.h>\\n#include <sys/stat.h>')\" --no-backup --quiet"
 
     # fs.c line 122: replace d_type check with stat() check
     - |
@@ -57,13 +57,13 @@ rules:
           snprintf(_fp, sizeof(_fp), "%s/%s", path, names[i]->d_name);
           if (stat(_fp, \&_fst) == 0 \&\& S_ISDIR(_fst.st_mode)) sufx = "/"; }}sg
       ' fs.c
-    - "$MOGRIX_ROOT/tools/safepatch fs.c --insert-top $'#include <limits.h>\\n#include <sys/stat.h>' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch fs.c --insert-top \"$(printf '#include <limits.h>\\n#include <sys/stat.h>')\" --no-backup --quiet"
 
     # Fix buggy compat.h: warn() and warnx() declared with extra int param
     # Declarations say warn(int, const char*, ...) but implementations are
     # warn(const char*, ...) — standard BSD signature. Fix the declarations.
-    - "$MOGRIX_ROOT/tools/safepatch compat.h --old 'void.*warn\\(int, const char\\*, \\.\\.\\.\\);' --new $'void\\t\\t warn(const char*, ...);' --regex --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch compat.h --old 'void.*warnx\\(int, const char\\*, \\.\\.\\.\\);' --new $'void\\t\\t warnx(const char*, ...);' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch compat.h --old 'void.*warn\\(int, const char\\*, \\.\\.\\.\\);' --new \"$(printf 'void\\t\\t warn(const char*, ...);')\" --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch compat.h --old 'void.*warnx\\(int, const char\\*, \\.\\.\\.\\);' --new \"$(printf 'void\\t\\t warnx(const char*, ...);')\" --regex --no-backup --quiet"
 
     # IRIX clock_gettime crashes (no POSIX clock IDs defined, function unreliable).
     # Replace clock_gettime(CLOCK_MONOTONIC, &ts) with gettimeofday wrapper.
@@ -129,4 +129,4 @@ rules:
     # IRIX lacks dprintf (POSIX.1-2008). Replace with fprintf+fflush.
     # Only one use: dprintf(1, ...) for setting xterm title to stdout.
     - "$MOGRIX_ROOT/tools/safepatch ui.c --old 'dprintf(1, ' --new 'fprintf(stdout, ' --count 0 --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch ui.c --old 'current_tab->buffer.title);' --insert-after $'\\t\\tfflush(stdout);' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch ui.c --old 'current_tab->buffer.title);' --insert-after \"$(printf '\\t\\tfflush(stdout);')\" --no-backup --quiet"

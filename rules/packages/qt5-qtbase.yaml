@@ -731,13 +731,13 @@ rules:
 
       '
   prep_commands:
-  - "$MOGRIX_ROOT/tools/safepatch src/corelib/global/qsystemdetection.h --old '#  define Q_OS_HAIKU' --insert-after $'#elif defined(__sgi)\\n#  define Q_OS_IRIX' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch src/corelib/global/qsystemdetection.h --old '#  define Q_OS_HAIKU' --insert-after \"$(printf '#elif defined(__sgi)\\n#  define Q_OS_IRIX')\" --no-backup --quiet"
   - cp -r /home/edodd/projects/github/unxmaal/mogrix/cross/mkspecs/irix-n32-clang mkspecs/
   - "$MOGRIX_ROOT/tools/safepatch src/corelib/io/qlockfile_unix.cpp --old 'defined(Q_OS_RTEMS)' --new 'defined(Q_OS_IRIX) || defined(Q_OS_RTEMS)' --no-backup --quiet"
   - $MOGRIX_ROOT/tools/safepatch src/corelib/io/qstandardpaths_unix.cpp --old 'QByteArray::number(perms, 8)' --new 'QByteArray::number(static_cast<uint>(perms), 8)' --no-backup --quiet
-  - "$MOGRIX_ROOT/tools/safepatch src/corelib/time/qtimezoneprivate_tz.cpp --old '#include <sys/param.h>' --insert-after $'#ifndef SYMLOOP_MAX\\n#define SYMLOOP_MAX 8\\n#endif' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch src/corelib/time/qtimezoneprivate_tz.cpp --old '#include <sys/param.h>' --insert-after \"$(printf '#ifndef SYMLOOP_MAX\\n#define SYMLOOP_MAX 8\\n#endif')\" --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch src/network/kernel/qdnslookup_unix.cpp --old 'defined(Q_OS_OPENBSD)' --new 'defined(Q_OS_OPENBSD) && !defined(Q_OS_IRIX)' --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch src/network/kernel/qdnslookup_unix.cpp --old '#include <resolv.h>' --insert-after $'#ifdef Q_OS_IRIX\\ntypedef struct __res_state *res_state;\\n#endif' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch src/network/kernel/qdnslookup_unix.cpp --old '#include <resolv.h>' --insert-after \"$(printf '#ifdef Q_OS_IRIX\\ntypedef struct __res_state *res_state;\\n#endif')\" --no-backup --quiet"
   - 'find src/3rdparty -name ''*.c'' -o -name ''*.h'' | xargs sed -i ''s/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g'' 2>/dev/null || :'
   install_cleanup:
   - rm -f %{buildroot}%{_qt5_libdir}/*.a

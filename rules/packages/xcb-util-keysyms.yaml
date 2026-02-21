@@ -6,7 +6,7 @@ rules:
   prep_commands:
     # IRIX X11R6.3 keysymdef.h is missing modern keysym definitions
     # Add missing keysym definitions for IRIX X11R6.3 (combined from 9 numbered line inserts)
-    - "$MOGRIX_ROOT/tools/safepatch keysyms/keysyms.c --insert-top $'#ifndef XK_ISO_Level5_Lock\\n#define XK_ISO_Level5_Lock 0xfe13\\n#endif\\n#ifndef XK_Armenian_AYB\\n#define XK_Armenian_AYB 0x1000531\\n#endif\\n#ifndef XK_Armenian_fe\\n#define XK_Armenian_fe 0x1000586\\n#endif' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch keysyms/keysyms.c --insert-top \"$(printf '#ifndef XK_ISO_Level5_Lock\\n#define XK_ISO_Level5_Lock 0xfe13\\n#endif\\n#ifndef XK_Armenian_AYB\\n#define XK_Armenian_AYB 0x1000531\\n#endif\\n#ifndef XK_Armenian_fe\\n#define XK_Armenian_fe 0x1000586\\n#endif')\" --no-backup --quiet"
 
   spec_replacements:
     - pattern: "Requires:       %{name}%{?_isa}"

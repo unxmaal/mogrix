@@ -24,7 +24,7 @@ rules:
     - "$MOGRIX_ROOT/tools/safepatch config.mk --old '-pedantic' --new '' --no-backup --quiet"
     # IRIX lacks HOST_NAME_MAX and _SC_HOST_NAME_MAX — define HOST_NAME_MAX
     # to trigger the simpler code path (IRIX MAXHOSTNAMELEN is 256)
-    - "$MOGRIX_ROOT/tools/safepatch src/winwidget.c --insert-top $'#ifndef HOST_NAME_MAX\\n#define HOST_NAME_MAX 255\\n#endif' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/winwidget.c --insert-top \"$(printf '#ifndef HOST_NAME_MAX\\n#define HOST_NAME_MAX 255\\n#endif')\" --no-backup --quiet"
     # Pre-create empty deps.mk and disable its regeneration rule.
     # The irix-cc wrapper doesn't handle -MM (dependency generation) correctly —
     # it misroutes to compile+link instead of preprocess-only mode.

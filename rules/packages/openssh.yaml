@@ -422,8 +422,8 @@ rules:
   - rm -f %{buildroot}%{_mandir}/man8/ssh-pkcs11-helper.8
   - rm -f %{buildroot}%{_mandir}/man8/ssh-sk-helper.8
   prep_commands:
-  - "$MOGRIX_ROOT/tools/safepatch openbsd-compat/bsd-snprintf.c --old '#include \"includes.h\"' --insert-before $'#define vsnprintf _irix_vsnprintf_decl\\n#define snprintf _irix_snprintf_decl' --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch openbsd-compat/bsd-snprintf.c --old '#include \"includes.h\"' --insert-after $'#undef vsnprintf\\n#undef snprintf' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch openbsd-compat/bsd-snprintf.c --old '#include \"includes.h\"' --insert-before \"$(printf '#define vsnprintf _irix_vsnprintf_decl\\n#define snprintf _irix_snprintf_decl')\" --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch openbsd-compat/bsd-snprintf.c --old '#include \"includes.h\"' --insert-after \"$(printf '#undef vsnprintf\\n#undef snprintf')\" --no-backup --quiet"
   - cp %{_sourcedir}/explicit_bzero.irix.c openbsd-compat/explicit_bzero.c
   - cp %{_sourcedir}/digest-openssl.irix.c digest-openssl.c
   - cp %{_sourcedir}/cipher-evptype-dispatch.c .

@@ -415,9 +415,11 @@ _mogrix_origdir=$(pwd)
         if result.prep_commands:
             prep_cmds = "\n".join(result.prep_commands)
             prep_comment = "# Cross-compilation prep fixes (injected by mogrix)"
+            # MOGRIX_ROOT must be available in %prep for safepatch calls
+            mogrix_root_export = f'export MOGRIX_ROOT="{MOGRIX_ROOT}"'
             content = re.sub(
                 r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
-                lambda m: f"{m.group(0)}\n\n{prep_comment}\n{prep_cmds}",
+                lambda m: f"{m.group(0)}\n\n{mogrix_root_export}\n{prep_comment}\n{prep_cmds}",
                 content,
                 count=1,
                 flags=re.MULTILINE,

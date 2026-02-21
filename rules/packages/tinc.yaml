@@ -30,4 +30,4 @@ rules:
   - cp %{_sourcedir}/irix-device.c src/irix/device.c
   - sed -i '/^if SOLARIS/,/^endif/a \\nif IRIX\ntincd_SOURCES += irix/device.c\nendif' src/Makefile.am
   - "$MOGRIX_ROOT/tools/safepatch configure.ac --old 'AM_CONDITIONAL(SOLARIS' --insert-after 'AM_CONDITIONAL(IRIX, test \"$irix\" = true)' --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch configure.ac --old '  *irix*)' --new $'  *irix*)\\n    irix=true' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch configure.ac --old '  *irix*)' --new \"$(printf '  *irix*)\\n    irix=true')\" --no-backup --quiet"

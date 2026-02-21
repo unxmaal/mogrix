@@ -33,13 +33,13 @@ rules:
     # Add sys/time.h include to compat.c and message.c (IRIX needs explicit include)
     - "for f in common/compat.c common/message.c; do $MOGRIX_ROOT/tools/safepatch $f --old '#include \"config.h\"' --insert-after '#include <sys/time.h>' --no-backup --quiet; done"
     # Fix unix-peer.c: IRIX has no SO_PEERCRED, return -1
-    - "$MOGRIX_ROOT/tools/safepatch common/unix-peer.c --old '#if defined(SO_PEERCRED)' --new $'#if defined(__sgi)\\n\\treturn -1;\\n#elif defined(SO_PEERCRED)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch common/unix-peer.c --old '#if defined(SO_PEERCRED)' --new \"$(printf '#if defined(__sgi)\\n\\treturn -1;\\n#elif defined(SO_PEERCRED)')\" --no-backup --quiet"
     # Add SGI-specific headers and SUN_LEN to server.c
-    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --insert-top $'#if defined(__sgi)\\n#include <sys/time.h>\\n#include <sys/socket.h>\\n#include <sys/un.h>\\n#define SUN_LEN(ptr) ((size_t)(((struct sockaddr_un *)0)->sun_path) + strlen((ptr)->sun_path))\\n#endif' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --insert-top \"$(printf '#if defined(__sgi)\\n#include <sys/time.h>\\n#include <sys/socket.h>\\n#include <sys/un.h>\\n#define SUN_LEN(ptr) ((size_t)(((struct sockaddr_un *)0)->sun_path) + strlen((ptr)->sun_path))\\n#endif')\" --no-backup --quiet"
     # Add sys/signal.h include after signal.h in server.c
     - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#include <signal.h>' --insert-after '#include <sys/signal.h>' --no-backup --quiet"
     # Fix sighandler_t: add SGI-specific typedef before HAVE_SIGHANDLER_T check
-    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#ifdef HAVE_SIGHANDLER_T' --new $'#if defined(__sgi)\\ntypedef void (*sighandler_t)(int);\\n#define SIGHANDLER_T sighandler_t\\n#elif defined(HAVE_SIGHANDLER_T)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#ifdef HAVE_SIGHANDLER_T' --new \"$(printf '#if defined(__sgi)\\ntypedef void (*sighandler_t)(int);\\n#define SIGHANDLER_T sighandler_t\\n#elif defined(HAVE_SIGHANDLER_T)')\" --no-backup --quiet"
     # Fix bare HAVE_SIG_T / HAVE___SIGHANDLER_T checks (need defined())
     - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#elif HAVE_SIG_T' --new '#elif defined(HAVE_SIG_T)' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old '#elif HAVE___SIGHANDLER_T' --new '#elif defined(HAVE___SIGHANDLER_T)' --no-backup --quiet"

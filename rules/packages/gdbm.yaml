@@ -9,7 +9,7 @@ rules:
 
   prep_commands:
     # IRIX has isblank() but not iswblank() — provide compat
-    - "$MOGRIX_ROOT/tools/safepatch tools/wordwrap.c --insert-top $'#include <ctype.h>\\n#ifndef iswblank\\n#define iswblank(c) isblank((unsigned char)(c))\\n#endif' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch tools/wordwrap.c --insert-top \"$(printf '#include <ctype.h>\\n#ifndef iswblank\\n#define iswblank(c) isblank((unsigned char)(c))\\n#endif')\" --no-backup --quiet"
     # IRIX rld doesn't support TLS (__tls_get_addr). gdbm uses __thread for
     # gdbm_errno — cross-compile test passes but runtime crashes on IRIX.
     # The configure test unconditionally overwrites the variable (not AC_CACHE_VAL),

@@ -20,13 +20,13 @@ rules:
   - $MOGRIX_ROOT/tools/safepatch config.mk --old 'X11LIB = /usr/X11R6/lib' --new 'X11LIB = ' --no-backup --quiet
   - $MOGRIX_ROOT/tools/safepatch config.mk --old '-lXft' --new '-lXft -lgen' --no-backup --quiet
   - $MOGRIX_ROOT/tools/safepatch config.mk --old '-D_XOPEN_SOURCE=600' --new '' --no-backup --quiet
-  - "$MOGRIX_ROOT/tools/safepatch st.c --old '<libutil.h>' --insert-after $'#else\\n #include <time.h>\\n #include <sys/termios.h>\\n #include <pty.h>\\nint pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch x.c --insert-top $'#ifndef CLOCK_MONOTONIC\\n#define CLOCK_MONOTONIC 2 /* CLOCK_SGI_CYCLE */\\n#endif' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch st.c --old '<libutil.h>' --insert-after \"$(printf '#else\\n #include <time.h>\\n #include <sys/termios.h>\\n #include <pty.h>\\nint pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);')\" --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch x.c --insert-top \"$(printf '#ifndef CLOCK_MONOTONIC\\n#define CLOCK_MONOTONIC 2 /* CLOCK_SGI_CYCLE */\\n#endif')\" --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch x.c --old '#include <X11/XKBlib.h>' --insert-after 'int pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' --no-backup --quiet"
   - $MOGRIX_ROOT/tools/safepatch x.c --old 'XICCallback' --new 'XIMCallback' --count 0 --no-backup --quiet
   - $MOGRIX_ROOT/tools/safepatch x.c --old 'static int xicdestroy' --new 'static void xicdestroy' --no-backup --quiet
-  - "$MOGRIX_ROOT/tools/safepatch x.c --old $'int\\nxicdestroy' --new $'void\\nxicdestroy' --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch x.c --old $'xw.ime.xic = NULL;\\n\\t\\treturn 1;' --new $'xw.ime.xic = NULL;\\n\\t\\treturn;' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch x.c --old \"$(printf 'int\\nxicdestroy')\" --new \"$(printf 'void\\nxicdestroy')\" --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch x.c --old \"$(printf 'xw.ime.xic = NULL;\\n\\t\\treturn 1;')\" --new \"$(printf 'xw.ime.xic = NULL;\\n\\t\\treturn;')\" --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch x.c --old 'int pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *);' --insert-after '#define XSetIMValues(...) 0  /* IRIX X11R6.3: not available */' --no-backup --quiet"
   - $MOGRIX_ROOT/tools/safepatch x.c --old 'Xutf8TextListToTextProperty' --new 'XmbTextListToTextProperty' --count 0 --no-backup --quiet
   - $MOGRIX_ROOT/tools/safepatch x.c --old 'XUTF8StringStyle' --new 'XCompoundTextStyle' --count 0 --no-backup --quiet

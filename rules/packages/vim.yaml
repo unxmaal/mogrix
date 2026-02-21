@@ -30,7 +30,7 @@ rules:
   - vim-default-editor
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch src/libvterm/src/encoding.c --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch src/libvterm/src/encoding.c --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch src/libvterm/src/encoding.c --old '%zx' --new '%x' --count 0 --no-backup --quiet || :"
-  - "$MOGRIX_ROOT/tools/safepatch src/structs.h --insert-top $'#ifdef OP_NONE\\n#undef OP_NONE\\n#endif' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch src/structs.h --insert-top \"$(printf '#ifdef OP_NONE\\n#undef OP_NONE\\n#endif')\" --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch src/osdef1.h.in --delete-line 'struct pollfd.*for poll' --regex --no-backup --quiet || :"
   - "$MOGRIX_ROOT/tools/safepatch src/osdef1.h.in --delete-line 'extern int.*poll.struct pollfd' --regex --no-backup --quiet || :"
   spec_replacements:

@@ -22,7 +22,7 @@ rules:
   prep_commands:
     # Use host preprocessor for IDL code generation (cross-compiler includes
     # IRIX-compat stdarg.h with 'typedef char *va_list' that breaks IDL parser)
-    - $MOGRIX_ROOT/tools/safepatch Source/cmake/WebKitCompilerFlags.cmake --old '"${CMAKE_CXX_COMPILER}" -E -P -x c++' --new '"/usr/bin/g++" -E -P -x c++' --no-backup --quiet
+    - $MOGRIX_ROOT/tools/safepatch Source/cmake/WebKitCompilerFlags.cmake --old '\"${CMAKE_CXX_COMPILER}\" -E -P -x c++' --new '\"/usr/bin/g++\" -E -P -x c++' --no-backup --quiet
     # IRIX PTHREAD_KEYS_MAX is _sysconf() (runtime), WebKit needs constexpr
     - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/ThreadingPrimitives.h --old 'static constexpr ThreadSpecificKey InvalidThreadSpecificKey = PTHREAD_KEYS_MAX' --new 'static constexpr ThreadSpecificKey InvalidThreadSpecificKey = 128' --no-backup --quiet
     # IRIX lacks MAP_FILE — it's 0 on all modern systems (just means "map from file")
@@ -32,7 +32,10 @@ rules:
     - cp %{_sourcedir}/irix_pthread_compat.h Source/WTF/wtf/irix_pthread_compat.h
     - perl -i -pe 's{^(#include <pthread\.h>)}{$1\n#include "irix_pthread_compat.h"}' Source/WTF/wtf/StackBounds.cpp
     # Include sys/resource.h and unistd.h for IRIX too (needed by getrlimit in compat header)
-    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/StackBounds.cpp --old '#if OS(LINUX)' --new '#if OS(LINUX) || defined(__sgi)' --no-backup --quiet
+    # Only add __sgi to the FIRST #if OS(LINUX) (include block).
+    # The SECOND one uses SYS_gettid which is Linux-specific — leave it alone.
+    # Use perl to match the two-line sequence (rpmbuild /bin/sh doesn't support $'...\n...').
+    - "perl -0777 -pi -e 's/#if OS\\(LINUX\\)\\n#include <sys\\/resource\\.h>/#if OS(LINUX) || defined(__sgi)\\n#include <sys\\/resource.h>/' Source/WTF/wtf/StackBounds.cpp"
     # IRIX C++ name collision: struct flock vs flock() function.
     # Add extern "C" flock prototype before the USE(FILE_LOCK) section.
     - perl -i -pe 's{^(#if USE\(FILE_LOCK\))}{#ifdef __sgi\nextern "C" int flock(int, int);\n#endif\n$1}' Source/WTF/wtf/posix/FileSystemPOSIX.cpp
