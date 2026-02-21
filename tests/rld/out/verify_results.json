@@ -1,0 +1,44 @@
+{
+  "A04": [
+    {
+      "check": "check_got_global_count(liba04_biggot.so)",
+      "passed": true,
+      "message": "OK: 102 global GOT entries (< 4370)"
+    }
+  ],
+  "A06": [
+    {
+      "check": "check_got_global_count(liba06_gotsym.so)",
+      "passed": true,
+      "message": "OK: 6 global GOT entries (< 4370)"
+    }
+  ],
+  "A01": [
+    {
+      "check": "check_load_segments(liba01_seg.so)",
+      "passed": true,
+      "message": "OK: 2 LOAD segments"
+    }
+  ],
+  "A02": [
+    {
+      "check": "check_no_verneed(liba02_ver.so)",
+      "passed": true,
+      "message": "OK: no version tags"
+    }
+  ],
+  "A03": [
+    {
+      "check": "check_no_init_array(liba03_init.so)",
+      "passed": true,
+      "message": "OK: uses .ctors, no .init_array"
+    }
+  ],
+  "A05": [
+    {
+      "check": "check_rld_obj_head",
+      "passed": true,
+      "message": "OK: __rld_obj_head in .dynsym"
+    }
+  ]
+}

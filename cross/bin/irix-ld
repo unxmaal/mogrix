@@ -17,7 +17,7 @@
 #   --no-rosegment: Merge R and RE into single RE segment (2-segment layout)
 #   -z norelro: IRIX rld doesn't support GNU_RELRO
 #   --image-base=0x5ffe0000: Non-zero DT_MIPS_BASE_ADDRESS (required by IRIX rld)
-#   -Bsymbolic-functions: Keep global GOT under rld's ~4370 entry limit
+#   -Bsymbolic: Keep global GOT under rld's ~4370 entry limit
 #   Previously used GNU ld (BFD), but BFD has a multi-GOT bug with
 #   -Bsymbolic-functions that corrupts ~30% of function-call GOT entries
 #   in large libraries (WebKit). LLD's independent multi-GOT implementation
@@ -150,7 +150,13 @@ if [ "$is_shared" = "1" ]; then
         #   --no-rosegment: Merge R+RE into single RE segment (IRIX rld needs 2-segment)
         #   -z norelro: IRIX rld doesn't support GNU_RELRO
         #   --image-base=0x5ffe0000: IRIX rld requires non-zero DT_MIPS_BASE_ADDRESS
-        #   -Bsymbolic-functions: Keep global GOT under rld ~4370 entry limit
+        #   -Bsymbolic: Keep global GOT under rld's ~4370 entry limit.
+        #     Binds ALL defined symbols (functions AND data objects) locally within
+        #     the shared library. -Bsymbolic-functions only binds functions, leaving
+        #     OBJECT symbols in the global GOT. libwebkit2gtk had 1146 defined OBJECT
+        #     symbols in global GOT, pushing it from 3515 to 4661 (291 over limit).
+        #     -Bsymbolic is safe on IRIX: rld doesn't do copy relocations, so the
+        #     address identity concern (exe &var != so &var) doesn't apply.
         #   --allow-shlib-undefined: IRIX libc TLS refs can't resolve at link time
         #   --mips-got-size=1048576: Force all GOT entries into the primary GOT.
         #     IRIX rld only processes primary GOT entries (described by DT_MIPS_LOCAL_GOTNO/
@@ -161,7 +167,7 @@ if [ "$is_shared" = "1" ]; then
         # LLD properly handles .hidden visibility on CRT symbols (no version script
         # needed, unlike BFD which loses .hidden and needs crt-hide.ver workaround).
         $LLD \
-          -Bsymbolic-functions \
+          -Bsymbolic \
           --no-rosegment \
           -z norelro \
           --image-base=0x5ffe0000 \
@@ -193,6 +199,7 @@ if [ "$is_shared" = "1" ]; then
     if [ "$rc" = "0" ] && [ -n "$output_file" ] && [ -f "$output_file" ]; then
         python3 "$FIX_ANON_RELOCS" "$output_file" "$output_file" >/dev/null 2>&1 || true
     fi
+
     exit $rc
 else
     # Executable: use LLD with CRT files and soft float stubs

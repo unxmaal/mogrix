@@ -514,6 +514,106 @@ class BundleBuilder:
                 f"  [dim]Pruned {len(removed)} unused libs from _lib32/[/dim]"
             )
 
+    def _strip_rpaths(self, bundle_dir: Path) -> None:
+        """Strip DT_RPATH/DT_RUNPATH from all shared libraries in _lib32/.
+
+        Build-time RPATHs (e.g. /home/user/rpmbuild/BUILD/...) leak into
+        shared libraries and cause IRIX rld to search wrong directories for
+        transitive dependencies, bypassing LD_LIBRARYN32_PATH.  Since
+        bundle wrapper scripts set LD_LIBRARYN32_PATH to _lib32/, RPATHs
+        are unnecessary and harmful.
+
+        Method: parse the ELF .dynamic section and change DT_RPATH (15) /
+        DT_RUNPATH (29) tags to DT_DEBUG (21), which rld ignores.
+        Cannot use DT_NULL (0) because that terminates .dynamic scanning.
+        Works for both big-endian (MIPS) and little-endian ELFs.
+        """
+        import struct
+
+        DT_NULL = 0
+        DT_DEBUG = 21
+        DT_RPATH = 15
+        DT_RUNPATH = 29
+
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        stripped_count = 0
+        for f in sorted(lib_dir.iterdir()):
+            if not f.is_file() or f.is_symlink():
+                continue
+            if ".so" not in f.name:
+                continue
+
+            try:
+                data = bytearray(f.read_bytes())
+            except OSError:
+                continue
+
+            # Quick ELF magic check
+            if data[:4] != b"\x7fELF":
+                continue
+
+            ei_class = data[4]  # 1=32-bit, 2=64-bit
+            ei_data = data[5]  # 1=LE, 2=BE
+            if ei_class == 1:
+                endian = ">" if ei_data == 2 else "<"
+                e_phoff = struct.unpack_from(endian + "I", data, 28)[0]
+                e_phentsize = struct.unpack_from(endian + "H", data, 42)[0]
+                e_phnum = struct.unpack_from(endian + "H", data, 44)[0]
+                ptr_fmt = endian + "iI"  # d_tag (signed), d_val (unsigned)
+                entry_size = 8
+            elif ei_class == 2:
+                endian = ">" if ei_data == 2 else "<"
+                e_phoff = struct.unpack_from(endian + "Q", data, 32)[0]
+                e_phentsize = struct.unpack_from(endian + "H", data, 54)[0]
+                e_phnum = struct.unpack_from(endian + "H", data, 56)[0]
+                ptr_fmt = endian + "qQ"
+                entry_size = 16
+            else:
+                continue
+
+            # Find PT_DYNAMIC program header (type 2)
+            dyn_offset = 0
+            dyn_size = 0
+            PT_DYNAMIC = 2
+            for i in range(e_phnum):
+                ph_start = e_phoff + i * e_phentsize
+                p_type = struct.unpack_from(endian + "I", data, ph_start)[0]
+                if p_type == PT_DYNAMIC:
+                    if ei_class == 1:
+                        dyn_offset = struct.unpack_from(endian + "I", data, ph_start + 4)[0]
+                        dyn_size = struct.unpack_from(endian + "I", data, ph_start + 16)[0]
+                    else:
+                        dyn_offset = struct.unpack_from(endian + "Q", data, ph_start + 8)[0]
+                        dyn_size = struct.unpack_from(endian + "Q", data, ph_start + 32)[0]
+                    break
+
+            if dyn_offset == 0:
+                continue
+
+            # Scan .dynamic entries, zero out DT_RPATH and DT_RUNPATH
+            modified = False
+            pos = dyn_offset
+            while pos + entry_size <= dyn_offset + dyn_size:
+                d_tag = struct.unpack_from(ptr_fmt, data, pos)[0]
+                if d_tag == DT_NULL:
+                    break
+                if d_tag in (DT_RPATH, DT_RUNPATH):
+                    struct.pack_into(ptr_fmt, data, pos, DT_DEBUG, 0)
+                    modified = True
+                pos += entry_size
+
+            if modified:
+                f.write_bytes(data)
+                stripped_count += 1
+
+        if stripped_count:
+            console.print(
+                f"  [dim]Stripped RPATH from {stripped_count} libs in _lib32/[/dim]"
+            )
+
     # Common terminal types to keep in trimmed terminfo.
     # Covers: SGI IRIX terminals, xterm variants, VT series, screen/tmux,
     # Linux console, and common remote terminals.
@@ -898,6 +998,9 @@ class BundleBuilder:
         # files) but the bundle may only need a few.
         self._prune_unused_libs(bundle_dir)
 
+        # Strip build-time RPATHs that break IRIX rld library search.
+        self._strip_rpaths(bundle_dir)
+
         # Strip runtime-unnecessary data directories
         for strip_dir in ("doc", "man", "info", "licenses"):
             d = bundle_dir / "share" / strip_dir
@@ -998,6 +1101,16 @@ class BundleBuilder:
                 'DILLORC_EOF\n'
                 'fi'
             )
+        # WebKitGTK: WEBKIT_EXEC_PATH tells WebKit where to find subprocess
+        # executables (WebKitWebProcess, WebKitNetworkProcess). Without this,
+        # WebKit uses the compiled-in PKGLIBEXECDIR (/usr/sgug/libexec/webkit2gtk-4.0)
+        # which doesn't exist on the live IRIX host.
+        webkit_libexec = bundle_dir / "libexec" / "webkit2gtk-4.0"
+        if webkit_libexec.is_dir():
+            extra_env_lines.append(
+                'WEBKIT_EXEC_PATH="$dir/libexec/webkit2gtk-4.0"'
+            )
+            extra_env_lines.append("export WEBKIT_EXEC_PATH")
         # libevent: IRIX /dev/poll backend crashes — force poll() instead
         lib32_dir = bundle_dir / "_lib32"
         if lib32_dir.is_dir() and any(

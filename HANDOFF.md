@@ -1,86 +1,108 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-20 (session 88+)
-**Status**: R_MIPS_REL32 fix COMPLETE and integrated. jsc runs full JavaScript. MiniBrowser loads but has Pango class size mismatch blocking rendering.
+**Last Updated**: 2026-02-21 (session 95)
+**Status**: WebKit IPC debug logging built and bundled. Bundle ready to deploy to IRIX. Need to identify which `connectionDidClose()` path fires when MiniBrowser reports "WebProcess CRASHED".
 
 ---
 
-## Critical Warnings
+## Post-Compaction Checklist (READ THIS FIRST)
 
-**NEVER install packages directly to /usr/sgug on the live IRIX system.** Always use `/opt/chroot` for testing.
-**NEVER use raw SSH to IRIX.** Always use MCP tools.
-**ALWAYS use full mogrix pipeline** (`create-srpm` → `convert` → `build --cross`).
+1. **Mogrix invocation**: `uv run mogrix <command>` — not `mogrix`, not `python -m mogrix`
+2. **Grep rules/INDEX.md** before attempting ANY fix — the answer is probably already there
+3. **Read GENERIC_SUMMARY.md** before starting any new package
+4. **Paths are different things**:
+   - `/opt/sgug-staging/` = cross-compilation sysroot (on Linux build host)
+   - `/opt/chroot` = IRIX test chroot (on IRIX host, accessed via MCP tools)
+5. **IRIX access**: Use MCP tools. NEVER raw SSH.
+6. **Testing**: Use `mogrix-test` MCP tools. NOT ad-hoc irix_exec calls.
+7. **Compat functions**: Grep `compat/catalog.yaml` before writing a new one.
+8. **Always use full mogrix pipeline** for builds — manual compilation creates dirty state.
+9. **Deploy irix-ld after editing**: `cp cross/bin/irix-ld /opt/sgug-staging/usr/sgug/bin/irix-ld`
+10. **GSettings schemas**: Run `glib-compile-schemas` in chroot after installing GTK3 apps.
+11. **Run `mogrix check-elf`** on Xt/Motif packages after build to catch ClassRec relocation issues.
+12. **NEVER install packages directly to /usr/sgug on the live IRIX system.** Always use `/opt/chroot`.
 
 ---
 
 ## Current State
 
-### R_MIPS_REL32 Fix: COMPLETE AND INTEGRATED
+### WebKit IPC Debugging
 
-Tool: `cross/bin/fix-anon-relocs` (called automatically by irix-ld post-link)
-- Two-symbol approach with STV_PROTECTED: repoints anonymous R_MIPS_REL32 to two defined symbols
-- Fixes named R_MIPS_REL32 addend formula mismatch (pre-adds st_value)
-- Sorts .rel.dyn, clears .MIPS.msym
-- Safe for all .so files (exits early if no anonymous R_MIPS_REL32)
+**Bundle ready to deploy**: `~/mogrix_outputs/bundles/libwebkit2gtk-2.42.5-1-irix-bundle.0221260057.run` (103MB)
 
-**jsc test results (ALL PASS):**
-- Recursion (f(5)), Array.sort, closures, prototypes, Map, JSON, regex, fib(20), try/catch, Date
-- No crashes under address displacement
+**What we know:**
+- MiniBrowser window appears, but WebKitWebProcess "crashes" (IPC connection drops) after 25-47 seconds
+- "WebProcess CRASHED" is misleading — WebProcess receives SIGTERM from MiniBrowser cleanup, NOT SIGSEGV/SIGBUS
+- All IRIX IPC primitives work correctly (SOCK_STREAM, SCM_RIGHTS, poll, shm_open — all tested)
+- GOT overflow is fixed (`-Bsymbolic`, global GOT 4661→3515)
+- All 70+ libraries load successfully
 
-### libmogrix_compat.so: Updated
+**What's new in this bundle:** 12 IPC_LOG injection points in ConnectionUnix.cpp write to `/usr/people/edodd/ipc_<pid>.log`. Both MiniBrowser and WebProcess sides log. See INDEX.md "WebKit IPC Connection Debugging" section.
 
-Now contains: bsearch, socketpair, mincore, __muloti4
-- socketpair: Complete AF_UNIX reimplementation (SOCK_SEQPACKET→SOCK_STREAM fallback)
-- Source: `compat/sys/socketpair.c`
-- Deployed to staging and IRIX bundle
+**To test:** Deploy bundle → run MiniBrowser → collect `ipc_*.log` files → identify which `CLOSE:*` path fired.
 
-### MiniBrowser: LOADS BUT NO RENDERING
+**Previous bundle on IRIX**: `/usr/people/edodd/apps/libwebkit2gtk-2.42.5-1-irix-bundle.0220262009/`
+(has signal_catcher wrapper as WebKitWebProcess — must restore original binary or use new bundle)
 
-**Blockers (in order of resolution):**
-1. ~~rld unresolvable symbols (mincore, __muloti4)~~ → Fixed: added to libmogrix_compat.so
-2. ~~SOCK_SEQPACKET abort~~ → Fixed: socketpair compat
-3. ~~WebKit helper process ENOENT~~ → Fixed: symlinks at /usr/sgug/libexec/webkit2gtk-4.0/
-4. **PangoCairoFcFont class size mismatch** → ACTIVE BLOCKER
-   - Error: "specified class size for type 'PangoCairoFcFont' is smaller than the parent type's 'PangoFcFont' class size"
-   - Causes cascading GObject failures → no text rendering
-   - MiniBrowser runs for 60s+, creates 620 X11 windows, but content invisible
-   - Root cause: Pango and PangoCairo built against different PangoFcFont struct sizes
-   - Fix: Rebuild pango-1.0 and/or cairo to ensure ABI compatibility
-
-### NEXT STEPS
-
-1. Fix PangoCairoFcFont class size mismatch (rebuild Pango/Cairo)
-2. Dismiss stale "Critical System Error" dialog on IRIX
-3. Test MiniBrowser after font rendering fix
-4. Update bundler to handle WEBKIT_EXEC_PATH (instead of manual symlinks)
-5. Rebuild WebKit with SOCK_SEQPACKET source patch (currently runtime compat)
-
----
-
-## Key Technical Facts
-
-- **fix_all_defineds condition**: `(st_other != 0 && st_other != 4) || (binding == LOCAL)` — GLOBAL DEFAULT skipped
-- **STV_PROTECTED (st_other=3)**: Triggers fix_all_defineds processing without breaking external resolution
-- **Named R_MIPS_REL32 formula**: IRIX gives `addend + displacement`; glibc gives `st_value + addend + displacement`. Fix: pre-add st_value.
-- **find_reloc entry[0] skip**: Binary search can return 0 directly (no backward walk), but backward walk always skips [0]. Two-symbol approach handles both paths.
-- **IRIX SOCK_SEQPACKET = 6** (Linux = 5), AF_UNIX doesn't support it
-- **IRIX dlfcn.h lacks RTLD_NEXT** — can't wrap libc functions via dlsym
-- **rld UND strictness**: Only checks UND symbols when displacement ≠ 0 (fix_all_defineds runs)
-- **Deploy irix-ld**: `cp cross/bin/irix-ld /opt/sgug-staging/usr/sgug/bin/irix-ld`
-
----
-
-## Reference
+### Key Artifacts
 
 | What | Where |
 |------|-------|
-| R_MIPS_REL32 fix tool | `cross/bin/fix-anon-relocs` |
-| socketpair compat | `compat/sys/socketpair.c` |
-| libmogrix_compat.so sources | bsearch.c, socketpair.c, mincore.c, muloti4.c |
-| rld decompiled | `docs/rld/rld_full_decompile.c`, `docs/rld/rld_reloc_callers.c` |
-| WebKit bundle on IRIX | `/usr/people/edodd/apps/libwebkit2gtk-2.42.5-1-irix-bundle.0219262022/` |
-| MiniBrowser error output | `output.txt` in bundle dir |
-| Stale symlinks (manual) | `/usr/sgug/libexec/webkit2gtk-4.0/WebKit{Web,Network}Process` |
-| Generic rules summary | `rules/GENERIC_SUMMARY.md` |
-| Problem lookup | `rules/INDEX.md` (grep, don't read whole file) |
-| Compat functions | `compat/catalog.yaml` |
+| IPC debug header | `patches/packages/webkitgtk/ipc_debug_log.h` |
+| rld analysis harness | `tools/rld-harness.py` |
+| rld decompilation | `docs/rld/` (4 files) |
+| Signal catcher source | `/tmp/signal_catcher.c` (on build host) |
+| IPC test program | `/tmp/test_ipc.c` (on build host) |
+
+---
+
+## Next Steps (prioritized)
+
+1. **Deploy new bundle to IRIX and run MiniBrowser** — collect `ipc_<pid>.log` files from `/usr/people/edodd/`. These will show exactly which close path fires (EOF, ECONNRESET, GIO_HUP, MSG_CTRUNC, send error, etc.) and whether any messages were successfully exchanged first.
+
+2. **Based on IPC logs, fix the root cause** — Likely scenarios:
+   - `CLOSE:EOF` → WebProcess closed its socket (initialization failure, unhandled error)
+   - `CLOSE:GIO_HUP` → Socket hangup (process died, fd leaked/closed)
+   - `CLOSE:ECONNRESET` → Connection reset (OS-level issue)
+   - `MSG_CTRUNC` → SCM_RIGHTS ancillary data truncated (buffer too small for FDs)
+   - No CLOSE log at all → crash in unlogged code path (expand logging)
+
+3. **Once IPC works**, remove temporary debug logging from webkitgtk.yaml.
+
+4. **Fix 5 remaining bundle failures** (independent of MiniBrowser):
+   - cwebp/dwebp/gif2webp: signal 127
+   - gdk-pixbuf-query-loaders/gtk-query-immodules-3.0: rld fatal loading .so modules
+
+---
+
+## Recent Work (session 94-95)
+
+- **Determined WebProcess is NOT crashing** — signal catcher (C fork-based wrapper with setpgid, fd cleanup, signal ignoring) confirmed all WebProcess deaths are SIGTERM from MiniBrowser
+- **Tested all IRIX IPC primitives** — comprehensive test_ipc.c: SOCK_STREAM, SCM_RIGHTS, poll, non-blocking — all work (SIGBUS in test 8 was test code bug: unaligned MIPS access)
+- **Tested shm_open** — works in both chroot and host
+- **Added IPC debug logging** — 12 injection points in ConnectionUnix.cpp via `ipc_debug_log.h` macros
+- **Fixed YAML/RPM issues** — `%` in YAML causes parse errors (moved format strings to .h macros); `#` in RPM spec prep commands eaten as comments (use perl not sed)
+- **Built and bundled** — `libwebkit2gtk-2.42.5-1-irix-bundle.0221260057.run` ready for deployment
+- **Updated INDEX.md** with extensive negative knowledge (what's NOT the problem)
+
+## Recent Work (session 93)
+
+- Created `tools/rld-harness.py` — reusable bundle analysis tool
+- Fixed global GOT overflow: `-Bsymbolic-functions` → `-Bsymbolic` in irix-ld
+
+---
+
+## Key Commands
+
+```sh
+# Bundle + test
+uv run mogrix bundle libwebkit2gtk
+
+# rld analysis harness
+python3 tools/rld-harness.py analyze ~/mogrix_outputs/bundles/<bundle-dir>/
+python3 tools/rld-harness.py got-inspect /path/to/lib.so
+
+# Copy to IRIX host (two-step: chroot then host)
+irix_copy_to local_path /opt/chroot/tmp/file
+irix_host_exec "cp /opt/chroot/tmp/file /usr/people/edodd/file"
+```
