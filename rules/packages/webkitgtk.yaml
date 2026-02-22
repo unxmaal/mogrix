@@ -11,6 +11,7 @@ add_source:
   - irix_pthread_compat.h
   - ipc_debug_log.h
   - webkit_subprocess_diag.h
+  - IPCSemaphoreUnix_irix.cpp
 rules:
   inject_compat_functions:
     - strdup
@@ -103,6 +104,17 @@ rules:
     # Log processMessage count (every 50th)
     - perl -i -pe 's{(processIncomingMessage\(WTFMove\(decoder\)\);)}{$1 { static int _mc=0; if(++_mc==1||_mc%50==0) IPC_LOG_MSG(_mc, getpid()); }}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
     # --- End IPC debug logging ---
+    # --- IRIX IPC Semaphore: pipe-based replacement for Linux eventfd ---
+    # WebKit's IPC::Semaphore uses eventfd (#if OS(LINUX)) for shared-memory
+    # stream connection signaling. On IRIX, eventfd doesn't exist, so signal()
+    # is a no-op and wait() returns false — breaking NetworkProcess IPC entirely.
+    # Replace with pipe-based semaphore (read end for wait/poll, write end for signal).
+    - cp %{_sourcedir}/IPCSemaphoreUnix_irix.cpp Source/WebKit/Platform/IPC/unix/IPCSemaphoreUnix.cpp
+    # Header: add two-fd constructor for IRIX pipe decode
+    - perl -i -pe 's{(explicit Semaphore\(UnixFileDescriptor&&\);)}{$1\n#ifdef __sgi\n    Semaphore(UnixFileDescriptor\&\& readFd, UnixFileDescriptor\&\& writeFd);\n#endif}' Source/WebKit/Platform/IPC/IPCSemaphore.h
+    # Header: add m_writeFd member for IRIX pipe write end
+    - perl -i -pe 's{(    UnixFileDescriptor m_fd;)}{$1\n#ifdef __sgi\n    UnixFileDescriptor m_writeFd;\n#endif}' Source/WebKit/Platform/IPC/IPCSemaphore.h
+    # --- End IRIX IPC Semaphore ---
     # --- Subprocess init diagnostics (TEMPORARY - find where WebProcess/_exit()s) ---
     # Copy diag header to each directory that needs it (avoids include path issues)
     - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/Shared/webkit_subprocess_diag.h
@@ -129,8 +141,108 @@ rules:
     # ConnectionUnix.cpp: instrument Connection::platformInitialize + g_socket_new_from_fd
     - perl -i -pe 's{^(#include "ipc_debug_log\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
     - perl -i -pe 's{(m_socketDescriptor = identifier\.handle;)}{MOGRIX_DIAG_INT("conn_platformInit_fd", identifier.handle);\n    $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
-    - perl -i -pe 's{(m_socket = adoptGRef\(g_socket_new_from_fd\(m_socketDescriptor, nullptr\)\);)}{$1\n    if (!m_socket) MOGRIX_DIAG("CRITICAL_g_socket_new_from_fd_NULL"); else MOGRIX_DIAG("g_socket_new_from_fd_OK");}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    - perl -i -pe 's{(m_socket = adoptGRef\(g_socket_new_from_fd\(m_socketDescriptor, nullptr\)\);)}{$1\n    if (!m_socket) MOGRIX_DIAG("CRITICAL_g_socket_new_from_fd_NULL"); else { MOGRIX_DIAG("g_socket_new_from_fd_OK"); MOGRIX_DIAG_INT("g_socket_get_fd", g_socket_get_fd(m_socket.get())); MOGRIX_DIAG_INT("g_socket_is_closed", (int)g_socket_is_closed(m_socket.get())); GIOCondition _cond = g_socket_condition_check(m_socket.get(), G_IO_IN); MOGRIX_DIAG_INT("g_socket_condition_check_at_init", (int)_cond); }}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
     # --- End subprocess init diagnostics ---
+    # --- Shared-path receive diagnostics (TEMPORARY) ---
+    # These fire for ALL connections (inherited + brokered) so working connections provide baseline.
+    # See docs/webkit-ipc-flow-map.md for step mapping.
+    # All patterns use single-line anchors or -0777 for multiline. Tested anchors are unique in file.
+    #
+    # (1) platformOpen: log GSocket state at monitor start time [step 5/18/24]
+    - 'perl -i -pe ''s{(m_readSocketMonitor\.start\(m_socket\.get\(\))}{MOGRIX_DIAG_INT("platformOpen_fd", m_socketDescriptor); MOGRIX_DIAG_INT("platformOpen_gsock_closed", m_socket ? (int)g_socket_is_closed(m_socket.get()) : -1); $1}'' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp'
+    # (2) platformOpen: tag the explicit initial readyReadHandler dispatch [step 6]
+    # Anchor: unique comment line preceding the dispatch
+    - 'perl -i -0pe ''s{(// Schedule a call to readyReadHandler\.\n)}{$1    MOGRIX_DIAG_INT("readyRead_explicit_dispatch_fd", m_socketDescriptor);\n}'' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp'
+    # (3) GSocketMonitor callback: log EVERY invocation [step 7/37]
+    # Anchor: unique first-line-of-lambda condition check
+    - perl -i -pe 's{(if \(condition & G_IO_HUP \|\| condition & G_IO_ERR \|\| condition & G_IO_NVAL\))}{MOGRIX_DIAG_INT("monitorCB_fd", protectedThis->m_socketDescriptor); MOGRIX_DIAG_INT("monitorCB_cond", (int)condition); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # (4) GSocketMonitor: log REMOVE on error [step 38 error path]
+    # Anchor: IPC_LOG_CLOSE_GIO is unique in file
+    - perl -i -pe 's{(IPC_LOG_CLOSE_GIO\(condition, getpid\(\)\);)}{$1 MOGRIX_DIAG_INT("monitorCB_REMOVE_err_fd", protectedThis->m_socketDescriptor);}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # (5) GSocketMonitor: log before/after readyReadHandler call [step 38 normal path]
+    # Anchor: "return G_SOURCE_CONTINUE;" is unique in file (only in read callback)
+    - perl -i -pe 's{(return G_SOURCE_CONTINUE;)}{MOGRIX_DIAG_INT("monitorCB_CONTINUE_fd", protectedThis->m_socketDescriptor); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # (6) readyReadHandler: log entry [step 8/40]
+    # Anchor: unique "while (true) {" immediately after readyReadHandler opening
+    # Use -0777 for the function-open multiline match
+    - perl -0777 -i -pe 's{(void Connection::readyReadHandler\(\)\n\{)}{$1\n    MOGRIX_DIAG_INT("readyRead_entry_fd", m_socketDescriptor);}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # (7) readBytesFromSocket: log recvmsg success [step 41-42]
+    # Anchor: "buffer.shrink(previousBufferSize + bytesRead);" unique in readBytesFromSocket
+    - perl -i -pe 's{(buffer\.shrink\(previousBufferSize \+ bytesRead\);)}{MOGRIX_DIAG_INT("recvmsg_ok_fd", socketDescriptor); MOGRIX_DIAG_INT("recvmsg_ok_bytes", (int)bytesRead); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # (8) readyReadHandler: log EAGAIN return [step 31]
+    # Anchor: unique EAGAIN/EWOULDBLOCK check + bare return on next line (only in readyReadHandler)
+    - perl -0777 -i -pe 's{(if \(errno == EAGAIN \|\| errno == EWOULDBLOCK\))\n(\s*return;)}{$1 \{\n                MOGRIX_DIAG_INT("readyRead_EAGAIN_fd", m_socketDescriptor);\n$2\n            \}}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # (9) connectionDidClose: log entry [step 45]
+    # Anchor: unique comment "// The connection is now invalid."
+    - perl -i -pe 's{(// The connection is now invalid\.)}{MOGRIX_DIAG_INT("connectionDidClose_fd", m_socketDescriptor); $1}' Source/WebKit/Platform/IPC/Connection.cpp
+    # (10) platformInvalidate: log entry [step 46]
+    # Anchor: unique comment "// In the GLib platform the socket descriptor is owned by GSocket."
+    - perl -i -pe 's{(// In the GLib platform the socket descriptor is owned by GSocket\.)}{MOGRIX_DIAG_INT("platformInvalidate_fd", m_socketDescriptor); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # (11) sendOutputMessage: log sendmsg success with byte count [step 31-32]
+    # Change while(sendmsg()==-1) to capture return value
+    - perl -i -pe 's{while \(sendmsg\(m_socketDescriptor, &message, MSG_NOSIGNAL\) == -1\)}{ssize_t _sent; while ((_sent = sendmsg(m_socketDescriptor, \&message, MSG_NOSIGNAL)) == -1)}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # After the while loop, before "return true", log success. Anchor: unique "return true;" at end of sendOutputMessage
+    # The function ends with "return true;\n}" and is preceded by the while-sendmsg block.
+    # Match the standalone "return true;" that follows the sendmsg while loop (not inside it)
+    - perl -0777 -i -pe 's{(_sent = sendmsg.*?)\n(\s*return true;\n\})}{$1\n    MOGRIX_DIAG_INT("sendmsg_ok_fd", m_socketDescriptor); MOGRIX_DIAG_INT("sendmsg_ok_bytes", (int)_sent);\n$2}s' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # --- End shared-path receive diagnostics ---
+    # --- HTTP resource loading diagnostics (TEMPORARY) ---
+    # Trace WebProcess path from receiving URL load to sending IPC to NetworkProcess.
+    # SOUP_DEBUG=2 showed zero libsoup output → request never reaches NetworkProcess.
+    # NetworkProcess IPC log: only 1 msg received. WebProcess never sends ScheduleResourceLoad.
+    - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/WebProcess/Network/webkit_subprocess_diag.h
+    - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/WebProcess/webkit_subprocess_diag.h
+    # Include diag header in WebLoaderStrategy.cpp
+    - perl -i -pe 's{^(#include "WebLoaderStrategy\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp
+    # Log entry to scheduleLoad (anchor: unique preprocessor directive before first early return)
+    - "perl -i -pe 's{^(#if ENABLE\\(WEB_ARCHIVE\\) \\|\\| ENABLE\\(MHTML\\))}{    MOGRIX_DIAG(\"scheduleLoad_entry\");\\n$1}' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp"
+    # Log when scheduleLoad reaches the NetworkProcess path (past all early returns)
+    - 'perl -i -pe ''s{(WEBLOADERSTRATEGY_RELEASE_LOG\("scheduleLoad: URL will be scheduled with the NetworkProcess"\))}{MOGRIX_DIAG("scheduleLoad_to_NP"); $1}'' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp'
+    # Log URL scheme handler check (could intercept HTTP if registered)
+    - perl -i -pe 's{(if \(tryLoadingUsingURLSchemeHandler\(resourceLoader, trackingParameters\)\))}{MOGRIX_DIAG("scheduleLoad_tryURLScheme"); $1}' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp
+    # Log entry to scheduleLoadFromNetworkProcess (anchor: unique content sniffing line)
+    - perl -i -pe 's{(ContentSniffingPolicy contentSniffingPolicy)}{MOGRIX_DIAG("scheduleLoadFromNP_entry"); $1}' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp
+    # Log URL blocked by page policy
+    - perl -i -pe 's{(if \(!page->allowsLoadFromURL\(request\.url\(\), mainFrameMainResource\)\))}{MOGRIX_DIAG("scheduleLoadFromNP_checkAllowsURL"); $1}' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp
+    # Log IPC send failure
+    - 'perl -i -pe ''s{(WEBLOADERSTRATEGY_RELEASE_LOG_ERROR\("scheduleLoad: Unable to schedule resource with the NetworkProcess)}{MOGRIX_DIAG("scheduleLoadFromNP_ipc_FAILED"); $1}'' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp'
+    # Log IPC send success
+    - perl -i -pe 's{(auto loader = WebResourceLoader::create\(resourceLoader, trackingParameters\);)}{MOGRIX_DIAG("scheduleLoadFromNP_ipc_OK"); $1}' Source/WebKit/WebProcess/Network/WebLoaderStrategy.cpp
+    # Instrument ensureNetworkProcessConnection in WebProcess.cpp
+    - perl -i -pe 's{^(#include "WebProcess\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/WebProcess/WebProcess.cpp
+    - perl -i -pe 's{(if \(!m_networkProcessConnection\) \{)}{MOGRIX_DIAG("ensureNPConn_needed"); $1}' Source/WebKit/WebProcess/WebProcess.cpp
+    - perl -i -pe 's{(m_networkProcessConnection = NetworkProcessConnection::create)}{MOGRIX_DIAG("ensureNPConn_creating"); $1}' Source/WebKit/WebProcess/WebProcess.cpp
+    # --- IPC send pipeline diagnostics (TEMPORARY) ---
+    # send() queues to m_connectionQueue thread. sendOutgoingMessages() does actual sendmsg().
+    # WebProcess says ipc_OK but NetworkProcess never receives on sock=31.
+    # Need to trace: dispatch → sendOutgoingMessages → sendOutputMessage → sendmsg result.
+    - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/Platform/IPC/webkit_subprocess_diag.h
+    - perl -i -pe 's{^(#include "Connection\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/Platform/IPC/Connection.cpp
+    # Log sendMessage: was queue empty? (determines if dispatch happens)
+    - perl -i -pe 's{(shouldDispatchMessageSend = m_outgoingMessages\.isEmpty\(\))}{$1; MOGRIX_DIAG_INT("sendMsg_queueWasEmpty", shouldDispatchMessageSend)}' Source/WebKit/Platform/IPC/Connection.cpp
+    # Log sendMessage: dispatch decision
+    - "perl -i -pe 's{(if \\(shouldDispatchMessageSend \\|\\| qos\\))}{MOGRIX_DIAG_INT(\"sendMsg_willDispatch\", (int)(shouldDispatchMessageSend || !!qos)); $1}' Source/WebKit/Platform/IPC/Connection.cpp"
+    # Log sendOutgoingMessages entry + canSend result
+    - perl -i -pe 's{(if \(!canSendOutgoingMessages\(\)\))}{MOGRIX_DIAG_INT("sendOutgoing_canSend", (int)canSendOutgoingMessages()); $1}' Source/WebKit/Platform/IPC/Connection.cpp
+    # Log canSendOutgoingMessages internals (m_isConnected + platformCanSend)
+    - perl -i -pe 's{(return m_isConnected && platformCanSendOutgoingMessages)}{MOGRIX_DIAG_INT("canSend_connected", (int)m_isConnected); MOGRIX_DIAG_INT("canSend_platform", (int)platformCanSendOutgoingMessages()); $1}' Source/WebKit/Platform/IPC/Connection.cpp
+    # Log sendOutputMessage entry with fd
+    - perl -i -pe 's{(ASSERT\(!m_pendingOutputMessage\))}{MOGRIX_DIAG_INT("sendOutput_fd", m_socketDescriptor); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log sendmsg EAGAIN (message stored for retry via GSocketMonitor)
+    - perl -i -pe 's{(m_pendingOutputMessage = makeUnique)}{MOGRIX_DIAG_INT("sendOutput_EAGAIN_fd", m_socketDescriptor); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # Log sendmsg non-EAGAIN error (anchor on unique IPC_LOG_SEND_ERR)
+    - perl -i -pe 's{(IPC_LOG_SEND_ERR\(errno)}{MOGRIX_DIAG_INT("sendOutput_ERR_errno", errno); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+    # --- End IPC send pipeline diagnostics ---
+    # --- End HTTP resource loading diagnostics ---
+    # IRIX: g_network_monitor_get_default() returns NULL (no /proc/net, no netlink).
+    # WebKit passes result directly to g_signal_connect → CRITICAL → abort() in WebProcess.
+    # NULL-check both call sites.
+    - "perl -i -pe 's{m_isOnLine = g_network_monitor_get_network_available\\(g_network_monitor_get_default\\(\\)\\);}{GNetworkMonitor *_nm = g_network_monitor_get_default(); m_isOnLine = _nm ? g_network_monitor_get_network_available(_nm) : true;}' Source/WebCore/platform/network/glib/NetworkStateNotifierGLib.cpp"
+    - perl -i -pe 's{g_signal_connect_swapped\(g_network_monitor_get_default\(\), "network-changed"}{GNetworkMonitor *_nm2 = g_network_monitor_get_default(); if (_nm2) g_signal_connect_swapped(_nm2, "network-changed"}' Source/WebCore/platform/network/glib/NetworkStateNotifierGLib.cpp
+    # IRIX: soup_session_get_feature(SOUP_TYPE_HSTS_ENFORCER) can return NULL if HSTS
+    # storage init failed. WebKit passes result directly to g_signal_connect → CRITICAL.
+    - "perl -i -pe 's{g_signal_connect\\(soup_session_get_feature\\(static_cast<NetworkSessionSoup&>\\(\\*m_session\\)\\.soupSession\\(\\), SOUP_TYPE_HSTS_ENFORCER\\), \"hsts-enforced\"}{auto* _hf = soup_session_get_feature(static_cast<NetworkSessionSoup\\&>(*m_session).soupSession(), SOUP_TYPE_HSTS_ENFORCER); if (_hf) g_signal_connect(_hf, \"hsts-enforced\"}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    - "perl -i -pe 's{g_signal_handlers_disconnect_by_data\\(soup_session_get_feature\\(static_cast<NetworkSessionSoup&>\\(\\*m_session\\)\\.soupSession\\(\\), SOUP_TYPE_HSTS_ENFORCER\\), this\\)}{auto* _hf2 = soup_session_get_feature(static_cast<NetworkSessionSoup\\&>(*m_session).soupSession(), SOUP_TYPE_HSTS_ENFORCER); if (_hf2) g_signal_handlers_disconnect_by_data(_hf2, this)}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
     # write(SerializableErrorType) is inside #if ENABLE(WEB_CRYPTO) but called unconditionally.
     # Add an unconditional version outside the #if block.
     - perl -i -pe 's{^(    void write\(DestinationColorSpaceTag tag\))}{    void write(SerializableErrorType errorType)\n    {\n        writeLittleEndian<uint8_t>(m_buffer, static_cast<uint8_t>(errorType));\n    }\n\n$1}' Source/WebCore/bindings/js/SerializedScriptValue.cpp
