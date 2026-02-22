@@ -188,8 +188,8 @@ rules:
     # --- End shared-path receive diagnostics ---
     # --- HTTP resource loading diagnostics (TEMPORARY) ---
     # Trace WebProcess path from receiving URL load to sending IPC to NetworkProcess.
-    # SOUP_DEBUG=2 showed zero libsoup output → request never reaches NetworkProcess.
-    # NetworkProcess IPC log: only 1 msg received. WebProcess never sends ScheduleResourceLoad.
+    # SOUP_DEBUG=2 showed zero libsoup output → NP receives 894-byte IPC message but
+    # never invokes libsoup. NP-side dispatch chain is the dark zone. See NP dispatch DIAG below.
     - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/WebProcess/Network/webkit_subprocess_diag.h
     - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/WebProcess/webkit_subprocess_diag.h
     # Include diag header in WebLoaderStrategy.cpp
@@ -233,6 +233,40 @@ rules:
     # Log sendmsg non-EAGAIN error (anchor on unique IPC_LOG_SEND_ERR)
     - perl -i -pe 's{(IPC_LOG_SEND_ERR\(errno)}{MOGRIX_DIAG_INT("sendOutput_ERR_errno", errno); $1}' Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
     # --- End IPC send pipeline diagnostics ---
+    # --- NetworkProcess HTTP dispatch diagnostics (TEMPORARY) ---
+    # SOUP_DEBUG=2 shows ZERO libsoup output. IPC works (894-byte ScheduleResourceLoad reaches NP).
+    # NP never invokes libsoup. Instrument the NP message dispatch → libsoup chain.
+    # See docs/webkit-ipc-flow-map.md.
+    #
+    # Copy diag header to NP source directories
+    - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/NetworkProcess/webkit_subprocess_diag.h
+    - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebKit/NetworkProcess/soup/webkit_subprocess_diag.h
+    # Add includes
+    - perl -i -pe 's{^(#include "NetworkProcess\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/NetworkProcess/NetworkProcess.cpp
+    - perl -i -pe 's{^(#include "NetworkConnectionToWebProcess\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp
+    - perl -i -pe 's{^(#include "NetworkResourceLoader\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp
+    - perl -i -pe 's{^(#include "NetworkDataTaskSoup\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp
+    #
+    # (NP-1) NetworkProcess::initializeNetworkProcess — before/after platformInit
+    - perl -i -pe 's{(platformInitializeNetworkProcess\(parameters\);)}{MOGRIX_DIAG("NP_platformInit_ENTER"); $1 MOGRIX_DIAG("NP_platformInit_OK");}' Source/WebKit/NetworkProcess/NetworkProcess.cpp
+    # (NP-2) NetworkProcess::initializeNetworkProcess — before addWebsiteDataStore loop
+    - "perl -i -pe 's{(for \\(auto&& websiteDataStoreParameters : WTFMove\\(parameters\\.websiteDataStoreParameters\\)\\))}{MOGRIX_DIAG(\"NP_addWebsiteDataStores_ENTER\"); $1}' Source/WebKit/NetworkProcess/NetworkProcess.cpp"
+    # (NP-3) NetworkConnectionToWebProcess::didReceiveMessage — entry
+    - perl -0777 -i -pe 's{(void NetworkConnectionToWebProcess::didReceiveMessage\(IPC::Connection& connection, IPC::Decoder& decoder\)\n\{)}{$1\n    MOGRIX_DIAG("NP_connToWP_didRecvMsg");}' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp
+    # (NP-4) removed — NP-3 + NP-5 bracket the dispatch (entry + scheduleResourceLoad)
+    # (NP-5) NetworkConnectionToWebProcess::scheduleResourceLoad — entry
+    - perl -0777 -i -pe 's{(void NetworkConnectionToWebProcess::scheduleResourceLoad\(NetworkResourceLoadParameters&& loadParameters, std::optional<NetworkResourceLoadIdentifier> existingLoaderToResume\)\n\{)}{$1\n    MOGRIX_DIAG("NP_scheduleResourceLoad");}' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp
+    # (NP-6) NetworkResourceLoader::startNetworkLoad — session check
+    - perl -i -pe 's{(if \(!networkSession\) \{)}{MOGRIX_DIAG_INT("NP_startNetworkLoad_hasSession", (int)(networkSession != nullptr)); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp
+    # (NP-7) NetworkResourceLoader::startNetworkLoad — NetworkLoad creation
+    - perl -i -pe 's{(m_networkLoad = makeUnique<NetworkLoad>\(\*this, WTFMove\(parameters\), \*networkSession\);)}{MOGRIX_DIAG("NP_createNetworkLoad"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp
+    # (NP-8) NetworkDataTaskSoup::createRequest — before/after createSoupMessage
+    - perl -i -pe 's{(m_soupMessage = m_currentRequest\.createSoupMessage\(m_session->blobRegistry\(\)\);)}{MOGRIX_DIAG("NP_createSoupMsg_ENTER"); $1 MOGRIX_DIAG_INT("NP_soupMsg_ptr", (int)(!!m_soupMessage));}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp
+    # (NP-9) NetworkDataTaskSoup::resume — state at entry
+    - perl -i -pe 's{(if \(m_soupMessage && !m_cancellable\) \{)}{MOGRIX_DIAG_INT("NP_resume_soupMsg", (int)(!!m_soupMessage)); MOGRIX_DIAG_INT("NP_resume_cancellable", (int)(!!m_cancellable)); $1}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp
+    # (NP-10) NetworkDataTaskSoup::resume — entering soup_session_send_async
+    - perl -i -pe 's{(soup_session_send_async\(static_cast<NetworkSessionSoup&>)}{MOGRIX_DIAG("NP_soup_send_async"); $1}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp
+    # --- End NetworkProcess HTTP dispatch diagnostics ---
     # --- End HTTP resource loading diagnostics ---
     # IRIX: g_network_monitor_get_default() returns NULL (no /proc/net, no netlink).
     # WebKit passes result directly to g_signal_connect → CRITICAL → abort() in WebProcess.
@@ -251,3 +285,8 @@ rules:
     # WebKitWebProcess/WebKitNetworkProcess relative to the bundle directory.
     # Move the g_getenv("WEBKIT_EXEC_PATH") check outside the #ifdef.
     - perl -i -0pe 's{#if ENABLE\(DEVELOPER_MODE\)\n    static const char\* execDirectory = g_getenv\("WEBKIT_EXEC_PATH"\);\n    if \(execDirectory\) \{\n        String processPath = FileSystem::pathByAppendingComponent\(FileSystem::stringFromFileSystemRepresentation\(execDirectory\), StringView::fromLatin1\(processName\)\);\n        if \(FileSystem::fileExists\(processPath\)\)\n            return processPath;\n    \}\n\n    static String executablePath = getExecutablePath}{    static const char* execDirectory = g_getenv("WEBKIT_EXEC_PATH");\n    if (execDirectory) \{\n        String processPath = FileSystem::pathByAppendingComponent(FileSystem::stringFromFileSystemRepresentation(execDirectory), StringView::fromLatin1(processName));\n        if (FileSystem::fileExists(processPath))\n            return processPath;\n    \}\n\n#if ENABLE(DEVELOPER_MODE)\n    static String executablePath = getExecutablePath}' Source/WebKit/Shared/glib/ProcessExecutablePathGLib.cpp
+    # IRIX: SharedMemoryHandle has a noncopyable member (UnixFileDescriptor), but
+    # tries to explicitly default its copy constructor. Change to delete.
+    - $MOGRIX_ROOT/tools/safepatch Source/WebKit/Platform/SharedMemory.h --old 'explicit SharedMemoryHandle(const SharedMemoryHandle&) = default;' --new 'explicit SharedMemoryHandle(const SharedMemoryHandle&) = delete;' --no-backup --quiet
+    # IRIX: ShareableBitmapHandle has the same copy constructor issue.
+    - $MOGRIX_ROOT/tools/safepatch Source/WebKit/Shared/ShareableBitmap.h --old 'explicit ShareableBitmapHandle(const ShareableBitmapHandle&) = default;' --new 'explicit ShareableBitmapHandle(const ShareableBitmapHandle&) = delete;' --no-backup --quiet
