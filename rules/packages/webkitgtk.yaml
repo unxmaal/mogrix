@@ -256,6 +256,34 @@ rules:
     # (NP-4) removed — NP-3 + NP-5 bracket the dispatch (entry + scheduleResourceLoad)
     # (NP-5) NetworkConnectionToWebProcess::scheduleResourceLoad — entry
     - perl -0777 -i -pe 's{(void NetworkConnectionToWebProcess::scheduleResourceLoad\(NetworkResourceLoadParameters&& loadParameters, std::optional<NetworkResourceLoadIdentifier> existingLoaderToResume\)\n\{)}{$1\n    MOGRIX_DIAG("NP_scheduleResourceLoad");}' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp
+    # IRIX: Bypass NETWORK_PROCESS_MESSAGE_CHECK in scheduleResourceLoad.
+    # This security macro silently drops HTTP requests when the cookie-domain
+    # check fails. The allowsFirstPartyForCookies map isn't populated correctly
+    # on IRIX (no sandbox), so every HTTP load is silently killed + the macro
+    # sends TerminateWebProcess to the UIProcess.
+    # Root cause: session 112 DIAG — NP_scheduleResourceLoad fires, then nothing.
+    # Bypass ALL cookie-domain checks in this file (11 instances of allowsFirstPartyForCookies).
+    # Two macro variants: NETWORK_PROCESS_MESSAGE_CHECK and NETWORK_PROCESS_MESSAGE_CHECK_COMPLETION.
+    # On IRIX there's no sandbox — the cookie domain allowlist isn't populated correctly
+    # for direct IP URLs. These checks silently drop HTTP operations (send TerminateWebProcess).
+    # The single-arg version: scheduleResourceLoad (line 504), setCookiesFromDOM (805), deleteCookie (878)
+    - "perl -i -pe 's{NETWORK_PROCESS_MESSAGE_CHECK\\(m_networkProcess->allowsFirstPartyForCookies\\(m_webProcessIdentifier, .*?\\)\\);}{/* IRIX: cookie check bypassed */}g' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp"
+    # The completion variant: cookiesForDOM (788), cookieRequestHeaderFieldValue (821),
+    # getRawCookies (832), domCookiesForHost (861), setCookiesFromHTTPResponse (898)
+    - "perl -i -pe 's{NETWORK_PROCESS_MESSAGE_CHECK_COMPLETION\\(m_networkProcess->allowsFirstPartyForCookies\\(m_webProcessIdentifier, .*?\\), .*?\\);}{/* IRIX: cookie check bypassed */}g' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp"
+    # Also bypass the check in registrableDomainsWithWebsiteData (line 1338) which uses session->
+    - "perl -i -pe 's{NETWORK_PROCESS_MESSAGE_CHECK\\(session->networkProcess\\(\\)\\.allowsFirstPartyForCookies\\(webProcessIdentifier\\(\\), .*?\\)\\);}{/* IRIX: cookie check bypassed */}g' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp"
+    # IRIX: Skip Service Worker import-completion gate in scheduleResourceLoad.
+    # ENABLE(SERVICE_WORKER) is ON for GTK. The SW server's isImportCompleted()
+    # never returns true on IRIX (no SW database/storage), so the load is deferred
+    # forever via whenImportIsCompleted() callback that never fires.
+    # Fix: make the condition always false so the #if block is skipped.
+    - "perl -i -pe 's{!server\\.isImportCompleted\\(\\)}{false /* IRIX: SW import never completes, skip gate */}' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp"
+    # IRIX: Bypass Service Worker load routing entirely.
+    # startWithServiceWorker() tries createFetchTask() + content filtering before
+    # reaching startRequest(). On IRIX, this path silently blocks (no SW infrastructure).
+    # Fix: call start() directly, which goes straight to startRequest().
+    - "perl -i -pe 's{loader->startWithServiceWorker\\(\\);}{loader->start(); /* IRIX: bypass SW load routing */}' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp"
     # (NP-6) NetworkResourceLoader::startNetworkLoad — session check
     - perl -i -pe 's{(if \(!networkSession\) \{)}{MOGRIX_DIAG_INT("NP_startNetworkLoad_hasSession", (int)(networkSession != nullptr)); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp
     # (NP-7) NetworkResourceLoader::startNetworkLoad — NetworkLoad creation

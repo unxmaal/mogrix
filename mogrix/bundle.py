@@ -499,6 +499,18 @@ class BundleBuilder:
 
         needed = checked
 
+        # Protect dlopen'd modules from pruning (GIO modules for TLS/proxy)
+        gio_modules_dir = lib_dir / "gio" / "modules"
+        if gio_modules_dir.is_dir():
+            for f in gio_modules_dir.iterdir():
+                if f.is_file() and ".so" in f.name:
+                    # Add GIO module deps to the needed set
+                    needed.add(f.name)
+                    if self._is_elf(f):
+                        for dep in self._readelf_needed(f):
+                            if dep not in needed:
+                                needed.add(dep)
+
         # Remove .so files not in the needed set
         removed = []
         for f in sorted(lib_dir.iterdir()):
@@ -645,6 +657,95 @@ class BundleBuilder:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
                 break
+
+    def _include_gio_modules(self, bundle_dir: Path) -> None:
+        """Include GIO extension modules for TLS/proxy support.
+
+        GIO modules (libgiognutls.so, libgioenvironmentproxy.so) are dlopen'd
+        at runtime by GLib — they're never in any binary's NEEDED chain.
+        If the bundle uses GLib (libgio-2.0.so.0), copy modules from staging
+        so GLib can find them via GIO_MODULE_DIR.
+
+        Also copies transitive dependencies (libgnutls, libtasn1, libnettle,
+        libhogweed, libgmp) and generates a giomodule.cache file.
+        """
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        # Only include GIO modules if the bundle uses GLib
+        has_gio = (lib_dir / "libgio-2.0.so.0").exists() or any(
+            f.name.startswith("libgio-2.0.so") for f in lib_dir.iterdir()
+            if f.is_file() or f.is_symlink()
+        )
+        if not has_gio:
+            return
+
+        staging_gio = STAGING_LIB_DIR / "gio" / "modules"
+        if not staging_gio.is_dir():
+            return
+
+        gio_dest = lib_dir / "gio" / "modules"
+        gio_dest.mkdir(parents=True, exist_ok=True)
+
+        # Copy GIO module .so files from staging
+        modules_found = []
+        for f in staging_gio.iterdir():
+            if f.is_file() and f.name.endswith(".so"):
+                dest = gio_dest / f.name
+                if not dest.exists():
+                    shutil.copy2(str(f), str(dest))
+                modules_found.append(f.name)
+
+        if not modules_found:
+            return
+
+        # Copy transitive deps of GIO modules into _lib32/ if missing.
+        # libgiognutls.so -> libgnutls -> libtasn1, libnettle, libhogweed, libgmp
+        for mod_file in gio_dest.iterdir():
+            if mod_file.is_file() and self._is_elf(mod_file):
+                for dep in self._readelf_needed(mod_file):
+                    dep_dest = lib_dir / dep
+                    if not dep_dest.exists():
+                        dep_src = STAGING_LIB_DIR / dep
+                        if dep_src.exists():
+                            real_file = dep_src.resolve()
+                            shutil.copy2(str(real_file), str(lib_dir / real_file.name))
+                            if real_file.name != dep:
+                                (lib_dir / dep).symlink_to(real_file.name)
+                            # Also copy deps of deps (one level deeper)
+                            if self._is_elf(real_file):
+                                for dep2 in self._readelf_needed(real_file):
+                                    if not (lib_dir / dep2).exists():
+                                        dep2_src = STAGING_LIB_DIR / dep2
+                                        if dep2_src.exists():
+                                            real2 = dep2_src.resolve()
+                                            shutil.copy2(str(real2), str(lib_dir / real2.name))
+                                            if real2.name != dep2:
+                                                (lib_dir / dep2).symlink_to(real2.name)
+
+        # Generate giomodule.cache (gio-querymodules can't run cross-compiled).
+        # Format: "filename: extension-point[,extension-point]"
+        cache_lines = []
+        module_registry = {
+            "libgiognutls.so": "gio-tls-backend",
+            "libgioenvironmentproxy.so": "gio-proxy-resolver",
+            "libgiognomeproxy.so": "gio-proxy-resolver",
+            "libgiofam.so": "gio-local-file-monitor,gio-nfs-file-monitor",
+            "libgiolibproxy.so": "gio-proxy-resolver",
+            "libgvfsdbus.so": "gio-vfs",
+        }
+        for mod_name in sorted(modules_found):
+            ext_point = module_registry.get(mod_name)
+            if ext_point:
+                cache_lines.append(f"{mod_name}: {ext_point}")
+        if cache_lines:
+            cache_file = gio_dest / "giomodule.cache"
+            cache_file.write_text("\n".join(cache_lines) + "\n")
+
+        console.print(
+            f"  [dim]Included GIO modules: {', '.join(modules_found)}[/dim]"
+        )
 
     def _include_fonts(self, bundle_dir: Path) -> bool:
         """Include TTF fonts for X11 bundles that use Xft/fontconfig.
@@ -993,6 +1094,10 @@ class BundleBuilder:
         # that are needed at runtime when the ELF SONAME is unversioned.
         self._create_soname_symlinks(bundle_dir)
 
+        # Include GIO extension modules (TLS, proxy) for GLib-using bundles.
+        # Must run before pruning so module deps are in the needed set.
+        self._include_gio_modules(bundle_dir)
+
         # Prune _lib32/ to only sonames actually NEEDED by bundle binaries.
         # RPMs include all libs from the package (e.g., ncurses-libs has 14 .so
         # files) but the bundle may only need a few.
@@ -1111,6 +1216,19 @@ class BundleBuilder:
                 'WEBKIT_EXEC_PATH="$dir/libexec/webkit2gtk-4.0"'
             )
             extra_env_lines.append("export WEBKIT_EXEC_PATH")
+        # GIO modules — point to bundle's module directory for TLS/proxy support.
+        # GIO modules are dlopen'd at runtime (not NEEDED deps), so GLib needs
+        # GIO_MODULE_DIR to find them. Without this, no TLS backend = no HTTPS.
+        gio_modules_dir = bundle_dir / "_lib32" / "gio" / "modules"
+        if gio_modules_dir.is_dir() and any(
+            f.name.endswith(".so")
+            for f in gio_modules_dir.iterdir()
+            if f.is_file() or f.is_symlink()
+        ):
+            extra_env_lines.append(
+                'GIO_MODULE_DIR="$dir/_lib32/gio/modules"'
+            )
+            extra_env_lines.append("export GIO_MODULE_DIR")
         # libevent: IRIX /dev/poll backend crashes — force poll() instead
         lib32_dir = bundle_dir / "_lib32"
         if lib32_dir.is_dir() and any(

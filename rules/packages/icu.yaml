@@ -117,6 +117,33 @@ rules:
         # icudefs.mk is the source of truth; pkgdataMakefiles read $(GENCCODE_ASSEMBLY) from it.
         sed -i 's/^GENCCODE_ASSEMBLY = *$/GENCCODE_ASSEMBLY = -a gcc/' icudefs.mk
 
+    # Fix ICU data endianness after cross-build make.
+    # genccode -a gcc uses .long directives, which the MIPS big-endian
+    # assembler word-swaps relative to the x86 little-endian host data.
+    # This makes the data unreadable on IRIX (U_INVALID_FORMAT_ERROR).
+    # Fix: convert data to big-endian with icupkg, rebuild libicudata.so
+    # using .incbin assembly (byte-exact, no endian conversion).
+    - pattern: "%make_build"
+      replacement: |-
+        %make_build
+        # === Fix ICU data endianness (cross-endian .long word-swap bug) ===
+        _ICU_LE_DAT=$(find data/out -name 'icudt*l.dat' 2>/dev/null | head -1)
+        if [ -n "$_ICU_LE_DAT" ]; then
+            _ICU_BE_DAT=$(echo "$_ICU_LE_DAT" | sed 's/l\.dat$/b.dat/')
+            /usr/sbin/icupkg -tb "$_ICU_LE_DAT" "$_ICU_BE_DAT" 2>/dev/null || true
+            if [ -f "$_ICU_BE_DAT" ]; then
+                _BEDAT_ABS=$(cd $(dirname "$_ICU_BE_DAT") && pwd)/$(basename "$_ICU_BE_DAT")
+                printf '.section .rodata\n.balign 16\n.globl icudt74_dat\n.type icudt74_dat, @object\nicudt74_dat:\n.incbin "%s"\n.size icudt74_dat, . - icudt74_dat\n' "$_BEDAT_ABS" > /tmp/_icudata_be.S
+                $CC -c -o /tmp/_icudata_be.o /tmp/_icudata_be.S
+                $CC -shared -Wl,-soname,libicudata.so.74 -o lib/libicudata.so.74.2 /tmp/_icudata_be.o
+                echo "ICU data endianness fixed: rebuilt libicudata.so.74.2 with big-endian data via .incbin"
+            else
+                echo "WARNING: icupkg conversion failed — libicudata.so will have wrong-endian data"
+            fi
+        else
+            echo "WARNING: ICU data .dat file not found in data/out/"
+        fi
+
     # Fix %install to use cross-build directory
     - pattern: "%make_install %{?_smp_mflags} -C source"
       replacement: "%make_install %{?_smp_mflags} -C cross-build"

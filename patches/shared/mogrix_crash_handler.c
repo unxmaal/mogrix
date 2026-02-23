@@ -196,12 +196,23 @@ static void resolve_addr(unsigned int addr, const char *label) {
 
 /* ---------- signal handler ---------- */
 
+/* Re-entrancy guard: prevents infinite recursion if handler itself crashes */
+static volatile int in_handler = 0;
+
 static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     ucontext_t *uc = (ucontext_t *)ctx;
     unsigned int pc, ra, sp, gp;
     unsigned int *stack;
     int i;
     char path[512];
+
+    /* Re-entrancy guard — if handler crashes, just die immediately */
+    if (in_handler) {
+        const char *msg = "[mogrix] RE-ENTRANT CRASH in handler, dying\n";
+        write(STDERR_FILENO, msg, 44);
+        _exit(128 + sig);
+    }
+    in_handler = 1;
 
     /* Open log file for this crash */
     build_crash_path(path, sizeof(path), "crash");
@@ -228,34 +239,47 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
     wdec(getpid());
     ws("\n");
 
-    if (sig == SIGSEGV) {
-        ws("SEGV code: ");
-        switch (si->si_code) {
-            case SEGV_MAPERR: ws("SEGV_MAPERR (address not mapped)"); break;
-            case SEGV_ACCERR: ws("SEGV_ACCERR (invalid permissions)"); break;
-            default: ws("code="); wdec(si->si_code); break;
+    /* NULL-check si before accessing fields */
+    if (!si) {
+        ws("siginfo: NULL\n");
+    } else {
+        if (sig == SIGSEGV) {
+            ws("SEGV code: ");
+            switch (si->si_code) {
+                case SEGV_MAPERR: ws("SEGV_MAPERR (address not mapped)"); break;
+                case SEGV_ACCERR: ws("SEGV_ACCERR (invalid permissions)"); break;
+                default: ws("code="); wdec(si->si_code); break;
+            }
+            ws("\n");
+        } else if (sig == SIGBUS) {
+            ws("BUS code: ");
+            switch (si->si_code) {
+                case BUS_ADRALN: ws("BUS_ADRALN (alignment error)"); break;
+                case BUS_ADRERR: ws("BUS_ADRERR (nonexistent address)"); break;
+                case BUS_OBJERR: ws("BUS_OBJERR (object-specific)"); break;
+                default: ws("code="); wdec(si->si_code); break;
+            }
+            ws("\n");
+        } else if (sig == SIGPIPE) {
+            ws("SIGPIPE: write to a pipe/socket with no reader.\n");
+            ws("  Common cause: MSG_NOSIGNAL is 0 on IRIX (no effect).\n");
+            ws("  Fix: SIG_IGN SIGPIPE at process start, handle EPIPE returns.\n");
         }
-        ws("\n");
-    } else if (sig == SIGBUS) {
-        ws("BUS code: ");
-        switch (si->si_code) {
-            case BUS_ADRALN: ws("BUS_ADRALN (alignment error)"); break;
-            case BUS_ADRERR: ws("BUS_ADRERR (nonexistent address)"); break;
-            case BUS_OBJERR: ws("BUS_OBJERR (object-specific)"); break;
-            default: ws("code="); wdec(si->si_code); break;
-        }
-        ws("\n");
-    } else if (sig == SIGPIPE) {
-        ws("SIGPIPE: write to a pipe/socket with no reader.\n");
-        ws("  Common cause: MSG_NOSIGNAL is 0 on IRIX (no effect).\n");
-        ws("  Fix: SIG_IGN SIGPIPE at process start, handle EPIPE returns.\n");
-    }
 
-    ws("Fault addr: ");
-    whex32((unsigned int)(unsigned long)si->si_addr);
-    ws("\nLog file: ");
+        ws("Fault addr: ");
+        whex32((unsigned int)(unsigned long)si->si_addr);
+        ws("\n");
+    }
+    ws("Log file: ");
     ws(path);
     ws("\n\n");
+
+    /* NULL-check ctx before accessing ucontext registers */
+    if (!ctx) {
+        ws("ucontext: NULL (no register info available)\n\n");
+        pc = ra = sp = gp = 0;
+        goto skip_registers;
+    }
 
     /* Key registers — cast from machreg_t (64-bit on n32) to 32-bit */
     pc = (unsigned int)uc->uc_mcontext.__gregs[CTX_EPC];
@@ -310,9 +334,9 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
 
     /* Hint: what was at the faulting address? */
     ws("-- Crash Analysis Hints ------------------------------\n");
-    if (si->si_addr == (void *)0) {
+    if (si && si->si_addr == (void *)0) {
         ws("  NULL pointer dereference\n");
-    } else if ((unsigned int)(unsigned long)si->si_addr < 0x1000) {
+    } else if (si && (unsigned int)(unsigned long)si->si_addr < 0x1000) {
         ws("  Low address -- likely NULL pointer + small offset (struct field)\n");
         ws("  Offset from NULL: ");
         wdec((int)(unsigned long)si->si_addr);
@@ -328,6 +352,14 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
         ws("  Or: this process wrote to a pipe/socket before the reader connected\n");
     }
     ws("\n");
+
+skip_registers:
+    if (sp == 0) {
+        ws("-- Stack Backtrace: SP is NULL, no stack trace --\n\n");
+        ws("======================================================\n\n");
+        if (log_fd >= 0) { close(log_fd); log_fd = -1; }
+        _exit(128 + sig);
+    }
 
     /* Resolve potential return addresses on stack */
     ws("-- Stack Backtrace (resolved) ------------------------\n");
@@ -396,12 +428,14 @@ static void crash_handler(int sig, siginfo_t *si, void *ctx) {
 
     ws("======================================================\n\n");
 
-    /* Close log file before re-raising */
+    /* Close log file before exiting */
     if (log_fd >= 0) { close(log_fd); log_fd = -1; }
 
-    /* Re-raise with default handler to get core dump */
-    signal(sig, SIG_DFL);
-    raise(sig);
+    /* Exit immediately — don't raise() which can re-enter the handler on IRIX.
+     * IRIX signal()/sigaction() interaction quirk: signal(sig, SIG_DFL) may
+     * not override a sigaction-installed handler, causing raise() to re-enter
+     * this handler with NULL si/ctx → crash at si->si_addr (offset 12). */
+    _exit(128 + sig);
 }
 
 /* ---------- atexit handler ---------- */
@@ -455,7 +489,9 @@ void mogrix_crash_init(void) {
     sigaction(SIGBUS, &sa, NULL);
     sigaction(SIGABRT, &sa, NULL);
     sigaction(SIGFPE, &sa, NULL);
-    sigaction(SIGPIPE, &sa, NULL);
+    /* NOTE: Do NOT catch SIGPIPE — WebKit sets SIGPIPE to SIG_IGN during
+     * initialization. Catching it here would kill WebProcess/NetworkProcess
+     * on normal broken-pipe conditions (e.g. IPC socket close). */
     sigaction(SIGILL, &sa, NULL);
     sigaction(SIGTRAP, &sa, NULL);
 
@@ -471,7 +507,7 @@ void mogrix_crash_init(void) {
     ws("[mogrix] Crash handler installed (MOGRIX_CRASH_DEBUG=1)\n");
     ws("  PID: ");
     wdec(getpid());
-    ws("\n  Signals: SEGV BUS ABRT FPE PIPE ILL TRAP\n");
+    ws("\n  Signals: SEGV BUS ABRT FPE ILL TRAP (not PIPE)\n");
     ws("  Log dir: ");
     ws(crash_dir);
     ws("\n  Crash logs: ");

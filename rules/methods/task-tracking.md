@@ -139,6 +139,26 @@ Task(
 
 **For quick builds** (< 2 minutes, small packages): regular Bash is fine. The rule is for large packages where output could exceed a few hundred lines.
 
+### Rule 7: Use Haiku Sub-Agents for Simple Monitoring Tasks
+
+For any simple, repetitive task — checking build progress, tailing logs, counting files, checking process status — use a **haiku sub-agent** instead of doing it inline. This keeps your main context clean for actual problem-solving.
+
+**Examples of "use haiku for this":**
+- Watching build progress (poll .o file count, check last compile line)
+- Tailing a log file for errors
+- Checking if a process is still running
+- Counting lines/files/matches
+- Any task where you'd `sleep` + check in a loop
+
+**Pattern:**
+```
+Task(
+  subagent_type="Bash",
+  model="haiku",
+  prompt="Check build progress: count .o files in /path/_build/, tail last 3 lines of build log. Report file count and last compilation target."
+)
+```
+
 ### Why These Rules Exist
 
 The failure mode: 5+ agents each return large results → main context fills with accumulated build details → no room for orchestration or handoff → session dies without recovery. The fix: agents are workers that write to disk, the orchestrator is a coordinator that reads from disk. Conversation context only holds the current wave's summary.

@@ -106,6 +106,7 @@ If a compat function needs to override a **buggy libc function called from share
    irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
        compat/stdlib/bsearch.c \
        compat/sys/socketpair.c \
+       compat/sys/shm_open.c \
        compat/sys/mincore.c \
        compat/runtime/muloti4.c \
        compat/runtime/divti3.c \
@@ -125,6 +126,8 @@ If a compat function needs to override a **buggy libc function called from share
 
 - The buggy libc function is called from **shared libraries** (not just executables)
 - Example: `bsearch` — called from `libgtk-3.so`, `libglib-2.0.so`, etc.
+- Example: `shm_open` — called from `libwebkit2gtk-4.0.so` (WebKit SharedMemory)
+- Example: `socketpair` — called from `libgio-2.0.so` (GLib subprocess launcher)
 - If only called from executables, `inject_compat_functions` alone is sufficient
 
 ### When inject_compat_functions alone is sufficient
