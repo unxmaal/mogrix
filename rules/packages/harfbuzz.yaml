@@ -131,4 +131,4 @@ rules:
 
       '
   prep_commands:
-  - sed -i 's/^SUBDIRS = src util test perf docs/SUBDIRS = src util docs/' Makefile.in
+  - $MOGRIX_ROOT/tools/safepatch Makefile.in --old 'SUBDIRS = src util test perf docs' --new 'SUBDIRS = src util docs' --no-backup --quiet

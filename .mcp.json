@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "irix": {
+      "command": "python3",
+      "args": ["tools/irix-mcp-server.py"],
+      "env": {
+        "IRIX_HOST": "192.168.0.81",
+        "IRIX_USER": "root",
+        "IRIX_CHROOT": "/opt/chroot",
+        "IRIX_LOG": "/tmp/irix-mcp.log"
+      }
+    },
+    "mogrix-test": {
+      "command": "python3",
+      "args": ["tools/mogrix-test-server.py"],
+      "env": {
+        "IRIX_HOST": "192.168.0.81",
+        "IRIX_USER": "root",
+        "IRIX_CHROOT": "/opt/chroot",
+        "MOGRIX_TEST_LOG": "/tmp/mogrix-test-mcp.log"
+      }
+    },
+    "ghidra": {
+      "command": "python3",
+      "args": [
+        "/home/edodd/GhidraMCP-release-1-4/bridge_mcp_ghidra.py",
+        "--ghidra-server",
+        "http://127.0.0.1:9090/"
+      ]
+    }
+  }
+}

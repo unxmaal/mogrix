@@ -1,7 +1,7 @@
 package: libevent
 rules:
   prep_commands:
-  - sed -i '/^include test\/include.am$/d' Makefile.am
+  - $MOGRIX_ROOT/tools/safepatch Makefile.am --delete-line 'include test/include.am' --no-backup --quiet
   inject_compat_functions:
   - strsep
   ac_cv_overrides:

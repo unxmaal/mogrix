@@ -11,9 +11,9 @@ rules:
   prep_commands:
     # Remove $(LIBS) from host tool link lines — LIBS contains
     # -lmogrix-compat (MIPS cross-compiled), which can't link with host cc.
-    - "sed -i 's/\\($(AM_V_GEN)$(genmacro_LINK).*$(genmacro_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
-    - "sed -i 's/\\($(AM_V_GEN)$(genmodule_LINK).*$(genmodule_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
-    - "sed -i 's/\\($(AM_V_GEN)$(genperf_LINK).*$(genperf_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
-    - "sed -i 's/\\($(AM_V_GEN)$(genstring_LINK).*$(genstring_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
-    - "sed -i 's/\\($(AM_V_GEN)$(genversion_LINK).*$(genversion_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
-    - "sed -i 's/\\($(AM_V_GEN)$(re2c_LINK).*$(re2c_LDADD)\\) $(LIBS)/\\1/' Makefile.in"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old '$(genmacro_LDADD) $(LIBS)' --new '$(genmacro_LDADD)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old '$(genmodule_LDADD) $(LIBS)' --new '$(genmodule_LDADD)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old '$(genperf_LDADD) $(LIBS)' --new '$(genperf_LDADD)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old '$(genstring_LDADD) $(LIBS)' --new '$(genstring_LDADD)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old '$(genversion_LDADD) $(LIBS)' --new '$(genversion_LDADD)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old '$(re2c_LDADD) $(LIBS)' --new '$(re2c_LDADD)' --no-backup --quiet"

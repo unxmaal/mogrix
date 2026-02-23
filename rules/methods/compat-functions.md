@@ -105,7 +105,16 @@ If a compat function needs to override a **buggy libc function called from share
    ```bash
    irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
        compat/stdlib/bsearch.c \
-       # add more .c files here as needed
+       compat/sys/socketpair.c \
+       compat/sys/shm_open.c \
+       compat/sys/mincore.c \
+       compat/runtime/muloti4.c \
+       compat/runtime/divti3.c \
+       compat/stdlib/mkdtemp.c \
+       compat/error/strerror_r.c \
+       compat/string/memmem.c \
+       patches/shared/mogrix_crash_handler.c \
+       -I compat/include -I patches/shared
    ```
 3. Deploy to staging:
    ```bash
@@ -117,6 +126,8 @@ If a compat function needs to override a **buggy libc function called from share
 
 - The buggy libc function is called from **shared libraries** (not just executables)
 - Example: `bsearch` — called from `libgtk-3.so`, `libglib-2.0.so`, etc.
+- Example: `shm_open` — called from `libwebkit2gtk-4.0.so` (WebKit SharedMemory)
+- Example: `socketpair` — called from `libgio-2.0.so` (GLib subprocess launcher)
 - If only called from executables, `inject_compat_functions` alone is sufficient
 
 ### When inject_compat_functions alone is sufficient

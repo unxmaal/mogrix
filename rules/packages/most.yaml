@@ -12,4 +12,4 @@ rules:
   prep_commands:
     # chkslang is a cross-compiled binary that can't run on build host.
     # Replace the slangversion target with a no-op (we know slang 2.3.3 >= 2.0)
-    - "sed -i 's|$(OBJDIR)/chkslang $(EXEC)|true # chkslang skipped for cross-build|' src/Makefile.in"
+    - "$MOGRIX_ROOT/tools/safepatch src/Makefile.in --old '$(OBJDIR)/chkslang $(EXEC)' --new 'true # chkslang skipped for cross-build' --no-backup --quiet"

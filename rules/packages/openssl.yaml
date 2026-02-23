@@ -9,7 +9,7 @@ rules:
   - secure_getenv
   - _rld_new_interface
   prep_commands:
-  - sed -i '/internal\/numbers.h/a\extern char *strerror_r(int errnum, char *buf, size_t buflen);' include/internal/e_os.h
+  - "$MOGRIX_ROOT/tools/safepatch include/internal/e_os.h --old 'internal/numbers.h' --insert-after 'extern char *strerror_r(int errnum, char *buf, size_t buflen);' --no-backup --quiet"
   export_vars:
     CC: /opt/sgug-staging/usr/sgug/bin/irix-cc
     AR: /opt/cross/bin/llvm-ar

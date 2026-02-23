@@ -275,6 +275,17 @@ functions:
       uses socket/bind/listen/connect/accept. In libmogrix_compat.so, preloaded via
       _RLDN32_LIST. Used by WebKit IPC."
 
+  shm_open:
+    file: sys/shm_open.c
+    header: sys/mman.h
+    description: POSIX shared memory with /tmp backing for IRIX
+    note: "IRIX libc shm_open() creates files at / (root dir), so non-root users
+      get EACCES. This compat version redirects to /tmp/.shm_<name>. Must be in
+      libmogrix_compat.so for shared library callers (WebKit SharedMemory)."
+    provides:
+      - shm_open
+      - shm_unlink
+
   # error functions
   strerror_r:
     file: error/strerror_r.c

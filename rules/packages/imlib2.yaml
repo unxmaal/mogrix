@@ -19,9 +19,9 @@ rules:
     ac_cv_lib_rt_clock_gettime: 'no'
   prep_commands:
   - cp %{_sourcedir}/memmem.h src/modules/loaders/
-  - 'sed -i ''1i #include "memmem.h"'' src/modules/loaders/loader_xbm.c'
-  - 'sed -i ''1i #include "memmem.h"'' src/modules/loaders/loader_xpm.c'
-  - 'sed -i ''1i #include "memmem.h"'' src/modules/loaders/loader_svg.c'
+  - '$MOGRIX_ROOT/tools/safepatch src/modules/loaders/loader_xbm.c --insert-top ''#include "memmem.h"'' --no-backup --quiet'
+  - '$MOGRIX_ROOT/tools/safepatch src/modules/loaders/loader_xpm.c --insert-top ''#include "memmem.h"'' --no-backup --quiet'
+  - '$MOGRIX_ROOT/tools/safepatch src/modules/loaders/loader_svg.c --insert-top ''#include "memmem.h"'' --no-backup --quiet'
   configure_flags:
     add:
     - --disable-static

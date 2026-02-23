@@ -17,5 +17,5 @@ rules:
     remove:
     - --without-included-regex
   prep_commands:
-  - sed -i 's/%zu/%u/g' lib/malloc/dynarray_at_failure.c
-  - sed -i 's/gnulib-tests//' Makefile.in
+  - "$MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --no-backup --quiet"

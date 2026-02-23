@@ -16,8 +16,8 @@ rules:
   configure_disable:
   - dynamic
   prep_commands:
-  - sed -i '/PR_SET_NAME/d' Src/jobs.c
-  - sed -i '/prctl/d' Src/jobs.c
+  - "$MOGRIX_ROOT/tools/safepatch Src/jobs.c --delete-line 'PR_SET_NAME' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Src/jobs.c --delete-line 'prctl' --no-backup --quiet"
   spec_replacements:
   - pattern: zsh{path,xmod}s.h
     replacement: zshpaths.h zshxmods.h

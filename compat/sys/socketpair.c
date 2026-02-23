@@ -9,6 +9,12 @@
  * socket()/bind()/listen()/connect()/accept(). For SOCK_SEQPACKET
  * requests, it transparently uses SOCK_STREAM instead.
  *
+ * IMPORTANT: Both sockets are explicitly bind()ed to temp paths.
+ * Without this, getsockname() on the unnamed connecting socket returns
+ * addrlen=0 on IRIX. GLib's g_socket_new_from_fd() then tries SO_DOMAIN
+ * (which IRIX lacks) and fails, returning NULL. This broke WebKit IPC:
+ * subprocesses got NULL GSockets, couldn't set up event monitors, and died.
+ *
  * Must be in libmogrix_compat.so, preloaded via _RLDN32_LIST.
  */
 
@@ -24,13 +30,44 @@
 /* Atomic counter for unique socket paths */
 static int sp_counter = 0;
 
+/* Build a unique socket path into buf: /tmp/.msp_<pid>_<cnt><suffix>
+ * Returns length written (excluding NUL). */
+static int
+sp_build_path(char *buf, int pid, int cnt, char suffix)
+{
+    int i = 0;
+    memcpy(buf, "/tmp/.msp_", 10);
+    i = 10;
+    /* pid digits */
+    {
+        char tmp[12];
+        int n = 0, v = pid;
+        if (v < 0) v = -v;
+        do { tmp[n++] = '0' + (v % 10); v /= 10; } while (v > 0);
+        while (n > 0) buf[i++] = tmp[--n];
+    }
+    buf[i++] = '_';
+    /* counter digits */
+    {
+        char tmp[12];
+        int n = 0, v = cnt;
+        if (v < 0) v = -v;
+        do { tmp[n++] = '0' + (v % 10); v /= 10; } while (v > 0);
+        while (n > 0) buf[i++] = tmp[--n];
+    }
+    if (suffix) buf[i++] = suffix;
+    buf[i] = '\0';
+    return i;
+}
+
 int
 socketpair(int domain, int type, int protocol, int sv[2])
 {
-    struct sockaddr_un addr;
+    struct sockaddr_un addr, addr_conn;
     int listener, conn, acc;
     int save_errno;
     int real_type;
+    int pid, cnt;
 
     /* Only handle AF_UNIX — socketpair is almost exclusively AF_UNIX */
     if (domain != AF_UNIX) {
@@ -46,36 +83,13 @@ socketpair(int domain, int type, int protocol, int sv[2])
     if (listener < 0)
         return -1;
 
+    pid = (int)getpid();
+    cnt = sp_counter++;
+
+    /* Listener address: /tmp/.msp_<pid>_<cnt>s */
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    /* Use pid + counter for unique path */
-    {
-        int pid = (int)getpid();
-        int cnt = sp_counter++;
-        int i = 0;
-        char *p = addr.sun_path;
-        /* Build "/tmp/.msp_<pid>_<cnt>" by hand (avoid sprintf deps) */
-        memcpy(p, "/tmp/.msp_", 10);
-        i = 10;
-        /* pid digits */
-        {
-            char buf[12];
-            int n = 0, v = pid;
-            if (v < 0) v = -v;
-            do { buf[n++] = '0' + (v % 10); v /= 10; } while (v > 0);
-            while (n > 0) p[i++] = buf[--n];
-        }
-        p[i++] = '_';
-        /* counter digits */
-        {
-            char buf[12];
-            int n = 0, v = cnt;
-            if (v < 0) v = -v;
-            do { buf[n++] = '0' + (v % 10); v /= 10; } while (v > 0);
-            while (n > 0) p[i++] = buf[--n];
-        }
-        p[i] = '\0';
-    }
+    sp_build_path(addr.sun_path, pid, cnt, 's');
 
     unlink(addr.sun_path);
 
@@ -89,6 +103,19 @@ socketpair(int domain, int type, int protocol, int sv[2])
     if (conn < 0)
         goto fail_bound;
 
+    /* Bind the connecting socket to its own name so that getsockname()
+     * returns a valid AF_UNIX address on IRIX. Without this, the unnamed
+     * socket causes GLib's g_socket_new_from_fd() to fail (no SO_DOMAIN
+     * on IRIX to detect the address family of unnamed sockets). */
+    memset(&addr_conn, 0, sizeof(addr_conn));
+    addr_conn.sun_family = AF_UNIX;
+    sp_build_path(addr_conn.sun_path, pid, cnt, 'c');
+
+    unlink(addr_conn.sun_path);
+
+    if (bind(conn, (struct sockaddr *)&addr_conn, sizeof(addr_conn)) < 0)
+        goto fail_conn;
+
     if (connect(conn, (struct sockaddr *)&addr, sizeof(addr)) < 0)
         goto fail_conn;
 
@@ -98,6 +125,7 @@ socketpair(int domain, int type, int protocol, int sv[2])
 
     close(listener);
     unlink(addr.sun_path);
+    unlink(addr_conn.sun_path);
 
     sv[0] = conn;
     sv[1] = acc;
@@ -106,6 +134,7 @@ socketpair(int domain, int type, int protocol, int sv[2])
 fail_conn:
     save_errno = errno;
     close(conn);
+    unlink(addr_conn.sun_path);
     errno = save_errno;
 fail_bound:
     save_errno = errno;

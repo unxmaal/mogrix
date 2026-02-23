@@ -3,11 +3,29 @@
  *
  * Self-initializing via __attribute__((constructor)).
  * Set MOGRIX_CRASH_DEBUG=1 to enable.
- * When a crash occurs, prints PC, RA, registers, and stack dump to stderr.
+ * Optionally set MOGRIX_CRASH_DIR=/path to control log output directory.
  *
- * Usage: Just compile and link mogrix_crash_handler.c into your program.
- *        No code changes needed — constructor handles initialization.
- *        Set MOGRIX_CRASH_DEBUG=1 at runtime to activate.
+ * Catches: SIGSEGV, SIGBUS, SIGABRT, SIGFPE, SIGPIPE, SIGILL, SIGTRAP
+ *
+ * When a crash occurs:
+ *   - Prints PC, RA, registers, and resolved stack backtrace to stderr
+ *   - Writes same info to $MOGRIX_CRASH_DIR/mogrix_crash_<pid>.log
+ *   - Re-raises signal for core dump
+ *
+ * Also installs atexit() handler — if the process exits cleanly (no signal),
+ * writes $MOGRIX_CRASH_DIR/mogrix_exit_<pid>.log to confirm it wasn't killed.
+ *
+ * On init, writes $MOGRIX_CRASH_DIR/mogrix_init_<pid>.log to confirm loading.
+ *
+ * Usage (preload via libmogrix_compat.so — all bundled binaries get it):
+ *   export MOGRIX_CRASH_DEBUG=1
+ *   export MOGRIX_CRASH_DIR=/usr/people/edodd  # optional
+ *   <run bundle normally>
+ *
+ * Usage (compile into specific package):
+ *   add_source: [mogrix_crash_handler.c, mogrix_crash_handler.h]
+ *   cp %{_sourcedir}/mogrix_crash_handler.c src/
+ *   # add to build system
  */
 #ifndef MOGRIX_CRASH_HANDLER_H
 #define MOGRIX_CRASH_HANDLER_H

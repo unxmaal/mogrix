@@ -103,5 +103,5 @@ rules:
   prep_commands:
     # _XOPEN_SOURCE hides struct winsize and TIOCGWINSZ on IRIX
     # _SGI_SOURCE provides all needed POSIX/XSI + BSD extensions
-    - "sed -i 's/^#define _XOPEN_SOURCE 600/\\/\\* #define _XOPEN_SOURCE 600 -- removed for IRIX *\\//' src/term_posix.c"
-    - "sed -i 's/^#define _POSIX_C_SOURCE 200112L/\\/\\* #define _POSIX_C_SOURCE 200112L -- removed for IRIX *\\//' src/term_posix.c"
+    - "$MOGRIX_ROOT/tools/safepatch src/term_posix.c --old '#define _XOPEN_SOURCE 600' --new '/* #define _XOPEN_SOURCE 600 -- removed for IRIX */' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/term_posix.c --old '#define _POSIX_C_SOURCE 200112L' --new '/* #define _POSIX_C_SOURCE 200112L -- removed for IRIX */' --no-backup --quiet"

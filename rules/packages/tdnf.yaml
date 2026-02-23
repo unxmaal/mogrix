@@ -47,7 +47,7 @@ rules:
   # Remove _XOPEN_SOURCE=500 which triggers IRIX sys/time.h static select()
   # wrapper that conflicts with unistd.h's extern select() declaration
   prep_commands:
-    - "sed -i '/_XOPEN_SOURCE/d' CMakeLists.txt"
+    - "$MOGRIX_ROOT/tools/safepatch CMakeLists.txt --delete-line '_XOPEN_SOURCE' --no-backup --quiet"
 
   # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
   # These get statically linked so we don't need libdicl at runtime

@@ -1,108 +1,81 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-21 (session 95)
-**Status**: WebKit IPC debug logging built and bundled. Bundle ready to deploy to IRIX. Need to identify which `connectionDidClose()` path fires when MiniBrowser reports "WebProcess CRASHED".
+**Last Updated**: 2026-02-23 (session 118)
+**Status**: WebKit HTTPS WORKING on IRIX. HTTP+HTTPS both verified. Ready for surf browser build.
 
 ---
 
 ## Post-Compaction Checklist (READ THIS FIRST)
 
-1. **Mogrix invocation**: `uv run mogrix <command>` — not `mogrix`, not `python -m mogrix`
-2. **Grep rules/INDEX.md** before attempting ANY fix — the answer is probably already there
+1. **Mogrix invocation**: `uv run mogrix <command>`
+2. **Grep rules/INDEX.md** before attempting ANY fix
 3. **Read GENERIC_SUMMARY.md** before starting any new package
-4. **Paths are different things**:
-   - `/opt/sgug-staging/` = cross-compilation sysroot (on Linux build host)
-   - `/opt/chroot` = IRIX test chroot (on IRIX host, accessed via MCP tools)
-5. **IRIX access**: Use MCP tools. NEVER raw SSH.
-6. **Testing**: Use `mogrix-test` MCP tools. NOT ad-hoc irix_exec calls.
-7. **Compat functions**: Grep `compat/catalog.yaml` before writing a new one.
-8. **Always use full mogrix pipeline** for builds — manual compilation creates dirty state.
-9. **Deploy irix-ld after editing**: `cp cross/bin/irix-ld /opt/sgug-staging/usr/sgug/bin/irix-ld`
-10. **GSettings schemas**: Run `glib-compile-schemas` in chroot after installing GTK3 apps.
-11. **Run `mogrix check-elf`** on Xt/Motif packages after build to catch ClassRec relocation issues.
-12. **NEVER install packages directly to /usr/sgug on the live IRIX system.** Always use `/opt/chroot`.
+4. **Paths**: `/opt/sgug-staging/` = Linux sysroot, `/opt/chroot` = IRIX test chroot (MCP tools)
+5. **IRIX access**: Use MCP tools. NEVER raw SSH. `irix_copy_to` supports `host_path=true` + `owner="edodd"`.
+6. **Large builds**: Use haiku sub-agents. NEVER background Bash.
+7. **WebKit rebuild**: `uv run mogrix convert ~/mogrix_inputs/SRPMS/webkitgtk-2.42.5-1.src.rpm && uv run mogrix build ~/mogrix_outputs/SRPMS/webkitgtk-2.42.5-1.src-converted/webkitgtk-2.42.5-1.src.rpm --cross && uv run mogrix stage ~/mogrix_outputs/RPMS/libwebkit2gtk*.rpm && uv run mogrix bundle libwebkit2gtk` (fast with ccache)
+8. **Bundle deploy**: `irix_copy_to` with `host_path=true, owner="edodd"` to `/usr/people/edodd/apps/`. Extract with `sh <bundle>.run`, then `mv` + `chown -Rh edodd` to user apps dir.
 
 ---
 
 ## Current State
 
-### WebKit IPC Debugging
+### WebKit HTTPS — WORKING (session 118)
 
-**Bundle ready to deploy**: `~/mogrix_outputs/bundles/libwebkit2gtk-2.42.5-1-irix-bundle.0221260057.run` (103MB)
+Bundle `0223262218` renders HTTPS pages on IRIX. Verified with `https://example.com/` — full TLS handshake, HTTP 200, page rendered with title, body text, and links.
 
-**What we know:**
-- MiniBrowser window appears, but WebKitWebProcess "crashes" (IPC connection drops) after 25-47 seconds
-- "WebProcess CRASHED" is misleading — WebProcess receives SIGTERM from MiniBrowser cleanup, NOT SIGSEGV/SIGBUS
-- All IRIX IPC primitives work correctly (SOCK_STREAM, SCM_RIGHTS, poll, shm_open — all tested)
-- GOT overflow is fixed (`-Bsymbolic`, global GOT 4661→3515)
-- All 70+ libraries load successfully
+Key fixes that enabled HTTPS:
+1. **DEVELOPER_MODE bypass** for `WEBKIT_TLS_CAFILE_PEM` in SoupNetworkSession.cpp (prep_commands in webkitgtk.yaml)
+2. **WEBKIT_TLS_CAFILE_PEM export** in bundle wrapper (bundle.py) — points GnuTLS to bundle's CA certs
+3. **Bundle pruning fix** for GIO TLS module deps (bundle.py) — `libgnutls.so.30` symlink target was being pruned
 
-**What's new in this bundle:** 12 IPC_LOG injection points in ConnectionUnix.cpp write to `/usr/people/edodd/ipc_<pid>.log`. Both MiniBrowser and WebProcess sides log. See INDEX.md "WebKit IPC Connection Debugging" section.
+### WebKit HTTP — WORKING (session 116)
 
-**To test:** Deploy bundle → run MiniBrowser → collect `ipc_*.log` files → identify which `CLOSE:*` path fired.
+Bundle `0223261927` renders HTTP pages. All 5 silent blockers bypassed.
 
-**Previous bundle on IRIX**: `/usr/people/edodd/apps/libwebkit2gtk-2.42.5-1-irix-bundle.0220262009/`
-(has signal_catcher wrapper as WebKitWebProcess — must restore original binary or use new bundle)
+### 5 HTTP Bypasses in webkitgtk.yaml
 
-### Key Artifacts
-
-| What | Where |
-|------|-------|
-| IPC debug header | `patches/packages/webkitgtk/ipc_debug_log.h` |
-| rld analysis harness | `tools/rld-harness.py` |
-| rld decompilation | `docs/rld/` (4 files) |
-| Signal catcher source | `/tmp/signal_catcher.c` (on build host) |
-| IPC test program | `/tmp/test_ipc.c` (on build host) |
+| # | What | Fix |
+|---|------|-----|
+| 1 | Cookie domain check (11 instances) | Bypass `allowsFirstPartyForCookies` |
+| 2 | SW import gate | `!server.isImportCompleted()` → `false` |
+| 3 | SW load routing | `startWithServiceWorker()` → `start()` |
+| 4 | HTTP disk cache | `canUseCache()` → always `false` |
+| 5 | GNetworkMonitor NULL | NULL-check before signal connect |
 
 ---
 
-## Next Steps (prioritized)
+## Next Steps
 
-1. **Deploy new bundle to IRIX and run MiniBrowser** — collect `ipc_<pid>.log` files from `/usr/people/edodd/`. These will show exactly which close path fires (EOF, ECONNRESET, GIO_HUP, MSG_CTRUNC, send error, etc.) and whether any messages were successfully exchanged first.
-
-2. **Based on IPC logs, fix the root cause** — Likely scenarios:
-   - `CLOSE:EOF` → WebProcess closed its socket (initialization failure, unhandled error)
-   - `CLOSE:GIO_HUP` → Socket hangup (process died, fd leaked/closed)
-   - `CLOSE:ECONNRESET` → Connection reset (OS-level issue)
-   - `MSG_CTRUNC` → SCM_RIGHTS ancillary data truncated (buffer too small for FDs)
-   - No CLOSE log at all → crash in unlogged code path (expand logging)
-
-3. **Once IPC works**, remove temporary debug logging from webkitgtk.yaml.
-
-4. **Fix 5 remaining bundle failures** (independent of MiniBrowser):
-   - cwebp/dwebp/gif2webp: signal 127
-   - gdk-pixbuf-query-loaders/gtk-query-immodules-3.0: rld fatal loading .so modules
+1. **Build surf browser** — now that HTTPS works, surf is a lightweight WebKit GTK browser
+2. **Test more HTTPS sites** — verify beyond example.com (sites with JS, CSS, images)
+3. **Consider disabling DIAG tags** for production bundles (set MOGRIX_DIAG env var gate already handles this)
 
 ---
 
-## Recent Work (session 94-95)
+## Recent Work (Sessions 117-118)
 
-- **Determined WebProcess is NOT crashing** — signal catcher (C fork-based wrapper with setpgid, fd cleanup, signal ignoring) confirmed all WebProcess deaths are SIGTERM from MiniBrowser
-- **Tested all IRIX IPC primitives** — comprehensive test_ipc.c: SOCK_STREAM, SCM_RIGHTS, poll, non-blocking — all work (SIGBUS in test 8 was test code bug: unaligned MIPS access)
-- **Tested shm_open** — works in both chroot and host
-- **Added IPC debug logging** — 12 injection points in ConnectionUnix.cpp via `ipc_debug_log.h` macros
-- **Fixed YAML/RPM issues** — `%` in YAML causes parse errors (moved format strings to .h macros); `#` in RPM spec prep commands eaten as comments (use perl not sed)
-- **Built and bundled** — `libwebkit2gtk-2.42.5-1-irix-bundle.0221260057.run` ready for deployment
-- **Updated INDEX.md** with extensive negative knowledge (what's NOT the problem)
+### Session 118
+- Built + deployed WebKit with HTTPS instrumentation + fixes
+- Fixed `soup_session_get_tls_database` → soup2-compatible `g_object_get` with "tls-database"
+- Fixed **bundle pruning bug**: GIO module deps (libgnutls.so.30 symlink target + deps-of-deps) were being pruned. Updated `bundle.py` to resolve symlinks and protect transitive deps
+- **HTTPS confirmed working**: TLS_HANDSHAKING → TLS_HANDSHAKED → status=200 → full data delivery
+- Screenshot captured: MiniBrowser rendering https://example.com/ on IRIX
 
-## Recent Work (session 93)
-
-- Created `tools/rld-harness.py` — reusable bundle analysis tool
-- Fixed global GOT overflow: `-Bsymbolic-functions` → `-Bsymbolic` in irix-ld
+### Session 117
+- Added `MOGRIX_DIAG` env var gate to webkit_subprocess_diag.h (zero overhead when disabled)
+- Added 11 TLS DIAG tags (TLS-1 to TLS-11) in webkitgtk.yaml
+- Removed DEVELOPER_MODE guard from WEBKIT_TLS_CAFILE_PEM code
+- Added WEBKIT_TLS_CAFILE_PEM export to bundle.py wrapper
 
 ---
 
-## Key Commands
+## Key Files
 
-```sh
-# Bundle + test
-uv run mogrix bundle libwebkit2gtk
-
-# rld analysis harness
-python3 tools/rld-harness.py analyze ~/mogrix_outputs/bundles/<bundle-dir>/
-python3 tools/rld-harness.py got-inspect /path/to/lib.so
-
-# Copy to IRIX host (two-step: chroot then host)
-irix_copy_to local_path /opt/chroot/tmp/file
-irix_host_exec "cp /opt/chroot/tmp/file /usr/people/edodd/file"
-```
+- **WebKit rules**: `rules/packages/webkitgtk.yaml` (all bypasses + 33 HTTP + 11 TLS DIAG tags)
+- **DIAG header**: `patches/packages/webkitgtk/webkit_subprocess_diag.h` (env var gated)
+- **Bundle wrapper**: `mogrix/bundle.py` (WEBKIT_TLS_CAFILE_PEM + SSL_CERT_FILE + pruning fix)
+- **Latest working bundle**: `0223262218` (HTTP+HTTPS, deployed at `/usr/people/edodd/apps/`)
+- **Test scripts**: `/usr/people/edodd/https_test.sh`, `/usr/people/edodd/https_test2.sh` on IRIX
+- **HTTPS plan**: `.claude/plans/misty-beaming-patterson.md` (full problem space map + decision table)
+- **Silent blockers guide**: `rules/methods/webkit-silent-blockers.md`

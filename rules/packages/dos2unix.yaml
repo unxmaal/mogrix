@@ -6,9 +6,9 @@ package: dos2unix
 rules:
   prep_commands:
     # Disable NLS (gettext) — cross-compile has no msgfmt
-    - "sed -i 's/^ENABLE_NLS.*/ENABLE_NLS =/' Makefile"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile --old 'ENABLE_NLS = 1' --new 'ENABLE_NLS =' --no-backup --quiet"
     # Force prefix to /usr/sgug — use override-style assignment
-    - "sed -i 's|^prefix.*=.*/usr$|prefix = /usr/sgug|' Makefile"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile --old 'prefix = /usr' --new 'prefix = /usr/sgug' --no-backup --quiet"
   spec_replacements:
     # Override prefix, CC, and add -lgen for dirname() (IRIX has dirname in libgen, not libc)
     - pattern: 'LDFLAGS="%{build_ldflags}"'

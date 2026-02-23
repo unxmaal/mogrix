@@ -19,8 +19,8 @@ rules:
   drop_subpackages:
   - gui
   prep_commands:
-  - sed -i 's/^#NO_EXECINFO_H.*/NO_EXECINFO_H = yes/' Makefile
-  - sed -i 's/cell_t/frotz_cell_t/g' src/dumb/doutput.c
+  - $MOGRIX_ROOT/tools/safepatch Makefile --old '^#NO_EXECINFO_H.*' --new 'NO_EXECINFO_H = yes' --regex --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch src/dumb/doutput.c --old 'cell_t' --new 'frotz_cell_t' --count 0 --no-backup --quiet
   spec_replacements:
   - pattern: '%make_build all'
     replacement: "export PKG_CONFIG_SYSROOT_DIR=\"/opt/sgug-staging\"\nCOMPAT_DIR=$(pwd)/mogrix-compat\n%make_build CC=\"%{__cc}\" AR=\"%{__ar}\" RANLIB=\"%{__ranlib}\" \\\n  SOUND_TYPE=none NO_BLORB=yes\

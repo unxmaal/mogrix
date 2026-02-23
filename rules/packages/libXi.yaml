@@ -29,8 +29,8 @@ rules:
     - "cp %{_sourcedir}/Xge.h include/X11/extensions/Xge.h"
     - "cp %{_sourcedir}/xge_compat.c src/xge_compat.c"
     # Add xge_compat to source list (.c) and libtool object list (.lo) in Makefile.am/.in
-    - "sed -i 's/XExtInt.c/XExtInt.c xge_compat.c/' src/Makefile.am src/Makefile.in"
-    - "sed -i 's/XExtInt.lo/XExtInt.lo xge_compat.lo/' src/Makefile.in"
+    - "for f in src/Makefile.am src/Makefile.in; do $MOGRIX_ROOT/tools/safepatch $f --old 'XExtInt.c' --new 'XExtInt.c xge_compat.c' --no-backup --quiet; done"
+    - "$MOGRIX_ROOT/tools/safepatch src/Makefile.in --old 'XExtInt.lo' --new 'XExtInt.lo xge_compat.lo' --no-backup --quiet"
 
   install_cleanup:
     - "rm -rf %{buildroot}%{_docdir}"

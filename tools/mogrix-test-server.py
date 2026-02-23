@@ -184,8 +184,15 @@ class SSHConnection:
         except Exception as e:
             return -1, "", f"SSH error: {e}"
 
-    def scp_to(self, local_path: str, remote_path: str) -> tuple[bool, str]:
-        """Copy file TO IRIX host."""
+    def scp_to(self, local_path: str, remote_path: str, timeout: int | None = None) -> tuple[bool, str]:
+        """Copy file TO IRIX host. Timeout auto-scales with file size."""
+        if timeout is None:
+            try:
+                file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                timeout = max(120, int(file_size_mb * 5) + 60)
+            except OSError:
+                timeout = 300
+
         scp_cmd = [
             "scp",
             "-o", f"ControlPath={self.socket_path}",
@@ -193,21 +200,21 @@ class SSHConnection:
             local_path,
             f"{self.user}@{self.host}:{remote_path}",
         ]
-        log(f"scp-to: {local_path} -> {self.host}:{remote_path}")
+        log(f"scp-to: {local_path} -> {self.host}:{remote_path} (timeout={timeout}s)")
         try:
             result = subprocess.run(
                 scp_cmd, capture_output=True, text=True,
-                timeout=120, errors="replace",
+                timeout=timeout, errors="replace",
             )
             if result.returncode == 0:
                 return True, "Copied"
             return False, f"scp failed: {result.stderr.strip()}"
         except subprocess.TimeoutExpired:
-            return False, "scp timed out after 120s"
+            return False, f"scp timed out after {timeout}s"
         except Exception as e:
             return False, str(e)
 
-    def scp_from(self, remote_path: str, local_path: str) -> tuple[bool, str]:
+    def scp_from(self, remote_path: str, local_path: str, timeout: int = 300) -> tuple[bool, str]:
         """Copy file FROM IRIX host to Linux."""
         scp_cmd = [
             "scp",
@@ -216,22 +223,33 @@ class SSHConnection:
             f"{self.user}@{self.host}:{remote_path}",
             local_path,
         ]
-        log(f"scp-from: {self.host}:{remote_path} -> {local_path}")
+        log(f"scp-from: {self.host}:{remote_path} -> {local_path} (timeout={timeout}s)")
         try:
             result = subprocess.run(
                 scp_cmd, capture_output=True, text=True,
-                timeout=120, errors="replace",
+                timeout=timeout, errors="replace",
             )
             if result.returncode == 0:
                 return True, "Copied"
             return False, f"scp failed: {result.stderr.strip()}"
         except subprocess.TimeoutExpired:
-            return False, "scp timed out after 120s"
+            return False, f"scp timed out after {timeout}s"
         except Exception as e:
             return False, str(e)
 
-    def deploy_dir(self, local_dir: Path, remote_dir: str) -> tuple[bool, str]:
+    def deploy_dir(self, local_dir: Path, remote_dir: str, timeout: int | None = None) -> tuple[bool, str]:
         """Deploy a directory to IRIX host via tar pipe."""
+        # Auto-scale timeout based on directory size
+        if timeout is None:
+            try:
+                total_size = sum(
+                    f.stat().st_size for f in local_dir.rglob("*") if f.is_file()
+                )
+                size_mb = total_size / (1024 * 1024)
+                timeout = max(120, int(size_mb * 5) + 60)
+            except OSError:
+                timeout = 600
+
         # Create remote dir
         rc, _, stderr = self.exec_host(f"/sbin/mkdir -p {remote_dir}")
         if rc != 0:
@@ -243,17 +261,17 @@ class SSHConnection:
             f"{self.user}@{self.host} "
             f"'cd {remote_dir} && /sbin/tar xf -'"
         )
-        log(f"deploy: {local_dir} -> {self.host}:{remote_dir}/")
+        log(f"deploy: {local_dir} -> {self.host}:{remote_dir}/ (timeout={timeout}s)")
         try:
             result = subprocess.run(
                 full_cmd, shell=True, capture_output=True, text=True,
-                timeout=120, errors="replace",
+                timeout=timeout, errors="replace",
             )
             if result.returncode == 0:
                 return True, "Deployed"
             return False, result.stderr.strip() or f"exit {result.returncode}"
         except subprocess.TimeoutExpired:
-            return False, "Deploy timed out after 120s"
+            return False, f"Deploy timed out after {timeout}s"
         except Exception as e:
             return False, str(e)
 

@@ -83,7 +83,9 @@ test_report {}
 
 ### IRIX Default Shell is csh
 
-All MCP tools and `irix-exec.sh` run commands via `/bin/sh` inside the chroot — you don't need to worry about csh. But if you ever end up in an interactive IRIX session, remember csh is the default.
+The `irix_exec` MCP tool runs commands through the chroot shell, which may be csh. **Do not use heredocs, `export`, or bash syntax in `irix_exec` commands.** Use `setenv VAR val` instead of `export VAR=val`. For writing files, write locally to `/tmp/` then use `irix_copy_to` + `irix_host_exec "cp ..."`.
+
+**`irix_copy_to` copies into the chroot, NOT the host.** To get a file onto the live IRIX filesystem, chain: `irix_copy_to /tmp/file /opt/chroot/tmp/file` then `irix_host_exec "cp /opt/chroot/tmp/file /usr/people/edodd/file"`.
 
 ### Bashisms That Don't Work
 
@@ -264,6 +266,96 @@ If you see open("/"), open("usr") but never open("sgug") for a path like /usr/sg
 
 ---
 
+## Debugging with Crash Handler (mogrix_crash_handler)
+
+For crashes that produce no stderr output (common when subprocesses are launched by GSubprocess, which may swallow stderr), use the built-in crash diagnostic handler. It writes crash reports to **log files** — not just stderr.
+
+### How It Works
+
+`mogrix_crash_handler.c` in `patches/shared/` installs signal handlers via `__attribute__((constructor))`. It's compiled into `libmogrix_compat.so`, which every bundle preloads via `_RLDN32_LIST`. When a caught signal fires, it writes a detailed crash report (signal, PC, RA, registers, resolved stack backtrace via `_rld_new_interface`) to a file.
+
+### Signals Caught
+
+SIGSEGV, SIGBUS, SIGABRT, SIGFPE, **SIGPIPE**, SIGILL, SIGTRAP
+
+### Enabling
+
+```bash
+export MOGRIX_CRASH_DEBUG=1
+export MOGRIX_CRASH_DIR=/usr/people/edodd  # optional, default: cwd
+
+# Then run your bundle normally
+$BUNDLE/libexec/webkit2gtk-4.0/MiniBrowser about:blank
+```
+
+All subprocesses (WebProcess, NetworkProcess, etc.) inherit the env vars and get crash diagnostics automatically.
+
+### Output Files
+
+| File | Meaning |
+|------|---------|
+| `mogrix_init_<pid>.log` | Handler loaded and installed — confirms preload worked |
+| `mogrix_crash_<pid>.log` | **CRASH** — full diagnostic: signal, PC, RA, registers, stack backtrace |
+| `mogrix_exit_<pid>.log` | Clean exit (no signal) — process called `exit()` |
+| (no file for PID) | Library never loaded, or process killed by SIGKILL (uncatchable) |
+
+### Reading a Crash Log
+
+```
+Signal: SIGPIPE (broken pipe)
+PID: 12345
+-- Crash Location (resolved via rld) -----------------
+  PC : 0x0fa12340 in libgio-2.0.so [base 0x0fa00000, offset +0x00012340]
+         nearest symbol: g_output_stream_write at 0x0fa12300 (+64)
+  RA : 0x10abcde0 in libwebkit2gtk-4.0.so [...]
+```
+
+Key fields: **Signal** (what killed it), **PC** (where it crashed), **RA** (who called the crashing function), **Stack Backtrace** (resolved call chain).
+
+### Updating libmogrix_compat.so
+
+After editing `patches/shared/mogrix_crash_handler.c`:
+
+```bash
+irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
+    compat/stdlib/bsearch.c \
+    compat/sys/socketpair.c \
+    compat/sys/mincore.c \
+    compat/runtime/muloti4.c \
+    compat/runtime/divti3.c \
+    compat/stdlib/mkdtemp.c \
+    compat/error/strerror_r.c \
+    compat/string/memmem.c \
+    patches/shared/mogrix_crash_handler.c \
+    -I compat/include -I patches/shared
+
+cp /tmp/libmogrix_compat.so /opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.so
+```
+
+To hot-deploy to an existing bundle without rebundling:
+```bash
+irix_copy_to /tmp/libmogrix_compat.so /tmp/libmogrix_compat.so
+irix_host_exec "cp /opt/chroot/tmp/libmogrix_compat.so <bundle>/_lib32/libmogrix_compat.so"
+```
+
+### Alternative: Compile Into a Specific Package
+
+For packages where you want the crash handler even without preload:
+
+```yaml
+add_source:
+  - mogrix_crash_handler.c
+  - mogrix_crash_handler.h
+prep_commands:
+  - "cp %{_sourcedir}/mogrix_crash_handler.c src/"
+  - "cp %{_sourcedir}/mogrix_crash_handler.h src/"
+  # Add to the package's build system (meson, cmake, etc.)
+```
+
+See `rules/packages/gtkterm.yaml` for a working example.
+
+---
+
 ## NEVER Do
 
 1. **NEVER install to /usr/sgug directly** - can break sshd, lock you out
@@ -275,7 +367,7 @@ If you see open("/"), open("usr") but never open("sgug") for a path like /usr/sg
 7. **NEVER reference paths outside /usr/sgug** - mogrix-converted packages must be fully self-contained under /usr/sgug. Config files must not reference /etc, /var, /lib, or any path outside /usr/sgug. IRIX is old and fragile; reinstalling is painful. We never touch the base IRIX OS filesystem.
 8. **NEVER write ad-hoc wrapper scripts for IRIX testing** — use the mogrix-test MCP tools (`test_bundle`, `test_binary`, `par_trace`, `screenshot`). They handle permissions, paths, environment, and output capture correctly. Writing one-off scripts leads to permission errors, wrong paths, and wasted debugging time.
 9. **NEVER assume `/tmp` is writable on IRIX** — the `edodd` user cannot write to `/tmp`. Use `/usr/people/edodd/tmp/` for user-writable temp files on the IRIX host.
-10. **NEVER forget bundle file permissions** — extracted bundles may be owned by root and unreadable by `edodd`. The mogrix-test MCP server handles this correctly; ad-hoc testing does not.
+10. **NEVER forget bundle file permissions** — extracted bundles may be owned by root and unreadable by `edodd`. Use `chown -Rh edodd` (NOT `-R`) because bundles contain symlinks and `-R` follows them, failing on broken symlink targets with ENOENT. The mogrix-test MCP server handles this correctly; ad-hoc testing does not.
 
 ### Path Rooting Rule
 

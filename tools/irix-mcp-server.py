@@ -55,9 +55,11 @@ HOST_ALLOWED_COMMANDS = {
     "elfdump", "echo", "uname", "hostname", "date", "du", "df",
     "find", "which", "env", "id", "pwd",
     # File management (safe paths only — validated separately)
-    "mkdir", "chmod", "cp", "mv", "ln",
+    "mkdir", "chmod", "chown", "cp", "mv", "ln", "rm",
     # Archive operations (for bundle extraction)
     "tar", "gzip", "gunzip",
+    # Shell execution (for running test scripts)
+    "sh",
     # Debugging
     "par",
     # SGUG-RSE
@@ -299,15 +301,37 @@ class SSHConnection:
         except Exception as e:
             return -1, "", f"SSH error: {e}"
 
-    def scp_to(self, local_path: str, remote_path: str) -> tuple[bool, str]:
-        """Copy a file to the IRIX chroot via SCP over the control connection."""
+    def scp_to(
+        self,
+        local_path: str,
+        remote_path: str,
+        host_mode: bool = False,
+        timeout: int | None = None,
+    ) -> tuple[bool, str]:
+        """Copy a file to IRIX via SCP over the control connection.
+
+        If host_mode is False (default), remote_path is inside the chroot.
+        If host_mode is True, remote_path is an absolute host path.
+        Timeout auto-scales based on file size if not specified.
+        """
         if not remote_path.startswith("/"):
             return False, "remote_path must be absolute (start with /)"
         normalized = os.path.normpath(remote_path)
         if ".." in normalized:
             return False, "remote_path must not contain .."
 
-        actual_remote = f"{self.chroot}{normalized}"
+        if host_mode:
+            actual_remote = normalized
+        else:
+            actual_remote = f"{self.chroot}{normalized}"
+
+        # Auto-scale timeout based on file size (minimum 120s, ~3s per MB)
+        if timeout is None:
+            try:
+                file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                timeout = max(120, int(file_size_mb * 5) + 60)
+            except OSError:
+                timeout = 300
 
         scp_cmd = [
             "scp",
@@ -317,20 +341,20 @@ class SSHConnection:
             f"{self.user}@{self.host}:{actual_remote}",
         ]
 
-        log(f"scp: {local_path} -> {self.host}:{actual_remote}")
+        log(f"scp: {local_path} -> {self.host}:{actual_remote} (timeout={timeout}s)")
         try:
             result = subprocess.run(
                 scp_cmd,
                 capture_output=True,
                 text=True,
-                timeout=120,
+                timeout=timeout,
                 errors="replace",
             )
             if result.returncode == 0:
                 return True, f"Copied {local_path} to {actual_remote}"
             return False, f"scp failed: {result.stderr.strip()}"
         except subprocess.TimeoutExpired:
-            return False, "scp timed out after 120s"
+            return False, f"scp timed out after {timeout}s"
         except Exception as e:
             return False, f"scp error: {e}"
 
@@ -422,8 +446,9 @@ class IRIXMCPServer:
                     "Copy a file from the Linux build host to the IRIX chroot. "
                     "local_path is an absolute path on this Linux machine. "
                     "remote_path is the path inside the chroot "
-                    "(e.g., /tmp/foo.rpm). "
-                    "Useful for copying built RPMs to IRIX for testing."
+                    "(e.g., /tmp/foo.rpm). Set host_path=true to copy "
+                    "directly to a host path instead (e.g., "
+                    "/usr/people/edodd/apps/). Set owner to chown after copy."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -434,7 +459,31 @@ class IRIXMCPServer:
                         },
                         "remote_path": {
                             "type": "string",
-                            "description": "Destination path inside the chroot (e.g., /tmp/foo.rpm)",
+                            "description": (
+                                "Destination path. Inside the chroot by default, "
+                                "or absolute host path if host_path=true"
+                            ),
+                        },
+                        "host_path": {
+                            "type": "boolean",
+                            "description": (
+                                "If true, remote_path is a host path (not "
+                                "inside chroot). Default: false"
+                            ),
+                        },
+                        "owner": {
+                            "type": "string",
+                            "description": (
+                                "chown the file to this user after copy "
+                                "(e.g., 'edodd'). Only works with host_path=true."
+                            ),
+                        },
+                        "timeout": {
+                            "type": "integer",
+                            "description": (
+                                "Timeout in seconds. Auto-scales with file "
+                                "size if not specified (~5s/MB + 60s base)."
+                            ),
                         },
                     },
                     "required": ["local_path", "remote_path"],
@@ -633,6 +682,9 @@ class IRIXMCPServer:
     def _tool_copy_to(self, request_id: Any, args: dict) -> dict:
         local_path = args.get("local_path", "")
         remote_path = args.get("remote_path", "")
+        host_path = args.get("host_path", False)
+        owner = args.get("owner", "")
+        timeout = args.get("timeout")
 
         if not local_path or not remote_path:
             return self._tool_error(request_id, "local_path and remote_path required")
@@ -644,7 +696,20 @@ class IRIXMCPServer:
         if err:
             return err
 
-        ok, msg = self.ssh.scp_to(local_path, remote_path)
+        ok, msg = self.ssh.scp_to(
+            local_path, remote_path, host_mode=host_path, timeout=timeout
+        )
+        if not ok:
+            return self._tool_result(request_id, msg, is_error=True)
+
+        # chown if requested (only makes sense for host paths)
+        if ok and owner and host_path:
+            normalized = os.path.normpath(remote_path)
+            chown_cmd = f"chown {owner} '{normalized}'"
+            rc, _, stderr = self.ssh.exec_host(chown_cmd, timeout=10)
+            if rc != 0:
+                msg += f" (chown to {owner} failed: {stderr.strip()})"
+
         return self._tool_result(request_id, msg, is_error=not ok)
 
     def _tool_read_file(self, request_id: Any, args: dict) -> dict:

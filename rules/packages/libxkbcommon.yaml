@@ -1,7 +1,7 @@
 package: libxkbcommon
 rules:
   prep_commands:
-  - sed -i '/^test(/,/^# Documentation/{ /^# Documentation/!d }' meson.build
+  - "perl -0777 -pi -e 's/^test\\(.*?(?=^# Documentation)//ms' meson.build"
   drop_buildrequires:
   - byacc
   - xorg-x11-proto-devel

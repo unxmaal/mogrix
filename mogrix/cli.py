@@ -1257,6 +1257,244 @@ def _handle_missing_deps(output: str, rules_dir: Path) -> list[str]:
     return []
 
 
+@main.command("test-prep")
+@click.argument("package")
+@click.option(
+    "--compare",
+    is_flag=True,
+    help="Compare current prep output against saved snapshot",
+)
+@click.option(
+    "--snapshot-dir",
+    type=click.Path(),
+    default=None,
+    help="Directory for snapshots (default: ~/mogrix_outputs/prep-snapshots/)",
+)
+@click.option(
+    "--rpmbuild-dir",
+    type=click.Path(),
+    default=None,
+    help="rpmbuild directory (default: ~/rpmbuild)",
+)
+def test_prep(package: str, compare: bool, snapshot_dir: str | None, rpmbuild_dir: str | None):
+    """Snapshot or compare prep output for a package.
+
+    Creates a snapshot of all files after running rpmbuild -bp (prep phase
+    only). Use --compare to diff current prep output against a saved snapshot.
+
+    This is the safety net for migrating sed to safepatch — run before and
+    after changing rules to verify identical prep output.
+
+    \b
+    Workflow:
+      1. mogrix test-prep webkitgtk          # Save baseline snapshot
+      2. (modify rules: sed → safepatch)
+      3. mogrix convert <srpm>               # Re-convert with new rules
+      4. mogrix test-prep webkitgtk --compare # Verify identical output
+
+    \b
+    Examples:
+      mogrix test-prep popt
+      mogrix test-prep popt --compare
+      mogrix test-prep webkitgtk --snapshot-dir /tmp/snapshots
+    """
+    import hashlib
+    import json
+    import subprocess
+    from datetime import datetime
+
+    snap_dir = Path(snapshot_dir) if snapshot_dir else MOGRIX_OUTPUTS / "prep-snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    snap_file = snap_dir / f"{package}.json"
+
+    rpmbuild_path = Path(rpmbuild_dir) if rpmbuild_dir else Path.home() / "rpmbuild"
+
+    # Find the converted SRPM
+    srpms_dir = MOGRIX_OUTPUTS / "SRPMS"
+    # Match package-VERSION (dash after name) or package-converted (for upstream)
+    all_converted = sorted(srpms_dir.glob(f"{package}*-converted/{package}*.src.rpm"))
+    # Filter to exact package name: next char after package name must be - or .
+    candidates = [
+        c for c in all_converted
+        if c.parent.name == f"{package}-converted"  # upstream: exactly pkg-converted
+        or c.parent.name[len(package)] in ("-", ".")  # fedora: pkg-VERSION-converted
+    ]
+    if not candidates:
+        # Fallback: try any match in the converted directory
+        candidates = sorted(srpms_dir.glob(f"{package}-*-converted/*.src.rpm"))
+    if not candidates:
+        console.print(f"[red]No converted SRPM found for '{package}' in {srpms_dir}[/red]")
+        console.print("\n[bold]Run first:[/bold]")
+        console.print(f"  mogrix fetch {package} -y")
+        console.print(f"  mogrix convert ~/mogrix_inputs/SRPMS/{package}*.src.rpm")
+        raise SystemExit(1)
+
+    if len(candidates) > 1:
+        console.print(f"[yellow]Multiple SRPMs found for '{package}':[/yellow]")
+        for c in candidates:
+            console.print(f"  {c}")
+        console.print(f"\n[bold]Using:[/bold] {candidates[-1]}")
+
+    srpm_path = candidates[-1]
+
+    # Clean BUILD directory to get a fresh prep
+    import shutil
+    build_dir = rpmbuild_path / "BUILD"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    # Ensure rpmbuild directories exist
+    for subdir in ["SOURCES", "SPECS", "BUILD", "RPMS", "SRPMS"]:
+        (rpmbuild_path / subdir).mkdir(parents=True, exist_ok=True)
+
+    # Install the SRPM to extract spec and sources into rpmbuild tree
+    install_cmd = [
+        "rpm", "-i",
+        "--define", f"_topdir {rpmbuild_path}",
+        str(srpm_path),
+    ]
+    try:
+        result = subprocess.run(install_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            console.print(f"[red]Failed to install SRPM:[/red]")
+            console.print(result.stderr.strip(), markup=False)
+            raise SystemExit(1)
+    except FileNotFoundError:
+        console.print("[red]Error: rpm not found.[/red]")
+        raise SystemExit(1)
+
+    # Find the spec file
+    spec_files = list((rpmbuild_path / "SPECS").glob("*.spec"))
+    if not spec_files:
+        console.print("[red]No spec file found after installing SRPM[/red]")
+        raise SystemExit(1)
+    spec_path = spec_files[0]
+
+    # Build rpmbuild -bp command (prep only)
+    macros_path = IRIX_MACROS
+    macro_chain = f"/usr/lib/rpm/macros:/usr/lib/rpm/macros.d/*:{macros_path}"
+
+    cmd = [
+        "rpmbuild",
+        "--macros", macro_chain,
+        "--nodeps",
+        "--target", "mips-sgi-irix",
+        "--define", "_target_cpu mips",
+        "--define", "_target_os irix",
+        "--define", "_arch mips",
+        "--define", f"_topdir {rpmbuild_path}",
+        "-bp", str(spec_path),
+    ]
+
+    console.print(f"[bold]Package:[/bold] {package}")
+    console.print(f"[bold]SRPM:[/bold] {srpm_path.name}")
+    console.print(f"[bold]Running:[/bold] rpmbuild -bp (prep only)")
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            console.print(f"\n[bold red]Prep failed (exit {result.returncode})[/bold red]")
+            combined = result.stdout + result.stderr
+            # Show last 30 lines of output
+            lines = combined.strip().splitlines()
+            for line in lines[-30:]:
+                console.print(f"  {line}", markup=False)
+            raise SystemExit(1)
+    except FileNotFoundError:
+        console.print("[red]Error: rpmbuild not found. Install rpm-build package.[/red]")
+        raise SystemExit(1)
+
+    console.print("[green]Prep succeeded[/green]")
+
+    # Walk BUILD directory and hash all files
+    file_hashes = {}
+    build_contents = sorted(build_dir.rglob("*"))
+
+    for fpath in build_contents:
+        if fpath.is_file():
+            rel = str(fpath.relative_to(build_dir))
+            h = hashlib.sha256()
+            try:
+                with open(fpath, "rb") as f:
+                    while True:
+                        chunk = f.read(65536)
+                        if not chunk:
+                            break
+                        h.update(chunk)
+                file_hashes[rel] = h.hexdigest()
+            except (OSError, PermissionError):
+                file_hashes[rel] = "UNREADABLE"
+
+    snapshot = {
+        "package": package,
+        "srpm": srpm_path.name,
+        "timestamp": datetime.now().isoformat(),
+        "file_count": len(file_hashes),
+        "files": file_hashes,
+    }
+
+    if compare:
+        # Compare mode
+        if not snap_file.exists():
+            console.print(f"[red]No snapshot found at {snap_file}[/red]")
+            console.print(f"[bold]Run without --compare first:[/bold] mogrix test-prep {package}")
+            raise SystemExit(1)
+
+        with open(snap_file) as f:
+            baseline = json.load(f)
+
+        baseline_files = baseline["files"]
+        current_files = file_hashes
+
+        added = sorted(set(current_files) - set(baseline_files))
+        removed = sorted(set(baseline_files) - set(current_files))
+        changed = sorted(
+            f for f in set(current_files) & set(baseline_files)
+            if current_files[f] != baseline_files[f]
+        )
+
+        if not added and not removed and not changed:
+            console.print(f"\n[bold green]IDENTICAL[/bold green] — prep output matches snapshot")
+            console.print(f"  Baseline: {baseline['timestamp']} ({baseline['file_count']} files)")
+            console.print(f"  Current:  {len(current_files)} files")
+        else:
+            console.print(f"\n[bold red]DIFFERENCES FOUND[/bold red]")
+            console.print(f"  Baseline: {baseline['timestamp']} ({baseline['file_count']} files)")
+            console.print(f"  Current:  {len(current_files)} files")
+
+            if added:
+                console.print(f"\n  [green]Added ({len(added)}):[/green]")
+                for f in added[:20]:
+                    console.print(f"    + {f}")
+                if len(added) > 20:
+                    console.print(f"    ... and {len(added) - 20} more")
+
+            if removed:
+                console.print(f"\n  [red]Removed ({len(removed)}):[/red]")
+                for f in removed[:20]:
+                    console.print(f"    - {f}")
+                if len(removed) > 20:
+                    console.print(f"    ... and {len(removed) - 20} more")
+
+            if changed:
+                console.print(f"\n  [yellow]Changed ({len(changed)}):[/yellow]")
+                for f in changed[:20]:
+                    console.print(f"    ~ {f}")
+                if len(changed) > 20:
+                    console.print(f"    ... and {len(changed) - 20} more")
+
+            raise SystemExit(1)
+    else:
+        # Save snapshot
+        with open(snap_file, "w") as f:
+            json.dump(snapshot, f, indent=2)
+
+        console.print(f"\n[bold]Snapshot saved:[/bold] {snap_file}")
+        console.print(f"  Files: {len(file_hashes)}")
+        console.print(f"  SRPM:  {srpm_path.name}")
+
+
 @main.command()
 @click.option(
     "--rules-dir",

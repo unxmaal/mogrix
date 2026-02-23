@@ -11,7 +11,7 @@ rules:
     - static
   prep_commands:
     # Skip shared library build — irix-cc compile+link mode can't pass -Wl,-soname
-    - "sed -i 's/^lib: liblz4.a liblz4/lib: liblz4.a/' lib/Makefile"
+    - "$MOGRIX_ROOT/tools/safepatch lib/Makefile --old 'lib: liblz4.a liblz4' --new 'lib: liblz4.a' --no-backup --quiet"
   spec_replacements:
     # Remove meson vpath_srcdir
     - pattern: "%global _vpath_srcdir contrib/meson"

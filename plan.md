@@ -2,9 +2,9 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-18)
+## Current Status (2026-02-23)
 
-**145+ source packages cross-compiled for IRIX (400+ RPMs). 161+ bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **gtkterm** (GTK3 terminal emulator) running on IRIX from self-contained bundle — first GTK3 GUI app. **xnedit** (Motif text editor) rendering correctly on IRIX. **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. **GTK3 cairo rendering fully works on IRIX** — paint, fill, stroke, arc, text all verified (pixman TLS fix + cairo SHM disable). Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
+**145+ source packages cross-compiled for IRIX (400+ RPMs). 161+ bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **WebKitGTK 2.42.5 HTTP rendering WORKS on IRIX** — full response chain verified via DIAG instrumentation (sessions 115-116). **gtkterm** (GTK3 terminal emulator) running on IRIX from self-contained bundle — first GTK3 GUI app. **xnedit** (Motif text editor) rendering correctly on IRIX. **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. **GTK3 cairo rendering fully works on IRIX** — paint, fill, stroke, arc, text all verified (pixman TLS fix + cairo SHM disable). Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
 
 All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app bundles (.tar.gz or self-extracting .run) for IRIX. 145+ package rule files. Suites: mogrix-essentials, mogrix-extras, mogrix-net, mogrix-smallweb, mogrix-fun. Individual bundles: bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2 — all tested on IRIX.
 
@@ -260,9 +260,9 @@ See `rules/INDEX.md` "Skipped Packages" and `rules/methods/before-you-start.md` 
 | elfutils | autotools | binutils, debuginfo |
 | libarchive | autotools | cmake, rpm |
 
-### Long-Term: Modern Browser
+### WebKitGTK (COMPLETE — HTTP WORKING)
 
-Target: WebKitGTK 2.38.x with Epiphany or Surf browser.
+WebKitGTK 2.42.5 cross-compiled and rendering HTTP pages on IRIX. 5 HTTP bypasses in `webkitgtk.yaml` (cookie domain, service worker, disk cache, GNetworkMonitor). 33 DIAG tags for response chain debugging. Known non-blocking issues: first-load transient failure (retry succeeds), WebProcess cosmetic crash (respawned).
 
 ---
 
@@ -389,6 +389,7 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 18. **Structured test harness:** mogrix-test MCP server with bundle testing, dep checking, par tracing, and X11 screenshots ✓
 19. **GTK3 GUI app:** gtkterm running on IRIX with full GTK3 UI, VTE terminal widget, and proper theme rendering ✓
 20. **Proactive ELF analysis:** `mogrix check-elf` detects ClassRec relocation issues before deploying to IRIX ✓
+21. **WebKitGTK HTTP on IRIX:** WebKitGTK 2.42.5 renders HTTP pages on IRIX — full response chain verified via DIAG ✓
 
 ---
 

@@ -175,11 +175,11 @@ rules:
     PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
   prep_commands:
   # IRIX unistd.h declares atfork_parent/atfork_prepare — rename git's internal ones
-  - sed -i 's/atfork_parent/git_atfork_parent/g; s/atfork_prepare/git_atfork_prepare/g' run-command.c
+  - "$MOGRIX_ROOT/tools/safepatch run-command.c --old 'atfork_parent' --new 'git_atfork_parent' --count 0 --no-backup --quiet; $MOGRIX_ROOT/tools/safepatch run-command.c --old 'atfork_prepare' --new 'git_atfork_prepare' --count 0 --no-backup --quiet"
   # IRIX fileno macro has expansion issues with void* — cast and use direct field access
-  - sed -i 's/fileno(result)/(((FILE *)result)->_file)/g' http.c
+  - "$MOGRIX_ROOT/tools/safepatch http.c --old 'fileno(result)' --new '(((FILE *)result)->_file)' --count 0 --no-backup --quiet"
   # Remove Linux-specific HAVE_SYSINFO and PROCFS from config.mak.uname (directly appends to BASIC_CFLAGS, can't override from config.mak)
-  - sed -i '/HAVE_SYSINFO\|PROCFS_EXECUTABLE_PATH\|HAVE_PLATFORM_PROCINFO/d' config.mak.uname
+  - "$MOGRIX_ROOT/tools/safepatch config.mak.uname --delete-line 'HAVE_SYSINFO' --no-backup --quiet; $MOGRIX_ROOT/tools/safepatch config.mak.uname --delete-line 'PROCFS_EXECUTABLE_PATH' --no-backup --quiet; $MOGRIX_ROOT/tools/safepatch config.mak.uname --delete-line 'HAVE_PLATFORM_PROCINFO' --no-backup --quiet"
   ac_cv_overrides:
     ac_cv_header_sys_random_h: "no"
     ac_cv_func_getrandom: "no"

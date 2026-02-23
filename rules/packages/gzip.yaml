@@ -25,4 +25,4 @@ rules:
   - pattern: '%{SOURCE101}'
     replacement: '%{SOURCE51}'
   prep_commands:
-  - sed -i 's/gnulib-tests//' Makefile.in
+  - $MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --no-backup --quiet

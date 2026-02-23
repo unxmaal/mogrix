@@ -17,15 +17,15 @@ rules:
     MOGRIX_NO_DLMALLOC: "1"
   prep_commands:
     # Fix hardcoded Linux paths in Makefile.linux for cross-compilation
-    - "sed -i 's|-I/usr/X11R6/include|-I/opt/sgug-staging/usr/sgug/include|g' makefiles/Makefile.linux"
-    - "sed -i 's|-I/usr/include/X11|-I/opt/sgug-staging/usr/sgug/include/X11|g' makefiles/Makefile.linux"
-    - "sed -i 's|-L/usr/X11R6/lib|-L/opt/sgug-staging/usr/sgug/lib32|g' makefiles/Makefile.linux"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-I/usr/X11R6/include' --new '-I/opt/sgug-staging/usr/sgug/include' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-I/usr/include/X11' --new '-I/opt/sgug-staging/usr/sgug/include/X11' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-L/usr/X11R6/lib' --new '-L/opt/sgug-staging/usr/sgug/lib32' --count 0 --no-backup --quiet"
     # Add compat include path and EDITRES support
-    - "sed -i 's|$(C_OPT_FLAGS)|$(C_OPT_FLAGS) -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -DEDITRES|' makefiles/Makefile.linux"
+    - '$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old ''$(C_OPT_FLAGS)'' --new ''$(C_OPT_FLAGS) -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -DEDITRES'' --no-backup --quiet'
     # Add -lXmu for EDITRES and -lgen for IRIX, add compat library
-    - "sed -i 's|-lXrender|-lXmu -lXrender|' makefiles/Makefile.linux"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-lXrender' --new '-lXmu -lXrender' --no-backup --quiet"
     # Replace DropDown.h with ComboBox.h (IRIX Motif has ComboBox, not DropDown)
-    - "sed -i 's|#include <Xm/DropDown.h>|#include <Xm/ComboBox.h>|' source/window.c"
+    - "$MOGRIX_ROOT/tools/safepatch source/window.c --old '#include <Xm/DropDown.h>' --new '#include <Xm/ComboBox.h>' --no-backup --quiet"
     # === IRIX BadMatch fix: force default visual ===
     # SGI IRIX offers 30-bit TrueColor visuals. FindBestVisual picks these
     # as the "best" visual, but creating child windows at depth 30 causes
@@ -36,14 +36,14 @@ rules:
     - "perl -i -0pe 's/\\/\\* If results have already been computed.*?if \\(cachedVisual != NULL\\).*?\\}/\\/\\* IRIX: force default visual — 30-bit TrueColor causes BadMatch *\\/\\n    {\\n\\t*visual = cachedVisual = DefaultVisual(display, DefaultScreen(display));\\n\\t*depth = cachedDepth = DefaultDepth(display, DefaultScreen(display));\\n\\t*colormap = cachedColormap = DefaultColormap(display, DefaultScreen(display));\\n\\treturn True;\\n    }/s' util/misc.c"
     # Fix SIGBUS in create_image: icon data is const char* cast to uint32_t*,
     # causing misaligned access on MIPS. Use memcpy for safe aligned read.
-    - "sed -i 's|uint32_t pixel = src\\[i\\];|uint32_t pixel; memcpy(\\&pixel, data + i*4, 4);|' util/filedialog.c"
+    - "$MOGRIX_ROOT/tools/safepatch util/filedialog.c --old 'uint32_t pixel = src[i];' --new 'uint32_t pixel; memcpy(&pixel, data + i*4, 4);' --no-backup --quiet"
     # MIPS/IRIX is big-endian like SPARC — add to endianness check
-    - "sed -i 's#defined(__sparc) || defined(__sparc__)#defined(__sparc) || defined(__sparc__) || defined(__mips) || defined(_MIPS_ARCH)#' util/filedialog.c"
+    - "$MOGRIX_ROOT/tools/safepatch util/filedialog.c --old 'defined(__sparc) || defined(__sparc__)' --new 'defined(__sparc) || defined(__sparc__) || defined(__mips) || defined(_MIPS_ARCH)' --no-backup --quiet"
     # Remove post-build binary execution (can't run MIPS on x86)
-    - "sed -i '/@source\\/xnedit -V/d' Makefile"
+    - "$MOGRIX_ROOT/tools/safepatch Makefile --delete-line '@source/xnedit -V' --no-backup --quiet"
     # Copy fix_class_recs.c and add to OBJS (R_MIPS_REL32 workaround for widget ClassRec)
     - "cp %{_sourcedir}/fix_class_recs.c source/fix_class_recs.c"
-    - "sed -i 's|filter.o|filter.o fix_class_recs.o|' source/Makefile.common"
+    - "$MOGRIX_ROOT/tools/safepatch source/Makefile.common --old 'filter.o' --new 'filter.o fix_class_recs.o' --no-backup --quiet"
   spec_replacements:
     # Use make linux with cross-compiler
     - pattern: "%make_build"

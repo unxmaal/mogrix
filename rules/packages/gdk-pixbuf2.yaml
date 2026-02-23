@@ -15,8 +15,8 @@ rules:
   # Remove _POSIX_C_SOURCE and _XOPEN_SOURCE from meson.build — conflicts with IRIX headers
   # Make glib-compile-resources optional (only used by tests, which we disable)
   prep_commands:
-    - "sed -i \"s/add_project_arguments.*_POSIX_C_SOURCE.*language: 'c')/add_project_arguments([ '-D_DEFAULT_SOURCE' ], language: 'c')/\" meson.build"
-    - "sed -i \"s/find_program('glib-compile-resources')/find_program('glib-compile-resources', required: false)/\" meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"add_project_arguments.*_POSIX_C_SOURCE.*language: 'c')\" --new \"add_project_arguments([ '-D_DEFAULT_SOURCE' ], language: 'c')\" --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"find_program('glib-compile-resources')\" --new \"find_program('glib-compile-resources', required: false)\" --no-backup --quiet"
 
   spec_replacements:
     # Replace %meson + flags + %meson_build with raw meson commands

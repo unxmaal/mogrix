@@ -92,11 +92,11 @@ rules:
   prep_commands:
     # bash externs.h declares dprintf as void, but POSIX (and our compat header)
     # declares it as int. The bash implementation also returns int. Fix the decl.
-    - "sed -i 's/^extern void dprintf/extern int dprintf/' externs.h"
+    - "$MOGRIX_ROOT/tools/safepatch externs.h --old 'extern void dprintf' --new 'extern int dprintf' --no-backup --quiet"
     # support/Makefile.in sets LIBS_FOR_BUILD=${LIBS} — leaks cross-compiled
     # -lmogrix-compat into host-native man2html build. Clear it.
-    - "sed -i 's/^LIBS_FOR_BUILD = ${LIBS}/LIBS_FOR_BUILD =/' support/Makefile.in"
+    - '$MOGRIX_ROOT/tools/safepatch support/Makefile.in --old ''LIBS_FOR_BUILD = ${LIBS}'' --new ''LIBS_FOR_BUILD ='' --no-backup --quiet'
     # bundled readline input.c: only matters if --without-installed-readline (kept for safety)
-    - "sed -i '808s/#if defined (HAVE_PSELECT)$/#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)/' lib/readline/input.c"
+    - "$MOGRIX_ROOT/tools/safepatch lib/readline/input.c --old '^#if defined \\(HAVE_PSELECT\\)$' --new '#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)' --regex --no-backup --quiet"
     # bash's own input_avail.c: signal.h included under HAVE_PSELECT but sigprocmask used under HAVE_SELECT
-    - "sed -i '36s/#if defined (HAVE_PSELECT)$/#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)/' lib/sh/input_avail.c"
+    - "$MOGRIX_ROOT/tools/safepatch lib/sh/input_avail.c --old '^#if defined \\(HAVE_PSELECT\\)$' --new '#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)' --regex --no-backup --quiet"

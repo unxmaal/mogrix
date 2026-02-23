@@ -25,7 +25,7 @@ rules:
     ac_cv_func_stpcpy: 'yes'
     ac_cv_func_explicit_bzero: 'yes'
   prep_commands:
-  - sed -i 's/\${tests}//' Makefile.in
+  - $MOGRIX_ROOT/tools/safepatch Makefile.in --old '${tests}' --new '' --no-backup --quiet
   - mkdir -p npth-config-wrapper
   - cp %{_sourcedir}/npth-config.irix.sh npth-config-wrapper/npth-config && chmod +x npth-config-wrapper/npth-config
   export_vars:

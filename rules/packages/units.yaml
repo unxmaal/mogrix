@@ -14,8 +14,8 @@ rules:
     ac_cv_func_strspn: 'yes'
     ac_cv_func_strchr: 'yes'
   prep_commands:
-  - sed -i '/#define strchr/d' units.h
-  - sed -i '/#define strrchr/d' units.h
+  - $MOGRIX_ROOT/tools/safepatch units.h --delete-line '#define strchr' --no-backup --quiet
+  - $MOGRIX_ROOT/tools/safepatch units.h --delete-line '#define strrchr' --no-backup --quiet
   install_cleanup:
   - mkdir -p %{buildroot}%{_sharedstatedir}/units
   spec_replacements:
