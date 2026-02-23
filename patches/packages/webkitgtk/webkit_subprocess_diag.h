@@ -19,6 +19,15 @@
 #include <stdlib.h>
 
 static inline void _mogrix_diag(const char *stage) {
+    /* Gate all DIAG output behind MOGRIX_DIAG env var.
+     * One-time check: zero overhead when disabled. */
+    static int _diag_checked = 0, _diag_enabled = 0;
+    if (!_diag_checked) {
+        _diag_checked = 1;
+        _diag_enabled = (getenv("MOGRIX_DIAG") != NULL);
+    }
+    if (!_diag_enabled) return;
+
     const char *dir = getenv("MOGRIX_CRASH_DIR");
     if (!dir || !dir[0]) dir = "/tmp";
 

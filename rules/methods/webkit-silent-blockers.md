@@ -1,12 +1,14 @@
 # WebKit Silent Blockers on IRIX
 
+**Status**: **ALL 5 BLOCKERS BYPASSED — HTTP RENDERING WORKS** (bundle 0223261927, verified session 116)
+
 **Problem**: WebKit's NetworkProcess receives HTTP requests via IPC but never calls libsoup. No crash, no log, no error — the request silently vanishes. MiniBrowser shows a blank white page with the URL in the address bar.
 
 **Root cause**: WebKit's multi-process security sandbox model. The UIProcess acts as a security broker, populating allowlists before the NP needs them. The NP enforces these with silent-fail-closed behavior. On IRIX (no sandbox), the allowlists are empty or incorrectly populated for IP-address URLs, so every security check silently blocks legitimate operations.
 
 ---
 
-## Three Blocker Categories Found
+## Five Blockers Found (All Bypassed)
 
 ### 1. MESSAGE_CHECK Macros (Cookie Domain Checks)
 
@@ -61,6 +63,26 @@ grep -rn 'CompletionHandler.*&&' Source/WebKit/NetworkProcess/ | grep -v '.h:'
 grep -rn '#if ENABLE(SERVICE_WORKER)' Source/WebKit/NetworkProcess/
 grep -rn '#if ENABLE(CONTENT_FILTERING)' Source/WebKit/NetworkProcess/
 ```
+
+### 4. HTTP Disk Cache Async Callback
+
+**Pattern**: `canUseCache()` returns true → `m_cache->retrieve()` fires an async callback to deliver cached data. The callback never fires on IRIX.
+
+**Where**: `NetworkResourceLoader.cpp` — `startNetworkLoad()` checks `canUseCache()` before calling `retrieveCacheEntry()`.
+
+**Why it fails on IRIX**: The GLib async callback for cache retrieval depends on infrastructure that never initializes properly. The request enters the cache lookup and never comes back — no crash, no error, no timeout.
+
+**Fix**: Force `canUseCache()` to always return `false`. HTTP requests go directly to libsoup, bypassing the disk cache entirely.
+
+### 5. GNetworkMonitor NULL Crash
+
+**Pattern**: `g_signal_connect(g_network_monitor_get_default(), ...)` — crashes if GNetworkMonitor is not available.
+
+**Where**: `NetworkProcess` initialization — `soup_session_get_feature()` for HSTS enforcement also has a similar NULL issue.
+
+**Why it fails on IRIX**: GNetworkMonitor requires GIO network backends that don't exist on IRIX. `g_network_monitor_get_default()` returns NULL, and `g_signal_connect()` on NULL dereferences it.
+
+**Fix**: NULL-check before `g_signal_connect()`. Also NULL-check `soup_session_get_feature()` for HSTS.
 
 ---
 

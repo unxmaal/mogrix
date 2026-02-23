@@ -243,3 +243,25 @@ are stored in `~/mogrix_outputs/prep-snapshots/<package>.json`.
 ### 4. Regex surprises in sed
 **Problem**: `sed 's/func()/func_new()/'` - parentheses are regex metacharacters
 **Solution**: Use safepatch which treats patterns as literal strings
+
+### 5. Inserting a statement into a bare if/else body
+**Problem**: C code uses braceless if/else:
+```c
+    if (error)
+        task->didFail(...);
+    else
+        task->didSendRequest(...);
+```
+Inserting `MOGRIX_DIAG("tag");` before `task->didFail(...)` makes the DIAG the new if-body, orphaning the `else`:
+```c
+    if (error)
+        MOGRIX_DIAG("tag");   // <-- now this is the if-body
+        task->didFail(...);   // <-- unconditional!
+    else                      // <-- ERROR: orphaned else
+```
+**Solution**: Insert BEFORE the `if` statement, not into its body. Use `perl -0777` multiline match to anchor on the line before the if:
+```yaml
+# CORRECT: insert between prior statement and if()
+- "perl -0777 -i -pe 's{(prior_call\\(\\);\\n)(    if \\(error\\))}{$1    MOGRIX_DIAG_INT(\"tag\", (int)(!!error));\\n$2}' file.cpp"
+```
+**Real example**: See webkitgtk.yaml NP-13 (sendRequestCallback DIAG).

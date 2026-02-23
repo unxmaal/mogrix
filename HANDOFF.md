@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-23 (session 114)
-**Status**: Silent blocker audit COMPLETE. Expanded cookie bypass from 1 instance to all 11. Bundle `0222262335` still needs testing (user deploys). New bundle needed to include expanded cookie bypasses.
+**Last Updated**: 2026-02-23 (session 118)
+**Status**: WebKit HTTPS WORKING on IRIX. HTTP+HTTPS both verified. Ready for surf browser build.
 
 ---
 
@@ -11,89 +11,71 @@
 2. **Grep rules/INDEX.md** before attempting ANY fix
 3. **Read GENERIC_SUMMARY.md** before starting any new package
 4. **Paths**: `/opt/sgug-staging/` = Linux sysroot, `/opt/chroot` = IRIX test chroot (MCP tools)
-5. **IRIX access**: Use MCP tools. NEVER raw SSH. `irix_copy_to` targets CHROOT, chain with `irix_host_exec "cp ..."` for host.
+5. **IRIX access**: Use MCP tools. NEVER raw SSH. `irix_copy_to` supports `host_path=true` + `owner="edodd"`.
 6. **Large builds**: Use haiku sub-agents. NEVER background Bash.
-7. **IRIX host shell is csh**: Use `env /bin/sh script.sh` for anything with `//` or shell features.
-8. **WebKit rebuild**: `uv run mogrix create-srpm webkitgtk && uv run mogrix convert <srpm> && uv run mogrix build <converted-srpm> --cross && uv run mogrix stage <rpms> && uv run mogrix bundle libwebkit2gtk` (~10 min with ccache)
+7. **WebKit rebuild**: `uv run mogrix convert ~/mogrix_inputs/SRPMS/webkitgtk-2.42.5-1.src.rpm && uv run mogrix build ~/mogrix_outputs/SRPMS/webkitgtk-2.42.5-1.src-converted/webkitgtk-2.42.5-1.src.rpm --cross && uv run mogrix stage ~/mogrix_outputs/RPMS/libwebkit2gtk*.rpm && uv run mogrix bundle libwebkit2gtk` (fast with ccache)
+8. **Bundle deploy**: `irix_copy_to` with `host_path=true, owner="edodd"` to `/usr/people/edodd/apps/`. Extract with `sh <bundle>.run`, then `mv` + `chown -Rh edodd` to user apps dir.
 
 ---
 
 ## Current State
 
-### What Needs to Happen Next
+### WebKit HTTPS — WORKING (session 118)
 
-1. **Rebuild WebKit** with expanded cookie bypasses (11 instances instead of 1)
-   - The webkitgtk.yaml now has broader regex rules that bypass ALL `allowsFirstPartyForCookies` checks
-   - This prevents cookie operations (read/write/delete) from silently failing after HTTP works
-2. **User deploys new bundle** to IRIX (SCP as edodd, not via MCP root)
-3. **Run test**: `./mini_test.sh > output.txt 2>&1` — wait ~30s, then Ctrl-C
-4. **Analyze**: use diagnostic decision table in `docs/webkit-ipc-flow-map.md`
+Bundle `0223262218` renders HTTPS pages on IRIX. Verified with `https://example.com/` — full TLS handshake, HTTP 200, page rendered with title, body text, and links.
 
-### Silent Blocker Audit (Session 114)
+Key fixes that enabled HTTPS:
+1. **DEVELOPER_MODE bypass** for `WEBKIT_TLS_CAFILE_PEM` in SoupNetworkSession.cpp (prep_commands in webkitgtk.yaml)
+2. **WEBKIT_TLS_CAFILE_PEM export** in bundle wrapper (bundle.py) — points GnuTLS to bundle's CA certs
+3. **Bundle pruning fix** for GIO TLS module deps (bundle.py) — `libgnutls.so.30` symlink target was being pruned
 
-Full audit documented in `docs/webkit-silent-blocker-audit.md`. Key findings:
+### WebKit HTTP — WORKING (session 116)
 
-**Three original blockers** (sessions 112-113) — all in `NetworkConnectionToWebProcess.cpp`:
-1. Cookie domain check — `NETWORK_PROCESS_MESSAGE_CHECK` silently returns + kills WP
-2. SW import gate — `isImportCompleted()` never true, deferred forever
-3. SW load routing — `startWithServiceWorker()` blocks before `startRequest()`
+Bundle `0223261927` renders HTTP pages. All 5 silent blockers bypassed.
 
-**Root cause**: WebKit's security sandbox assumes UIProcess populates cookie domain allowlist. On IRIX (no sandbox), the allowlist is empty/wrong for IP URLs → all 11 `allowsFirstPartyForCookies` checks fail silently.
+### 5 HTTP Bypasses in webkitgtk.yaml
 
-**Session 114 fix**: Expanded bypass from 1 instance (scheduleResourceLoad) to all 11 instances in the file, using 3 regex rules covering both MESSAGE_CHECK variants.
-
-**What the audit did NOT find as blockers**:
-- Content Filtering: OFF for GTK (Apple only)
-- Content Extensions: ON but no-op without configured rules
-- CORS Preflight: not triggered for simple GET requests
-- GLib Main Loop: should work since we cross-compile with GLib
-
----
-
-## Running MiniBrowser on IRIX
-
-**IRIX host_exec uses csh** which chokes on `//` in URLs. Workaround:
-1. Write a `/bin/sh` script locally → `irix_copy_to` to `/tmp/` → `irix_host_exec "cp /opt/chroot/tmp/script.sh /usr/people/edodd/"` → `irix_host_exec "env /bin/sh /usr/people/edodd/script.sh"`
-2. Use `exec` (foreground) not `&` (background) — IRIX sh background + redirect produces empty files
-3. Test script on IRIX: `/usr/people/edodd/mini_test.sh` (user runs manually)
-
-**Chroot vs host**: Chroot can't access X11 (`DISPLAY=:0`), so MiniBrowser must run on the host. New bundles extracted on host are NOT visible in chroot.
+| # | What | Fix |
+|---|------|-----|
+| 1 | Cookie domain check (11 instances) | Bypass `allowsFirstPartyForCookies` |
+| 2 | SW import gate | `!server.isImportCompleted()` → `false` |
+| 3 | SW load routing | `startWithServiceWorker()` → `start()` |
+| 4 | HTTP disk cache | `canUseCache()` → always `false` |
+| 5 | GNetworkMonitor NULL | NULL-check before signal connect |
 
 ---
 
 ## Next Steps
 
-1. Rebuild WebKit with expanded cookie bypasses → deploy → test
-2. Fix MCP servers to SCP as edodd user (task #17)
-3. Build Telescope browser (original goal, depends on WebKit HTTP working)
-4. Fix shutdown SIGSEGV (0xdc, NULL+220) — cosmetic
+1. **Build surf browser** — now that HTTPS works, surf is a lightweight WebKit GTK browser
+2. **Test more HTTPS sites** — verify beyond example.com (sites with JS, CSS, images)
+3. **Consider disabling DIAG tags** for production bundles (set MOGRIX_DIAG env var gate already handles this)
 
 ---
 
-## Recent Work (Sessions 112-114)
+## Recent Work (Sessions 117-118)
 
-### Session 114 (current)
-- Systematic audit of WebKit silent blocker patterns → `docs/webkit-silent-blocker-audit.md`
-- Analyzed root cause of all 3 blockers (security sandbox allowlist not populated on IRIX)
-- Expanded cookie bypass: 1 instance → all 11 in NetworkConnectionToWebProcess.cpp
-- Searched NetworkLoadChecker, NetworkLoad, NetworkDataTaskSoup, MESSAGE_CHECK across WebKit
-- No additional blockers found on the basic HTTP path (simple GET)
+### Session 118
+- Built + deployed WebKit with HTTPS instrumentation + fixes
+- Fixed `soup_session_get_tls_database` → soup2-compatible `g_object_get` with "tls-database"
+- Fixed **bundle pruning bug**: GIO module deps (libgnutls.so.30 symlink target + deps-of-deps) were being pruned. Updated `bundle.py` to resolve symlinks and protect transitive deps
+- **HTTPS confirmed working**: TLS_HANDSHAKING → TLS_HANDSHAKED → status=200 → full data delivery
+- Screenshot captured: MiniBrowser rendering https://example.com/ on IRIX
 
-### Session 113
-- Identified blocker 3: `startWithServiceWorker()` silently blocks
-- Built bundle `0222262335` with all 3 bypasses — pending deploy
-
-### Session 112
-- Identified blocker 1 (cookie check) and blocker 2 (SW import gate)
-- Built test bundles, confirmed each blocker via NP DIAG
+### Session 117
+- Added `MOGRIX_DIAG` env var gate to webkit_subprocess_diag.h (zero overhead when disabled)
+- Added 11 TLS DIAG tags (TLS-1 to TLS-11) in webkitgtk.yaml
+- Removed DEVELOPER_MODE guard from WEBKIT_TLS_CAFILE_PEM code
+- Added WEBKIT_TLS_CAFILE_PEM export to bundle.py wrapper
 
 ---
 
 ## Key Files
 
-- **Audit doc**: `docs/webkit-silent-blocker-audit.md`
-- **Flow map**: `docs/webkit-ipc-flow-map.md`
-- **WebKit rules**: `rules/packages/webkitgtk.yaml`
-- **Latest bundle**: `0222262335` (3 bypasses, NOT expanded cookies) — `/home/edodd/mogrix_outputs/bundles/`
-- **Test script**: `/usr/people/edodd/mini_test.sh`
-- **Logs**: `irix_logs/` in mogrix root
+- **WebKit rules**: `rules/packages/webkitgtk.yaml` (all bypasses + 33 HTTP + 11 TLS DIAG tags)
+- **DIAG header**: `patches/packages/webkitgtk/webkit_subprocess_diag.h` (env var gated)
+- **Bundle wrapper**: `mogrix/bundle.py` (WEBKIT_TLS_CAFILE_PEM + SSL_CERT_FILE + pruning fix)
+- **Latest working bundle**: `0223262218` (HTTP+HTTPS, deployed at `/usr/people/edodd/apps/`)
+- **Test scripts**: `/usr/people/edodd/https_test.sh`, `/usr/people/edodd/https_test2.sh` on IRIX
+- **HTTPS plan**: `.claude/plans/misty-beaming-patterson.md` (full problem space map + decision table)
+- **Silent blockers guide**: `rules/methods/webkit-silent-blockers.md`

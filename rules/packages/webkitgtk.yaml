@@ -284,6 +284,22 @@ rules:
     # reaching startRequest(). On IRIX, this path silently blocks (no SW infrastructure).
     # Fix: call start() directly, which goes straight to startRequest().
     - "perl -i -pe 's{loader->startWithServiceWorker\\(\\);}{loader->start(); /* IRIX: bypass SW load routing */}' Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp"
+    # (NP-5.1) NetworkResourceLoader::start() — confirm entry
+    - "perl -0777 -i -pe 's{(void NetworkResourceLoader::start\\(\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"NP_loader_start\");}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-5.2) NetworkResourceLoader::startRequest — entry + has checker?
+    - "perl -0777 -i -pe 's{(void NetworkResourceLoader::startRequest\\(const ResourceRequest& newRequest\\)\\n\\{)}{$1\\n    MOGRIX_DIAG_INT(\"NP_startRequest_hasChecker\", (int)(!!m_networkLoadChecker));}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-5.3) Inside check() callback — confirm it fires + which branch
+    - "perl -i -pe 's{(WTF::switchOn\\(result,)}{MOGRIX_DIAG(\"NP_check_callback_fired\"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    - "perl -i -pe 's{(\\[this\\] \\(ResourceError& error\\) \\{)}{$1 MOGRIX_DIAG(\"NP_check_ERROR\");}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    - "perl -i -pe 's{(\\[this\\] \\(NetworkLoadChecker::RedirectionTriplet& triplet\\) \\{)}{$1 MOGRIX_DIAG(\"NP_check_REDIRECT\");}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    - "perl -i -pe 's{(\\[this\\] \\(ResourceRequest& request\\) \\{)}{$1 MOGRIX_DIAG(\"NP_check_OK\");}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-5.4) Before startNetworkLoad call in the check callback (line 238)
+    - "perl -i -pe 's{(this->startNetworkLoad\\(WTFMove\\(request\\), FirstLoad::Yes\\))}{MOGRIX_DIAG(\"NP_calling_startNetworkLoad\"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # IRIX: Bypass HTTP disk cache entirely. canUseCache() returns true for HTTP
+    # URLs, routing requests through m_cache->retrieve() — an async callback that
+    # never fires on IRIX (likely due to missing cache dir or async file I/O).
+    # The request silently vanishes in the cache lookup. Fix: always return false.
+    - "perl -0777 -i -pe 's{(bool NetworkResourceLoader::canUseCache\\(const ResourceRequest& request\\) const\\n\\{)}{$1\\n    return false; /* IRIX: disk cache async callback never fires */}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
     # (NP-6) NetworkResourceLoader::startNetworkLoad — session check
     - perl -i -pe 's{(if \(!networkSession\) \{)}{MOGRIX_DIAG_INT("NP_startNetworkLoad_hasSession", (int)(networkSession != nullptr)); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp
     # (NP-7) NetworkResourceLoader::startNetworkLoad — NetworkLoad creation
@@ -294,8 +310,95 @@ rules:
     - perl -i -pe 's{(if \(m_soupMessage && !m_cancellable\) \{)}{MOGRIX_DIAG_INT("NP_resume_soupMsg", (int)(!!m_soupMessage)); MOGRIX_DIAG_INT("NP_resume_cancellable", (int)(!!m_cancellable)); $1}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp
     # (NP-10) NetworkDataTaskSoup::resume — entering soup_session_send_async
     - perl -i -pe 's{(soup_session_send_async\(static_cast<NetworkSessionSoup&>)}{MOGRIX_DIAG("NP_soup_send_async"); $1}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp
+    # (NP-11) sendRequestCallback — libsoup response callback, confirm it fires
+    - "perl -0777 -i -pe 's{(void NetworkDataTaskSoup::sendRequestCallback\\(SoupSession\\* soupSession, GAsyncResult\\* result, SendRequestData\\* data\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"NP_sendRequestCB_ENTRY\");}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-12) After soup_session_send_async — confirm it returns without crash
+    - "perl -i -pe 's{(if \\(!g_cancellable_is_cancelled\\(protectCancellable\\.get\\(\\)\\))}{MOGRIX_DIAG(\"NP_soup_send_async_returned\"); $1}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # --- Response path instrumentation (NP-13 through NP-32) ---
+    # Full chain: soup callback → response delivery → data read → NRL → IPC to WP
+    # CRITICAL: For main resources, NP sends DidReceiveResponse IPC and WAITS for WP
+    # to reply with ContinueDidReceiveResponse before reading body. Hang candidate.
+    #
+    # (NP-13) sendRequestCallback: log soup_session_send_finish error state
+    # Insert BEFORE the if/else to avoid breaking the bare if/else syntax
+    - "perl -0777 -i -pe 's{(soup_session_send_finish\\(soupSession, result, &error\\.outPtr\\(\\)\\)\\);\\n)(    if \\(error\\)\\n        task->didFail)}{$1    MOGRIX_DIAG_INT(\"NP_soupFinish_err\", (int)(!!error));\\n$2}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-15) didSendRequest: HTTP status code from soup response
+    - "perl -i -pe 's{(m_response = ResourceResponse\\(m_soupMessage\\.get\\(\\), m_sniffedContentType\\);)}{$1 MOGRIX_DIAG_INT(\"NP_didSendReq_status\", m_response.httpStatusCode());}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-16) dispatchDidReceiveResponse: entry
+    - "perl -0777 -i -pe 's{(void NetworkDataTaskSoup::dispatchDidReceiveResponse\\(\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"NP_dispatchResp_ENTRY\");}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-17) dispatchDidReceiveResponse: PolicyAction from completion callback
+    # PolicyAction::Use=0, Ignore=1, Download=2. If callback never fires, NP_policyAction missing.
+    - "perl -i -pe 's{(switch \\(policyAction\\) \\{)}{MOGRIX_DIAG_INT(\"NP_policyAction\", (int)policyAction); $1}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-18) readCallback: entry (fires when GInputStream delivers data)
+    - "perl -0777 -i -pe 's{(void NetworkDataTaskSoup::readCallback\\(GInputStream\\* inputStream, GAsyncResult\\* result, NetworkDataTaskSoup\\* task\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"NP_readCB_ENTRY\");}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-19) readCallback: bytes read and error state after g_input_stream_read_finish
+    - "perl -i -pe 's{(gssize bytesRead = g_input_stream_read_finish\\(inputStream, result, &error\\.outPtr\\(\\)\\);)}{$1 MOGRIX_DIAG_INT(\"NP_readCB_bytes\", (int)bytesRead); MOGRIX_DIAG_INT(\"NP_readCB_err\", (int)(!!error));}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-20) didRead: byte count delivered to NetworkLoad client
+    - "perl -0777 -i -pe 's{(void NetworkDataTaskSoup::didRead\\(gssize bytesRead\\)\\n\\{)}{$1\\n    MOGRIX_DIAG_INT(\"NP_didRead_bytes\", (int)bytesRead);}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-21) didFinishRead: stream EOF → triggers completion
+    - "perl -0777 -i -pe 's{(void NetworkDataTaskSoup::didFinishRead\\(\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"NP_didFinishRead\");}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (NP-22) dispatchDidCompleteWithError: propagates completion to NRL
+    - "perl -0777 -i -pe 's{(void NetworkDataTaskSoup::dispatchDidCompleteWithError\\(const ResourceError& error\\)\\n\\{)}{$1\\n    MOGRIX_DIAG_INT(\"NP_completeWithErr\", (int)(!error.isNull()));}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    #
+    # --- NetworkResourceLoader response path ---
+    # (NP-23) NRL::didReceiveResponse: entry with HTTP status
+    - "perl -i -pe 's{(LOADER_RELEASE_LOG\\(\"didReceiveResponse: \\(httpStatusCode=)}{MOGRIX_DIAG_INT(\"NP_loader_didRecvResp\", receivedResponse.httpStatusCode()); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-24) NRL::didReceiveResponse: before processClearSiteDataHeader (after all validation)
+    - "perl -i -pe 's{(processClearSiteDataHeader\\(m_response,)}{MOGRIX_DIAG(\"NP_beforeClearSiteData\"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-25) NRL::didReceiveResponse: log if waiting for WP ContinueDidReceiveResponse
+    - "perl -i -pe 's{(bool willWaitForContinueDidReceiveResponse = isMainResource\\(\\);)}{$1 MOGRIX_DIAG_INT(\"NP_loader_willWait\", willWaitForContinueDidReceiveResponse);}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-26) NRL::sendDidReceiveResponsePotentiallyInNewBrowsingContextGroup: IPC sent to WP
+    - "perl -i -pe 's{(auto browsingContextGroupSwitchDecision = toBrowsingContextGroupSwitchDecision)}{MOGRIX_DIAG(\"NP_sendDidRecvResp\"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-27) NRL::didReceiveResponse: immediate PolicyAction::Use (non-main-resource path)
+    - "perl -i -pe 's{(LOADER_RELEASE_LOG\\(\"didReceiveResponse: Using response\"\\))}{MOGRIX_DIAG(\"NP_loader_policyUse_imm\"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-28) NRL::continueDidReceiveResponse: entry (WP sent ContinueDidReceiveResponse)
+    - "perl -0777 -i -pe 's{(void NetworkResourceLoader::continueDidReceiveResponse\\(\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"NP_contDidRecvResp\");}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-29) NRL::continueDidReceiveResponse: firing completionHandler(PolicyAction::Use)
+    - "perl -i -pe 's{(m_responseCompletionHandler\\(PolicyAction::Use\\);)}{MOGRIX_DIAG(\"NP_contRecvResp_policyUse\"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-30) NRL::didReceiveBuffer: entry with byte count
+    - "perl -0777 -i -pe 's{(void NetworkResourceLoader::didReceiveBuffer\\(const WebCore::FragmentedSharedBuffer& buffer, uint64_t reportedEncodedDataLength\\)\\n\\{)}{$1\\n    MOGRIX_DIAG_INT(\"NP_loader_didRecvBuf\", (int)buffer.size());}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-31) NRL::sendBuffer: data IPC (DidReceiveData) to WebProcess
+    - "perl -0777 -i -pe 's{(void NetworkResourceLoader::sendBuffer\\(const FragmentedSharedBuffer& buffer, size_t encodedDataLength\\)\\n\\{)}{$1\\n    MOGRIX_DIAG_INT(\"NP_sendBuf\", (int)buffer.size());}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-32) NRL::didFinishLoading: entry
+    - "perl -i -pe 's{(LOADER_RELEASE_LOG\\(\"didFinishLoading:)}{MOGRIX_DIAG(\"NP_loader_didFinish\"); $1}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # (NP-33) NRL::didFailLoading: entry with error code
+    - "perl -0777 -i -pe 's{(void NetworkResourceLoader::didFailLoading\\(const ResourceError& error\\)\\n\\{)}{$1\\n    MOGRIX_DIAG_INT(\"NP_loader_didFail\", error.errorCode());}' Source/WebKit/NetworkProcess/NetworkResourceLoader.cpp"
+    # --- End response path instrumentation ---
     # --- End NetworkProcess HTTP dispatch diagnostics ---
     # --- End HTTP resource loading diagnostics ---
+    # --- HTTPS/TLS diagnostics (TEMPORARY) ---
+    # Instrument the TLS path: GIO module loading, cert verification, error reporting.
+    # All gated behind MOGRIX_DIAG env var (see webkit_subprocess_diag.h).
+    #
+    # Copy diag header to WebCore/platform/network/soup/
+    - cp %{_sourcedir}/webkit_subprocess_diag.h Source/WebCore/platform/network/soup/webkit_subprocess_diag.h
+    # Include in SoupNetworkSession.cpp
+    - perl -i -pe 's{^(#include "SoupNetworkSession\.h")}{$1\n#include "webkit_subprocess_diag.h"}' Source/WebCore/platform/network/soup/SoupNetworkSession.cpp
+    # (TLS-1) SoupNetworkSession constructor: TLS backend + TLS DB availability
+    # NOTE: soup2 has no soup_session_get_tls_database(); use g_object_get on "tls-database" property
+    - "perl -i -pe 's{(    setupLogger\\(\\);)}{    { void* _tlsb = (void*)g_tls_backend_get_default(); MOGRIX_DIAG_INT(\"TLS_tlsBackend\", (int)(_tlsb != 0)); void* _tlsdb = NULL; g_object_get(G_OBJECT(m_soupSession.get()), \"tls-database\", \\&_tlsdb, NULL); MOGRIX_DIAG_INT(\"TLS_tlsDB\", (int)(_tlsdb != 0)); }\\n$1}' Source/WebCore/platform/network/soup/SoupNetworkSession.cpp"
+    # (TLS-2) DEVELOPER_MODE bypass: move WEBKIT_TLS_CAFILE_PEM outside ifdef
+    - "perl -i -pe 's{^#if ENABLE\\(DEVELOPER_MODE\\)$}{/* IRIX: moved out of DEVELOPER_MODE for bundle CA cert loading */}' Source/WebCore/platform/network/soup/SoupNetworkSession.cpp"
+    - "perl -i -pe 's{^#endif // ENABLE\\(DEVELOPER_MODE\\)$}{/* end IRIX DEVELOPER_MODE removal */}' Source/WebCore/platform/network/soup/SoupNetworkSession.cpp"
+    # (TLS-3) Log WEBKIT_TLS_CAFILE_PEM env var value
+    - "perl -i -pe 's{(const char\\* customTLSCAFile = g_getenv\\(\"WEBKIT_TLS_CAFILE_PEM\"\\);)}{$1 MOGRIX_DIAG_STR(\"TLS_caFilePath\", customTLSCAFile ? customTLSCAFile : \"(unset)\");}' Source/WebCore/platform/network/soup/SoupNetworkSession.cpp"
+    # (TLS-4) checkTLSErrors: entry with ignoreTLS flag and TLS error flags
+    - "perl -i -pe 's{(if \\(m_ignoreTLSErrors \\|\\| !tlsErrors\\))}{MOGRIX_DIAG_INT(\"TLS_ignoreTLS\", (int)m_ignoreTLSErrors); MOGRIX_DIAG_INT(\"TLS_checkTLS_flags\", (int)tlsErrors); $1}' Source/WebCore/platform/network/soup/SoupNetworkSession.cpp"
+    # (TLS-5) checkTLSErrors: reject path (cert verification failed)
+    - "perl -i -pe 's{(return ResourceError::tlsError\\(requestURL, tlsErrors, certificate\\);)}{MOGRIX_DIAG(\"TLS_checkTLS_REJECT\"); $1}' Source/WebCore/platform/network/soup/SoupNetworkSession.cpp"
+    # (TLS-6) Request scheme logging (after NP-10 soup_session_send_async tag)
+    - "perl -i -pe 's{(MOGRIX_DIAG\\(\"NP_soup_send_async\"\\);)}{$1 { const char *_s = soup_message_get_uri(m_soupMessage.get()) ? soup_uri_get_scheme(soup_message_get_uri(m_soupMessage.get())) : \"(null)\"; MOGRIX_DIAG_STR(\"TLS_reqScheme\", _s); }}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (TLS-7) Soup error details: domain, code, message (after NP-13 soupFinish_err tag)
+    - "perl -i -pe 's{(MOGRIX_DIAG_INT\\(\"NP_soupFinish_err\", \\(int\\)\\(!!error\\)\\);)}{$1 if (error) { MOGRIX_DIAG_STR(\"TLS_soupErr_domain\", g_quark_to_string(error.get()->domain)); MOGRIX_DIAG_INT(\"TLS_soupErr_code\", error.get()->code); MOGRIX_DIAG_STR(\"TLS_soupErr_msg\", error.get()->message); }}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (TLS-8) acceptCertificate: entry + TLS error flags bitmask
+    - "perl -0777 -i -pe 's{(bool NetworkDataTaskSoup::acceptCertificate\\(GTlsCertificate\\* certificate, GTlsCertificateFlags tlsErrors\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"TLS_acceptCert_ENTRY\"); MOGRIX_DIAG_INT(\"TLS_acceptCert_flags\", (int)tlsErrors);}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (TLS-9) tlsConnectionAcceptCertificateCallback: entry (SOUP2 TLS cert callback)
+    - "perl -0777 -i -pe 's{(gboolean NetworkDataTaskSoup::tlsConnectionAcceptCertificateCallback\\(GTlsConnection\\* connection, GTlsCertificate\\* certificate, GTlsCertificateFlags errors, NetworkDataTaskSoup\\* task\\)\\n\\{)}{$1\\n    MOGRIX_DIAG(\"TLS_tlsConnAcceptCB_ENTRY\");}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (TLS-10) networkEvent: TLS_HANDSHAKING (SOUP2 socket event)
+    - "perl -i -pe 's{(m_networkLoadMetrics\\.secureConnectionStart = time;)}{MOGRIX_DIAG(\"TLS_HANDSHAKING\"); $1}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # (TLS-11) networkEvent: TLS_HANDSHAKED (SOUP2 socket event)
+    - "perl -i -pe 's{(case G_SOCKET_CLIENT_TLS_HANDSHAKED:)}{$1\\n        MOGRIX_DIAG(\"TLS_HANDSHAKED\");}' Source/WebKit/NetworkProcess/soup/NetworkDataTaskSoup.cpp"
+    # --- End HTTPS/TLS diagnostics ---
     # IRIX: g_network_monitor_get_default() returns NULL (no /proc/net, no netlink).
     # WebKit passes result directly to g_signal_connect → CRITICAL → abort() in WebProcess.
     # NULL-check both call sites.

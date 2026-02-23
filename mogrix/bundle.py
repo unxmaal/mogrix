@@ -510,6 +510,19 @@ class BundleBuilder:
                         for dep in self._readelf_needed(f):
                             if dep not in needed:
                                 needed.add(dep)
+                                # Resolve symlinks so real file isn't pruned
+                                dep_path = lib_dir / dep
+                                if dep_path.is_symlink():
+                                    needed.add(os.readlink(str(dep_path)))
+                                # Also protect deps-of-deps (e.g., libgnutls → libnettle)
+                                real_dep = dep_path.resolve() if dep_path.exists() else dep_path
+                                if real_dep.exists() and self._is_elf(real_dep):
+                                    for dep2 in self._readelf_needed(real_dep):
+                                        if dep2 not in needed:
+                                            needed.add(dep2)
+                                            dep2_path = lib_dir / dep2
+                                            if dep2_path.is_symlink():
+                                                needed.add(os.readlink(str(dep2_path)))
 
         # Remove .so files not in the needed set
         removed = []
@@ -1169,6 +1182,12 @@ class BundleBuilder:
                 'SSL_CERT_FILE="$dir/etc/pki/tls/certs/ca-bundle.crt"'
             )
             extra_env_lines.append("export SSL_CERT_FILE")
+            # GnuTLS CA file for WebKit — WEBKIT_TLS_CAFILE_PEM overrides
+            # the compiled-in path so soup session loads the bundle's CA certs
+            extra_env_lines.append(
+                'WEBKIT_TLS_CAFILE_PEM="$dir/etc/pki/tls/certs/ca-bundle.crt"'
+            )
+            extra_env_lines.append("export WEBKIT_TLS_CAFILE_PEM")
         # dillo: dpid needs dpidrc pointing to bundle's DPI directory, and
         # dillo launches dpid via execl(~/.dillo/dpid) so we need a wrapper
         # there too. Also write dillorc with IRIX bitmap fonts.

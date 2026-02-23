@@ -19,7 +19,7 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | Path translation | `rewrite_paths` | /usr/lib64 → /usr/sgug/lib32, /usr/lib → /usr/sgug/lib32, /usr/include → /usr/sgug/include |
 | Linux-only features | `configure_disable` | selinux, systemd, udev, inotify, epoll, fanotify, timerfd, libcap, audit |
 | Verbose builds | `configure_flags: add` | --disable-silent-rules |
-| Header stubs | `header_overlays: generic` | execinfo.h, malloc.h, error.h, etc. |
+| Header stubs | `header_overlays: generic` | execinfo.h, malloc.h, error.h, sys/socket.h (MSG_NOSIGNAL, SOCK_CLOEXEC, SOCK_NONBLOCK), etc. |
 | Install cleanup | `install_cleanup` | Fix /usr/bin paths, rm *.la, rm infodir/dir, rm locale |
 | Skip %find_lang | `skip_find_lang: true` | Comments out %find_lang, strips `-f *.lang` from %files (locale files always removed) |
 | Subpackage bloat | `drop_subpackages` | debuginfo, debugsource, langpack-* |
