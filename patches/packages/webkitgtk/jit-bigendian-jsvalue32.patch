@@ -1,0 +1,150 @@
+--- a/Source/JavaScriptCore/jit/AssemblyHelpers.h	2026-02-24 15:26:13.847875057 +0000
++++ b/Source/JavaScriptCore/jit/AssemblyHelpers.h	2026-02-24 15:27:16.192710184 +0000
+@@ -150,9 +150,16 @@
+ #if USE(JSVALUE64)
+         store64(cell, address);
+ #else
+-        static_assert(!PayloadOffset && TagOffset == 4, "Assumes little-endian system");
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        // Big-endian: CellTag at offset 0, payload at offset 4
++        // Use temp registers to handle all T/U type combinations
++        move(cell, immTempRegister);
++        move(TrustedImm32(JSValue::CellTag), dataTempRegister);
++        storePair32(dataTempRegister, immTempRegister, address);
++#else
+         storePair32(cell, TrustedImm32(JSValue::CellTag), address);
+ #endif
++#endif
+     }
+ 
+     template<typename U>
+@@ -161,10 +168,13 @@
+ #if USE(JSVALUE64)
+         store64(regs.gpr(), address);
+ #else
+-        static_assert(!PayloadOffset && TagOffset == 4, "Assumes little-endian system");
+         move(AssemblyHelpers::TrustedImm32(JSValue::CellTag), regs.tagGPR());
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        storePair32(regs.tagGPR(), regs.payloadGPR(), address);
++#else
+         storePair32(regs.payloadGPR(), regs.tagGPR(), address);
+ #endif
++#endif
+     }
+ 
+ #if USE(JSVALUE32_64)
+@@ -194,29 +204,38 @@
+ #if USE(JSVALUE64)
+         store64(regs.gpr(), address);
+ #else
+-        static_assert(!PayloadOffset && TagOffset == 4, "Assumes little-endian system");
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        storePair32(regs.tagGPR(), regs.payloadGPR(), address);
++#else
+         storePair32(regs.payloadGPR(), regs.tagGPR(), address);
+ #endif
++#endif
+     }
+-    
++
+     void storeValue(JSValueRegs regs, BaseIndex address)
+     {
+ #if USE(JSVALUE64)
+         store64(regs.gpr(), address);
+ #else
+-        static_assert(!PayloadOffset && TagOffset == 4, "Assumes little-endian system");
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        storePair32(regs.tagGPR(), regs.payloadGPR(), address);
++#else
+         storePair32(regs.payloadGPR(), regs.tagGPR(), address);
+ #endif
++#endif
+     }
+-    
++
+     void storeValue(JSValueRegs regs, void* address)
+     {
+ #if USE(JSVALUE64)
+         store64(regs.gpr(), address);
+ #else
+-        static_assert(!PayloadOffset && TagOffset == 4, "Assumes little-endian system");
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        storePair32(regs.tagGPR(), regs.payloadGPR(), address);
++#else
+         storePair32(regs.payloadGPR(), regs.tagGPR(), address);
+ #endif
++#endif
+     }
+ 
+     void loadValue(Address address, JSValueRegs regs)
+@@ -224,19 +243,25 @@
+ #if USE(JSVALUE64)
+         load64(address, regs.gpr());
+ #else
+-        static_assert(!PayloadOffset && TagOffset == 4, "Assumes little-endian system");
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        loadPair32(address, regs.tagGPR(), regs.payloadGPR());
++#else
+         loadPair32(address, regs.payloadGPR(), regs.tagGPR());
+ #endif
++#endif
+     }
+-    
++
+     void loadValue(BaseIndex address, JSValueRegs regs)
+     {
+ #if USE(JSVALUE64)
+         load64(address, regs.gpr());
+ #else
+-        static_assert(!PayloadOffset && TagOffset == 4, "Assumes little-endian system");
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        loadPair32(address, regs.tagGPR(), regs.payloadGPR());
++#else
+         loadPair32(address, regs.payloadGPR(), regs.tagGPR());
+ #endif
++#endif
+     }
+ 
+     void loadValue(void* address, JSValueRegs regs)
+@@ -244,10 +269,14 @@
+ #if USE(JSVALUE64)
+         load64(address, regs.gpr());
+ #else
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        loadPair32(AbsoluteAddress(address), regs.tagGPR(), regs.payloadGPR());
++#else
+         loadPair32(AbsoluteAddress(address), regs.payloadGPR(), regs.tagGPR());
+ #endif
++#endif
+     }
+-    
++
+     // Note that these clobber offset.
+     void loadProperty(GPRReg object, GPRReg offset, JSValueRegs result);
+     void storeProperty(JSValueRegs value, GPRReg object, GPRReg offset, GPRReg scratch);
+@@ -320,8 +349,12 @@
+ #if USE(JSVALUE64)
+         store64(TrustedImm64(JSValue::encode(value)), address);
+ #else
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        storePair32(TrustedImm32(value.tag()), TrustedImm32(value.payload()), address);
++#else
+         storePair32(TrustedImm32(value.payload()), TrustedImm32(value.tag()), address);
+ #endif
++#endif
+     }
+ 
+     void storeTrustedValue(JSValue value, BaseIndex address)
+@@ -329,8 +362,12 @@
+ #if USE(JSVALUE64)
+         store64(TrustedImm64(JSValue::encode(value)), address);
+ #else
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++        storePair32(TrustedImm32(value.tag()), TrustedImm32(value.payload()), address);
++#else
+         storePair32(TrustedImm32(value.payload()), TrustedImm32(value.tag()), address);
+ #endif
++#endif
+     }
+ 
+     template<typename Op> class Spooler;

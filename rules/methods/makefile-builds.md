@@ -68,6 +68,17 @@ IRIX has `sigvec()` but `struct sigvec` is behind `_BSD_SIGNALS` guards. Configu
 Autotools `AX_APPEND_COMPILE_FLAGS` or configure adds `-flto` when CFLAGS is empty. LLVM bitcode objects are incompatible with ld.lld-irix-18.
 **Fix:** Set CFLAGS to a non-empty value via `export_vars` so configure skips its SCROT_FLAGS/optimization block. See scrot.yaml.
 
+**Problem: Hand-written specs don't export CC for cross-compilation**
+`%configure` exports `CC="%{__cc}"` (the cross-compiler) automatically. But `%make_build` just runs `make` — it does NOT export CC. Makefile-based packages with hand-written specs (using `build_system: makefile` in upstream config) silently use the host `gcc` instead of the cross-compiler, producing host-arch binaries or link failures ("skipping incompatible" messages from ld).
+**Fix:** Add a `spec_replacements` rule to inject `export CC="%{__cc}"` before `%make_build`:
+```yaml
+rules:
+  spec_replacements:
+  - pattern: '%make_build'
+    replacement: "export CC=\"%{__cc}\"\nexport LD=\"%{__cc}\"\n%make_build"
+```
+**Affected packages:** ir8 (and any future hand-written Makefile spec)
+
 **Problem: pkgconfig() first on multi-dep BuildRequires line (engine bug)**
 `drop_buildrequires` can't remove `pkgconfig(foo)` when it's the first item on a multi-package BuildRequires line.
 **Fix:** Use `spec_replacements` to remove the entire line before `drop_buildrequires` phase runs. See scrot.yaml.

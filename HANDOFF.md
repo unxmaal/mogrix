@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-23 (session 119)
-**Status**: ir8 browser BUILT AND RUNNING on IRIX. Homepage renders. Ready for real-world testing.
+**Last Updated**: 2026-02-24 (session 124)
+**Status**: ir8 browser memory-optimized for IRIX. Google.com no longer kills the browser (WebProcess crash is gracefully handled). Other sites (HN, Kagi, example.com) load fine.
 
 ---
 
@@ -12,100 +12,121 @@
 3. **Read GENERIC_SUMMARY.md** before starting any new package
 4. **Paths**: `/opt/sgug-staging/` = Linux sysroot, `/opt/chroot` = IRIX test chroot (MCP tools)
 5. **IRIX access**: Use MCP tools. NEVER raw SSH. `irix_copy_to` supports `host_path=true` + `owner="edodd"`.
-6. **Large builds**: Use haiku sub-agents. NEVER background Bash.
-7. **WebKit rebuild**: `uv run mogrix convert ~/mogrix_inputs/SRPMS/webkitgtk-2.42.5-1.src.rpm && uv run mogrix build ~/mogrix_outputs/SRPMS/webkitgtk-2.42.5-1.src-converted/webkitgtk-2.42.5-1.src.rpm --cross && uv run mogrix stage ~/mogrix_outputs/RPMS/libwebkit2gtk*.rpm && uv run mogrix bundle libwebkit2gtk` (fast with ccache)
-8. **Bundle deploy**: `irix_copy_to` with `host_path=true, owner="edodd"` to `/usr/people/edodd/`. Extract with `sh <bundle>.run /usr/people/edodd/apps`, installs to `/usr/people/edodd/apps/bin/`.
+6. **Large builds**: Redirect output to log file. NEVER let rpmbuild output flood context.
+7. **WebKit rebuild**: `uv run mogrix convert ~/mogrix_inputs/SRPMS/webkitgtk-2.42.5-1.src.rpm && rpmbuild --define "_topdir $HOME/rpmbuild" --nodeps --rebuild ~/mogrix_outputs/SRPMS/webkitgtk-2.42.5-1.src-converted/webkitgtk-2.42.5-1.src.rpm > ~/tmp/webkit-build.log 2>&1`
+8. **Bundle deploy**: `uv run mogrix bundle ir8`, then `test_bundle` MCP tool.
 
 ---
 
 ## Current State
 
-### ir8 Browser — RUNNING (session 119)
+### JIT — WORKING ON IRIX
 
-Bundle `ir8-1.0-1-irix-bundle.0223262343` deployed and running on IRIX. Homepage (`ir8-about:home`) renders with search bar and branding. `ir8 --version` outputs `ir8 1.0 (WebKitGTK 2.42.5)`.
+JSC with baseline JIT + DFG compiles, links, and runs correctly on IRIX:
+- `jsc -e "print(1+1)"` → `2`
+- `jsc -e "function fib(n){...} print(fib(30))"` → `832040` (2.7M recursive calls)
+- `ir8` binary loads (needs X display to proceed past GTK init)
 
-**ir8 build pipeline** (from source):
-```bash
-# 1. Create tarball from patches/packages/ir8/
-rm -rf /tmp/ir8-1.0 && mkdir -p /tmp/ir8-1.0
-cp patches/packages/ir8/* /tmp/ir8-1.0/
-tar czf ~/rpmbuild/SOURCES/ir8-1.0.tar.gz -C /tmp ir8-1.0
+**Latest bundle**: `ir8-1.0-1-irix-bundle.0224262147` at `/usr/people/edodd/apps/`
 
-# 2. Build SRPM, convert, cross-compile
-rpmbuild -bs specs/packages/ir8.spec
-uv run mogrix convert ~/rpmbuild/SRPMS/ir8-1.0-1.src.rpm
-uv run mogrix build ~/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted/ir8-1.0-1.src.rpm --cross
+### Memory Optimization (Session 124)
 
-# 3. Stage and bundle (auto-includes WebKit deps)
-uv run mogrix stage ~/mogrix_outputs/RPMS/ir8-1.0-1.mips.rpm
-uv run mogrix bundle ir8 --include libwebkit2gtk --include libjavascriptcoregtk
-```
+ir8 now has comprehensive memory tuning for IRIX's constrained environment:
 
-**Key build fixes discovered**:
-- Hand-written specs must `export CC="%{__cc}"` before `%make_build` (rpmmacros.irix `%make_build` doesn't export CC unlike `%configure`)
-- GLib 2.80 n32 ABI: Must add `-DGLIB_VERSION_MIN_REQUIRED=G_ENCODE_VERSION(2,78) -DGLIB_VERSION_MAX_ALLOWED=G_ENCODE_VERSION(2,78)` to CFLAGS. Affects ALL GTK/GLib apps on n32.
-- Both fixes documented in INDEX.md Platform Invariants table.
+**C code changes** (`patches/packages/ir8/main.c`):
+- WebKitMemoryPressureSettings: 512MB limit, conservative=0.33, strict=0.50, kill=0.90, poll=10s
+- Cache model: DOCUMENT_VIEWER (no memory/disk cache, saves 30-50MB)
+- Process swap on cross-site: DISABLED (keeps one WebProcess, saves 80-120MB per navigation)
+- Disabled: page cache, offline cache, localStorage, HTML5 DB, media, webaudio
 
-### ir8 Source Files
+**Launcher env vars** (`mogrix/bundle.py`):
+- JSC_forceRAMSize=536870912 (tell GC it's a 512MB machine)
+- JSC_criticalGCMemoryThreshold=0.50 (aggressive GC trigger)
+- JSC_small/medium/largeHeapGrowthFactor=1.1 (slow heap growth, WPE pattern)
 
-All in `patches/packages/ir8/` (19 files listed in `rules/packages/ir8.yaml`):
-- `main.c` — entry point, homepage/about URI handler, IRIX defaults
-- `ir8-window.c/h` — main browser window, toolbar, tabs
-- `ir8-tab.c/h` — individual browser tabs
-- `ir8-searchbox.c/h` — search entry widget
-- `ir8-downloads.c/h` — download bar
-- `ir8-settings.c/h` — settings dialog
-- `ir8-cellrenderer.c/h` — custom cell renderer
-- `ir8-bookmarks.c/h` — flat-file bookmark system (~/.config/ir8/bookmarks.txt)
-- `ir8-marshal.c/h` — pre-generated GLib marshalling (from ir8-marshal.list)
-- `Makefile` — build with pkg-config webkit2gtk-4.0
+**Build fixes** (discovered during this session):
+- `glib-n32-fixup.h`: GLib 2.80 added `G_STATIC_ASSERT(sizeof *(location)==sizeof(gpointer))` to ALL `g_once_init_enter/leave` macro variants, breaking n32. Fix: `-include glib-n32-fixup.h` which undefs the macros so function versions are called directly.
+- `spec_replacements`: `export CC="%{__cc}"` before `%make_build` — hand-written specs don't get CC from `%configure`.
 
-### WebKit HTTPS — WORKING (session 118)
+**Test results**:
+- example.com: PASS (rc=0)
+- news.ycombinator.com: PASS (rc=0)
+- kagi.com: PASS (renders, interactive)
+- google.com: WebProcess crashes but browser survives (graceful degradation vs previous full OOM kill)
 
-Bundle `0223262218` renders HTTPS pages on IRIX. Verified with `https://example.com/`.
+### What's in mogrix rules
 
-### WebKit HTTP — WORKING (session 116)
+All JIT fixes are stored in `rules/packages/webkitgtk.yaml` and `patches/packages/webkitgtk/`:
 
-All 5 silent blockers bypassed.
+- **Endian patch**: `jit-bigendian-jsvalue32.patch` — 10 functions in AssemblyHelpers.h with `#if __BYTE_ORDER__` guards for storePair32/loadPair32 arg swaps
+- **FP64 patch**: `jit-mips-vmov-fp64.patch` — stack-based FP register transfer for FR=1
+- **Three-step LLInt wrapper**: `compile-llint-twostep.sh` — bypasses clang MIPS 56GB memory bug:
+  1. `clang -emit-llvm -c` → bitcode (126MB)
+  2. `llc -mtriple=mips64 -target-abi n32 -mattr=+xgot -relocation-model=pic` → assembly
+  3. Post-process: strip `.size`/`.file`/`$tmp`, convert `%got()`/`%got_disp()` → `%got_hi`/`%got_lo` pairs
+  4. `mips-sgi-irix6.5-as -mabi=n32 -KPIC` → object
+- **Safepatches**: PlatformEnable.h (JIT+DFG on), InlineASM.h (sys/cachectl.h), LLIntOfflineAsmConfig.h (.cpload disable)
+- **Perl fixes**: `mul` → `mult`+`mflo` in mips.rb, push/pop 4→8 byte alignment
+- **cmake injection**: RULE_LAUNCH_COMPILE on LowLevelInterpreterLib
+
+**rpmbuild note**: `mogrix build` fails with false "missing dependencies" for webkitgtk. Use `rpmbuild --nodeps --rebuild` directly (see checklist above).
 
 ---
 
 ## Next Steps
 
-1. **Test ir8 with real websites** — HTTP and HTTPS pages, verify navigation, tabs, bookmarks
-2. **Fix any runtime issues** — check ir8 stability on IRIX with extended use
-3. **User's security stripping request** — strip unnecessary WebKit security features for IRIX (cookie sandbox, etc.)
-4. **Consider surf browser** — simpler WebKit browser as alternative
+1. **Google.com still crashes WebProcess** — the memory optimizations turned a full-OOM browser kill into a graceful WebProcess crash. Google's JS is simply too heavy for 512MB. Options: (a) try `JSC_useJIT=false` to eliminate JIT memory overhead, (b) lower memory limit further, (c) accept graceful failure on heavy sites.
+
+2. **Many bundle binaries fail `--version`** (64 of 111) — this is a pre-existing issue unrelated to memory optimization. Many bundled utilities (bzip2, sqlite3, zstd, etc.) exit with rc=1 and no output. Investigate if this is an rld or bundler issue.
+
+3. **GLib n32 fixup needs to be generic** — `glib-n32-fixup.h` is currently ir8-specific. Any GLib/GTK app on n32 will hit the same issue. Consider adding it to compat/include or as a generic rule.
+
+4. **Upstream SRPM tarball is stale** — `create-srpm ir8` fails (no tag "1.0"). The tarball in the input SRPM doesn't match current patches/packages/ir8/ files. Had to manually repack. Fix: either tag the repo or update the upstream config.
+
+5. **Consider performance benchmarks** — compare CLoop vs JIT `jsc` execution times on a JS benchmark suite.
 
 ---
 
-## Recent Work (Sessions 117-119)
+## Recent Work (Sessions 121-124)
 
-### Session 119
-- Built ir8 browser from scratch: transformed MiniBrowser sources → ir8 branding
-- Created 19 source files in patches/packages/ir8/
-- Created hand-written spec (specs/packages/ir8.spec), rules (rules/packages/ir8.yaml), Makefile
-- Fixed multiple build issues: glib-genmarshal (pre-generated), pkg-config paths, GLib 2.80 n32 ABI, CC export
-- Successfully built, bundled (104.7 MB), deployed, and verified running on IRIX
-- Added GLib n32 and CC export findings to rules/INDEX.md
+### Session 124 (current)
+- Implemented ir8 memory optimization plan (WPE/PlayStation/Haiku patterns)
+- Added WebKitMemoryPressureSettings, DOCUMENT_VIEWER cache, disabled process swap
+- Disabled page cache, offline cache, localStorage, HTML5 DB, media, webaudio
+- Added JSC GC tuning: forceRAMSize, criticalGCMemoryThreshold, heap growth factors
+- Fixed GLib 2.80 n32 build: created glib-n32-fixup.h to undef broken g_once_init macros
+- Fixed CC export for hand-written specs via spec_replacements rule
+- Deployed and tested on IRIX: example.com, HN, Kagi all work. Google crashes WebProcess gracefully.
 
-### Session 118
-- HTTPS confirmed working on IRIX
-- Fixed bundle pruning bug for GIO module deps
+### Session 123
+- Implemented comprehensive JIT plan: endian patch (3 missing functions), .cpload disable, push/pop alignment
+- Fixed three-step LLInt wrapper through 5 iterations:
+  - ccache detection (cmake passes ccache as $1)
+  - .size/.file/$tmp stripping (LLVM MIPS assembler bugs)
+  - `-target-abi n32` for proper N32 code gen (not mips64 64-bit addresses)
+  - `%got()`/`%got_disp()` → `%got_hi`/`%got_lo` xgot conversion (GOT >64KB overflow)
+  - `-KPIC` flag for PIC/CPIC ELF flags
+- Full rpmbuild completed: JSC, WebCore, WebKit, all binaries
+- Deployed bundle, confirmed jsc works (fib(30)=832040)
+- Updated rules/INDEX.md with 4 new LLInt entries
 
-### Session 117
-- Added MOGRIX_DIAG env var gate, TLS DIAG tags
-- WEBKIT_TLS_CAFILE_PEM bypass and export
+### Session 122
+- Implemented initial JIT plan, built iteratively (7 attempts)
+- Created endian patch (7 functions initially), identified 3 more needed
+
+### Session 121
+- Discovered clang MIPS 56GB memory bug, created two-step compile workaround
+- Found LLInt `mul` instruction issue, fixed to `mult`+`mflo`
 
 ---
 
 ## Key Files
 
-- **ir8 sources**: `patches/packages/ir8/` (19 files)
-- **ir8 rules**: `rules/packages/ir8.yaml`
-- **ir8 spec**: `specs/packages/ir8.spec`
-- **WebKit rules**: `rules/packages/webkitgtk.yaml` (all bypasses + DIAG tags)
-- **DIAG header**: `patches/packages/webkitgtk/webkit_subprocess_diag.h`
-- **Bundle wrapper**: `mogrix/bundle.py`
-- **Latest ir8 bundle**: `ir8-1.0-1-irix-bundle.0223262343` at `/usr/people/edodd/apps/`
-- **HTTPS plan**: `.claude/plans/misty-beaming-patterson.md` (COMPLETE)
+- **Three-step wrapper**: `patches/packages/webkitgtk/compile-llint-twostep.sh`
+- **Endian patch**: `patches/packages/webkitgtk/jit-bigendian-jsvalue32.patch`
+- **FP64 patch**: `patches/packages/webkitgtk/jit-mips-vmov-fp64.patch`
+- **WebKit rules**: `rules/packages/webkitgtk.yaml`
+- **WebKit spec**: `specs/packages/webkitgtk.spec`
+- **ir8 sources**: `patches/packages/ir8/` (20 files, includes glib-n32-fixup.h)
+- **ir8 rules**: `rules/packages/ir8.yaml` (add_source, spec_replacements, smoke_test)
+- **Latest ir8 bundle**: `ir8-1.0-1-irix-bundle.0224262147` at `/usr/people/edodd/apps/`

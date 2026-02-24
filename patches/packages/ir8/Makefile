@@ -9,7 +9,7 @@ LIBS_PKG   = $(shell $(PKG_CONFIG) --libs webkit2gtk-4.0)
 # IRIX n32: sizeof(gpointer)=4 but sizeof(GType/gulong)=8.
 # GLib 2.80 g_once_init_enter_pointer needs sizeof(*loc)==sizeof(gpointer).
 # Force old gsize-based path by capping GLib API version.
-CFLAGS += -Wall -O2 -DGLIB_VERSION_MIN_REQUIRED=G_ENCODE_VERSION\(2,78\) -DGLIB_VERSION_MAX_ALLOWED=G_ENCODE_VERSION\(2,78\) $(CFLAGS_PKG)
+CFLAGS += -Wall -O2 -DGLIB_VERSION_MIN_REQUIRED=G_ENCODE_VERSION\(2,78\) -DGLIB_VERSION_MAX_ALLOWED=G_ENCODE_VERSION\(2,78\) -include glib-n32-fixup.h $(CFLAGS_PKG)
 LDFLAGS += $(LIBS_PKG)
 
 SRCS = main.c ir8-window.c ir8-tab.c ir8-searchbox.c ir8-downloads.c \

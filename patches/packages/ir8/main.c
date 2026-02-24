@@ -694,12 +694,24 @@ static void activate(GApplication *application, WebKitSettings *webkitSettings)
 
     WebKitWebContext *webContext = g_object_new(WEBKIT_TYPE_WEB_CONTEXT,
         "website-data-manager", manager,
-        "process-swap-on-cross-site-navigation-enabled", TRUE,
+        "process-swap-on-cross-site-navigation-enabled", FALSE,
         "use-system-appearance-for-scrollbars", FALSE,
         "time-zone-override", timeZone,
         NULL);
     g_object_unref(manager);
 
+    /* IRIX memory optimization: aggressive memory pressure thresholds (WPE pattern) */
+    WebKitMemoryPressureSettings *memPressure = webkit_memory_pressure_settings_new();
+    webkit_memory_pressure_settings_set_memory_limit(memPressure, 512);
+    webkit_memory_pressure_settings_set_conservative_threshold(memPressure, 0.33);
+    webkit_memory_pressure_settings_set_strict_threshold(memPressure, 0.50);
+    webkit_memory_pressure_settings_set_kill_threshold(memPressure, 0.90);
+    webkit_memory_pressure_settings_set_poll_interval(memPressure, 10);
+    webkit_website_data_manager_set_memory_pressure_settings(memPressure);
+    webkit_memory_pressure_settings_free(memPressure);
+
+    /* Disable memory/disk caches — saves 30-50MB */
+    webkit_web_context_set_cache_model(webContext, WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER);
 
     if (enableSandbox)
         webkit_web_context_set_sandbox_enabled(webContext, TRUE);
@@ -798,6 +810,13 @@ int main(int argc, char *argv[])
     webkit_settings_set_enable_dns_prefetching(webkitSettings, FALSE);
     webkit_settings_set_enable_webgl(webkitSettings, FALSE);
     webkit_settings_set_hardware_acceleration_policy(webkitSettings, WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
+    webkit_settings_set_enable_page_cache(webkitSettings, FALSE);
+    webkit_settings_set_enable_offline_web_application_cache(webkitSettings, FALSE);
+    webkit_settings_set_enable_html5_local_storage(webkitSettings, FALSE);
+    webkit_settings_set_enable_html5_database(webkitSettings, FALSE);
+    webkit_settings_set_media_playback_requires_user_gesture(webkitSettings, TRUE);
+    webkit_settings_set_enable_media(webkitSettings, FALSE);
+    webkit_settings_set_enable_webaudio(webkitSettings, FALSE);
     webkit_settings_set_user_agent_with_application_details(webkitSettings, "ir8", "1.0");
     if (!addSettingsGroupToContext(context, webkitSettings))
         g_clear_object(&webkitSettings);

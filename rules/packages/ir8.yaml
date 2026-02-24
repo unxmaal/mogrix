@@ -20,6 +20,7 @@ add_source:
   - ir8-marshal.h
   - ir8-marshal.c
   - Makefile
+  - glib-n32-fixup.h
   - ir8_test.sh
 
 upstream:
@@ -46,3 +47,6 @@ rules:
     - getline
   explicit_provides:
     - "ir8"
+  spec_replacements:
+  - pattern: '%make_build'
+    replacement: "export CC=\"%{__cc}\"\nexport LD=\"%{__cc}\"\n%make_build"

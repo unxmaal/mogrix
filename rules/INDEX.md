@@ -111,6 +111,7 @@
 | O_CLOEXEC not available | O_CLOEXEC undeclared | Remove flag, use fcntl after | vte291.yaml | FD_CLOEXEC=1=O_WRONLY on IRIX — NEVER substitute |
 | MOGRIX_NO_DLMALLOC misapplied | Unnecessary libc malloc | Only for IRIX native .so apps | nedit.yaml | gtkterm had this wrong |
 | WebKit "WebProcess CRASHED" is IPC loss | Not a memory fault — IPC socket close | IPC debug logging | webkitgtk.yaml | SIGTERM cleanup not SIGSEGV. See methods/webkit-debug.md |
+| WebKit/ir8 IRIX memory optimization | Google.com OOMs, heavy JS sites exhaust RAM | Memory pressure + cache + GC tuning | methods/webkit-memory.md | ir8/main.c, bundle.py |
 | IRIX IPC primitives all work | socketpair, SCM_RIGHTS, poll all work | No fix needed | N/A | **NEGATIVE**: Not the cause of WebKit IPC failures |
 | WebKit Content Filtering not compiled | ENABLE(CONTENT_FILTERING) is Apple/Cocoa only | No fix needed | N/A | **NEGATIVE**: Not a blocker on GTK builds |
 | WebKit Content Extensions no-op | ENABLE(CONTENT_EXTENSIONS) ON for GTK but no rules loaded | No fix needed | N/A | **NEGATIVE**: Default config has no extension rules, code is a no-op |
@@ -216,8 +217,18 @@
 | IRIX /bin/sh date lacks %s | No epoch seconds. Use `date +%H:%M:%S` + expr to compute elapsed | ir8_test.sh |
 | IRIX grep lacks \\| alternation | Use `egrep 'a|b'` not `grep 'a\|b'`. Native grep treats \\| as literal | ir8_test.sh |
 | Old /opt/cross/bin/irix-ld broken | Produces MIPS_OPTIONS → rld crash. Use staging irix-ld | /opt/sgug-staging/usr/sgug/bin/irix-ld |
-| GLib 2.80 n32 G_DEFINE_TYPE crash | `g_once_init_enter_pointer` requires `sizeof(GType)==sizeof(gpointer)`. On n32 GType=gulong=8 but gpointer=4. Add `-DGLIB_VERSION_MIN_REQUIRED=G_ENCODE_VERSION(2,78) -DGLIB_VERSION_MAX_ALLOWED=G_ENCODE_VERSION(2,78)` to CFLAGS. Forces old gsize-based `g_once_init_enter` path. Affects ALL GTK/GLib apps on n32 | ir8/Makefile, glibconfig.h |
-| Hand-written specs need CC export | `%make_build` doesn't export CC/CXX (unlike `%configure`). Add `export CC="%{__cc}"` before `%make_build` in hand-written specs | ir8.spec, rpmmacros.irix |
+| Clang 16/18 MIPS 56GB memory bug | cc1 uses 56GB compiling large TUs with inline asm (LLInt = 57K lines). x86=95MB, frontend=126MB, llc=42MB. Bug in cc1 integrated asm for MIPS. Workaround: two-step compile (clang -emit-llvm + llc -filetype=obj). Total 168MB | patches/packages/webkitgtk/compile-llint-twostep.sh |
+| LLInt offline asm emits MIPS32 `mul` | `mul rd,rs,rt` is MIPS32, not MIPS III/IV. Fix: `mult rs,rt` + `mflo rd` in offlineasm/mips.rb. Without fix, llc aborts (SIGABRT) | rules/packages/webkitgtk.yaml |
+| JSC big-endian JSValue32 tag/payload swap | `storePair32`/`loadPair32` arg order assumes little-endian. 10 functions in AssemblyHelpers.h need swapped args for big-endian. 7 have `static_assert` guards (compile error), 3 silently corrupt (`loadValue(void*)`, both `storeTrustedValue`). Fix: `#if __BYTE_ORDER__` conditional in patch | patches/packages/webkitgtk/jit-bigendian-jsvalue32.patch |
+| LLInt `.cpload` O32 PIC on N32 | `.cpload` is O32 PIC directive — sets up `$gp` at each label. N32: `$gp` is callee-saved (set in prologue, stays valid). `.cpload` on N32 generates incorrect `_gp_disp` references. Fix: `#if defined(WTF_MIPS_PIC) && !defined(__sgi)` in LLIntOfflineAsmConfig.h | rules/packages/webkitgtk.yaml |
+| LLInt push/pop 4-byte vs 8-byte alignment | Offline asm push/pop uses `addiu $sp, ±4` (4-byte). N32 ABI requires 8-byte minimum stack alignment at call boundaries. Fix: change to ±8 in mips.rb. Wastes 4 bytes per op but guarantees alignment | rules/packages/webkitgtk.yaml |
+| LLInt two-step wrapper + ccache | cmake RULE_LAUNCH_COMPILE passes `ccache compiler flags`. Wrapper $1 is ccache, not the compiler. Must detect `*/ccache` and shift. Step 3 (asm→obj) must skip ccache — use compiler directly. Remove `\|\| true` to avoid silent failures; use file-existence checks instead | patches/packages/webkitgtk/compile-llint-twostep.sh |
+| LLInt three-step compile: .size/.file/$tmp stripping | llc generates .size directives with non-absolute expressions (LLVM MIPS bug), GNU as places .file/FILE symbol after SECTION symbols corrupting symtab sh_info, and $tmp labels as LOCAL symbols interleaved with GLOBALs. Fix: sed strip all three from assembly before assembling | patches/packages/webkitgtk/compile-llint-twostep.sh |
+| LLInt three-step compile: N32 vs mips64 triple | llc with -mtriple=mips64-sgi-irix6.5 generates 64-bit address relocations (R_MIPS_HIGHER/HIGHEST) even with p:32:32 data layout. Fix: use -target-abi n32 to get proper N32 code (32-bit addresses, 64-bit registers) | patches/packages/webkitgtk/compile-llint-twostep.sh |
+| LLInt three-step compile: GOT overflow (xgot) | libjavascriptcoregtk GOT exceeds 64KB. llc generates %got() and %got_disp() with R_MIPS_GOT16/GOT_DISP (16-bit) that overflow. Clang natively uses GOT_PAGE/GOT_OFST pairs. Fix: perl post-process to convert %got()/%got_disp() to %got_hi/%got_lo pairs (R_MIPS_GOT_HI16/GOT_LO16) | patches/packages/webkitgtk/compile-llint-twostep.sh |
+| LLInt three-step compile: PIC flags | GNU as needs -KPIC flag to set pic/cpic ELF flags matching clang-compiled objects | patches/packages/webkitgtk/compile-llint-twostep.sh |
+| GLib 2.80 n32 G_DEFINE_TYPE crash | `G_STATIC_ASSERT` in `g_once_init_enter` fails (gsize!=gpointer) | Version cap + fixup header | methods/glib-n32-compat.md | Affects ALL GTK/GLib apps on n32 |
+| Hand-written specs need CC export | Link fails with "skipping incompatible" — host gcc used instead of cross-compiler | spec_replacements: export CC | methods/makefile-builds.md | `%make_build` doesn't export CC unlike `%configure` |
 
 ### Engine Bugs & Gotchas
 
