@@ -6,7 +6,7 @@
 #ifndef IPC_DEBUG_LOG_H
 #define IPC_DEBUG_LOG_H
 
-#ifdef __sgi
+#if defined(__sgi) && defined(IPC_DEBUG_LOGGING)
 #include <stdarg.h>
 #include <stdio.h>
 #include <fcntl.h>

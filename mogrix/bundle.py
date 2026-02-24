@@ -1248,6 +1248,29 @@ class BundleBuilder:
                 'GIO_MODULE_DIR="$dir/_lib32/gio/modules"'
             )
             extra_env_lines.append("export GIO_MODULE_DIR")
+        # JSC JIT memory tuning — IRIX N32 has 2GB virtual address limit and
+        # machines typically have 256MB-1.5GB physical RAM. Disable DFG optimizing
+        # JIT (keep baseline JIT for decent performance with much less memory) and
+        # cap JIT code buffer. Only set if not already set so users can override.
+        if webkit_libexec.is_dir():
+            extra_env_lines.append(
+                '# JSC memory tuning for IRIX (override with env vars before launch)\n'
+                ': ${JSC_useDFGJIT=false}\n'
+                'export JSC_useDFGJIT\n'
+                ': ${JSC_jitMemoryReservationSize=16777216}\n'
+                'export JSC_jitMemoryReservationSize\n'
+                '# JSC GC tuning — tell GC this is a 512MB machine (WPE embedded pattern)\n'
+                ': ${JSC_forceRAMSize=536870912}\n'
+                'export JSC_forceRAMSize\n'
+                ': ${JSC_criticalGCMemoryThreshold=0.50}\n'
+                'export JSC_criticalGCMemoryThreshold\n'
+                ': ${JSC_smallHeapGrowthFactor=1.1}\n'
+                'export JSC_smallHeapGrowthFactor\n'
+                ': ${JSC_mediumHeapGrowthFactor=1.1}\n'
+                'export JSC_mediumHeapGrowthFactor\n'
+                ': ${JSC_largeHeapGrowthFactor=1.1}\n'
+                'export JSC_largeHeapGrowthFactor'
+            )
         # libevent: IRIX /dev/poll backend crashes — force poll() instead
         lib32_dir = bundle_dir / "_lib32"
         if lib32_dir.is_dir() and any(

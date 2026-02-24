@@ -1,0 +1,52 @@
+package: ir8
+
+add_source:
+  - main.c
+  - ir8-window.c
+  - ir8-window.h
+  - ir8-tab.c
+  - ir8-tab.h
+  - ir8-searchbox.c
+  - ir8-searchbox.h
+  - ir8-downloads.c
+  - ir8-downloads.h
+  - ir8-settings.c
+  - ir8-settings.h
+  - ir8-cellrenderer.c
+  - ir8-cellrenderer.h
+  - ir8-bookmarks.c
+  - ir8-bookmarks.h
+  - ir8-marshal.list
+  - ir8-marshal.h
+  - ir8-marshal.c
+  - Makefile
+  - glib-n32-fixup.h
+  - ir8_test.sh
+
+upstream:
+  url: https://github.com/unxmaal/mogrix
+  version: "1.0"
+  build_system: makefile
+  license: BSD-2-Clause
+  summary: "Web browser for IRIX"
+  source_dir: ir8-1.0
+
+smoke_test:
+  - command: "ir8"
+    args: "--version"
+    expect: "ir8 1.0"
+  - command: "ir8"
+    args: "--exit-after-load ir8-about:home"
+    expect_rc: 0
+    env:
+      DISPLAY: ":0"
+    timeout: 15
+
+rules:
+  inject_compat_functions:
+    - getline
+  explicit_provides:
+    - "ir8"
+  spec_replacements:
+  - pattern: '%make_build'
+    replacement: "export CC=\"%{__cc}\"\nexport LD=\"%{__cc}\"\n%make_build"

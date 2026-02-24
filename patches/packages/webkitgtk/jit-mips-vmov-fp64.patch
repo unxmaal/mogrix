@@ -1,0 +1,32 @@
+--- a/Source/JavaScriptCore/assembler/MIPSAssembler.h
++++ b/Source/JavaScriptCore/assembler/MIPSAssembler.h
+@@ -724,6 +724,14 @@
+ #if WTF_MIPS_ISA_REV(2) && WTF_MIPS_FP64
+         mfc1(rd1, rn);
+         mfhc1(rd2, rn);
++#elif WTF_MIPS_FP64
++        // MIPS III/IV FR=1 without mfhc1: store double to stack, load as two words
++        // Big-endian: high word at lower address
++        addiu(MIPSRegisters::sp, MIPSRegisters::sp, -8);
++        sdc1(rn, MIPSRegisters::sp, 0);
++        lw(rd2, MIPSRegisters::sp, 0);   // high 32 bits
++        lw(rd1, MIPSRegisters::sp, 4);   // low 32 bits
++        addiu(MIPSRegisters::sp, MIPSRegisters::sp, 8);
+ #else
+         mfc1(rd1, rn);
+         mfc1(rd2, FPRegisterID(rn + 1));
+@@ -735,6 +743,14 @@
+ #if WTF_MIPS_ISA_REV(2) && WTF_MIPS_FP64
+         mtc1(rn1, rd);
+         mthc1(rn2, rd);
++#elif WTF_MIPS_FP64
++        // MIPS III/IV FR=1 without mthc1: store two words to stack, load as double
++        // Big-endian: high word at lower address
++        addiu(MIPSRegisters::sp, MIPSRegisters::sp, -8);
++        sw(rn2, MIPSRegisters::sp, 0);   // high 32 bits
++        sw(rn1, MIPSRegisters::sp, 4);   // low 32 bits
++        ldc1(rd, MIPSRegisters::sp, 0);
++        addiu(MIPSRegisters::sp, MIPSRegisters::sp, 8);
+ #else
+         mtc1(rn1, rd);
+         mtc1(rn2, FPRegisterID(rd + 1));

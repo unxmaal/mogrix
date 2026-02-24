@@ -1,7 +1,7 @@
-# Mogrix Cross-Compilation Handoff
+# Project Handoff
 
-**Last Updated**: 2026-02-23 (session 118)
-**Status**: WebKit HTTPS WORKING on IRIX. HTTP+HTTPS both verified. Ready for surf browser build.
+**Last Updated**: 2026-02-24 (session 124)
+**Status**: ir8 browser memory-optimized and deployed on IRIX. Sites load (HN, Kagi, example.com). Google.com crashes WebProcess gracefully instead of OOM-killing the browser.
 
 ---
 
@@ -12,70 +12,79 @@
 3. **Read GENERIC_SUMMARY.md** before starting any new package
 4. **Paths**: `/opt/sgug-staging/` = Linux sysroot, `/opt/chroot` = IRIX test chroot (MCP tools)
 5. **IRIX access**: Use MCP tools. NEVER raw SSH. `irix_copy_to` supports `host_path=true` + `owner="edodd"`.
-6. **Large builds**: Use haiku sub-agents. NEVER background Bash.
-7. **WebKit rebuild**: `uv run mogrix convert ~/mogrix_inputs/SRPMS/webkitgtk-2.42.5-1.src.rpm && uv run mogrix build ~/mogrix_outputs/SRPMS/webkitgtk-2.42.5-1.src-converted/webkitgtk-2.42.5-1.src.rpm --cross && uv run mogrix stage ~/mogrix_outputs/RPMS/libwebkit2gtk*.rpm && uv run mogrix bundle libwebkit2gtk` (fast with ccache)
-8. **Bundle deploy**: `irix_copy_to` with `host_path=true, owner="edodd"` to `/usr/people/edodd/apps/`. Extract with `sh <bundle>.run`, then `mv` + `chown -Rh edodd` to user apps dir.
+6. **Large builds**: Redirect output to log file. NEVER let rpmbuild output flood context.
+7. **WebKit rebuild**: `rpmbuild --define "_topdir $HOME/rpmbuild" --nodeps --rebuild ~/mogrix_outputs/SRPMS/webkitgtk-2.42.5-1.src-converted/webkitgtk-2.42.5-1.src.rpm > ~/tmp/webkit-build.log 2>&1`
+8. **Bundle deploy**: `uv run mogrix bundle ir8`, then `test_bundle` MCP tool.
 
 ---
 
 ## Current State
 
-### WebKit HTTPS — WORKING (session 118)
+### ir8 Browser — Working on IRIX
 
-Bundle `0223262218` renders HTTPS pages on IRIX. Verified with `https://example.com/` — full TLS handshake, HTTP 200, page rendered with title, body text, and links.
+JSC with baseline JIT, memory-optimized for IRIX constraints (256MB-1.5GB RAM).
 
-Key fixes that enabled HTTPS:
-1. **DEVELOPER_MODE bypass** for `WEBKIT_TLS_CAFILE_PEM` in SoupNetworkSession.cpp (prep_commands in webkitgtk.yaml)
-2. **WEBKIT_TLS_CAFILE_PEM export** in bundle wrapper (bundle.py) — points GnuTLS to bundle's CA certs
-3. **Bundle pruning fix** for GIO TLS module deps (bundle.py) — `libgnutls.so.30` symlink target was being pruned
+**Latest bundle**: `ir8-1.0-1-irix-bundle.0224262147` at `/usr/people/edodd/apps/`
 
-### WebKit HTTP — WORKING (session 116)
+**Test results**: example.com, HN, Kagi all load. Google.com WebProcess crashes but browser survives (graceful degradation — memory pressure system working as designed).
 
-Bundle `0223261927` renders HTTP pages. All 5 silent blockers bypassed.
+### ir8 Build Workflow (Non-obvious)
 
-### 5 HTTP Bypasses in webkitgtk.yaml
+The ir8 input SRPM tarball is stale — `create-srpm ir8` fails (no git tag "1.0"). When rebuilding ir8 after editing `patches/packages/ir8/` files, you must manually repack the tarball:
 
-| # | What | Fix |
-|---|------|-----|
-| 1 | Cookie domain check (11 instances) | Bypass `allowsFirstPartyForCookies` |
-| 2 | SW import gate | `!server.isImportCompleted()` → `false` |
-| 3 | SW load routing | `startWithServiceWorker()` → `start()` |
-| 4 | HTTP disk cache | `canUseCache()` → always `false` |
-| 5 | GNetworkMonitor NULL | NULL-check before signal connect |
+```bash
+uv run mogrix convert ~/mogrix_inputs/SRPMS/ir8-1.0-1.src.rpm
+# Then repack tarball with updated files:
+mkdir -p ~/tmp/ir8-repack
+tar xzf ~/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted/ir8-1.0.tar.gz -C ~/tmp/ir8-repack
+cp patches/packages/ir8/{main.c,Makefile,glib-n32-fixup.h} ~/tmp/ir8-repack/ir8-1.0/
+tar czf ~/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted/ir8-1.0.tar.gz -C ~/tmp/ir8-repack ir8-1.0/
+rm -rf ~/tmp/ir8-repack
+# Rebuild SRPM then build:
+rpmbuild -bs --define "_topdir $HOME/rpmbuild" --define "_srcrpmdir $HOME/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted" --define "_sourcedir $HOME/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted" --define "_specdir $HOME/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted" ~/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted/ir8.spec
+uv run mogrix build ~/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted/ir8-1.0-1.src.rpm --cross
+```
+
+**rpmbuild note**: `mogrix build` fails with false "missing dependencies" for webkitgtk. Use `rpmbuild --nodeps --rebuild` directly.
 
 ---
 
 ## Next Steps
 
-1. **Build surf browser** — now that HTTPS works, surf is a lightweight WebKit GTK browser
-2. **Test more HTTPS sites** — verify beyond example.com (sites with JS, CSS, images)
-3. **Consider disabling DIAG tags** for production bundles (set MOGRIX_DIAG env var gate already handles this)
+1. **GLib n32 fixup needs to be generic** — `glib-n32-fixup.h` is ir8-specific. Any GLib/GTK app on n32 hits the same issue. Add to `compat/include/` or as a generic rule. See `rules/methods/glib-n32-compat.md`.
+
+2. **Fix ir8 upstream SRPM** — either tag the repo with "1.0" or change `upstream:` config so `create-srpm ir8` works. Currently requires manual tarball repack (see above).
+
+3. **Google.com still crashes WebProcess** — options: (a) try `JSC_useJIT=false` to eliminate JIT memory overhead, (b) lower memory limit further, (c) accept graceful failure on heavy sites.
+
+4. **Many bundle binaries fail `--version`** (64 of 111) — pre-existing issue. Utilities (bzip2, sqlite3, zstd, etc.) exit rc=1 with no output. Investigate rld or bundler issue.
+
+5. **Performance benchmarks** — compare CLoop vs JIT `jsc` execution times.
 
 ---
 
-## Recent Work (Sessions 117-118)
+## Recent Work (Sessions 122-124)
 
-### Session 118
-- Built + deployed WebKit with HTTPS instrumentation + fixes
-- Fixed `soup_session_get_tls_database` → soup2-compatible `g_object_get` with "tls-database"
-- Fixed **bundle pruning bug**: GIO module deps (libgnutls.so.30 symlink target + deps-of-deps) were being pruned. Updated `bundle.py` to resolve symlinks and protect transitive deps
-- **HTTPS confirmed working**: TLS_HANDSHAKING → TLS_HANDSHAKED → status=200 → full data delivery
-- Screenshot captured: MiniBrowser rendering https://example.com/ on IRIX
+### Session 124
+- ir8 memory optimization: memory pressure settings, DOCUMENT_VIEWER cache, disabled process swap, disabled page cache/offline cache/localStorage/media/webaudio, JSC GC tuning. Details: `rules/methods/webkit-memory.md`
+- GLib 2.80 n32 build fix: `glib-n32-fixup.h`. Details: `rules/methods/glib-n32-compat.md`
+- CC export fix for hand-written specs. Details: `rules/methods/makefile-builds.md`
+- Created rules files, trimmed INDEX.md to use pointers instead of inline details
 
-### Session 117
-- Added `MOGRIX_DIAG` env var gate to webkit_subprocess_diag.h (zero overhead when disabled)
-- Added 11 TLS DIAG tags (TLS-1 to TLS-11) in webkitgtk.yaml
-- Removed DEVELOPER_MODE guard from WEBKIT_TLS_CAFILE_PEM code
-- Added WEBKIT_TLS_CAFILE_PEM export to bundle.py wrapper
+### Session 123
+- JIT working on IRIX: endian patch, .cpload disable, push/pop alignment, three-step LLInt wrapper (5 iterations). All fixes in `rules/packages/webkitgtk.yaml` and `patches/packages/webkitgtk/`.
+- jsc passes fib(30) test. Bundle deployed.
+
+### Session 122
+- Initial JIT implementation (7 build iterations), endian patch (10 functions)
 
 ---
 
 ## Key Files
 
-- **WebKit rules**: `rules/packages/webkitgtk.yaml` (all bypasses + 33 HTTP + 11 TLS DIAG tags)
-- **DIAG header**: `patches/packages/webkitgtk/webkit_subprocess_diag.h` (env var gated)
-- **Bundle wrapper**: `mogrix/bundle.py` (WEBKIT_TLS_CAFILE_PEM + SSL_CERT_FILE + pruning fix)
-- **Latest working bundle**: `0223262218` (HTTP+HTTPS, deployed at `/usr/people/edodd/apps/`)
-- **Test scripts**: `/usr/people/edodd/https_test.sh`, `/usr/people/edodd/https_test2.sh` on IRIX
-- **HTTPS plan**: `.claude/plans/misty-beaming-patterson.md` (full problem space map + decision table)
-- **Silent blockers guide**: `rules/methods/webkit-silent-blockers.md`
+- **ir8 sources**: `patches/packages/ir8/` (20 files including `glib-n32-fixup.h`)
+- **ir8 rules**: `rules/packages/ir8.yaml`
+- **Memory optimization docs**: `rules/methods/webkit-memory.md`
+- **GLib n32 fix docs**: `rules/methods/glib-n32-compat.md`
+- **WebKit rules**: `rules/packages/webkitgtk.yaml`
+- **WebKit patches**: `patches/packages/webkitgtk/` (LLInt wrapper, endian patch, FP64 patch)

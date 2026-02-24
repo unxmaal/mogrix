@@ -12,7 +12,22 @@ add_source:
   - ipc_debug_log.h
   - webkit_subprocess_diag.h
   - IPCSemaphoreUnix_irix.cpp
+  - compile-llint-twostep.sh
+add_patch:
+  - jit-mips-vmov-fp64.patch
+  - jit-bigendian-jsvalue32.patch
 rules:
+  # %autosetup needs -p1 for Patch500 (vmov FP64 fix) — original spec has no patches
+  spec_replacements:
+    - pattern: "%autosetup -n webkitgtk-%{version}"
+      replacement: "%autosetup -p1 -n webkitgtk-%{version}"
+    # Enable JIT, disable CLoop interpreter
+    - pattern: "-DENABLE_JIT=OFF"
+      replacement: "-DENABLE_JIT=ON"
+    - pattern: "-DENABLE_C_LOOP=ON"
+      replacement: "-DENABLE_C_LOOP=OFF"
+    - pattern: "-DENABLE_DFG_JIT=OFF"
+      replacement: "-DENABLE_DFG_JIT=ON"
   inject_compat_functions:
     - strdup
     - getline
@@ -56,6 +71,34 @@ rules:
     - $MOGRIX_ROOT/tools/safepatch Source/cmake/OptionsGTK.cmake --old 'CMAKE_SYSTEM_NAME MATCHES "Linux"' --new 'FALSE' --count 0 --no-backup --quiet
     # CLoop interpreter: t6 and t7 registers not declared but referenced by UNUSED_VARIABLE
     - $MOGRIX_ROOT/tools/safepatch Source/JavaScriptCore/llint/LowLevelInterpreter.cpp --old 'CLoopRegister t0, t1, t2, t3, t5, sp, cfr, lr, pc;' --new 'CLoopRegister t0, t1, t2, t3, t5, t6, t7, sp, cfr, lr, pc;' --no-backup --quiet
+    # --- JIT ENABLEMENT ---
+    # Enable JIT on IRIX (gated on OS(LINUX), add __sgi)
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/PlatformEnable.h --old '|| CPU(MIPS)) && OS(LINUX)' --new '|| CPU(MIPS)) && (OS(LINUX) || defined(__sgi))' --no-backup --quiet
+    # Include sys/cachectl.h on IRIX for JIT cache flushing
+    - $MOGRIX_ROOT/tools/safepatch Source/JavaScriptCore/jit/ExecutableAllocator.h --old 'CPU(MIPS) && OS(LINUX)' --new 'CPU(MIPS) && (OS(LINUX) || defined(__sgi))' --no-backup --quiet
+    # LOCAL_LABEL_STRING macro undefined for IRIX — add __sgi to GNU as-compatible block
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/InlineASM.h --old '|| COMPILER(MINGW)' --new '|| COMPILER(MINGW) || defined(__sgi)' --no-backup --quiet
+    # HIDE_SYMBOL: add IRIX to ELF hidden visibility block (uses .hidden directive)
+    - $MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/InlineASM.h --old '|| OS(HPUX)' --new '|| OS(HPUX) || defined(__sgi)' --no-backup --quiet
+    # LLInt offline assembler emits MIPS32 'mul rd,rs,rt' — not on MIPS III/IV.
+    # Replace with 'mult rs,rt' + 'mflo rd' (matches existing smulli pattern).
+    - "perl -i -pe 's{emitMIPS\\(\"mul\", operands\\)}{if operands.size == 3\\n            \\$asm.puts \"mult #{operands[1].mipsOperand}, #{operands[0].mipsOperand}\"\\n            \\$asm.puts \"mflo #{operands[2].mipsOperand}\"\\n        else\\n            raise unless operands.size == 2\\n            \\$asm.puts \"mult #{operands[0].mipsOperand}, #{operands[1].mipsOperand}\"\\n            \\$asm.puts \"mflo #{operands[1].mipsOperand}\"\\n        end}' Source/JavaScriptCore/offlineasm/mips.rb"
+    # LLInt offline assembler uses O32 register names $t4-$t7 — not valid in N32.
+    # In N32, registers 12-15 are $t0-$t3, not $t4-$t7. Use numeric names.
+    - perl -i -pe 's/"\\\$t4"/"\\$12"/g; s/"\\\$t5"/"\\$13"/g; s/"\\\$t7"/"\\$15"/g' Source/JavaScriptCore/offlineasm/mips.rb
+    - perl -i -pe 's/SpecialRegister\.new\("\\\$t7"\)/SpecialRegister.new("\\$15")/g' Source/JavaScriptCore/offlineasm/mips.rb
+    # LowLevelInterpreter.cpp: clang 16/18 MIPS backend uses 56GB+ RAM due to a
+    # bug in cc1 inline asm handling for large TUs. x86 compiles same file in 95MB.
+    # Workaround: two-step compile (clang -emit-llvm 126MB + llc 42MB = 168MB total).
+    # Set RULE_LAUNCH_COMPILE on LowLevelInterpreterLib (it only has this one file).
+    # Also set -march=mips4 so movz/movn work (MIPS IV, supported by R10000+).
+    - chmod +x %{_sourcedir}/compile-llint-twostep.sh
+    - perl -i -pe 'BEGIN{$done=0} if(!$done && /^WEBKIT_FRAMEWORK\(JavaScriptCore\)/){print "set_property(TARGET LowLevelInterpreterLib PROPERTY RULE_LAUNCH_COMPILE \"%{_sourcedir}/compile-llint-twostep.sh\")\nset_source_files_properties(llint/LowLevelInterpreter.cpp PROPERTIES COMPILE_FLAGS \"-O0 -DRELEASE_WITHOUT_OPTIMIZATIONS -march=mips4\")\n"; $done=1}' Source/JavaScriptCore/CMakeLists.txt
+    # Disable .cpload (O32 PIC) for IRIX N32 — $gp is callee-saved, no per-label setup needed
+    - $MOGRIX_ROOT/tools/safepatch Source/JavaScriptCore/llint/LLIntOfflineAsmConfig.h --old '#ifdef WTF_MIPS_PIC' --new '#if defined(WTF_MIPS_PIC) && !defined(__sgi)' --no-backup --quiet
+    # Fix push/pop 4-byte → 8-byte stack alignment for N32 ABI
+    - "perl -i -pe 's/\"addiu \\$sp, \\$sp, -4\"/\"addiu \\$sp, \\$sp, -8\"/g; s/\"addiu \\$sp, \\$sp, 4\"/\"addiu \\$sp, \\$sp, 8\"/g' Source/JavaScriptCore/offlineasm/mips.rb"
+    # --- End JIT ENABLEMENT ---
     # IRIX mincore takes caddr_t (char*) not void* — add cast
     - $MOGRIX_ROOT/tools/safepatch Source/JavaScriptCore/heap/BlockDirectory.cpp --old 'auto result = mincore(pageStart,' --new 'auto result = mincore(reinterpret_cast<caddr_t>(pageStart),' --no-backup --quiet
     # MIPS clang backend can't guarantee tail call elimination — disable MUST_TAIL_CALL

@@ -111,6 +111,7 @@
 | O_CLOEXEC not available | O_CLOEXEC undeclared | Remove flag, use fcntl after | vte291.yaml | FD_CLOEXEC=1=O_WRONLY on IRIX — NEVER substitute |
 | MOGRIX_NO_DLMALLOC misapplied | Unnecessary libc malloc | Only for IRIX native .so apps | nedit.yaml | gtkterm had this wrong |
 | WebKit "WebProcess CRASHED" is IPC loss | Not a memory fault — IPC socket close | IPC debug logging | webkitgtk.yaml | SIGTERM cleanup not SIGSEGV. See methods/webkit-debug.md |
+| WebKit/ir8 IRIX memory optimization | Google.com OOMs, heavy JS sites exhaust RAM | Memory pressure + cache + GC tuning | methods/webkit-memory.md | ir8/main.c, bundle.py |
 | IRIX IPC primitives all work | socketpair, SCM_RIGHTS, poll all work | No fix needed | N/A | **NEGATIVE**: Not the cause of WebKit IPC failures |
 | WebKit Content Filtering not compiled | ENABLE(CONTENT_FILTERING) is Apple/Cocoa only | No fix needed | N/A | **NEGATIVE**: Not a blocker on GTK builds |
 | WebKit Content Extensions no-op | ENABLE(CONTENT_EXTENSIONS) ON for GTK but no rules loaded | No fix needed | N/A | **NEGATIVE**: Default config has no extension rules, code is a no-op |
@@ -212,7 +213,15 @@
 | SGUG-RSE paths leak at runtime | Set FONTCONFIG_FILE, GIO_MODULE_DIR, GDK_PIXBUF_MODULE_FILE | Bundle wrappers |
 | GIO module cache controls loading | Stale cache = modules ignored. Run gio-querymodules | Bundle wrappers |
 | IRIX host shell is csh | VAR=value command fails. Use env VAR=value | sh scripts |
+| IRIX /bin/sh lacks $() | Use backtick substitution, not $(...). Also no $(()) — use `expr` | ir8_test.sh |
+| IRIX /bin/sh date lacks %s | No epoch seconds. Use `date +%H:%M:%S` + expr to compute elapsed | ir8_test.sh |
+| IRIX grep lacks \\| alternation | Use `egrep 'a|b'` not `grep 'a\|b'`. Native grep treats \\| as literal | ir8_test.sh |
 | Old /opt/cross/bin/irix-ld broken | Produces MIPS_OPTIONS → rld crash. Use staging irix-ld | /opt/sgug-staging/usr/sgug/bin/irix-ld |
+| Clang MIPS 56GB memory bug | Three-step compile workaround (168MB vs 56GB) | methods/webkit-jit.md | Affects any large TU with inline asm targeting MIPS |
+| LLInt/JIT MIPS N32 fixes | 10+ issues: mul, cpload, alignment, endian, FP64, GOT overflow, register names | methods/webkit-jit.md | Sessions 122-123, ~12 build iterations |
+| JSC big-endian JSValue32 | storePair32/loadPair32 arg order, 3 silent corruption sites | methods/webkit-jit.md | patches/packages/webkitgtk/jit-bigendian-jsvalue32.patch |
+| GLib 2.80 n32 G_DEFINE_TYPE crash | `G_STATIC_ASSERT` in `g_once_init_enter` fails (gsize!=gpointer) | Version cap + fixup header | methods/glib-n32-compat.md | Affects ALL GTK/GLib apps on n32 |
+| Hand-written specs need CC export | Link fails with "skipping incompatible" — host gcc used instead of cross-compiler | spec_replacements: export CC | methods/makefile-builds.md | `%make_build` doesn't export CC unlike `%configure` |
 
 ### Engine Bugs & Gotchas
 
