@@ -72,3 +72,4 @@ compat/runtime/
 
 # Temporary conversion/build directories that might be created in repo
 tmp/
+irix_logs/

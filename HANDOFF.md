@@ -1,7 +1,7 @@
 # Mogrix Cross-Compilation Handoff
 
-**Last Updated**: 2026-02-23 (session 118)
-**Status**: WebKit HTTPS WORKING on IRIX. HTTP+HTTPS both verified. Ready for surf browser build.
+**Last Updated**: 2026-02-23 (session 119)
+**Status**: ir8 browser BUILT AND RUNNING on IRIX. Homepage renders. Ready for real-world testing.
 
 ---
 
@@ -14,68 +14,98 @@
 5. **IRIX access**: Use MCP tools. NEVER raw SSH. `irix_copy_to` supports `host_path=true` + `owner="edodd"`.
 6. **Large builds**: Use haiku sub-agents. NEVER background Bash.
 7. **WebKit rebuild**: `uv run mogrix convert ~/mogrix_inputs/SRPMS/webkitgtk-2.42.5-1.src.rpm && uv run mogrix build ~/mogrix_outputs/SRPMS/webkitgtk-2.42.5-1.src-converted/webkitgtk-2.42.5-1.src.rpm --cross && uv run mogrix stage ~/mogrix_outputs/RPMS/libwebkit2gtk*.rpm && uv run mogrix bundle libwebkit2gtk` (fast with ccache)
-8. **Bundle deploy**: `irix_copy_to` with `host_path=true, owner="edodd"` to `/usr/people/edodd/apps/`. Extract with `sh <bundle>.run`, then `mv` + `chown -Rh edodd` to user apps dir.
+8. **Bundle deploy**: `irix_copy_to` with `host_path=true, owner="edodd"` to `/usr/people/edodd/`. Extract with `sh <bundle>.run /usr/people/edodd/apps`, installs to `/usr/people/edodd/apps/bin/`.
 
 ---
 
 ## Current State
 
+### ir8 Browser — RUNNING (session 119)
+
+Bundle `ir8-1.0-1-irix-bundle.0223262343` deployed and running on IRIX. Homepage (`ir8-about:home`) renders with search bar and branding. `ir8 --version` outputs `ir8 1.0 (WebKitGTK 2.42.5)`.
+
+**ir8 build pipeline** (from source):
+```bash
+# 1. Create tarball from patches/packages/ir8/
+rm -rf /tmp/ir8-1.0 && mkdir -p /tmp/ir8-1.0
+cp patches/packages/ir8/* /tmp/ir8-1.0/
+tar czf ~/rpmbuild/SOURCES/ir8-1.0.tar.gz -C /tmp ir8-1.0
+
+# 2. Build SRPM, convert, cross-compile
+rpmbuild -bs specs/packages/ir8.spec
+uv run mogrix convert ~/rpmbuild/SRPMS/ir8-1.0-1.src.rpm
+uv run mogrix build ~/mogrix_outputs/SRPMS/ir8-1.0-1.src-converted/ir8-1.0-1.src.rpm --cross
+
+# 3. Stage and bundle (auto-includes WebKit deps)
+uv run mogrix stage ~/mogrix_outputs/RPMS/ir8-1.0-1.mips.rpm
+uv run mogrix bundle ir8 --include libwebkit2gtk --include libjavascriptcoregtk
+```
+
+**Key build fixes discovered**:
+- Hand-written specs must `export CC="%{__cc}"` before `%make_build` (rpmmacros.irix `%make_build` doesn't export CC unlike `%configure`)
+- GLib 2.80 n32 ABI: Must add `-DGLIB_VERSION_MIN_REQUIRED=G_ENCODE_VERSION(2,78) -DGLIB_VERSION_MAX_ALLOWED=G_ENCODE_VERSION(2,78)` to CFLAGS. Affects ALL GTK/GLib apps on n32.
+- Both fixes documented in INDEX.md Platform Invariants table.
+
+### ir8 Source Files
+
+All in `patches/packages/ir8/` (19 files listed in `rules/packages/ir8.yaml`):
+- `main.c` — entry point, homepage/about URI handler, IRIX defaults
+- `ir8-window.c/h` — main browser window, toolbar, tabs
+- `ir8-tab.c/h` — individual browser tabs
+- `ir8-searchbox.c/h` — search entry widget
+- `ir8-downloads.c/h` — download bar
+- `ir8-settings.c/h` — settings dialog
+- `ir8-cellrenderer.c/h` — custom cell renderer
+- `ir8-bookmarks.c/h` — flat-file bookmark system (~/.config/ir8/bookmarks.txt)
+- `ir8-marshal.c/h` — pre-generated GLib marshalling (from ir8-marshal.list)
+- `Makefile` — build with pkg-config webkit2gtk-4.0
+
 ### WebKit HTTPS — WORKING (session 118)
 
-Bundle `0223262218` renders HTTPS pages on IRIX. Verified with `https://example.com/` — full TLS handshake, HTTP 200, page rendered with title, body text, and links.
-
-Key fixes that enabled HTTPS:
-1. **DEVELOPER_MODE bypass** for `WEBKIT_TLS_CAFILE_PEM` in SoupNetworkSession.cpp (prep_commands in webkitgtk.yaml)
-2. **WEBKIT_TLS_CAFILE_PEM export** in bundle wrapper (bundle.py) — points GnuTLS to bundle's CA certs
-3. **Bundle pruning fix** for GIO TLS module deps (bundle.py) — `libgnutls.so.30` symlink target was being pruned
+Bundle `0223262218` renders HTTPS pages on IRIX. Verified with `https://example.com/`.
 
 ### WebKit HTTP — WORKING (session 116)
 
-Bundle `0223261927` renders HTTP pages. All 5 silent blockers bypassed.
-
-### 5 HTTP Bypasses in webkitgtk.yaml
-
-| # | What | Fix |
-|---|------|-----|
-| 1 | Cookie domain check (11 instances) | Bypass `allowsFirstPartyForCookies` |
-| 2 | SW import gate | `!server.isImportCompleted()` → `false` |
-| 3 | SW load routing | `startWithServiceWorker()` → `start()` |
-| 4 | HTTP disk cache | `canUseCache()` → always `false` |
-| 5 | GNetworkMonitor NULL | NULL-check before signal connect |
+All 5 silent blockers bypassed.
 
 ---
 
 ## Next Steps
 
-1. **Build surf browser** — now that HTTPS works, surf is a lightweight WebKit GTK browser
-2. **Test more HTTPS sites** — verify beyond example.com (sites with JS, CSS, images)
-3. **Consider disabling DIAG tags** for production bundles (set MOGRIX_DIAG env var gate already handles this)
+1. **Test ir8 with real websites** — HTTP and HTTPS pages, verify navigation, tabs, bookmarks
+2. **Fix any runtime issues** — check ir8 stability on IRIX with extended use
+3. **User's security stripping request** — strip unnecessary WebKit security features for IRIX (cookie sandbox, etc.)
+4. **Consider surf browser** — simpler WebKit browser as alternative
 
 ---
 
-## Recent Work (Sessions 117-118)
+## Recent Work (Sessions 117-119)
+
+### Session 119
+- Built ir8 browser from scratch: transformed MiniBrowser sources → ir8 branding
+- Created 19 source files in patches/packages/ir8/
+- Created hand-written spec (specs/packages/ir8.spec), rules (rules/packages/ir8.yaml), Makefile
+- Fixed multiple build issues: glib-genmarshal (pre-generated), pkg-config paths, GLib 2.80 n32 ABI, CC export
+- Successfully built, bundled (104.7 MB), deployed, and verified running on IRIX
+- Added GLib n32 and CC export findings to rules/INDEX.md
 
 ### Session 118
-- Built + deployed WebKit with HTTPS instrumentation + fixes
-- Fixed `soup_session_get_tls_database` → soup2-compatible `g_object_get` with "tls-database"
-- Fixed **bundle pruning bug**: GIO module deps (libgnutls.so.30 symlink target + deps-of-deps) were being pruned. Updated `bundle.py` to resolve symlinks and protect transitive deps
-- **HTTPS confirmed working**: TLS_HANDSHAKING → TLS_HANDSHAKED → status=200 → full data delivery
-- Screenshot captured: MiniBrowser rendering https://example.com/ on IRIX
+- HTTPS confirmed working on IRIX
+- Fixed bundle pruning bug for GIO module deps
 
 ### Session 117
-- Added `MOGRIX_DIAG` env var gate to webkit_subprocess_diag.h (zero overhead when disabled)
-- Added 11 TLS DIAG tags (TLS-1 to TLS-11) in webkitgtk.yaml
-- Removed DEVELOPER_MODE guard from WEBKIT_TLS_CAFILE_PEM code
-- Added WEBKIT_TLS_CAFILE_PEM export to bundle.py wrapper
+- Added MOGRIX_DIAG env var gate, TLS DIAG tags
+- WEBKIT_TLS_CAFILE_PEM bypass and export
 
 ---
 
 ## Key Files
 
-- **WebKit rules**: `rules/packages/webkitgtk.yaml` (all bypasses + 33 HTTP + 11 TLS DIAG tags)
-- **DIAG header**: `patches/packages/webkitgtk/webkit_subprocess_diag.h` (env var gated)
-- **Bundle wrapper**: `mogrix/bundle.py` (WEBKIT_TLS_CAFILE_PEM + SSL_CERT_FILE + pruning fix)
-- **Latest working bundle**: `0223262218` (HTTP+HTTPS, deployed at `/usr/people/edodd/apps/`)
-- **Test scripts**: `/usr/people/edodd/https_test.sh`, `/usr/people/edodd/https_test2.sh` on IRIX
-- **HTTPS plan**: `.claude/plans/misty-beaming-patterson.md` (full problem space map + decision table)
-- **Silent blockers guide**: `rules/methods/webkit-silent-blockers.md`
+- **ir8 sources**: `patches/packages/ir8/` (19 files)
+- **ir8 rules**: `rules/packages/ir8.yaml`
+- **ir8 spec**: `specs/packages/ir8.spec`
+- **WebKit rules**: `rules/packages/webkitgtk.yaml` (all bypasses + DIAG tags)
+- **DIAG header**: `patches/packages/webkitgtk/webkit_subprocess_diag.h`
+- **Bundle wrapper**: `mogrix/bundle.py`
+- **Latest ir8 bundle**: `ir8-1.0-1-irix-bundle.0223262343` at `/usr/people/edodd/apps/`
+- **HTTPS plan**: `.claude/plans/misty-beaming-patterson.md` (COMPLETE)

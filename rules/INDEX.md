@@ -212,7 +212,12 @@
 | SGUG-RSE paths leak at runtime | Set FONTCONFIG_FILE, GIO_MODULE_DIR, GDK_PIXBUF_MODULE_FILE | Bundle wrappers |
 | GIO module cache controls loading | Stale cache = modules ignored. Run gio-querymodules | Bundle wrappers |
 | IRIX host shell is csh | VAR=value command fails. Use env VAR=value | sh scripts |
+| IRIX /bin/sh lacks $() | Use backtick substitution, not $(...). Also no $(()) — use `expr` | ir8_test.sh |
+| IRIX /bin/sh date lacks %s | No epoch seconds. Use `date +%H:%M:%S` + expr to compute elapsed | ir8_test.sh |
+| IRIX grep lacks \\| alternation | Use `egrep 'a|b'` not `grep 'a\|b'`. Native grep treats \\| as literal | ir8_test.sh |
 | Old /opt/cross/bin/irix-ld broken | Produces MIPS_OPTIONS → rld crash. Use staging irix-ld | /opt/sgug-staging/usr/sgug/bin/irix-ld |
+| GLib 2.80 n32 G_DEFINE_TYPE crash | `g_once_init_enter_pointer` requires `sizeof(GType)==sizeof(gpointer)`. On n32 GType=gulong=8 but gpointer=4. Add `-DGLIB_VERSION_MIN_REQUIRED=G_ENCODE_VERSION(2,78) -DGLIB_VERSION_MAX_ALLOWED=G_ENCODE_VERSION(2,78)` to CFLAGS. Forces old gsize-based `g_once_init_enter` path. Affects ALL GTK/GLib apps on n32 | ir8/Makefile, glibconfig.h |
+| Hand-written specs need CC export | `%make_build` doesn't export CC/CXX (unlike `%configure`). Add `export CC="%{__cc}"` before `%make_build` in hand-written specs | ir8.spec, rpmmacros.irix |
 
 ### Engine Bugs & Gotchas
 
