@@ -44,27 +44,11 @@ BLOCKED_PATTERNS = [
     r"\bmkfs\b",
     r"\bnewfs\b",
     r"\bformat\b",
+    r"(?:^|[;&|]\s*)passwd\b",    # passwd command (not the file)
+    r"(?:^|[;&|]\s*)mount\b",     # mount command
+    r"(?:^|[;&|]\s*)umount\b",    # umount command
+    r"(?:^|[;&|]\s*)fsck\b",      # fsck command
 ]
-
-# Commands allowed on the IRIX host (outside chroot).
-# Only safe, non-destructive operations. Each entry is matched as
-# a word boundary at the start of a pipeline segment.
-HOST_ALLOWED_COMMANDS = {
-    # Read-only inspection
-    "ls", "cat", "head", "tail", "wc", "file", "readelf",
-    "elfdump", "echo", "uname", "hostname", "date", "du", "df",
-    "find", "which", "env", "id", "pwd",
-    # File management (safe paths only — validated separately)
-    "mkdir", "chmod", "chown", "cp", "mv", "ln", "rm",
-    # Archive operations (for bundle extraction)
-    "tar", "gzip", "gunzip",
-    # Shell execution (for running test scripts)
-    "sh",
-    # Debugging
-    "par",
-    # SGUG-RSE
-    "rpm",
-}
 
 _log_file = None
 
@@ -117,43 +101,24 @@ HOST_DANGEROUS_PATHS = [
 
 
 def is_host_allowed(command: str) -> str | None:
-    """Check if a command is allowed on the IRIX host (outside chroot).
+    """Check if a host command is safe. Deny-list approach.
 
+    Commands run as edodd (not root), so filesystem permissions
+    are the primary safety mechanism. This is defense-in-depth.
     Returns error message if blocked, None if allowed.
-    Validates each pipeline/chain segment's first command word against
-    HOST_ALLOWED_COMMANDS. Handles VAR=value prefixes and subshells.
     """
-    # Split on pipes, &&, ;, and || to check each segment
-    segments = re.split(r"\s*(?:\||&&|;|\|\|)\s*", command.strip())
-    for segment in segments:
-        segment = segment.strip().lstrip("(")  # handle subshells like (cd dir && ...)
-        if not segment:
-            continue
-        # Skip VAR=value prefixes (env variable assignments before command)
-        words = segment.split()
-        cmd_word = None
-        for word in words:
-            if "=" in word and not word.startswith("-") and not word.startswith("/"):
-                # Looks like VAR=value, skip it
-                continue
-            cmd_word = word
-            break
-        if cmd_word is None:
-            continue  # Pure assignment like "FOO=bar" — harmless
-        cmd = os.path.basename(cmd_word)  # Handle /usr/bin/ls -> ls
-        if cmd not in HOST_ALLOWED_COMMANDS:
-            return (
-                f"Command '{cmd}' not in host allowlist. "
-                f"Allowed: {', '.join(sorted(HOST_ALLOWED_COMMANDS))}"
-            )
+    # Check catastrophic operation blocklist
+    reason = is_blocked(command)
+    if reason:
+        return reason
 
-    # Block writes to dangerous system paths
-    # Check for output redirection to dangerous paths
+    # Block writes to dangerous system paths (belt-and-suspenders)
     for path in HOST_DANGEROUS_PATHS:
-        # Check if command writes to a dangerous path (not just reads)
-        # Simple heuristic: if a write command targets a dangerous path
-        if re.search(rf"(?:cp|mv|mkdir|tar\s.*-[xC])\s+.*(?:^|\s){re.escape(path)}(?:/|\s|$)", command):
-            return f"Write to system path '{path}' blocked — use chroot tools instead"
+        if re.search(
+            rf"(?:cp|mv|mkdir|tar\s.*-[xC])\s+.*(?:^|\s){re.escape(path)}(?:/|\s|$)",
+            command,
+        ):
+            return f"Write to system path '{path}' blocked"
 
     return None
 
@@ -272,11 +237,47 @@ class SSHConnection:
                 stderr = f"SSH connection lost and reconnect failed: {msg}"
         return rc, stdout, stderr
 
-    def _exec_host_once(self, command: str, timeout: int) -> tuple[int, str, str]:
-        """Execute a single command on the host (no chroot, no retry)."""
+    def _exec_root_host(self, command: str, timeout: int = 10) -> tuple[int, str, str]:
+        """Execute a command on the host as root. For internal use only (chown, chmod).
+
+        NOT exposed as an MCP tool — only used by scp_to post-copy fixups.
+        """
         escaped_cmd = command.replace("'", "'\\''")
-        # Run via /bin/sh directly on the host — no chroot wrapper
         remote_cmd = f"/bin/sh -c '{escaped_cmd}'"
+        ssh_cmd = [
+            "ssh",
+            "-o", f"ControlPath={self.socket_path}",
+            "-o", "BatchMode=yes",
+            f"{self.user}@{self.host}",
+            remote_cmd,
+        ]
+        log(f"root-host: {command}")
+        try:
+            result = subprocess.run(
+                ssh_cmd, capture_output=True, text=True,
+                timeout=timeout, errors="replace",
+            )
+            return result.returncode, result.stdout, result.stderr
+        except subprocess.TimeoutExpired:
+            return -1, "", f"Command timed out after {timeout}s"
+        except Exception as e:
+            return -1, "", f"SSH error: {e}"
+
+    def _exec_host_once(self, command: str, timeout: int) -> tuple[int, str, str]:
+        """Execute a single command on the host as user edodd (no retry).
+
+        Wraps command in: su edodd -c '/bin/sh -c "command"'
+        Double-escaping needed: SSH -> root's sh -> su -> edodd's csh -> /bin/sh.
+        The inner /bin/sh -c ensures sh syntax works regardless of edodd's csh.
+        """
+        # Escape for innermost /bin/sh -c
+        escaped_cmd = command.replace("'", "'\\''")
+        # Build: /bin/sh -c 'the escaped command'
+        inner_sh = f"/bin/sh -c '{escaped_cmd}'"
+        # Escape again for the su -c layer (passes through edodd's csh)
+        su_escaped = inner_sh.replace("'", "'\\''")
+        # cd /tmp first so edodd's csh can resolve cwd, then su
+        remote_cmd = f"cd /tmp && su edodd -c '{su_escaped}'"
 
         ssh_cmd = [
             "ssh",
@@ -539,13 +540,11 @@ class IRIXMCPServer:
                 "name": "irix_host_exec",
                 "description": (
                     "Execute a command on the IRIX host OUTSIDE the chroot. "
-                    "For operations on the live IRIX system like extracting "
-                    "bundles, managing files in user directories, or "
-                    "inspecting the base system. Only a limited set of safe "
-                    "commands are allowed: "
-                    + ", ".join(sorted(HOST_ALLOWED_COMMANDS))
-                    + ". System directories (/etc, /bin, /usr/sgug, etc.) "
-                    "are protected from writes."
+                    "Commands run as user edodd (not root) for safety. "
+                    "Destructive operations (reboot, mkfs, rm -rf /) are blocked. "
+                    "Use for running test binaries, diagnostics (ping, par, netstat), "
+                    "and file operations in user directories. "
+                    "System directories (/etc, /bin, /usr/sgug, etc.) are protected from writes."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -554,7 +553,6 @@ class IRIXMCPServer:
                             "type": "string",
                             "description": (
                                 "Shell command to run on the IRIX host. "
-                                "Only allowlisted commands accepted. "
                                 "Example: 'ls /usr/people/edodd/apps/'"
                             ),
                         },
@@ -619,7 +617,7 @@ class IRIXMCPServer:
                 "instructions": (
                     f"IRIX access at {IRIX_HOST}:{IRIX_CHROOT}. "
                     "irix_exec: commands in chroot (sgug-exec environment). "
-                    "irix_host_exec: commands on live host (allowlisted only). "
+                    "irix_host_exec: commands on live host as edodd (not root). "
                     "irix_copy_to: file transfers. irix_par: syscall tracing."
                 ),
             },
@@ -702,13 +700,17 @@ class IRIXMCPServer:
         if not ok:
             return self._tool_result(request_id, msg, is_error=True)
 
-        # chown if requested (only makes sense for host paths)
-        if ok and owner and host_path:
+        # For host paths: chmod 755 so edodd can execute, then chown if requested.
+        # Uses _exec_root_host (runs as root) since exec_host runs as edodd.
+        if ok and host_path:
             normalized = os.path.normpath(remote_path)
-            chown_cmd = f"chown {owner} '{normalized}'"
-            rc, _, stderr = self.ssh.exec_host(chown_cmd, timeout=10)
-            if rc != 0:
-                msg += f" (chown to {owner} failed: {stderr.strip()})"
+            self.ssh._exec_root_host(f"chmod 755 '{normalized}'")
+            if owner:
+                rc, _, stderr = self.ssh._exec_root_host(
+                    f"chown {owner} '{normalized}'"
+                )
+                if rc != 0:
+                    msg += f" (chown to {owner} failed: {stderr.strip()})"
 
         return self._tool_result(request_id, msg, is_error=not ok)
 
@@ -767,13 +769,8 @@ class IRIXMCPServer:
         if not command:
             return self._tool_error(request_id, "command is required")
 
-        # Check against allowlist (stricter than chroot commands)
+        # Check denylist (is_host_allowed includes is_blocked checks)
         blocked = is_host_allowed(command)
-        if blocked:
-            return self._tool_error(request_id, blocked)
-
-        # Also check the general blocklist
-        blocked = is_blocked(command)
         if blocked:
             return self._tool_error(request_id, blocked)
 

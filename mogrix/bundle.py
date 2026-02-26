@@ -1128,6 +1128,21 @@ class BundleBuilder:
         # Trim terminfo to common terminals (full set is ~12MB)
         self._trim_terminfo(bundle_dir)
 
+        # Compile GSettings schemas if present (GTK/GLib abort without these)
+        gsettings_schema_dir = bundle_dir / "share" / "glib-2.0" / "schemas"
+        if gsettings_schema_dir.is_dir() and any(
+            f.name.endswith(".gschema.xml") for f in gsettings_schema_dir.iterdir()
+        ):
+            result = subprocess.run(
+                ["glib-compile-schemas", str(gsettings_schema_dir)],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                console.print(f"[dim]Compiled GSettings schemas in {gsettings_schema_dir}[/dim]")
+            else:
+                console.print(f"[yellow]Failed to compile GSettings schemas: {result.stderr}[/yellow]")
+
         # Include system CA certificates for TLS-using bundles
         self._include_ca_bundle(bundle_dir)
 
@@ -1235,6 +1250,23 @@ class BundleBuilder:
                 'WEBKIT_EXEC_PATH="$dir/libexec/webkit2gtk-4.0"'
             )
             extra_env_lines.append("export WEBKIT_EXEC_PATH")
+            # XDG directories — IRIX has no login manager to create these.
+            # WebKit/GLib need ~/.cache and ~/.local/share for data manager,
+            # fontconfig cache, etc. Without them, fresh users get IPC errors
+            # because WebProcess/NetworkProcess fail to initialize.
+            extra_env_lines.append(
+                '/bin/mkdir -p "$HOME/.cache" "$HOME/.local/share" 2>/dev/null'
+            )
+            # XDG_RUNTIME_DIR — GLib expects this for runtime state.
+            # IRIX has no systemd; create a per-user temp dir.
+            extra_env_lines.append(
+                'if [ -z "$XDG_RUNTIME_DIR" ]; then\n'
+                '    XDG_RUNTIME_DIR="/tmp/.xdg-runtime-`id -un`"\n'
+                '    /bin/mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null\n'
+                '    chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null\n'
+                '    export XDG_RUNTIME_DIR\n'
+                'fi'
+            )
         # GIO modules — point to bundle's module directory for TLS/proxy support.
         # GIO modules are dlopen'd at runtime (not NEEDED deps), so GLib needs
         # GIO_MODULE_DIR to find them. Without this, no TLS backend = no HTTPS.
@@ -1248,6 +1280,17 @@ class BundleBuilder:
                 'GIO_MODULE_DIR="$dir/_lib32/gio/modules"'
             )
             extra_env_lines.append("export GIO_MODULE_DIR")
+        # GSettings schemas — GTK/GLib need compiled schemas for settings.
+        # Without GSETTINGS_SCHEMA_DIR, GSettings looks in system paths that
+        # don't exist on IRIX. Point to bundle's schemas directory.
+        gsettings_dir = bundle_dir / "share" / "glib-2.0" / "schemas"
+        if gsettings_dir.is_dir() and any(
+            f.name.endswith(".gschema.xml") for f in gsettings_dir.iterdir()
+        ):
+            extra_env_lines.append(
+                'GSETTINGS_SCHEMA_DIR="$dir/share/glib-2.0/schemas"'
+            )
+            extra_env_lines.append("export GSETTINGS_SCHEMA_DIR")
         # JSC JIT memory tuning — IRIX N32 has 2GB virtual address limit and
         # machines typically have 256MB-1.5GB physical RAM. Disable DFG optimizing
         # JIT (keep baseline JIT for decent performance with much less memory) and

@@ -85,7 +85,13 @@ test_report {}
 
 The `irix_exec` MCP tool runs commands through the chroot shell, which may be csh. **Do not use heredocs, `export`, or bash syntax in `irix_exec` commands.** Use `setenv VAR val` instead of `export VAR=val`. For writing files, write locally to `/tmp/` then use `irix_copy_to` + `irix_host_exec "cp ..."`.
 
-**`irix_copy_to` copies into the chroot, NOT the host.** To get a file onto the live IRIX filesystem, chain: `irix_copy_to /tmp/file /opt/chroot/tmp/file` then `irix_host_exec "cp /opt/chroot/tmp/file /usr/people/edodd/file"`.
+**`irix_copy_to` copies into the chroot, NOT the host.** To get a file onto the live IRIX filesystem, use `irix_copy_to` with `host_path=true` and `owner=edodd`:
+
+```
+irix_copy_to local_path=/tmp/file remote_path=/usr/people/edodd/file host_path=true owner=edodd
+```
+
+**NEVER SCP/copy files as root then expect edodd to run them.** Root-owned files may not be executable by edodd. Always transfer as edodd or set owner=edodd.
 
 ### Bashisms That Don't Work
 
@@ -222,6 +228,17 @@ irix_exec "par -s /usr/sgug/bin/tdnf repolist > /tmp/par_out.txt 2>&1"
 # Read trace output on Linux for analysis
 irix_read_file /tmp/par_out.txt
 ```
+
+### Par Trace File Locations
+
+When par traces are run (by user or agent), outputs are stored at predictable locations:
+
+| Location | Path |
+|----------|------|
+| **IRIX host** | `~edodd/par_<test_app_name>.txt` |
+| **Linux build host** | `/home/edodd/projects/github/unxmaal/mogrix/par_<test_app_name>.txt` |
+
+The user may run par manually and SCP the output to the Linux path. Always check for existing par files with `Read` before requesting a new trace.
 
 ### Reading par Output
 
@@ -368,6 +385,7 @@ See `rules/packages/gtkterm.yaml` for a working example.
 8. **NEVER write ad-hoc wrapper scripts for IRIX testing** — use the mogrix-test MCP tools (`test_bundle`, `test_binary`, `par_trace`, `screenshot`). They handle permissions, paths, environment, and output capture correctly. Writing one-off scripts leads to permission errors, wrong paths, and wasted debugging time.
 9. **NEVER assume `/tmp` is writable on IRIX** — the `edodd` user cannot write to `/tmp`. Use `/usr/people/edodd/tmp/` for user-writable temp files on the IRIX host.
 10. **NEVER forget bundle file permissions** — extracted bundles may be owned by root and unreadable by `edodd`. Use `chown -Rh edodd` (NOT `-R`) because bundles contain symlinks and `-R` follows them, failing on broken symlink targets with ENOENT. The mogrix-test MCP server handles this correctly; ad-hoc testing does not.
+11. **NEVER copy files to IRIX as root then expect edodd to run them** — use `irix_copy_to` with `host_path=true, owner=edodd` to transfer directly to edodd's home with correct ownership. Or SCP as edodd: `scp file edodd@192.168.0.81:/usr/people/edodd/file`.
 
 ### Path Rooting Rule
 
