@@ -1,19 +1,25 @@
 # Project Handoff
 **Last Updated**: 2026-02-26
-**Status**: Go 1.24.1 IRIX port — Phase 2 signal handling COMPLETE. Knowledge DB created.
+**Status**: Go 1.24.1 IRIX port — Phase 3 (HTTPS/DNS) COMPLETE. Knowledge DB live.
 
 ## Current Task
-Knowledge infrastructure — created `.claude/knowledge.db` (SQLite) to replace HANDOFF.md as the primary cross-session knowledge store. All findings, boundary maps, errors, decisions, and tasks are now queryable.
+User paused to make adjustments. Plan.md and HANDOFF.md updated.
 
-## Next Steps
-1. **HTTPS client test** — TLS/crypto should work now that signals are fixed
-2. **DNS resolution test** — net.LookupHost
-3. **Push golang-irix to GitHub**
-4. Verify jenna's ir8 fix
-5. Rebuild 217 pre-Feb-20 libs with `-Bsymbolic`
+## Next Steps (Go Port)
+1. **os/exec test** — subprocess spawning via fork/exec
+2. **File I/O stress test** — large files, concurrent access
+3. **Build a real Go application** for IRIX
+4. Investigate async preemption crash (low priority)
+
+## Next Steps (Mogrix)
+1. Verify jenna's ir8 fix
+2. Rebuild 217 pre-Feb-20 libs with `-Bsymbolic`
 
 ## Active Blockers
 None.
+
+## Key Decision
+User always handles GitHub pushes. Never push repos autonomously.
 
 ## Post-Compaction Checklist (READ THIS FIRST)
 1. **Query the knowledge DB**: `sqlite3 .claude/knowledge.db "SELECT subject, status FROM tasks WHERE status='active'"`
