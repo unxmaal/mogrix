@@ -8,7 +8,9 @@
 
 | Problem class | Symptoms / triggers | Rule mechanism | Rule location | Notes |
 |---------------|---------------------|----------------|---------------|-------|
+| **Map the territory** | **ABI boundaries, calling conventions, register state, signal handlers, assembly trampolines** | **Map before writing code** | **methods/map-before-code.md** | **#1 rule for deep systems work** |
 | Before you start | Stuck, confused, debugging | Read checklist | methods/before-you-start.md | |
+| Step mapping | Working path vs broken path, narrowing dark zones | Instrument and bisect | methods/step-mapping.md | Tactical complement to map-before-code |
 | Linux-only syscalls/APIs | Silent failures, missing networking | Grep for OS(LINUX), syscall names | methods/linuxism-detection.md | EARLY troubleshooting step |
 | Batch builds / agents | Building multiple packages, parallel agents | Wave orchestration | methods/task-tracking.md | Max 2-3 agents |
 | Upstream (non-Fedora) package | Package only in git/tarball, not FC40 | upstream: block + create-srpm | methods/upstream-packages.md | |
@@ -246,6 +248,9 @@
 | WEBKIT_TLS_CAFILE_PEM for GnuTLS CA certs | Points soup session TLS database to bundle CA file | mogrix/bundle.py |
 | Bundle pruning must protect dlopen'd module deps | GIO modules loaded via dlopen — their deps not in NEEDED chain | mogrix/bundle.py |
 | Bundle must include libz.so | IRIX ships zlib 1.1.4; modern libpng needs 1.2+ | xscreensaver-gl-hacks |
+| Fresh users: missing XDG dirs | IRIX has no login manager. Wrapper must `mkdir -p ~/.cache ~/.local/share`. Without these, WebKit subprocess init fails → IPC errors | mogrix/bundle.py |
+| Fresh users: XDG_RUNTIME_DIR unset | IRIX has no systemd. Set to `/tmp/.xdg-runtime-$(id -un)` in wrapper. GLib uses this for runtime state | mogrix/bundle.py |
+| Fresh users: GSETTINGS_SCHEMA_DIR | Schemas must be compiled + pointed to via env var. IRIX has no system schemas. Bundler compiles with glib-compile-schemas | mogrix/bundle.py |
 
 ## Debugging: Crash Handler
 
@@ -256,6 +261,18 @@
 | mogrix_init_<pid>.log missing | Crash handler didn't load | Check _RLDN32_LIST and libmogrix_compat.so | mogrix/bundle.py |
 | mogrix_exit_<pid>.log only | Process called exit(), not crashed | Check parent IPC logs | patches/shared/mogrix_crash_handler.c |
 | Recompiling libmogrix_compat.so | After editing compat sources | See methods/compat-functions.md for build command | compat/, patches/shared/ |
+| libmogrix_compat.so GLib symbols kill ALL binaries | glib_critical_trap.c added GLib UNDEF symbols (g_log_set_always_fatal, g_log_set_handler) — rld can't resolve for non-GLib bins | NEVER compile GLib-dependent code into libmogrix_compat.so. It's preloaded into ALL binaries including non-GLib ones (bzip2, sqlite3, etc.) | compat/, patches/shared/ |
+
+## Go IRIX Port — Signal & Semaphore Issues
+
+| Problem | Symptoms | Root Cause | Fix | Status |
+|---------|----------|------------|-----|--------|
+| SIGBUS with signal.Notify | Bus error after kill(getpid(), SIGUSR1) when signal.Notify registered | semawakeup calls pthread_mutex_lock from signal handler — NOT async-signal-safe on IRIX | Replace pthread mutex+condvar with POSIX sem_post/sem_wait (sem_post IS signal-safe) | IN PROGRESS — sem version built, not yet verified |
+| sigaltstack EPERM on new threads | `syscall sigaltstack failed: 0x1` crash during minit on threads created after signal.Notify | IRIX nsproc inherits "on signal stack" flag from parent; SS_DISABLE retry insufficient | Silently skip EPERM — adjustSignalStack IRIX workaround handles signals on any stack | FIXED in os2_irix.go |
+| SA_ONSTACK unreliable on IRIX | Signals delivered on goroutine/native stack despite SA_ONSTACK set | IRIX kernel ignores SA_ONSTACK in some cases | adjustSignalStack creates stack range around current SP when not in any known stack | FIXED in signal_unix.go |
+| IRIX _sigtramp in libc | Signal handlers called indirectly via libc _sigtramp (0xdaaa170), not directly by kernel | IRIX signal architecture: kernel → _sigtramp → handler → _sigtramp → sigreturn(1088) | Not a bug — documented architecture. Handler receives (sig, info, ctx) in R4/R5/R6 | N/A |
+| GP corruption in preparePanic | set_r28(sigpanicPC >> 32 << 32) corrupts GP for IRIX | Go code requires GP=0; IRIX linker uses GP-relative addressing | set_r28(0) for GOOS=="irix" | FIXED in signal_mips64x.go |
+| IRIX has POSIX semaphores | Previous comment "IRIX N64 has no POSIX semaphores" was wrong | sem_init/post/wait/trywait/destroy all exist in libc.so (WEAK symbols) | Use them. No sem_timedwait though — use sem_trywait + usleep spin for timed waits | IMPLEMENTED |
 
 ## Anti-Patterns
 
@@ -273,11 +290,13 @@
 | Heredocs in irix_exec | Write file locally, irix_copy_to + irix_host_exec cp |
 | irix_copy_to = host filesystem | It copies to CHROOT. Chain with irix_host_exec cp |
 | Rebuilding libmogrix_compat.so abbreviated | ALWAYS use full build command from methods/compat-functions.md |
+| Adding GLib/GTK code to libmogrix_compat.so | NEVER. It's preloaded into ALL binaries via _RLDN32_LIST. GLib UNDEFs kill non-GLib binaries (bzip2, sqlite3, etc.) |
 | Assuming WebKit silent failures are crashes | Check for MESSAGE_CHECK macros, deferred callbacks, #if ENABLE() gates |
 | Bypassing one instance of a pattern | Search for ALL instances (grep the whole file/directory). See webkit cookie bypass |
 | Debugging WebKit with RELEASE_LOG output | Use compile-time MOGRIX_DIAG instead. RELEASE_LOG goes to Apple unified logging |
 | Inserting DIAG into bare if/else body | Insert BEFORE the if statement, not into its body. Braceless `if (x) stmt; else stmt;` — inserting before stmt orphans the else. Use perl -0777 multiline match |
 | chown -R on bundles with symlinks | Use `chown -Rh` (no-follow). `-R` fails on broken symlinks with ENOENT. Bundles always have symlinks |
+| SCP/copy files as root, run as edodd | Transfer as edodd: `scp file edodd@192.168.0.81:path` or `irix_copy_to` with `host_path=true, owner=edodd`. Root-owned files won't be executable by edodd |
 
 ---
 
@@ -291,6 +310,7 @@
 | Git/Makefile builds, bundler details | methods/makefile-builds.md |
 | IRIX testing & chroot | methods/irix-testing.md |
 | Compat functions | methods/compat-functions.md |
+| N32 audit methodology & GOT sizes | methods/n32-audit.md |
 | Text replacement (safepatch/sed) | methods/text-replacement.md |
 | Patch creation | methods/patch-creation.md |
 | Task tracking & agents | methods/task-tracking.md |

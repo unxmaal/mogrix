@@ -2,6 +2,12 @@
 
 Check these resources before making significant changes or debugging build failures.
 
+## -1. Map the Territory (Deep Systems Work)
+
+> **For any work that crosses ABI boundaries, calling conventions, or OS interfaces**: read `methods/map-before-code.md` FIRST. Map every boundary, trace register/state through each transition, identify the dark places. This is the difference between a 2-hour fix and a 24-hour fix.
+
+This applies to: signal handlers, thread entry points, assembly trampolines, libc interop, cross-process IPC, anything where two different calling conventions meet.
+
 ## 0. Will this package actually work on IRIX?
 
 Before investing time porting a package, ask: **does this software require OS-specific support that IRIX doesn't have?**

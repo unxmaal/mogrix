@@ -107,6 +107,15 @@ After each instrumented test run, update the map. Promote DARK steps to MAPPED o
 [Table of DIAG points, which steps they cover, what they reveal]
 ```
 
+## Relationship to Map-Before-Code
+
+This method is the **tactical** complement to `methods/map-before-code.md`:
+
+- **Map-before-code**: Strategic. Done BEFORE writing code. Maps system boundaries, register state, calling conventions. Prevents bugs by identifying dark places upfront.
+- **Step-mapping**: Tactical. Done DURING debugging. Maps execution paths within already-understood territory. Finds bugs by narrowing dark zones.
+
+Use map-before-code first. When bugs still occur, use step-mapping to hunt them within the mapped territory.
+
 ## When to Use This
 
 - Cross-platform port: same code, different OS behavior

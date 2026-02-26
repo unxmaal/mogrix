@@ -2,9 +2,13 @@
 
 Mogrix is a deterministic SRPM-to-RSE-SRPM conversion engine that transforms Fedora SRPMs into IRIX-compatible packages. It centralizes all platform knowledge required to adapt Linux build intent for IRIX reality.
 
-## Current Status (2026-02-23)
+## Current Status (2026-02-26)
 
 **145+ source packages cross-compiled for IRIX (400+ RPMs). 161+ bundle installers (suites + individual) rebuilt from scratch and verified on IRIX.** Qt5 5.15.13 running — `qVersion()` returns "5.15.13". **WebKitGTK 2.42.5 HTTP rendering WORKS on IRIX** — full response chain verified via DIAG instrumentation (sessions 115-116). **gtkterm** (GTK3 terminal emulator) running on IRIX from self-contained bundle — first GTK3 GUI app. **xnedit** (Motif text editor) rendering correctly on IRIX. **NEdit 5.7** (Motif text editor) renders correctly on IRIX native Motif — first cross-compiled Motif app. **GTK3 cairo rendering fully works on IRIX** — paint, fill, stroke, arc, text all verified (pixman TLS fix + cairo SHM disable). Weechat TLS verified on real IRIX hardware (irc.libera.chat:6697). dlmalloc hardened: exe-only linking, thread-safe spin locks (MIPS ll/sc), high-fd /dev/zero fix. Self-extracting .run bundles. `-z norelro` added to irix-ld for all executables (IRIX rld doesn't support GNU_RELRO). **mogrix-test MCP server** provides structured bundle testing, dependency checking, par tracing, and X11 screenshot capture.
+
+**Go 1.24.1 IRIX port (N64)** — Full runtime working: goroutines, channels, networking, HTTP client/server, HTTPS/TLS 1.3, DNS resolution, signal handling. Source at `~/projects/golang-irix/`. See "Go IRIX Port" section below.
+
+**Knowledge DB** (`.claude/knowledge.db`) — SQLite-based structured knowledge store replacing HANDOFF.md as primary cross-session memory. Query for tasks, findings, boundary maps, errors, and decisions instead of loading flat files.
 
 All phases through 4c complete (41 packages). Phase 5+ complete with 60+ library/app packages including Qt5. `mogrix batch-build` automates multi-package build pipelines. `mogrix bundle` creates self-contained app bundles (.tar.gz or self-extracting .run) for IRIX. 145+ package rule files. Suites: mogrix-essentials, mogrix-extras, mogrix-net, mogrix-smallweb, mogrix-fun. Individual bundles: bash, bc, bitlbee, dmenu, groff, jq, man-db, rxvt-unicode, st, tcsh, tinc, tmux, vim-enhanced, weechat, wget2 — all tested on IRIX.
 
@@ -266,6 +270,49 @@ WebKitGTK 2.42.5 cross-compiled and rendering HTTP pages on IRIX. 5 HTTP bypasse
 
 ---
 
+## Go 1.24.1 IRIX Port (N64)
+
+**Source:** `~/projects/golang-irix/` (fork of Go 1.24.1, branch `irix-port`)
+**Architecture:** MIPS64 N64 ABI, libc trampoline model (like Solaris/AIX)
+**Cross-compile:** `cd ~/projects/golang-irix && GOOS=irix GOARCH=mips64 ./bin/go build -o /tmp/binary ./cmd/test_foo/main.go`
+
+### Completed Phases
+
+| Phase | Status | Key Tests |
+|-------|--------|-----------|
+| Phase 1: Runtime + Basics | COMPLETE | hello, goroutines, channels, json, HTTP client/server |
+| Phase 2: Signal Handling | COMPLETE | signal.Notify, Kill(SIGUSR1), cooperative preemption |
+| Phase 3: HTTPS/DNS | COMPLETE | TLS 1.3, cert verification, pure Go DNS, HTTPS GET |
+
+### Key Implementation Details
+
+- **PRDA-based TLS** — Per-thread g storage at IRIX PRDA address 0x200F80 (`tls_irix_mips64.s`)
+- **GP save/restore in sigtramp** — Raw MIPS instructions via WORD directives (`sys_irix_mips64.s`)
+- **poll(2) netpoller** — Like AIX, no epoll/kqueue (`netpoll_irix.go`)
+- **/dev/zero mmap** — No MAP_ANON on IRIX (`mem_irix.go`)
+- **Pipe-based semaphore** — async-signal-safe write2 (`os_irix.go`)
+- **Root certs** — `/usr/sgug/etc/pki/tls/certs/ca-bundle.crt` (`root_irix.go`)
+- **Async preemption disabled** — pushCall/sigreturn crashes; cooperative works fine
+
+### Remaining Work
+
+| Task | Priority | Notes |
+|------|----------|-------|
+| Investigate async preemption | Low | Cooperative preemption works for all current use cases |
+| os/exec testing | Medium | subprocess spawning via fork/exec |
+| File I/O stress test | Medium | Large file, concurrent access |
+| Build real applications | Medium | A Go web server, CLI tool, etc. |
+
+### Architecture Notes
+
+All detailed findings, boundary maps, and error history are in the knowledge DB:
+```
+sqlite3 .claude/knowledge.db "SELECT topic, finding FROM findings WHERE project='golang-irix'"
+sqlite3 .claude/knowledge.db "SELECT * FROM boundaries WHERE system='sigtramp'"
+```
+
+---
+
 ## Roadmap Enhancements (TODO)
 
 The `mogrix roadmap` command generates dependency graphs but currently requires manual analysis to produce actionable build plans. The following analysis was done by hand for Phase 5 and should be automated:
@@ -390,6 +437,8 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 19. **GTK3 GUI app:** gtkterm running on IRIX with full GTK3 UI, VTE terminal widget, and proper theme rendering ✓
 20. **Proactive ELF analysis:** `mogrix check-elf` detects ClassRec relocation issues before deploying to IRIX ✓
 21. **WebKitGTK HTTP on IRIX:** WebKitGTK 2.42.5 renders HTTP pages on IRIX — full response chain verified via DIAG ✓
+22. **Go 1.24.1 on IRIX:** Full N64 runtime — goroutines, channels, signals, networking, HTTP, HTTPS/TLS 1.3, DNS ✓
+23. **Knowledge DB:** SQLite-based structured cross-session memory replacing flat-file HANDOFF.md ✓
 
 ---
 
@@ -397,9 +446,11 @@ The `mogrix roadmap` command generates dependency graphs but currently requires 
 
 | Document | Purpose |
 |----------|---------|
-| `HANDOFF.md` | Session continuity, current blockers |
+| `.claude/knowledge.db` | **Structured knowledge DB** — query for tasks, findings, boundaries, errors, decisions |
+| `HANDOFF.md` | Thin session pointer — current task, next step, blockers |
 | `rules/INDEX.md` | Rules reference, per-package problem guide |
 | `rules/generic.yaml` | Universal rules for all packages |
 | `rules/methods/before-you-start.md` | Checklist + SGUG-RSE assumptions warning |
+| `rules/methods/map-before-code.md` | #1 rule for deep systems work — map boundaries before coding |
 | `compat/catalog.yaml` | Compat function registry |
 | `rules/methods/compat-functions.md` | Compat function workflow including libmogrix_compat.so |

@@ -100,6 +100,13 @@ If a compat function needs to override a **buggy libc function called from share
 
 ### Adding to libmogrix_compat.so
 
+> **CRITICAL**: libmogrix_compat.so is preloaded into ALL binaries via `_RLDN32_LIST`, including
+> non-GLib binaries (bzip2, sqlite3, zstd, etc.). **NEVER** compile code with GLib/GTK
+> dependencies into it. Any UNDEF symbols that can't be resolved by non-GLib binaries will
+> cause rld to kill the process ("unresolvable symbol" → exit 1 with no output).
+> This was the root cause of 64/111 ir8 bundle failures (glib_critical_trap.c was erroneously
+> compiled in, introducing g_log_set_always_fatal and g_log_set_handler UNDEFs).
+
 1. Write the compat function as normal in `compat/` and register in `catalog.yaml`
 2. Cross-compile as shared library:
    ```bash
