@@ -20,6 +20,13 @@
         "MOGRIX_TEST_LOG": "/tmp/mogrix-test-mcp.log"
       }
     },
+    "knowledge": {
+      "command": "python3",
+      "args": ["tools/knowledge-server.py"],
+      "env": {
+        "KNOWLEDGE_LOG": "/tmp/knowledge-mcp.log"
+      }
+    },
     "ghidra": {
       "command": "python3",
       "args": [
