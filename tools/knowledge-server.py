@@ -1240,16 +1240,27 @@ class KnowledgeServer:
             )
         if self.turn_count == 10:
             return (
-                "CHECKPOINT (turn 10): If debugging >2 attempts on one issue, "
-                "delegate to a sub-agent via Task(). Store findings via "
-                "`report_finding`. Are you still following CLAUDE.md invariants?"
+                "STOP. MANDATORY CHECKPOINT (turn 10). Do NOT say "
+                "\"but first let me...\" — that is the failure mode this "
+                "nudge exists to prevent. If you have been debugging the "
+                "same issue for >2 attempts: (1) Store findings NOW via "
+                "`report_finding`. (2) Delegate the next investigation "
+                "step to a sub-agent via Task(). (3) Do NOT continue "
+                "the current debug path inline. The sub-agent gets fresh "
+                "context and CLAUDE.md — it will do better than you "
+                "can at this depth."
             )
         # Turn 15, 20, 25, ...
         return (
-            f"CHECKPOINT (turn {self.turn_count}): Call `session_summary` to "
-            "review session state. Still following CLAUDE.md invariants? "
-            "Still using MCP tools for lookups? Consider `report_finding` "
-            "for any undocumented discoveries."
+            f"STOP. MANDATORY CHECKPOINT (turn {self.turn_count}). "
+            "You have made many tool calls without pausing. "
+            "(1) Call `session_summary` to review state. "
+            "(2) Store any unstored findings via `report_finding`. "
+            "(3) If still debugging the same issue, you MUST delegate "
+            "to a sub-agent NOW — do not continue inline. "
+            "(4) If you are about to say \"but first\" or \"let me just\" "
+            "after reading this, you are doing the exact thing this "
+            "checkpoint exists to prevent."
         )
 
     def _handle_session_handoff(self, args: dict) -> str:

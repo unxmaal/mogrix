@@ -16,6 +16,7 @@ import json
 import os
 import re
 import signal
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -594,6 +595,10 @@ class MogrixTestServer:
         self.initialized = False
         self.ssh = SSHConnection(IRIX_HOST, IRIX_USER, IRIX_CHROOT)
         self.par_parser = ParParser()
+
+        # Shared nudge counter — reads/writes knowledge.db session_meta
+        self._db_path = PROJECT_ROOT / ".claude" / "knowledge.db"
+        self._turn_count = 0  # local fallback if DB unavailable
 
         self.tools = [
             {
@@ -1396,9 +1401,72 @@ class MogrixTestServer:
             "result": {"tools": self.tools},
         }
 
+    def _bump_shared_turn_count(self) -> int:
+        """Increment the shared turn counter in knowledge.db session_meta.
+
+        Returns the new count. Falls back to a local counter if the DB
+        is unavailable or no session exists.
+        """
+        self._turn_count += 1
+        try:
+            conn = sqlite3.connect(str(self._db_path), timeout=2)
+            row = conn.execute(
+                "SELECT session_id, interaction_count FROM session_meta "
+                "ORDER BY start_time DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                new_count = (row[1] or 0) + 1
+                conn.execute(
+                    "UPDATE session_meta SET interaction_count = ? "
+                    "WHERE session_id = ?",
+                    (new_count, row[0]),
+                )
+                conn.commit()
+                self._turn_count = new_count
+            conn.close()
+        except Exception:
+            pass
+        return self._turn_count
+
+    def _get_nudge(self) -> str:
+        """Return a nudge if turn count is at a checkpoint."""
+        count = self._turn_count
+        if count < 5 or count % 5 != 0:
+            return ""
+        if count == 5:
+            return (
+                "CHECKPOINT (turn 5, via test harness): Have you used "
+                "`report_error` or `check_compat` for any errors this "
+                "session? Use knowledge MCP tools before manual fixes."
+            )
+        if count == 10:
+            return (
+                "STOP. MANDATORY CHECKPOINT (turn 10, via test harness). "
+                "Do NOT say \"but first let me...\" — that is the failure "
+                "mode this nudge exists to prevent. If you have been "
+                "debugging the same issue for >2 attempts: (1) Store "
+                "findings NOW via `report_finding`. (2) Delegate the next "
+                "investigation step to a sub-agent via Task(). (3) Do NOT "
+                "continue the current debug path inline."
+            )
+        return (
+            f"STOP. MANDATORY CHECKPOINT (turn {count}, via test harness). "
+            "You have made many tool calls without pausing. "
+            "(1) Call `session_summary` to review state. "
+            "(2) Store any unstored findings via `report_finding`. "
+            "(3) If still debugging the same issue, you MUST delegate "
+            "to a sub-agent NOW — do not continue inline. "
+            "(4) If you are about to say \"but first\" or \"let me just\" "
+            "after reading this, you are doing the exact thing this "
+            "checkpoint exists to prevent."
+        )
+
     def handle_tools_call(self, request_id: Any, params: dict) -> dict:
         tool_name = params.get("name")
         args = params.get("arguments", {})
+
+        # Bump shared turn counter
+        self._bump_shared_turn_count()
 
         dispatch = {
             "test_bundle": self._tool_test_bundle,
@@ -1411,7 +1479,14 @@ class MogrixTestServer:
 
         handler = dispatch.get(tool_name)
         if handler:
-            return handler(request_id, args)
+            result = handler(request_id, args)
+            # Inject nudge into successful results
+            nudge = self._get_nudge()
+            if nudge and "result" in result and "content" in result["result"]:
+                content = result["result"]["content"]
+                if content and content[0].get("type") == "text":
+                    content[0]["text"] += "\n\n---\n" + nudge
+            return result
         return self._error(-32602, f"Unknown tool: {tool_name}", request_id)
 
     # --- Response Helpers ---
