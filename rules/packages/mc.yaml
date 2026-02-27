@@ -6,7 +6,6 @@ rules:
   - check-devel
   - aspell-en
   configure_disable:
-  - vfs-sftp
   - aspell
   - cons-saver
   configure_flags:

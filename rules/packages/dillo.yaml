@@ -17,7 +17,6 @@ rules:
   configure_flags:
     add:
       - --enable-ssl
-      - --disable-xft
     remove:
       - --enable-ipv6
 
@@ -30,7 +29,6 @@ rules:
   drop_buildrequires:
     - perl-generators
     - desktop-file-utils
-    - libXft-devel
     - gettext
     - gcc-c++
     - gcc
