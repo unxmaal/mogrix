@@ -75,7 +75,12 @@ class KnowledgeDB:
         self.db_path = db_path
         self.conn = sqlite3.connect(str(db_path))
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
+        # DELETE journal: single file, no -wal/-shm satellites that can get
+        # accidentally deleted and lose data.  synchronous=FULL means every
+        # commit is fsync'd before returning — slower, but this DB is tiny
+        # and we never want to lose knowledge.
+        self.conn.execute("PRAGMA journal_mode=DELETE")
+        self.conn.execute("PRAGMA synchronous=FULL")
         self.migrate()
 
     def migrate(self):
