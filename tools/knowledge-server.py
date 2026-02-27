@@ -2,8 +2,9 @@
 """
 Knowledge MCP Server — Structured knowledge lookup for mogrix.
 
-Collapses multi-step lookup processes (grep INDEX.md, check compat catalog,
-query knowledge DB) into single MCP tool calls. Purely local — no SSH.
+Fast-lookup cache over mogrix rule files. Authoritative rules live in
+rules/packages/*.yaml, rules/generic.yaml, compat/catalog.yaml, and
+rules/methods/*.md. DB is ephemeral cache — files always win.
 
 Configuration via environment variables:
   KNOWLEDGE_LOG  - Log file path (default: /tmp/knowledge-mcp.log)
@@ -24,7 +25,9 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / ".claude" / "knowledge.db"
 CATALOG_PATH = PROJECT_ROOT / "compat" / "catalog.yaml"
-INDEX_PATH = PROJECT_ROOT / "rules" / "INDEX.md"
+# INDEX_PATH removed — INDEX.md eliminated. DB is the lookup layer;
+# authoritative rules live in rules/packages/*.yaml, rules/generic.yaml,
+# compat/catalog.yaml, and rules/methods/*.md.
 KNOWLEDGE_LOG = os.environ.get("KNOWLEDGE_LOG", "/tmp/knowledge-mcp.log")
 
 # --- Logging ---
@@ -771,8 +774,9 @@ class KnowledgeServer:
                 "name": "knowledge_query",
                 "description": (
                     "Search mogrix rules database by keywords. Searches FTS5 index, "
-                    "keyword aliases, errors_seen, and findings. Use this instead of "
-                    "grepping INDEX.md. Returns matching rules ranked by relevance. "
+                    "keyword aliases, errors_seen, and findings. Returns matching rules "
+                    "ranked by relevance. Rules in DB are cache — authoritative rules "
+                    "live in rules/packages/*.yaml, rules/generic.yaml, compat/catalog.yaml. "
                     "Example: knowledge_query {query: \"dlmalloc\"}"
                 ),
                 "inputSchema": {
@@ -795,8 +799,8 @@ class KnowledgeServer:
                 "description": (
                     "Report a build/link/runtime error AND automatically search for "
                     "matching rules and known fixes. THE KILLER FEATURE: one tool call "
-                    "replaces noticing an error + remembering to grep INDEX.md + grepping + "
-                    "reading results. Always returns both the logged confirmation and any "
+                    "logs the error AND searches rules/errors_seen/compat for matching "
+                    "fixes. Always returns both the logged confirmation and any "
                     "matching rules/fixes. Example: report_error {error_text: \"undefined reference to setenv\"}"
                 ),
                 "inputSchema": {
@@ -1212,21 +1216,34 @@ class KnowledgeServer:
         if not problem_class or not keywords:
             return "Error: problem_class and keywords are required"
 
+        mechanism = args.get("mechanism", "")
+        location = args.get("location", "")
+        notes = args.get("notes", "")
+
         rule_id = self.db.add_rule(
             problem_class=problem_class,
             keywords=keywords,
-            mechanism=args.get("mechanism"),
-            location=args.get("location"),
-            notes=args.get("notes"),
+            mechanism=mechanism,
+            location=location,
+            notes=notes,
         )
 
-        return (
+        result = (
             f"Rule #{rule_id} added:\n"
             f"- Problem: {problem_class}\n"
             f"- Keywords: {keywords}\n"
-            f"- Mechanism: {args.get('mechanism', 'N/A')}\n"
-            f"- Location: {args.get('location', 'N/A')}"
+            f"- Mechanism: {mechanism or 'N/A'}\n"
+            f"- Location: {location or 'N/A'}"
         )
+        if not location:
+            result += (
+                "\n\n**ACTION REQUIRED**: No `location` provided — this is net-new "
+                "knowledge with no authoritative rule file. Create the rule in the "
+                "appropriate file (rules/packages/*.yaml, rules/generic.yaml, "
+                "compat/catalog.yaml, or rules/methods/*.md), then call add_rule "
+                "again with `location` pointing to that file."
+            )
+        return result
 
     def _get_nudge(self) -> str:
         """Return a context checkpoint nudge at turn multiples of 5."""
@@ -1362,10 +1379,12 @@ class KnowledgeServer:
                     "version": self.version,
                 },
                 "instructions": (
-                    "Mogrix knowledge DB. Use knowledge_query for rule/error lookup "
-                    "(replaces grepping INDEX.md). Use report_error to log AND auto-search "
-                    "for fixes. Use check_compat to search compat catalog. Use report_finding "
-                    "to store discoveries. Use add_rule after fixing new problems."
+                    "Mogrix knowledge DB. Use knowledge_query for rule/error lookup. "
+                    "Use report_error to log AND auto-search for fixes. Use check_compat "
+                    "to search compat catalog. Use report_finding to store discoveries. "
+                    "Use add_rule after fixing new problems. DB is a fast-lookup cache; "
+                    "authoritative rules live in rules/packages/*.yaml, rules/generic.yaml, "
+                    "compat/catalog.yaml, and rules/methods/*.md."
                 ),
             },
         }
@@ -1577,8 +1596,11 @@ def _handle_sigterm(signum, frame):
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--migrate-index":
+        # Historical: one-time migration from INDEX.md (now removed).
+        # Kept for reference but INDEX.md no longer exists.
+        index_path = PROJECT_ROOT / "rules" / "INDEX.md"
         db = KnowledgeDB(DB_PATH)
-        count = migrate_index(db, INDEX_PATH)
+        count = migrate_index(db, index_path)
         print(f"Migrated {count} rules from INDEX.md")
         db.close()
         return

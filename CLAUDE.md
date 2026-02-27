@@ -1,13 +1,13 @@
 # Claude Instructions
 
 > **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
-> Read `rules/GENERIC_SUMMARY.md` when starting a package. Use `knowledge_query` MCP tool for problem keywords (replaces grepping INDEX.md). Do NOT read the full INDEX.md.
+> Read `rules/GENERIC_SUMMARY.md` when starting a package. Use `knowledge_query` MCP tool for problem keywords.
 > Use `session_start` MCP tool at session start for context summary. Check `plan.md` if relevant.
 > If you don't know what to do, check `rules/methods/before-you-start.md`.
 >
 > **When you hit a compile/link error for a missing function**: Use `check_compat` MCP tool BEFORE writing a fix. We likely already have a compat implementation — it just needs to be compiled/linked. Also grep `compat/include/` and `compat/` for the symbol name. Many IRIX-missing POSIX functions (pselect, posix_spawn, getline, mkdtemp, etc.) already have implementations.
 >
-> **When you make a mistake or hit an unexpected error**: Use `report_error` MCP tool — it logs the error AND auto-searches rules/errors_seen/compat for matching fixes in one call. After fixing, use `add_rule` MCP tool to store the fix. Also update INDEX.md so it's never repeated.
+> **When you make a mistake or hit an unexpected error**: Use `report_error` MCP tool — it logs the error AND auto-searches rules/errors_seen/compat for matching fixes in one call. After fixing, use `add_rule` MCP tool to store the fix (with `location` pointing to the authoritative rule file). The DB is a cache — authoritative rules live in `rules/packages/*.yaml`, `rules/generic.yaml`, `compat/catalog.yaml`, and `rules/methods/*.md`.
 >
 > **IRIX testing**: `test_binary host_mode=true` for N64 Go binaries. `test_bundle` for N32 mogrix bundles. No other method. No C compilation on IRIX (no compiler). No heredocs in `irix_exec` (csh). Read IRIX files with `irix_read_file` or `irix_host_exec "cat path"`.
 >
@@ -96,7 +96,7 @@ The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl
 ## Agent Orchestration
 
 > **Batch builds use background agents. Read `rules/methods/task-tracking.md` for the full rules.**
-> Short version: max 2-3 agents, report to `build-results/<package>.md`, only orchestrator writes INDEX.md.
+> Short version: max 2-3 agents, report to `build-results/<package>.md`, only orchestrator updates rule files.
 
 ---
 
@@ -140,11 +140,15 @@ SQLite database for structured project knowledge. **Query what you need instead 
 | `decisions` | Architectural choices + rationale | topic, decision, alternatives_rejected |
 | `sessions` | Thin session history | summary, tasks_completed |
 
-### Relationship to Other Files
+### Relationship to Rule Files
 
-- **rules/INDEX.md**: Build/link error patterns and mogrix rule mechanisms. Migrated to DB `rules` table — use `knowledge_query` MCP tool.
-- **compat/catalog.yaml**: Compat function registry. Use `check_compat` MCP tool.
-- **Knowledge DB**: Everything else — findings, boundary maps, decisions, cross-session tasks, error history.
+The DB is a **fast-lookup cache**. Authoritative rules live in files:
+
+- **rules/packages/*.yaml**: Package-specific build rules (authoritative)
+- **rules/generic.yaml**: Cross-package rules (authoritative)
+- **compat/catalog.yaml**: Compat function registry (authoritative). Use `check_compat` MCP tool.
+- **rules/methods/*.md**: Methodology and platform docs (authoritative)
+- **Knowledge DB**: Cache for fast search + agent-only data (findings, boundary maps, decisions, cross-session tasks, error history). If DB and files disagree, files win.
 
 ---
 
@@ -155,7 +159,8 @@ SQLite database for structured project knowledge. **Query what you need instead 
 | `rules/methods/map-before-code.md` | **#1 rule for deep systems work** — map boundaries before writing code |
 | `rules/methods/step-mapping.md` | Tactical debugging — narrow dark zones by instrumenting and bisecting |
 | `rules/GENERIC_SUMMARY.md` | What generic.yaml already handles (read before writing rules) |
-| `rules/INDEX.md` | Problem lookup — grep, don't read whole file |
+| `rules/packages/*.yaml` | Package-specific build rules (authoritative) |
+| `rules/generic.yaml` | Cross-package rules (authoritative) |
 | `rules/methods/mogrix-workflow.md` | How to run mogrix |
 | `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging, mogrix-test MCP tools |
 | `rules/methods/compat-functions.md` | Adding compat functions |
@@ -184,7 +189,7 @@ uv run mogrix <command>
 
 **IRIX shell:** Always use `/bin/sh`, not bash. Use `LD_LIBRARYN32_PATH`.
 
-**Knowledge lookup:** Use `knowledge_query` MCP tool (replaces grepping INDEX.md). Use `report_error` to log errors AND auto-search. Use `check_compat` for missing symbols. Use `add_rule` after fixing.
+**Knowledge lookup:** Use `knowledge_query` MCP tool for fast search. Use `report_error` to log errors AND auto-search. Use `check_compat` for missing symbols. Use `add_rule` after fixing (with `location` pointing to the authoritative rule file). DB is cache — rule files are authoritative.
 
 **After editing compat headers:** `mogrix sync-headers`
 
@@ -196,7 +201,8 @@ uv run mogrix <command>
 
 These rules are non-negotiable. If you're unsure whether you're following them, re-read this file.
 
-- **USE MCP TOOLS BEFORE FIXING**: `report_error` for errors (auto-searches rules+compat), `check_compat` for missing symbols, `knowledge_query` for rule lookup. These replace manual grepping of INDEX.md and catalog.yaml.
+- **USE MCP TOOLS BEFORE FIXING**: `report_error` for errors (auto-searches rules+compat), `check_compat` for missing symbols, `knowledge_query` for rule lookup.
+- **DB IS CACHE, FILES ARE AUTHORITATIVE**: `add_rule` must include `location` pointing to the rule file. If no file exists, create one first. Rules in `rules/packages/*.yaml`, `rules/generic.yaml`, `compat/catalog.yaml`, `rules/methods/*.md`.
 - **DELEGATE LONG DEBUGS**: >2 failed fix attempts → spawn a sub-agent with `Task()`. Don't trash parent context.
 - **NO FIXES OUTSIDE MOGRIX**: Every fix goes into rules/compat/patches. No exceptions.
 - **NO INLINE C IN YAML**: C files go in `patches/packages/<pkg>/`, referenced via `add_source`.

@@ -51,7 +51,7 @@ Never launch more than 3 agents at once. Structure work as waves:
 1. Pick 2-3 packages from the queue
 2. Launch agents (one package per agent)
 3. Collect results from disk
-4. Update INDEX.md (orchestrator only)
+4. Update knowledge DB + rule files (orchestrator only)
 5. Assess context — compact if past 60%
 6. Repeat
 
@@ -71,20 +71,20 @@ summary: <one line — what fix was applied or why it failed>
 rule_file: rules/packages/<name>.yaml
 
 Do NOT include build logs, configure output, or multi-line explanations.
-Do NOT update rules/INDEX.md — the orchestrator handles that.
+Do NOT update knowledge DB or other rule files — the orchestrator handles that.
 ```
 
 The agent's conversational return to the orchestrator should be equally brief — just "done, see build-results/foo.md". The orchestrator reads the file when ready, not from the agent's output.
 
-### Rule 3: Only the Orchestrator Writes INDEX.md
+### Rule 3: Only the Orchestrator Updates Knowledge DB
 
-Agents create/update `rules/packages/<name>.yaml` (that's their job). But `rules/INDEX.md` is written only by the orchestrator after reading agent results from disk. This eliminates concurrent edit conflicts and context duplication.
+Agents create/update `rules/packages/<name>.yaml` (that's their job). But the knowledge DB and cross-package rule files are written only by the orchestrator after reading agent results from disk. This eliminates concurrent edit conflicts and context duplication.
 
 ### Rule 4: Compaction Checkpoints
 
 After collecting each wave's results:
 1. Read `build-results/*.md` for the wave
-2. Update INDEX.md and knowledge DB with results
+2. Update knowledge DB and rule files with results
 3. **Assess context usage.** If past 60%, call `session_handoff` and either compact or end the session
 4. Never launch new agents when context is tight
 

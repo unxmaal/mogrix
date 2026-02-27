@@ -29,8 +29,11 @@ If the answer is "it'll compile but can't actually do its job," skip it.
 
 ## 1. Check rules first
 
-Check the rules/INDEX.md first.
-Start with generic / global rules for fixes, then package-specific rules.  
+Use `knowledge_query` MCP tool to search for the problem. Then check the authoritative rule files:
+- `rules/GENERIC_SUMMARY.md` — what generic.yaml already handles
+- `rules/packages/*.yaml` — package-specific rules
+- `rules/generic.yaml` — cross-package rules
+- `compat/catalog.yaml` — compat functions (use `check_compat` MCP tool)
 
 ## 2. Check knowledge DB for recent sessions
 
