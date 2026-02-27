@@ -759,6 +759,7 @@ class KnowledgeServer:
         self.db = KnowledgeDB(DB_PATH)
         self.catalog = CompatCatalog(CATALOG_PATH)
         self.session_id = None
+        self.turn_count = 0
 
         self.tools = [
             {
@@ -923,6 +924,39 @@ class KnowledgeServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
+                },
+            },
+            {
+                "name": "session_handoff",
+                "description": (
+                    "Record session handoff state into the knowledge DB. "
+                    "Replaces writing HANDOFF.md — stores status, current task, "
+                    "next steps, and blockers in the sessions table. "
+                    "Call this at session end or before compaction. "
+                    "Example: session_handoff {status: \"Built nano+grep, debugging readline\", "
+                    "current_task: \"readline build\", next_steps: \"fix ncurses link\"}"
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "description": "One-line session status summary",
+                        },
+                        "current_task": {
+                            "type": "string",
+                            "description": "What's currently in progress",
+                        },
+                        "next_steps": {
+                            "type": "string",
+                            "description": "What the next session should pick up",
+                        },
+                        "blockers": {
+                            "type": "string",
+                            "description": "Any blockers or decisions needed",
+                        },
+                    },
+                    "required": ["status"],
                 },
             },
         ]
@@ -1122,6 +1156,7 @@ class KnowledgeServer:
 
     def _handle_session_start(self, args: dict) -> str:
         self.session_id = time.strftime("%Y%m%d_%H%M%S")
+        self.turn_count = 0
         summary = self.db.create_session(self.session_id)
 
         lines = [f"## Session {self.session_id} started\n"]
@@ -1139,6 +1174,29 @@ class KnowledgeServer:
                     lines.append(f"  {desc}")
         else:
             lines.append("\nNo active tasks.")
+
+        # Last session handoff
+        last_session = self.db.conn.execute(
+            "SELECT summary, tasks_started, key_findings, created "
+            "FROM sessions ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if last_session:
+            lines.append("\n### Last Session\n")
+            lines.append(f"- **Status**: {last_session[0]}")
+            if last_session[1]:
+                lines.append(f"- **Current task**: {last_session[1]}")
+            if last_session[2]:
+                lines.append(f"- **Next steps / blockers**: {last_session[2]}")
+            if last_session[3]:
+                lines.append(f"- **When**: {last_session[3]}")
+
+        # Checklist reminder
+        lines.append("\n### Session Checklist\n")
+        lines.append("- [ ] Use `report_error` for any build/link/runtime errors")
+        lines.append("- [ ] Use `check_compat` for missing symbols")
+        lines.append("- [ ] Use `knowledge_query` for rule lookup")
+        lines.append("- [ ] Delegate to sub-agent after 2 failed fix attempts")
+        lines.append("- [ ] Call `session_handoff` before session end")
 
         return "\n".join(lines)
 
@@ -1164,6 +1222,79 @@ class KnowledgeServer:
             f"- Mechanism: {args.get('mechanism', 'N/A')}\n"
             f"- Location: {args.get('location', 'N/A')}"
         )
+
+    def _get_nudge(self) -> str:
+        """Return a context checkpoint nudge at turn multiples of 5."""
+        if self.turn_count < 5 or self.turn_count % 5 != 0:
+            return ""
+        if self.turn_count == 5:
+            return (
+                "CHECKPOINT (turn 5): Have you used `report_error` or "
+                "`check_compat` for any errors this session? Use MCP tools "
+                "before manual fixes."
+            )
+        if self.turn_count == 10:
+            return (
+                "CHECKPOINT (turn 10): If debugging >2 attempts on one issue, "
+                "delegate to a sub-agent via Task(). Store findings via "
+                "`report_finding`. Are you still following CLAUDE.md invariants?"
+            )
+        # Turn 15, 20, 25, ...
+        return (
+            f"CHECKPOINT (turn {self.turn_count}): Call `session_summary` to "
+            "review session state. Still following CLAUDE.md invariants? "
+            "Still using MCP tools for lookups? Consider `report_finding` "
+            "for any undocumented discoveries."
+        )
+
+    def _handle_session_handoff(self, args: dict) -> str:
+        status = args.get("status", "")
+        if not status:
+            return "Error: status is required"
+
+        current_task = args.get("current_task", "")
+        next_steps = args.get("next_steps", "")
+        blockers = args.get("blockers", "")
+
+        # Build key_findings from next_steps + blockers
+        key_findings_parts = []
+        if next_steps:
+            key_findings_parts.append(f"Next: {next_steps}")
+        if blockers:
+            key_findings_parts.append(f"Blockers: {blockers}")
+        key_findings = "; ".join(key_findings_parts) if key_findings_parts else None
+
+        # Snapshot active tasks
+        active_tasks = self.db.get_active_tasks()
+        tasks_snapshot = ", ".join(t["subject"] for t in active_tasks) if active_tasks else None
+
+        # Insert into sessions table
+        self.db.conn.execute(
+            """
+            INSERT INTO sessions (summary, tasks_started, tasks_completed, key_findings)
+            VALUES (?, ?, ?, ?)
+            """,
+            (status, current_task, tasks_snapshot, key_findings),
+        )
+        self.db.conn.commit()
+
+        session_row = self.db.conn.execute(
+            "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        session_id = session_row[0] if session_row else "?"
+
+        lines = [f"Session handoff #{session_id} recorded."]
+        lines.append(f"- **Status**: {status}")
+        if current_task:
+            lines.append(f"- **Current task**: {current_task}")
+        if next_steps:
+            lines.append(f"- **Next steps**: {next_steps}")
+        if blockers:
+            lines.append(f"- **Blockers**: {blockers}")
+        if tasks_snapshot:
+            lines.append(f"- **Active tasks snapshot**: {tasks_snapshot}")
+
+        return "\n".join(lines)
 
     def _handle_session_summary(self, args: dict) -> str:
         if not self.session_id:
@@ -1234,6 +1365,14 @@ class KnowledgeServer:
         tool_name = params.get("name")
         args = params.get("arguments", {})
 
+        # Track tool call count
+        self.turn_count += 1
+        if self.session_id:
+            try:
+                self.db.update_session_interaction(self.session_id)
+            except Exception:
+                pass
+
         handlers = {
             "knowledge_query": self._handle_knowledge_query,
             "report_error": self._handle_report_error,
@@ -1242,6 +1381,7 @@ class KnowledgeServer:
             "session_start": self._handle_session_start,
             "add_rule": self._handle_add_rule,
             "session_summary": self._handle_session_summary,
+            "session_handoff": self._handle_session_handoff,
         }
 
         handler = handlers.get(tool_name)
@@ -1251,6 +1391,12 @@ class KnowledgeServer:
         try:
             text = handler(args)
             is_error = text.startswith("Error:")
+
+            # Inject checkpoint nudge at turn multiples of 5
+            nudge = self._get_nudge()
+            if nudge:
+                text += "\n\n---\n" + nudge
+
             return self._tool_result(request_id, text, is_error=is_error)
         except Exception as e:
             log(f"Tool {tool_name} error: {e}")

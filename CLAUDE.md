@@ -2,7 +2,7 @@
 
 > **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
 > Read `rules/GENERIC_SUMMARY.md` when starting a package. Use `knowledge_query` MCP tool for problem keywords (replaces grepping INDEX.md). Do NOT read the full INDEX.md.
-> Also check `HANDOFF.md`, `plan.md`. Use `session_start` MCP tool at session start for context summary.
+> Use `session_start` MCP tool at session start for context summary. Check `plan.md` if relevant.
 > If you don't know what to do, check `rules/methods/before-you-start.md`.
 >
 > **When you hit a compile/link error for a missing function**: Use `check_compat` MCP tool BEFORE writing a fix. We likely already have a compat implementation — it just needs to be compiled/linked. Also grep `compat/include/` and `compat/` for the symbol name. Many IRIX-missing POSIX functions (pselect, posix_spawn, getline, mkdtemp, etc.) already have implementations.
@@ -42,7 +42,7 @@ Also use sub-agents for:
 3. Have I used `check_compat` MCP tool for missing symbols?
 4. Am I about to make a fix outside mogrix rules? (Cardinal Sin)
 
-If unsure, re-read the top of this file and `HANDOFF.md`.
+If unsure, re-read the top of this file and run `session_start`.
 
 ---
 
@@ -86,11 +86,10 @@ The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl
 | Header fix | `compat/include/` then `mogrix sync-headers` |
 
 ### Before Ending a Session
-0. **Update the knowledge DB.** Insert findings, errors, decisions, and boundary maps from this session into `.claude/knowledge.db`. Update task status. This is the primary handoff mechanism.
-1. **Update HANDOFF.md** with a thin summary: current task, immediate next step, active blockers. Keep under 50 lines — details live in the DB.
-2. Did I make any fixes outside of mogrix source?
-3. Are those fixes now stored in mogrix rules?
-4. Could someone rebuild from scratch using only mogrix?
+0. **Update the knowledge DB.** Insert findings, errors, decisions, and boundary maps from this session via MCP tools (`report_finding`, `add_rule`, `report_error`). Update task status. This is the handoff mechanism.
+1. Did I make any fixes outside of mogrix source?
+2. Are those fixes now stored in mogrix rules?
+3. Could someone rebuild from scratch using only mogrix?
 
 ---
 
@@ -143,7 +142,6 @@ SQLite database for structured project knowledge. **Query what you need instead 
 
 ### Relationship to Other Files
 
-- **HANDOFF.md**: Thin pointer — current task + immediate next step + blockers. Under 50 lines. Details in DB.
 - **rules/INDEX.md**: Build/link error patterns and mogrix rule mechanisms. Migrated to DB `rules` table — use `knowledge_query` MCP tool.
 - **compat/catalog.yaml**: Compat function registry. Use `check_compat` MCP tool.
 - **Knowledge DB**: Everything else — findings, boundary maps, decisions, cross-session tasks, error history.
@@ -167,7 +165,6 @@ SQLite database for structured project knowledge. **Query what you need instead 
 | `rules/methods/task-tracking.md` | Task tracking + agent orchestration for batch builds |
 | `compat/catalog.yaml` | Compat function registry |
 | `.claude/knowledge.db` | **Structured knowledge DB** — query for tasks, findings, boundaries, errors, decisions |
-| `HANDOFF.md` | Thin session pointer — current task, next step, blockers (details in DB) |
 | `tools/knowledge-server.py` | MCP knowledge DB (knowledge_query, report_error, check_compat, report_finding, add_rule, session_start, session_summary) |
 | `tools/mogrix-test-server.py` | MCP test harness (test_bundle, test_binary, check_deps, par_trace, screenshot) |
 | `test-results/*.json` | Stored test results |

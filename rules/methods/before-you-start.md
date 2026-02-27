@@ -32,9 +32,12 @@ If the answer is "it'll compile but can't actually do its job," skip it.
 Check the rules/INDEX.md first.
 Start with generic / global rules for fixes, then package-specific rules.  
 
-## 2. Check HANDOFF.md
+## 2. Check knowledge DB for recent sessions
 
-The "What Failed" sections document approaches that don't work. Don't repeat them.
+Query the knowledge DB for recent session handoffs — they document what was tried, what failed, and what's next. Use `session_start` MCP tool (which shows the last session's status) or query directly:
+```sql
+SELECT summary, tasks_started, key_findings FROM sessions ORDER BY id DESC LIMIT 3
+```
 
 ## 3. Check SGUG-RSE 
 
