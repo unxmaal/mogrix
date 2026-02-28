@@ -9,7 +9,6 @@ set -e
 
 MOGRIX_DIR="/home/edodd/projects/github/unxmaal/mogrix"
 STAGING="/opt/sgug-staging/usr/sgug"
-CROSS="/opt/cross/bin"
 
 echo "=== Mogrix Build VM Cleanup ==="
 echo ""
@@ -26,35 +25,9 @@ cp -r "${MOGRIX_DIR}/cross/include/"* "${STAGING}/include/"
 cp -r "${MOGRIX_DIR}/compat/include/"* "${STAGING}/include/"
 echo "      Done."
 
-# Build and install runtime libraries
-echo "[3/5] Building runtime libraries..."
-TMPDIR=$(mktemp -d)
-
-# libsoft_float_stubs.a
-"${STAGING}/bin/irix-cc" -c "${MOGRIX_DIR}/compat/runtime/soft_float_stubs.c" -o "${TMPDIR}/soft_float_stubs.o" 2>/dev/null
-"${CROSS}/llvm-ar" rcs "${STAGING}/lib32/libsoft_float_stubs.a" "${TMPDIR}/soft_float_stubs.o"
-
-# libatomic_stub.a (if source exists)
-if [[ -f "${MOGRIX_DIR}/compat/runtime/libatomic_stub.c" ]]; then
-    "${STAGING}/bin/irix-cc" -c "${MOGRIX_DIR}/compat/runtime/libatomic_stub.c" -o "${TMPDIR}/libatomic_stub.o" 2>/dev/null
-    "${CROSS}/llvm-ar" rcs "${STAGING}/lib32/libatomic.a" "${TMPDIR}/libatomic_stub.o"
-fi
-
-# libcompat.a - compat functions missing from IRIX (stpcpy, etc.)
-COMPAT_OBJS=""
-for src in "${MOGRIX_DIR}/compat/runtime/"*.c; do
-    base=$(basename "$src" .c)
-    # Skip files that go into other libraries
-    if [[ "$base" != "soft_float_stubs" && "$base" != "libatomic_stub" ]]; then
-        "${STAGING}/bin/irix-cc" -c "$src" -o "${TMPDIR}/${base}.o" 2>/dev/null
-        COMPAT_OBJS="${COMPAT_OBJS} ${TMPDIR}/${base}.o"
-    fi
-done
-if [[ -n "$COMPAT_OBJS" ]]; then
-    "${CROSS}/llvm-ar" rcs "${STAGING}/lib32/libcompat.a" $COMPAT_OBJS
-fi
-
-rm -rf "${TMPDIR}"
+# Build and install ALL runtime objects
+echo "[3/5] Building runtime objects..."
+"${MOGRIX_DIR}/scripts/build-runtime-objects.sh"
 echo "      Done."
 
 # Clean rpmbuild directories
