@@ -227,178 +227,44 @@ The staging area extracts RPM contents so that subsequent builds can find header
 
 ### Cross-Compilation Setup
 
-The `--cross` flag enables IRIX cross-compilation. This section describes setting up the build environment on Ubuntu.
+The `--cross` flag enables IRIX cross-compilation. See **[docs/setup-guide.md](docs/setup-guide.md)** for the complete walkthrough from a fresh Ubuntu VM to your first successful build.
 
-#### Prerequisites
+**Quick summary** of what's needed:
 
-Ubuntu 22.04+ with build dependencies:
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| Clang | 16+ (upstream, with MIPS target) | C/C++ cross-compiler |
+| LLD | 18 (patched for IRIX) | Linker (`scripts/build-lld-irix.sh`) |
+| GNU Binutils | 2.41, targeting `mips-sgi-irix6.5` | objcopy, readelf, BFD ld fallback |
+| IRIX Sysroot | From live IRIX machine | System headers and libraries |
 
-```bash
-sudo apt install -y \
-    build-essential gcc g++ make patch \
-    bzip2 xz-utils git wget curl file \
-    pkg-config flex bison texinfo \
-    python3 python3-setuptools python3-venv \
-    libgmp-dev libmpc-dev libmpfr-dev \
-    cmake ninja-build \
-    libz-dev libxml2-dev libedit-dev libncurses-dev \
-    rpm
-```
-
-#### Directory Structure
-
-```bash
-sudo mkdir -p /opt/cross/bin /opt/irix-sysroot /opt/sgug-staging/usr/sgug/{bin,lib32,include}
-sudo chown -R $USER:$USER /opt/cross /opt/irix-sysroot /opt/sgug-staging
-```
+**Key directories:**
 
 | Path | Purpose |
 |------|---------|
-| `/opt/cross/bin/` | Cross-compilation toolchain |
+| `/opt/cross/bin/` | Cross-compilation toolchain (clang, LLD, binutils) |
 | `/opt/irix-sysroot/` | IRIX system headers and libraries |
-| `/opt/sgug-staging/usr/sgug/` | Staging area for cross-compiled packages |
+| `/opt/sgug-staging/usr/sgug/` | Staging area (compiler wrappers, runtime objects, cross-compiled packages) |
 
-#### 1. IRIX Sysroot
-
-Extract IRIX system files from an IRIX 6.5.30 installation:
+**Setup steps** (details in the guide):
 
 ```bash
-# From a tarball of IRIX root filesystem
-tar xjf irix-root.6.5.30.tar.bz2 -C /opt/irix-sysroot
-
-# The sysroot should contain:
-# /opt/irix-sysroot/usr/include/  - System headers
-# /opt/irix-sysroot/usr/lib32/    - System libraries
-# /opt/irix-sysroot/lib32/        - Core libraries (libc, rld, etc.)
-```
-
-#### 2. LLVM/Clang from vvuk's Fork
-
-Vladimir Vukicevic's LLVM fork includes IRIX/MIPS support for both clang and LLD:
-
-```bash
-# Clone vvuk's LLVM with IRIX support
-git clone https://github.com/vvuk/llvm-project.git
-cd llvm-project
-git checkout irix/14.x
-
-# Build clang and LLD
-mkdir build && cd build
-cmake -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DLLVM_ENABLE_PROJECTS="clang;lld" \
-    -DLLVM_TARGETS_TO_BUILD="Mips;X86" \
-    -DCMAKE_INSTALL_PREFIX=/opt/cross \
-    ../llvm
-
-ninja
-ninja install
-```
-
-This provides in `/opt/cross/bin/`:
-- `clang`, `clang++` - C/C++ compiler with MIPS/IRIX target
-- `llvm-ar`, `llvm-ranlib`, `llvm-strip`, `llvm-nm`, `llvm-objdump`
-- `lld`, `ld.lld` - LLVM linker with IRIX support
-
-Rename the IRIX-capable LLD:
-```bash
-cp /opt/cross/bin/ld.lld /opt/cross/bin/ld.lld-irix
-```
-
-#### 3. GNU Binutils for IRIX
-
-Build binutils 2.23.2 targeting `mips-sgi-irix6.5`:
-
-```bash
-# Download and patch binutils
-wget https://ftp.gnu.org/gnu/binutils/binutils-2.23.2.tar.bz2
-tar xjf binutils-2.23.2.tar.bz2
-cd binutils-2.23.2
-# Apply IRIX patches if needed
-
-# Configure and build
-mkdir build && cd build
-../configure \
-    --prefix=/opt/cross \
-    --target=mips-sgi-irix6.5 \
-    --disable-werror \
-    --with-sysroot=/opt/irix-sysroot
-
-make -j$(nproc)
-make install
-```
-
-This provides:
-- `mips-sgi-irix6.5-ld.bfd` - GNU ld (critical for shared library layout)
-- `mips-sgi-irix6.5-ar`, `mips-sgi-irix6.5-ranlib`, etc.
-
-#### 4. Fix IRIX CRT Files
-
-IRIX's `crt1.o` contains sections that LLD can't handle. Strip them:
-
-```bash
-mkdir -p /opt/irix-sysroot/usr/lib32/mips3/fixed
-
-/opt/cross/bin/mips-sgi-irix6.5-objcopy \
-    -R .MIPS.events.text \
-    -R .MIPS.events.init \
-    -R .MIPS.events \
-    /opt/irix-sysroot/usr/lib32/mips3/crt1.o \
-    /opt/irix-sysroot/usr/lib32/mips3/fixed/crt1.o
-
-cp /opt/irix-sysroot/usr/lib32/mips3/crtn.o \
-   /opt/irix-sysroot/usr/lib32/mips3/fixed/crtn.o
-```
-
-#### 5. Deploy Mogrix Cross-Compilation Environment
-
-```bash
-cd mogrix
+# 1. Deploy compiler wrappers and headers
 uv run mogrix setup-cross
-```
 
-This deploys:
-- `irix-cc`, `irix-ld` wrapper scripts to `/opt/sgug-staging/usr/sgug/bin/`
-- Compat headers to `/opt/sgug-staging/usr/sgug/include/`
-- RPM macros to `/opt/sgug-staging/rpmmacros.irix`
+# 2. Build all runtime objects (CRT, dlmalloc, compat libs, etc.)
+./scripts/build-runtime-objects.sh
 
-#### 6. Build Runtime Libraries
-
-```bash
-./cleanup.sh
-```
-
-This script resets the staging environment and rebuilds all runtime libraries:
-- Cleans `staging/lib32/` and `staging/include/`
-- Restores compat headers from `cross/include/` and `compat/include/`
-- Compiles runtime libraries:
-  - `libsoft_float_stubs.a` - Soft float ABI stubs
-  - `libatomic.a` - Atomic operation stubs
-  - `libcompat.a` - Missing POSIX functions (stpcpy, posix_spawn, etc.)
-- Cleans `~/rpmbuild/BUILD/`, `BUILDROOT/`, and `RPMS/mips/`
-
-Run this before starting a fresh build chain or when you need to reset the staging environment.
-
-#### Verify Setup
-
-```bash
-# Check toolchain
-/opt/cross/bin/clang --version
-/opt/cross/bin/mips-sgi-irix6.5-ld.bfd --version
-/opt/cross/bin/ld.lld-irix --version
-
-# Check sysroot
-ls /opt/irix-sysroot/usr/include/stdio.h
-ls /opt/irix-sysroot/usr/lib32/libc.so
-
-# Check staging
-ls /opt/sgug-staging/usr/sgug/bin/irix-cc
-ls /opt/sgug-staging/usr/sgug/lib32/libsoft_float_stubs.a
-
-# Test cross-compilation
+# 3. Verify cross-compilation works
 echo 'int main() { return 0; }' > /tmp/test.c
 /opt/sgug-staging/usr/sgug/bin/irix-cc /tmp/test.c -o /tmp/test
 file /tmp/test  # Should show: ELF 32-bit MSB executable, MIPS
+```
+
+To reset the staging environment and rebuild everything from scratch:
+
+```bash
+./cleanup.sh
 ```
 
 ## CLI Commands

@@ -6,7 +6,13 @@
 # 1. Downloads LLVM 18.1.3 source (just lld + llvm core)
 # 2. Applies IRIX-specific patches from mogrix/tools/
 # 3. Builds LLD with IRIX support
-# 4. Installs to /opt/cross/bin/ld.lld-irix
+# 4. Installs to /opt/cross/bin/ld.lld-irix-18
+#
+# After running this script, create the default symlink:
+#   sudo ln -sf ld.lld-irix-18 /opt/cross/bin/ld.lld-irix
+#
+# NOTE: You also need GNU binutils 2.41 for mips-sgi-irix6.5 (objcopy,
+# readelf, BFD ld fallback). See docs/setup-guide.md for build instructions.
 #
 
 set -euo pipefail
@@ -151,10 +157,11 @@ install_lld() {
         sudo cp bin/ld.lld "$INSTALL_DIR/bin/ld.lld-irix-18"
         log_info "Installed to $INSTALL_DIR/bin/ld.lld-irix-18"
 
-        # Create symlink if user wants to replace old version
+        # Create the default symlink
         echo ""
-        echo "To use this as the default IRIX LLD:"
-        echo "  sudo ln -sf ld.lld-irix-18 $INSTALL_DIR/bin/ld.lld-irix"
+        log_info "Creating default symlink: ld.lld-irix -> ld.lld-irix-18"
+        sudo ln -sf ld.lld-irix-18 "$INSTALL_DIR/bin/ld.lld-irix"
+        log_info "Symlink created: $INSTALL_DIR/bin/ld.lld-irix"
     else
         log_error "ld.lld binary not found in build output"
         exit 1
