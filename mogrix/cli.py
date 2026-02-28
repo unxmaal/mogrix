@@ -3134,5 +3134,271 @@ def test(bundle_path: str, host: str, user: str, keep: bool):
     raise SystemExit(1 if report.failed > 0 else 0)
 
 
+# Bootstrap manifest: minimum packages for tdnf + rpm on IRIX.
+# Format: "glob-pattern" matched against RPM filenames in the RPMS dir.
+_BOOTSTRAP_MANIFEST = [
+    # Base libraries (no deps on other mogrix packages)
+    "zlib-ng-compat-[0-9]*",
+    "bzip2-libs-[0-9]*",
+    "xz-libs-[0-9]*",
+    "popt-[0-9]*",
+    "openssl-libs-[0-9]*",
+    "lua-libs-[0-9]*",
+    "file-libs-[0-9]*",
+    "sqlite-libs-[0-9]*",
+    # Mid-level (depend on base)
+    "libxml2-[0-9]*",
+    "libcurl-[0-9]*",
+    # RPM and package management
+    "rpm-libs-[0-9]*",
+    "rpm-[0-9]*",
+    "libsolv-[0-9]*",
+    "tdnf-cli-libs-[0-9]*",
+    "tdnf-[0-9]*",
+    # Release/config packages
+    "sgugrse-release-common-[0-9]*",
+    "sgugrse-release-[0-9]*",
+    # Dev symlinks needed at runtime (libsolvext links libz.so not libz.so.1)
+    "zlib-ng-compat-devel-[0-9]*",
+]
+
+
+@main.command("create-bootstrap")
+@click.option(
+    "--rpms-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Directory containing built RPMs (default: ~/mogrix_outputs/RPMS/)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Output .run file path (default: ~/mogrix_outputs/mogrix-bootstrap.TIMESTAMP.run)",
+)
+def create_bootstrap(
+    rpms_dir: str | None,
+    output: str | None,
+):
+    """Create a self-extracting bootstrap installer for IRIX.
+
+    Packages the minimum RPMs needed for tdnf (the package manager) plus
+    sgugshell/sgug-exec and repo config into a self-extracting .run file.
+
+    \b
+    On IRIX, run as root:  sh mogrix-bootstrap.run
+    This creates /usr/sgug with tdnf + rpm + dependencies. Then:
+      /usr/sgug/bin/sgugshell
+      rpm --initdb
+      tdnf makecache
+      tdnf install <package>
+
+    \b
+    The installer refuses to run if /usr/sgug already exists.
+    """
+    import fnmatch
+    import shutil
+    import subprocess
+    import tempfile
+    from datetime import datetime
+
+    rpms_path = Path(rpms_dir) if rpms_dir else MOGRIX_OUTPUTS / "RPMS"
+    if not rpms_path.is_dir():
+        console.print(f"[red]RPMs directory not found: {rpms_path}[/red]")
+        raise SystemExit(1)
+
+    timestamp = datetime.now().strftime("%m%d%y%H%M")
+    default_output = MOGRIX_OUTPUTS / f"mogrix-bootstrap.{timestamp}.run"
+    out_path = Path(output) if output else default_output
+
+    # Resolve manifest patterns to actual RPM files
+    console.print("[bold]Resolving bootstrap manifest...[/bold]")
+    all_rpms = sorted(rpms_path.glob("*.rpm"))
+    found_rpms = []
+    missing = []
+
+    for pattern in _BOOTSTRAP_MANIFEST:
+        # Match pattern against RPM filenames (strip .mips.rpm suffix for matching)
+        matches = [
+            r for r in all_rpms
+            if fnmatch.fnmatch(r.name.replace(".mips.rpm", ""), pattern)
+        ]
+        if matches:
+            # Take the first match (sorted, so deterministic)
+            found_rpms.append(matches[0])
+            console.print(f"  [green]OK[/green] {matches[0].name}")
+        else:
+            missing.append(pattern)
+            console.print(f"  [red]MISSING[/red] {pattern}")
+
+    if missing:
+        console.print(f"\n[red]{len(missing)} required package(s) missing![/red]")
+        console.print("[dim]Build them with: mogrix batch-build --from-list ...[/dim]")
+        raise SystemExit(1)
+
+    console.print(f"\n[bold]{len(found_rpms)} packages in bootstrap manifest[/bold]")
+
+    # Locate extra tools
+    project_dir = Path(__file__).parent.parent
+    extras = {
+        "tools/sgugshell": "usr/sgug/bin/sgugshell",
+        "tools/sgug-exec": "usr/sgug/bin/sgug-exec",
+        "configs/tdnf/mogrix.repo": "usr/sgug/etc/yum.repos.d/mogrix.repo",
+        "configs/tdnf/tdnf.conf": "usr/sgug/etc/tdnf/tdnf.conf",
+    }
+    for src_rel in extras:
+        src = project_dir / src_rel
+        if not src.exists():
+            console.print(f"[red]Missing: {src}[/red]")
+            raise SystemExit(1)
+
+    with tempfile.TemporaryDirectory(prefix="mogrix-bootstrap-") as tmpdir:
+        tree = Path(tmpdir) / "tree"
+        tree.mkdir()
+
+        # Extract bootstrap RPMs into the tree
+        console.print("[bold]Extracting RPMs...[/bold]")
+        for rpm in found_rpms:
+            console.print(f"  {rpm.name}")
+            subprocess.run(
+                f"cd {tree} && rpm2cpio {rpm.absolute()} | cpio -idm 2>/dev/null",
+                shell=True,
+                capture_output=True,
+            )
+
+        sgug_dir = tree / "usr" / "sgug"
+        if not sgug_dir.is_dir():
+            console.print("[red]Error: no usr/sgug/ found after extraction[/red]")
+            raise SystemExit(1)
+
+        # Install extras (sgugshell, sgug-exec, repo config, tdnf.conf)
+        console.print("[bold]Installing extras...[/bold]")
+        for src_rel, dest_rel in extras.items():
+            src = project_dir / src_rel
+            dest = tree / dest_rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            dest.chmod(0o755 if dest_rel.endswith(("sgugshell", "sgug-exec")) else 0o644)
+            console.print(f"  /{dest_rel}")
+
+        # Ensure required directories exist
+        (tree / "usr/sgug/var/cache/tdnf").mkdir(parents=True, exist_ok=True)
+
+        # Include the RPM files themselves for rpm --initdb registration
+        bootstrap_rpms_dir = tree / "tmp" / "bootstrap-rpms"
+        bootstrap_rpms_dir.mkdir(parents=True, exist_ok=True)
+        for rpm in found_rpms:
+            shutil.copy2(rpm, bootstrap_rpms_dir / rpm.name)
+        console.print(f"  /tmp/bootstrap-rpms/ ({len(found_rpms)} RPMs)")
+
+        # Verify critical files
+        console.print("[bold]Verifying...[/bold]")
+        critical = [
+            "usr/sgug/bin/rpm", "usr/sgug/bin/tdnf",
+            "usr/sgug/bin/sgugshell", "usr/sgug/bin/sgug-exec",
+            "usr/sgug/lib32/librpm.so", "usr/sgug/lib32/libtdnf.so",
+            "usr/sgug/lib32/libsolv.so",
+            "usr/sgug/etc/tdnf/tdnf.conf",
+            "usr/sgug/etc/yum.repos.d/mogrix.repo",
+        ]
+        errors = 0
+        for f in critical:
+            p = tree / f
+            if p.exists() or p.is_symlink():
+                console.print(f"  [green]OK[/green] /{f}")
+            else:
+                console.print(f"  [red]MISSING[/red] /{f}")
+                errors += 1
+        if errors:
+            console.print(f"\n[red]{errors} critical file(s) missing![/red]")
+            raise SystemExit(1)
+
+        # Create tarball from tree root (preserves usr/sgug/..., tmp/..., var/...)
+        console.print("[bold]Creating tarball...[/bold]")
+        tarball = Path(tmpdir) / "bootstrap.tar.gz"
+        subprocess.run(
+            ["tar", "-czf", str(tarball), "-C", str(tree), "."],
+            capture_output=True,
+            check=True,
+        )
+        console.print(f"  {tarball.stat().st_size / 1024 / 1024:.1f} MB")
+
+        # Create self-extracting .run
+        console.print("[bold]Creating installer...[/bold]")
+        _create_bootstrap_run(out_path, tarball, len(found_rpms))
+
+    run_size = out_path.stat().st_size
+    console.print(f"\n[bold green]Bootstrap installer created![/bold green]")
+    console.print(f"[bold]Output:[/bold] {out_path}")
+    console.print(f"[bold]Size:[/bold] {run_size / 1024 / 1024:.1f} MB")
+    console.print(f"\n[dim]Deploy to IRIX and run as root:  sh {out_path.name}[/dim]")
+    console.print("[dim]Then:  /usr/sgug/bin/sgugshell[/dim]")
+    console.print("[dim]       rpm --initdb[/dim]")
+    console.print("[dim]       rpm -Uvh --nodeps /tmp/bootstrap-rpms/*.rpm[/dim]")
+    console.print("[dim]       tdnf makecache && tdnf list[/dim]")
+
+
+_BOOTSTRAP_TEMPLATE = """\
+#!/bin/sh
+# Mogrix bootstrap installer - minimum tdnf + rpm environment
+# Usage: sh {filename}
+SKIP={payload_line}
+self="$0"
+case "$self" in /*) ;; *) self="`/bin/pwd`/$self" ;; esac
+if [ -d /usr/sgug ]; then
+  echo "Error: /usr/sgug already exists." >&2
+  echo "Remove it first if you want to reinstall." >&2
+  exit 1
+fi
+/sbin/mkdir -p /usr/sgug 2>/dev/null
+if [ ! -d /usr/sgug ]; then
+  echo "Error: cannot create /usr/sgug (are you root?)" >&2
+  exit 1
+fi
+echo "Installing mogrix bootstrap ({rpm_count} packages) ..."
+cd / && /bin/tail +$SKIP "$self" | /usr/sbin/gzcat | /sbin/tar xf -
+status=$?
+if [ $status -ne 0 ]; then
+  echo "Error: extraction failed" >&2
+  exit 1
+fi
+echo ""
+echo "Done. Bootstrap installed to /usr/sgug"
+echo ""
+echo "Next steps:"
+echo "  /usr/sgug/bin/sgugshell"
+echo "  rpm --initdb"
+echo "  rpm -Uvh --nodeps /tmp/bootstrap-rpms/*.rpm"
+echo "  tdnf makecache"
+echo "  tdnf list"
+exit 0
+"""
+
+
+def _create_bootstrap_run(
+    run_path: Path, tarball_path: Path, rpm_count: int
+) -> None:
+    """Create a self-extracting bootstrap .run file."""
+    script = _BOOTSTRAP_TEMPLATE.format(
+        filename=run_path.name,
+        payload_line="__PLACEHOLDER__",
+        rpm_count=rpm_count,
+    )
+    line_count = script.count("\n")
+    script = script.replace("__PLACEHOLDER__", str(line_count + 1))
+
+    with open(run_path, "wb") as f:
+        f.write(script.encode("ascii"))
+        with open(tarball_path, "rb") as payload:
+            while True:
+                chunk = payload.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)
+
+    run_path.chmod(0o755)
+
+
 if __name__ == "__main__":
     main()
