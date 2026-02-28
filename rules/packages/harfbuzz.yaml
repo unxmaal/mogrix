@@ -1,4 +1,11 @@
 package: harfbuzz
+# Re-enablement audit (Feb 2025): glib, gobject, cairo, ICU re-enabled.
+# harfbuzz has a circular dependency with glib2 (glib2 links harfbuzz, harfbuzz
+# links glib2). Resolved by two-pass bootstrap: first build harfbuzz without glib
+# (already done), then rebuild with glib+gobject+cairo+icu once glib2 is in staging.
+# This produces new libraries: libharfbuzz-gobject.so, libharfbuzz-cairo.so,
+# libharfbuzz-icu.so. The existing libharfbuzz.so ABI is unchanged.
+# Graphite2 stays disabled (not in staging). Introspection disabled (no gobject-introspection).
 rules:
   drop_buildrequires:
   - gobject-introspection-devel

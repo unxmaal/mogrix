@@ -9,6 +9,10 @@ upstream:
   source_dir: vte-0.58.3
 
 rules:
+  export_vars:
+    # IRIX libc lacks __stack_chk_guard/__stack_chk_fail
+    CFLAGS: "-fno-stack-protector $CFLAGS"
+    CXXFLAGS: "-fno-stack-protector $CXXFLAGS"
   drop_buildrequires:
     - "gtk-doc"
     - "meson"
@@ -47,7 +51,7 @@ rules:
     # NOT auto-pushed. Without them: no line discipline, no echo, no ^C signals.
     # VTE only handles this for Solaris (__sun). Add __sgi for IRIX.
     # Also add stropts.h include (needed for isastream/I_FIND/I_PUSH).
-    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#if defined(__sun) && defined(HAVE_STROPTS_H)' --new '#if (defined(__sun) || defined(__sgi)) && defined(HAVE_STROPTS_H)' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#if defined(__sun) && defined(HAVE_STROPTS_H)' --new '#if (defined(__sun) || defined(__sgi)) && defined(HAVE_STROPTS_H)' --count 0 --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#include <pty.h>' --insert-after \"$(printf '#ifdef __sgi\\n#define HAVE_STROPTS_H 1\\n#endif')\" --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch src/pty.cc --old '#ifdef HAVE_PTY_H' --insert-before \"$(printf '#ifdef __sgi\\n#include <stropts.h>\\n#endif')\" --no-backup --quiet"
     # === IRIX TIOCPKT fixes ===

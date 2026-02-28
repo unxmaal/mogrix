@@ -9,6 +9,8 @@
 >
 > **When you make a mistake or hit an unexpected error**: Use `report_error` MCP tool — it logs the error AND auto-searches rules/errors_seen/compat for matching fixes in one call. After fixing, use `add_rule` MCP tool to store the fix (with `location` pointing to the authoritative rule file). The DB is a cache — authoritative rules live in `rules/packages/*.yaml`, `rules/generic.yaml`, `compat/catalog.yaml`, and `rules/methods/*.md`.
 >
+> **IMMEDIATELY after confirming a fix works** (build passes, test passes): Call `add_rule` RIGHT THEN. Do not batch `add_rule` calls to session end — context pressure at session end causes them to be dropped. The rule of thumb: `report_error` when you hit it, `add_rule` when you fix it, same workflow moment.
+>
 > **IRIX testing**: `test_binary host_mode=true` for N64 Go binaries. `test_bundle` for N32 mogrix bundles. No other method. No C compilation on IRIX (no compiler). No heredocs in `irix_exec` (csh). Read IRIX files with `irix_read_file` or `irix_host_exec "cat path"`.
 >
 > **For deep systems work (assembly, signal handlers, ABI boundaries)**: Read `rules/methods/map-before-code.md` FIRST. Map every boundary crossing and trace register/state through each transition before writing code. This is the #1 rule — it turns 24-hour debugging sessions into 2-hour fixes.
@@ -209,4 +211,5 @@ These rules are non-negotiable. If you're unsure whether you're following them, 
 - **IRIX TESTING**: `test_binary host_mode=true` (N64 Go) or `test_bundle` (N32 mogrix). No other method.
 - **REDIRECT BUILD OUTPUT**: Never let rpmbuild flood context. Log to file.
 - **STORE KNOWLEDGE VIA MCP**: Use `report_finding` (findings/decisions/negative), `add_rule` (new rules), `report_error` (auto-logs errors). Fallback: raw SQL for boundaries, sessions, task status.
+- **`add_rule` IMMEDIATELY AFTER FIX CONFIRMED**: Do not defer to session end. Context pressure causes batched `add_rule` calls to be dropped. Pattern: `report_error` when you hit it → fix it → build passes → `add_rule` right then.
 - **INVOCATION**: `uv run mogrix <command>`

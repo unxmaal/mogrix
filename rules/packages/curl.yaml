@@ -1,4 +1,10 @@
 package: curl
+# Re-enablement audit (Feb 2025): libpsl, libidn2, brotli re-enabled.
+# These are internal features — no downstream rebuilds needed.
+# - libpsl: public suffix list for cookie domain validation
+# - libidn2: international domain name (IDN) support
+# - brotli: faster HTTP compression (Brotli content-encoding)
+# Verify with: curl --version (should show brotli, IDN2, PSL in Features line)
 rules:
   drop_buildrequires:
   - krb5-devel

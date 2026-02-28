@@ -1,29 +1,35 @@
 package: libcaca
+# Re-enablement audit (Feb 2025):
+# - X11 backend: works. libX11 in staging, auto-detected by configure.
+# - imlib2 backend: works. libImlib2 in staging, auto-detected.
+# - GL backend: SILENTLY DISABLED. Configure checks for GL/glut.h and libglut
+#   (with glutMainLoopEvent/glutCheckLoop). Staging has libGL.so and GL/gl.h
+#   but NO freeglut (GL/glut.h, libglut.so). Without freeglut, USE_GL stays
+#   undefined and gl.c compiles to an empty .o file (all 631 lines behind
+#   #if defined(USE_GL)). To enable GL: cross-compile freeglut first.
 rules:
   drop_buildrequires:
-  - libX11-devel
-  - freeglut-devel
-  - mesa-libGLU-devel
-  - pkgconfig(imlib2)
   - pkgconfig(pangoft2)
   drop_requires:
   - toilet
-  - imlib2-devel
-  - libX11-devel
   - pango-devel
-  - freeglut-devel
-  - mesa-libGLU-devel
   drop_subpackages:
   - python3-caca
   - ruby-caca
+  ac_cv_overrides:
+    # signal() exists on IRIX but configure can't detect in cross-compilation
+    ac_cv_func_signal: 'yes'
+    # atexit exists on IRIX
+    ac_cv_func_atexit: 'yes'
+    # gettimeofday exists on IRIX
+    ac_cv_func_gettimeofday: 'yes'
+    # strcasecmp exists on IRIX (in libc)
+    ac_cv_func_strcasecmp: 'yes'
   configure_disable:
-  - x11
-  - gl
   - csharp
   - java
   - python
   - ruby
-  - imlib2
   - doc
   - cxx
   - network
@@ -40,8 +46,6 @@ rules:
     replacement: '# ruby globals removed for cross-build'
   - pattern: '%{!?ruby_vendorarchdir: %global ruby_vendorarchdir %(ruby -r rbconfig -e ''print RbConfig::CONFIG["vendorarchdir"]'')}'
     replacement: '# ruby globals removed for cross-build'
-  - pattern: '%bcond_without gl'
-    replacement: '%bcond_with gl'
   - pattern: '%bcond_without ruby'
     replacement: '%bcond_with ruby'
   - pattern: 'Buildrequires: doxygen'

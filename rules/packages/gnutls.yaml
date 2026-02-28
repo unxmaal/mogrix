@@ -1,4 +1,10 @@
 package: gnutls
+# Re-enablement audit (Feb 2025): p11-kit trust store and IDN re-enabled.
+# - p11-kit: PKCS#11 trust module for system certificate store
+# - libidn2: international domain name support in TLS handshake
+# DANE and hardware acceleration stay disabled (deps not available).
+# Every TLS-using app (curl, wget2, gnupg2, ir8, bitlbee, profanity, weechat)
+# benefits automatically — no downstream rebuilds needed.
 rules:
   drop_requires:
   - crypto-policies
@@ -12,6 +18,11 @@ rules:
   # so we must provide it via compat injection.
   inject_compat_functions:
   - timegm
+  export_vars:
+    # _GNU_SOURCE must be defined before gnulib headers are processed.
+    # Can't be in irix-cc globally (breaks other gnulib packages via
+    # _GL_CONFIG_H_INCLUDED guards). gnutls needs it for timezone_t typedef.
+    CPPFLAGS: "-D_GNU_SOURCE=1 $CPPFLAGS"
   prep_commands:
   - $MOGRIX_ROOT/tools/safepatch lib/gthreads.h --old '#define _Thread_local __thread' --new '#define _Thread_local' --no-backup --quiet
   ac_cv_overrides:

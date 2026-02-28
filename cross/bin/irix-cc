@@ -29,13 +29,11 @@ CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
 # IRIX's stdio_core.h defines va_list as char* which conflicts with clang builtins
 CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
-# Define _GNU_SOURCE before the time.h force-include. The force-include triggers
-# gnulib's generated time.h (via -I paths), which checks _GNU_SOURCE to decide
-# whether to typedef timezone_t. Without this, gnulib's time.h guard gets set
-# during the force-include chain (before config.h defines _GNU_SOURCE), and
-# when source code later includes <time.h>, the guard prevents re-processing,
-# leaving timezone_t undefined.
-CLANG_FLAGS="$CLANG_FLAGS -D_GNU_SOURCE=1"
+# NOTE: Do NOT add -D_GNU_SOURCE=1 here globally. It causes gnulib's wrapper
+# headers (sys/types.h, sys/time.h) to activate _GL_CONFIG_H_INCLUDED guards
+# that fail because the force-include chain processes them before config.h.
+# Packages that need _GNU_SOURCE for gnulib (e.g., gnutls) should add it via
+# export_vars in their package YAML instead.
 # Force-include time.h to ensure struct timespec is defined as "struct timespec"
 # (not "struct __timespec"). IRIX sys/timespec.h only maps __timespec→timespec
 # when __TIME_H__ is set. Without this, signal.h (and other headers) can include

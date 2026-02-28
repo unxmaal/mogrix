@@ -31,8 +31,12 @@ rules:
     replacement: '%bcond_with perl_enables_cplusplus_test'
   - pattern: '%bcond_without bdb'
     replacement: '%bcond_with bdb'
-  - pattern: '%bcond_without gdbm'
-    replacement: '%bcond_with gdbm'
+  # gdbm re-enabled — libgdbm.so + headers now in staging.
+  # LESSON: Perl GDBM_File requires adding GDBM_File AND NDBM_File to
+  # dynamic_ext, extensions, and known_extensions in perl.irix6_clang_config.sh.
+  # Also requires i_gdbm='define', i_gdbmndbm='define', and -lgdbm -lgdbm_compat
+  # in libs/perllibs. Without the extension lists, perl's make_ext.pl silently
+  # skips building the XS modules even if i_gdbm is set.
   - pattern: '%bcond_without perl_enables_groff'
     replacement: '%bcond_with perl_enables_groff'
   - pattern: '%bcond_without perl_enables_turkish_test'
