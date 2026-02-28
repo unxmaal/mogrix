@@ -1,4 +1,7 @@
 package: mc
+# Re-enablement audit (Feb 2025): SFTP virtual filesystem re-enabled.
+# libssh2 now in staging. vfs-sftp was removed from configure_disable.
+# mc auto-detects libssh2 and enables the SFTP VFS panel.
 rules:
   drop_buildrequires:
   - e2fsprogs-devel
@@ -6,7 +9,6 @@ rules:
   - check-devel
   - aspell-en
   configure_disable:
-  - vfs-sftp
   - aspell
   - cons-saver
   configure_flags:

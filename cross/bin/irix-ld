@@ -166,10 +166,15 @@ if [ "$is_shared" = "1" ]; then
         # crtbeginS.o provides .init → .ctors walker; crtendS.o provides sentinels.
         # LLD properly handles .hidden visibility on CRT symbols (no version script
         # needed, unlike BFD which loses .hidden and needs crt-hide.ver workaround).
+        # -z notext: Allow text relocations in shared libraries. MIPS clang always
+        # emits R_MIPS_32 absolute relocations in .eh_frame for C++ exception
+        # handling, even with -fPIC. LLD 18 rejects these without -z notext.
+        # This affects ALL C++ shared libraries (double-conversion, woff2, etc.).
         $LLD \
           -Bsymbolic \
           --no-rosegment \
           -z norelro \
+          -z notext \
           --image-base=0x5ffe0000 \
           --allow-shlib-undefined \
           --mips-got-size=1048576 \

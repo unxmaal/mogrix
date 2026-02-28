@@ -14,6 +14,8 @@ rules:
 
   ac_cv_overrides:
     ac_cv_va_copy: "C99"
+    # gettimeofday exists on IRIX but autoconf char func() test conflicts
+    ac_cv_func_gettimeofday: "yes"
 
   configure_flags:
     add:

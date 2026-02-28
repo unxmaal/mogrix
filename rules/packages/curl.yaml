@@ -1,10 +1,15 @@
 package: curl
+# Re-enablement audit (Feb 2025): libpsl, libidn2, brotli re-enabled.
+# These are internal features — no downstream rebuilds needed.
+# - libpsl: public suffix list for cookie domain validation
+# - libidn2: international domain name (IDN) support
+# - brotli: faster HTTP compression (Brotli content-encoding)
+# Verify with: curl --version (should show brotli, IDN2, PSL in Features line)
 rules:
   drop_buildrequires:
   - krb5-devel
   drop_requires:
   - libnghttp2
-  - libpsl
   - libssh
   export_vars:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
@@ -37,8 +42,7 @@ rules:
     replacement: --disable-ldap
   - pattern: --enable-ldaps
     replacement: --disable-ldaps
-  - pattern: --with-libpsl
-    replacement: --without-libpsl
+  # libpsl re-enabled — dep now in staging
   - pattern: --with-libssh
     replacement: --without-libssh
   - pattern: --enable-threaded-resolver
@@ -66,9 +70,7 @@ rules:
     replacement: --with-openssl=/opt/sgug-staging/usr/sgug --with-ca-bundle
   - pattern: --with-gssapi
     replacement: --without-gssapi
-  - pattern: --with-libidn2
-    replacement: --without-libidn2
+  # libidn2 re-enabled — dep now in staging
   - pattern: --with-nghttp2
     replacement: --without-nghttp2
-  - pattern: --with-brotli
-    replacement: --without-brotli
+  # brotli re-enabled — dep now in staging

@@ -181,6 +181,30 @@ warning: format specifies type 'unsigned int' but argument has type 'mode_t' (ak
 
 ---
 
+## Kernel Primitives
+
+### setcontext (syscall 1169)
+
+Atomically restores all registers + sigmask from a `ucontext_t`. This is a kernel transition, not userspace — once called, the caller's context is gone. Used by Go runtime for async preemption signal recovery.
+
+### sigreturn (syscall 1088)
+
+Honors modified EPC in the ucontext. IRIX `_sigtramp` (in libc) saves/restores `errno` around the signal handler, then calls `sigreturn` to resume execution.
+
+### PRDA at 0x200F80
+
+The Process Data Area is per-pthread, not just per-process. Verified: 8 threads, 80K stress read-backs all correct. IRIX pthreads are 1:1 with sprocs. Safe to use as TLS-like storage per thread.
+
+### libpthread reserved signals
+
+IRIX libpthread reserves signals 47 (`SIGPTINTR`) and 48 (`SIGPTRESCHED`) for internal thread scheduling. **Never install signal handlers for these. Never block/unblock them.** Any code that installs handlers for a range of signals must skip 47-48.
+
+### No pkill command
+
+IRIX has no `pkill`. To kill processes by name: `ps -ef | grep name` + `kill <pid>`. This matters when debugging — stale processes can't be killed by name and may hold binary files open.
+
+---
+
 ## Adding New Quirks
 
 When you encounter a new IRIX-specific issue:

@@ -16,6 +16,9 @@ rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
     gl_cv_func_working_getdelim: "yes"
+    # Fix gettimeofday prototype conflict: IRIX variadic vs gnulib/POSIX
+    ac_cv_func_gettimeofday: "yes"
+    gl_cv_func_gettimeofday_posix_signature: "almost"
 
   configure_flags:
     add:

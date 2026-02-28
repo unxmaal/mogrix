@@ -48,7 +48,7 @@ rules:
     - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old 'sa_len = sizeof' --new 'my_sa_len = sizeof' --count 0 --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch p11-kit/server.c --old ', &sa_len)' --new ', &my_sa_len)' --count 0 --no-backup --quiet"
     # Fix %zu format specifier in lexer.c (IRIX libc doesn't support %zu, size_t is 4 bytes on n32)
-    - "$MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zu' --new '%u' --count 0 --no-backup --quiet; $MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zd' --new '%d' --count 0 --no-backup --quiet; $MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zx' --new '%x' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch common/lexer.c --old '%zx' --new '%x' --count 0 --no-backup --quiet || :"
     # Patch meson.build: IRIX has nanosleep/dlopen/gmtime_r in libc
     # The meson has_function() check fails due to IRIX header type mismatches (timespec_t etc.)
     # Add 'host_system != irix' guard to each problematic detection line
@@ -71,9 +71,9 @@ rules:
     # meson's import('python').find_installation() finds the cross-target python, which doesn't exist.
     # Replace with find_program('python3') which finds the build-machine python.
     - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"python = import('python').find_installation()\" --new \"python = find_program('python3')\" --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version = .*$' --new '# python_version check skipped for IRIX cross' --regex --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version_req = .*$' --new '# python_version_req skipped' --regex --no-backup --quiet"
-    - "perl -0777 -pi -e 's/^if not python_version.*?^endif/# python version check skipped for IRIX cross/ms' meson.build"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version = .*$' --new '# python_version check skipped for IRIX cross' --regex --no-backup --quiet || :"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version_req = .*$' --new '# python_version_req skipped' --regex --no-backup --quiet || :"
+    - "perl -0777 -pi -e 's/^if not python_version.*?^endif/# python version check skipped for IRIX cross/ms' meson.build || :"
     # Create package-specific meson cross file that adds compat library link args
     # and -lpthread (IRIX needs explicit pthread linking)
     - "cp /home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini p11-kit-cross.ini"

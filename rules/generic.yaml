@@ -1,7 +1,7 @@
 # generic.yaml - Universal rules applied to ALL packages BEFORE package-specific rules.
 #
 # DO NOT duplicate these rules in rules/packages/*.yaml.
-# See rules/INDEX.md for the full list of what generic handles.
+# See rules/GENERIC_SUMMARY.md for the full list of what generic handles.
 #
 # ---metadata---
 # scope: global (applies to every package)

@@ -15,9 +15,11 @@ rules:
   prep_commands:
     # man-db has broken __sgi code path that references argc out of scope
     # We don't want the vendor /usr/bin/man fallback anyway
-    - "$MOGRIX_ROOT/tools/safepatch src/man.c --old '#if defined _AIX || defined __sgi' --new '#if 0 /* disabled for IRIX cross-build */' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch src/man.c --old '#if defined _AIX || defined __sgi' --new '#if 0 /* disabled for IRIX cross-build */' --count 0 --no-backup --quiet"
     # IRIX iconv doesn't support GNU flags (-c, //TRANSLIT) — skip charset conversion
     - "$MOGRIX_ROOT/tools/safepatch src/man.c --old 'if (source && target && !STREQ (source, target))' --new 'if (0 /* iconv disabled for IRIX */)' --no-backup --quiet"
+    # gnulib signal.in.h has NSIG <= 32 constraint; IRIX has NSIG=65. Raise the limit.
+    - "perl -pi -e 's/NSIG <= 32/NSIG <= 128/' gl/lib/signal.in.h 2>/dev/null || true"
   install_cleanup:
     # Remove cron subpackage files (subpackage dropped but install still runs)
     - "rm -rf %{buildroot}%{_sysconfdir}/cron.daily"
@@ -28,6 +30,22 @@ rules:
   ac_cv_overrides:
     # IRIX iconv doesn't support GNU flags (-c, //TRANSLIT) — disable charset conversion
     am_cv_func_iconv: "no"
+    # Prevent gnulib gettimeofday replacement (IRIX variadic signature conflicts)
+    ac_cv_func_gettimeofday: "yes"
+    gl_cv_func_gettimeofday_posix_signature: "almost"
+    # Prevent gnulib nanosleep replacement (timespec_t vs struct timespec conflict)
+    ac_cv_func_nanosleep: "yes"
+    ac_cv_search_nanosleep: "none required"
+    gl_cv_func_nanosleep: "yes"
+    # Prevent gnulib sigaction replacement (conflicts with IRIX signal.h)
+    ac_cv_func_sigaction: "yes"
+    gl_cv_func_sigaction: "yes"
+    # Prevent gnulib signal replacement (NSIG=65 on IRIX, gnulib checks NSIG<=32)
+    gl_cv_func_raise: "yes"
+    ac_cv_func_raise: "yes"
+    # Prevent gnulib sigprocmask replacement (IRIX sigset_t is struct, not int)
+    ac_cv_func_sigprocmask: "yes"
+    gl_cv_func_sigprocmask: "yes"
 
   configure_flags:
     add:

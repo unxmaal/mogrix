@@ -1,4 +1,10 @@
 package: gnutls
+# Re-enablement audit (Feb 2025): p11-kit trust store and IDN re-enabled.
+# - p11-kit: PKCS#11 trust module for system certificate store
+# - libidn2: international domain name support in TLS handshake
+# DANE and hardware acceleration stay disabled (deps not available).
+# Every TLS-using app (curl, wget2, gnupg2, ir8, bitlbee, profanity, weechat)
+# benefits automatically — no downstream rebuilds needed.
 rules:
   drop_requires:
   - crypto-policies
@@ -7,10 +13,32 @@ rules:
   drop_buildrequires:
   - trousers-devel
   - mingw*
+  # timegm is needed by gnulib's time_rz module (used by parse-datetime).
+  # ac_cv_func_timegm=yes tells gnulib not to compile its own timegm.c,
+  # so we must provide it via compat injection.
+  inject_compat_functions:
+  - timegm
+  export_vars:
+    # _GNU_SOURCE must be defined before gnulib headers are processed.
+    # Can't be in irix-cc globally (breaks other gnulib packages via
+    # _GL_CONFIG_H_INCLUDED guards). gnutls needs it for timezone_t typedef.
+    CPPFLAGS: "-D_GNU_SOURCE=1 $CPPFLAGS"
   prep_commands:
   - $MOGRIX_ROOT/tools/safepatch lib/gthreads.h --old '#define _Thread_local __thread' --new '#define _Thread_local' --no-backup --quiet
   ac_cv_overrides:
     gl_cv_func_working_getdelim: 'yes'
+    # irix-cc force-includes time.h, which breaks autoconf detection of
+    # time functions. gnulib then generates rpl_* replacements or
+    # _GL_FUNCDECL_SYS declarations that conflict with the real (or compat)
+    # declarations already visible from the force-included header.
+    ac_cv_func_gettimeofday: 'yes'
+    gl_cv_func_gettimeofday_posix_signature: 'almost'
+    gl_cv_func_working_mktime: 'yes'
+    ac_cv_func_timegm: 'yes'
+    ac_cv_func_localtime: 'yes'
+    ac_cv_func_localtime_r: 'yes'
+    ac_cv_func_nanosleep: 'yes'
+    ac_cv_func_setitimer: 'yes'
   configure_flags:
     add:
     - --disable-doc
@@ -20,10 +48,11 @@ rules:
     - --disable-hardware-acceleration
     - --without-tpm
     - --without-tpm2
-    - --without-idn
     - --disable-libdane
     - --disable-valgrind-tests
-    - --without-p11-kit
+    # LLD 18 rejects R_MIPS_32 in .eh_frame of C++ shared libs.
+    # MIPS clang emits these regardless of -fPIC. libgnutlsxx is rarely used.
+    - --disable-cxx
     - --with-default-trust-store-file=%{_sysconfdir}/pki/tls/certs/ca-bundle.crt
   configure_disable:
   - seccomp-tests
@@ -70,10 +99,7 @@ rules:
 
       '
     replacement: ''
-  - pattern: '%{_bindir}/p11tool
-
-      '
-    replacement: ''
+  # p11tool re-enabled — p11-kit now in staging
   - pattern: '%{_mandir}/man1/*
 
       '
@@ -84,5 +110,10 @@ rules:
     replacement: ''
   - pattern: '%files -f native_build/gnutls.lang'
     replacement: '%files'
+  # C++ binding disabled — strip subpackage requires and files
+  - pattern: "Requires: %{name}-c++%{?_isa} = %{version}-%{release}\n"
+    replacement: ''
+  - pattern: "%files c++\n%{_libdir}/libgnutlsxx.so.*\n"
+    replacement: "%files c++\n"
   install_cleanup:
   - rm -rf %{buildroot}%{_docdir}/manual

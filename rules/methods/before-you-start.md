@@ -29,12 +29,18 @@ If the answer is "it'll compile but can't actually do its job," skip it.
 
 ## 1. Check rules first
 
-Check the rules/INDEX.md first.
-Start with generic / global rules for fixes, then package-specific rules.  
+Use `knowledge_query` MCP tool to search for the problem. Then check the authoritative rule files:
+- `rules/GENERIC_SUMMARY.md` — what generic.yaml already handles
+- `rules/packages/*.yaml` — package-specific rules
+- `rules/generic.yaml` — cross-package rules
+- `compat/catalog.yaml` — compat functions (use `check_compat` MCP tool)
 
-## 2. Check HANDOFF.md
+## 2. Check knowledge DB for recent sessions
 
-The "What Failed" sections document approaches that don't work. Don't repeat them.
+Query the knowledge DB for recent session handoffs — they document what was tried, what failed, and what's next. Use `session_start` MCP tool (which shows the last session's status) or query directly:
+```sql
+SELECT summary, tasks_started, key_findings FROM sessions ORDER BY id DESC LIMIT 3
+```
 
 ## 3. Check SGUG-RSE 
 

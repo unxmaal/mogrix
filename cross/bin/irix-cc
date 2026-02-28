@@ -29,6 +29,11 @@ CLANG_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3
 # Force-include our stdarg.h BEFORE anything else to define va_list correctly
 # IRIX's stdio_core.h defines va_list as char* which conflicts with clang builtins
 CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
+# NOTE: Do NOT add -D_GNU_SOURCE=1 here globally. It causes gnulib's wrapper
+# headers (sys/types.h, sys/time.h) to activate _GL_CONFIG_H_INCLUDED guards
+# that fail because the force-include chain processes them before config.h.
+# Packages that need _GNU_SOURCE for gnulib (e.g., gnutls) should add it via
+# export_vars in their package YAML instead.
 # Force-include time.h to ensure struct timespec is defined as "struct timespec"
 # (not "struct __timespec"). IRIX sys/timespec.h only maps __timespec→timespec
 # when __TIME_H__ is set. Without this, signal.h (and other headers) can include
@@ -39,6 +44,12 @@ for _arg in "$@"; do
     case "$_arg" in *.S|*.s) _has_asm_source=true; break ;; esac
 done
 if [ "$_has_asm_source" = "false" ]; then
+    # Define _GL_CONFIG_H_INCLUDED BEFORE force-including time.h so that gnulib's
+    # replacement headers (sys/types.h, string.h, etc.) don't error with
+    # "Please include config.h first." when they get pulled in via time.h's include
+    # chain. This is safe: _GL_CONFIG_H_INCLUDED is a gnulib-internal macro that
+    # non-gnulib code never checks. Affects libidn2, man-db, wget2, etc.
+    CLANG_FLAGS="$CLANG_FLAGS -D_GL_CONFIG_H_INCLUDED=1"
     CLANG_FLAGS="$CLANG_FLAGS -include $SYSROOT/usr/include/time.h"
 fi
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"

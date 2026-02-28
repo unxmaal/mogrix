@@ -10,6 +10,12 @@ rules:
   prep_commands:
     - "$MOGRIX_ROOT/tools/safepatch src/npth.h.in --old '#include <pthread.h>' --insert-after '#include <unistd.h>' --no-backup --quiet"
 
+  # IRIX doesn't have clock_gettime, but npth has a gettimeofday fallback.
+  # Force configure to detect gettimeofday=yes and clock_gettime=no.
+  ac_cv_overrides:
+    ac_cv_func_clock_gettime: "no"
+    ac_cv_func_gettimeofday: "yes"
+
   configure_flags:
     add:
       - --disable-static

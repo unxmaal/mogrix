@@ -50,6 +50,7 @@ A separate MCP server (`tools/mogrix-test-server.py`) provides structured testin
 
 - `test_bundle` deploys to `/tmp/mogrix-test/` on the IRIX **host** (not chroot). Bundle wrappers set their own `LD_LIBRARYN32_PATH`, so running through chroot would pollute the environment.
 - `test_binary` supports both chroot mode (default, for installed packages) and `host_mode` (for bundle binaries).
+- `test_binary host_mode=true` does NOT `cd` to the binary's directory. Tests needing relative paths (e.g. `testdata/`) will fail. Use `irix_host_exec` with explicit `cd /path && ./binary` for those cases.
 - `screenshot` captures the X11 display via `xwd` on IRIX, transfers via SCP, converts to PNG on Linux.
 
 **Typical testing workflow:**

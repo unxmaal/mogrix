@@ -257,7 +257,7 @@ class RuleEngine:
         # It's linked by irix-ld for executables only (dlmalloc.o in staging).
         # Shared libraries leave malloc/free undefined so rld resolves them
         # to the executable's single dlmalloc, preventing cross-heap corruption.
-        # See rules/INDEX.md "dlmalloc shared library crash".
+        # See CLAUDE.md "dlmalloc is in executables only".
         if "dlmalloc" in result.compat_functions:
             result.compat_functions.remove("dlmalloc")
             result.applied_rules.append(

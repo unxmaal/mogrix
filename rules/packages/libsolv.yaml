@@ -46,7 +46,7 @@ rules:
   - pattern: '%bcond_without comps'
     replacement: '%bcond_with comps'
   - pattern: '%cmake -GNinja'
-    replacement: "export COMPAT_DIR=$(pwd)/mogrix-compat\ncmake -B _build -S . \\\n  -DCMAKE_SYSTEM_NAME=IRIX \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_CXX_COMPILER=%{__cxx} \\\n  -DCMAKE_AR=%{__ar}\
+    replacement: "export COMPAT_DIR=$(pwd)/mogrix-compat\ncmake -B _build -S . \\\n  -DCMAKE_SYSTEM_NAME=IRIX \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_CXX_COMPILER=%{__cxx} \\\n  -DCMAKE_AR=%{__ar}\
       \ \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic\"\
       \ \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen -lpthread\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a\
       \ -Wl,--no-whole-archive -lgen -lpthread\" \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n\

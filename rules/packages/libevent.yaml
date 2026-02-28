@@ -8,6 +8,8 @@ rules:
     ac_cv_func_setenv: 'yes'
     ac_cv_func_unsetenv: 'yes'
     ac_cv_func_strsep: 'yes'
+    ac_cv_func_gettimeofday: 'yes'
+    ac_cv_func_strtok_r: 'yes'
   spec_replacements:
   - pattern: "%if ! 0%{?_module_build}\n    --enable-doxygen-doc \\\n%endif\n"
     replacement: ''

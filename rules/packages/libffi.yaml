@@ -16,8 +16,13 @@ rules:
   # (R_MIPS_HI16/LO16) instead of GP-relative relocations (R_MIPS_GPREL16).
   # GNU ld rejects __gnu_local_gp in shared objects.
   # Fix: use external GNU assembler (mips-sgi-irix6.5-as) for .S files.
+  #
+  # Additional issue: GNU as puts LOCAL NOTYPE labels after GLOBAL symbols
+  # in .symtab, which LLD 18 rejects ("invalid binding: 0"). Fix: use BFD ld
+  # for linking (libffi is small, no multi-GOT concerns).
   export_vars:
     CCASFLAGS: "-fno-integrated-as -B/opt/cross/bin/mips-sgi-irix6.5-"
+    MOGRIX_USE_BFDLD_SHARED: "1"
 
   # Our rpmbuild doesn't run brp-compress, and we lack makeinfo for info pages
   spec_replacements:

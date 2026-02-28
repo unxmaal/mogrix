@@ -8,7 +8,7 @@ rules:
   - onig
   prep_commands:
   - '$MOGRIX_ROOT/tools/safepatch src/slutty.c --insert-top ''#include <fcntl.h>'' --no-backup --quiet'
-  - "$MOGRIX_ROOT/tools/safepatch modules/slsmg-module.c --old '#include <slang.h>' --insert-after 'extern int SLtt_write_to_status_line(const char *, int);' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch modules/slsmg-module.c --old '#include <slang.h>' --insert-after 'extern int SLtt_write_to_status_line(char *, int);' --no-backup --quiet"
   spec_replacements:
   - pattern: --with-{png,z}lib=%{_libdir}
     replacement: --with-pnglib=%{_libdir} --with-zlib=%{_libdir}

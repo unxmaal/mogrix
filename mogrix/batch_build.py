@@ -413,8 +413,8 @@ class BatchBuilder:
         return any(rpms_dir.glob(f"{package}-*.rpm"))
 
     def _find_converted_srpm(self, package: str) -> Path | None:
-        """Find a converted SRPM in the outputs directory."""
-        converted_dir = self.outputs_dir / "SRPMS"
+        """Find a converted SRPM in the conversion workspace."""
+        converted_dir = self.outputs_dir / "converted"
         if not converted_dir.exists():
             return None
 
@@ -658,7 +658,7 @@ class BatchBuilder:
         Stores error details on self._last_convert_error for reporting.
         """
         self._last_convert_error = ""
-        output_dir = self.outputs_dir / "SRPMS"
+        output_dir = self.outputs_dir / "converted"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -671,7 +671,12 @@ class BatchBuilder:
             result = converter.convert_one(srpm_path, output_dir)
 
             if result["status"] == "success" and result.get("output_srpm"):
-                return Path(result["output_srpm"])
+                converted_srpm = Path(result["output_srpm"])
+                # Copy SRPM to repo directory (~/mogrix_outputs/SRPMS/)
+                srpms_repo = self.outputs_dir / "SRPMS"
+                srpms_repo.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(converted_srpm, srpms_repo / converted_srpm.name)
+                return converted_srpm
             self._last_convert_error = result.get("error", "Unknown conversion error")
             return None
         except Exception as e:
@@ -716,7 +721,8 @@ class BatchBuilder:
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
-                text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=options.build_timeout,
             )
         except subprocess.TimeoutExpired:

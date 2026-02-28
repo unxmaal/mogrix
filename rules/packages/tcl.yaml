@@ -13,6 +13,12 @@ rules:
   ac_cv_overrides:
     tcl_cv_sys_version: "IRIX64-6.5"
 
+  # Tcl's compat/string.h declares memchr/memcpy/memset with char* return type
+  # which conflicts with IRIX system headers (void* return). The compat header
+  # is for ancient systems without proper string.h — IRIX has all these functions.
+  prep_commands:
+    - "echo '/* Removed — IRIX has proper string.h */' > compat/string.h"
+
   # rpmbuild uses /bin/sh — pushd and brace expansion are bash-isms
   spec_replacements:
     - pattern: "pushd unix"

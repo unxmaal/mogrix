@@ -1,10 +1,58 @@
 package: gettext
+# gettext 0.22.5 cross-compilation for IRIX.
+#
+# Lessons learned (re-enablement audit, Feb 2025):
+#
+# 1. gnulib cross-compilation cascade: gnulib can't test IRIX libc functions,
+#    so it guesses they're broken and builds replacements (rpl_*, _libintl_*).
+#    These replacements often conflict with each other or with IRIX libc.
+#    Fix: ac_cv_overrides to tell gnulib the functions work correctly.
+#
+# 2. CRITICAL: drop_subpackages only removes RPM packaging (%package/%files
+#    sections). It does NOT remove from build SUBDIRS. The Fedora
+#    gettext-0.22-disable-libtextstyle.patch modifies .am files, but since
+#    mogrix skips autoreconf, the shipped .in files still list libtextstyle
+#    in SUBDIRS, and gettext-tools/src depends on textstyle.h from it.
+#    Removing libtextstyle from SUBDIRS via sed breaks the build.
+#    Solution: let libtextstyle build normally; drop_subpackages prevents packaging.
+#
+# 3. Libtool wrapper scripts: cross-compilation libtool installs bash wrapper
+#    scripts instead of real ELF binaries. A post-install loop replaces them
+#    with actual binaries from .libs/ directories.
+#
+# 4. gnulib REPLACE_PERROR cascade: Even with gl_cv_func_perror_works=yes,
+#    REPLACE_PERROR=1 if GL_GENERATE_ERRNO_H!=false or REPLACE_STRERROR_0!=0.
+#    Need gl_cv_header_errno_h_complete=yes AND gl_cv_func_strerror_0_works=yes
+#    to prevent cascade to rpl_perror which calls strerror_r expecting POSIX
+#    return type (int), but our compat returns char* (GNU-style).
+#
+# 5. rpl_unsetenv: gnulib's replacement appears in .dynsym (verified by readelf)
+#    but IRIX rld cannot resolve it (possible MIPS hash table or GOT issue).
+#    Fix: tell gnulib IRIX unsetenv works correctly via ac_cv overrides.
 rules:
+  prep_commands:
+  # Strip gnulib's "Please include config.h first" guards from all headers.
+  # irix-cc force-includes time.h which triggers gnulib wrappers before config.h.
+  # Handles all variants: "#if", "# if", "!_LIBC && !_GL_CONFIG_H_INCLUDED".
+  - find . -name '*.h' -o -name '*.in.h' | xargs perl -0pi -e 's/^#\s*if\s+(!_GL_CONFIG_H_INCLUDED|!_LIBC\s*&&\s*!_GL_CONFIG_H_INCLUDED)\n\s*#\s*error\s+"Please include config\.h first\."\n\s*#\s*endif\n//gm'
+  # Remove gnulib's "NSIG <= 32" static assertion. IRIX has NSIG=65 (65 signals).
+  # gnulib assumes at most 32 signals and uses a negative-size array trick to enforce it.
+  - "find . -name 'signal.in.h' | xargs perl -0pi -e 's|/\\* This code supports only 32 signals\\.\\s+\\*/\\n#\\s*if !GNULIB_defined_verify_NSIG_constraint\\ntypedef int verify_NSIG_constraint\\[NSIG <= 32 \\? 1 : -1\\];\\n#\\s*define GNULIB_defined_verify_NSIG_constraint 1\\n#\\s*endif||gm'"
+  # Disable libgettextpo symbol namespace prefixing (conflicts with force-include).
+  # Without this, libgettextpo tries to prefix all symbols with _libintl_ via nm/sed,
+  # which collides with gnulib's rpl_* wrappers from the force-included headers.
+  - sed -i 's/^HAVE_GLOBAL_SYMBOL_PIPE = @HAVE_GLOBAL_SYMBOL_PIPE@/HAVE_GLOBAL_SYMBOL_PIPE =/' gettext-tools/libgettextpo/Makefile.in
+  # Touch autotools outputs so make does not try to regenerate them.
+  # prep_commands modify .in.h and Makefile.in timestamps, which triggers make's
+  # autotools rebuild rules (looking for aclocal, automake, etc.). This prevents that.
+  - find . \( -name configure -o -name aclocal.m4 -o -name config.h.in -o -name 'Makefile.in' \) -exec touch {} +
+  # NOTE: libtextstyle stays in SUBDIRS — see lesson #2 above.
   drop_subpackages:
   - common-devel
   - libtextstyle
   - libtextstyle-devel
   ac_cv_overrides:
+    # --- Original overrides (IRIX libc has these functions) ---
     ac_cv_func_stpcpy: 'yes'
     ac_cv_func_getdelim: 'yes'
     ac_cv_have_decl_getdelim: 'yes'
@@ -12,6 +60,32 @@ rules:
     ac_cv_func_getline: 'yes'
     ac_cv_have_decl_getline: 'yes'
     gl_cv_onwards_func_getline: 'yes'
+    # --- gnulib cross-compilation fixes (added during re-enablement audit) ---
+    # Without memchr_works, gnulib replaces memchr with _libintl_memchr in intl/,
+    # which conflicts with rpl_memchr from gnulib's string.h wrapper.
+    gl_cv_func_memchr_works: 'yes'
+    # Without these, gnulib builds its own sigprocmask treating sigset_t as
+    # unsigned int, but IRIX sigset_t is a struct — causes ABI mismatch.
+    ac_cv_func_sigprocmask: 'yes'
+    ac_cv_func_sigaction: 'yes'
+    # IRIX gettimeofday works but has old-style 2-arg signature.
+    ac_cv_func_gettimeofday: 'yes'
+    gl_cv_func_gettimeofday_posix_signature: 'almost'
+    ac_cv_func_nanosleep: 'yes'
+    ac_cv_search_nanosleep: 'none required'
+    gl_cv_func_nanosleep: 'yes'
+    gl_cv_func_strerror_r_works: 'yes'
+    ac_cv_func_perror: 'yes'
+    gl_cv_func_perror_works: 'yes'
+    gl_cv_socklen_t_equiv: 'int'
+    # These two prevent the REPLACE_PERROR cascade (see lesson #4 above).
+    gl_cv_header_errno_h_complete: 'yes'
+    gl_cv_func_strerror_0_works: 'yes'
+    # These four prevent gnulib from creating rpl_unsetenv (see lesson #5 above).
+    ac_cv_func_unsetenv: 'yes'
+    ac_cv_have_decl_unsetenv: 'yes'
+    gt_cv_func_unsetenv_ret: 'int'
+    gl_cv_func_unsetenv_works: 'yes'
   spec_replacements:
   - pattern: '%files -f %{name}-tools.lang'
     replacement: '%files'
@@ -20,7 +94,7 @@ rules:
   - pattern: "%configure --enable-nls --disable-static \\\n    --enable-shared --disable-csharp --disable-rpath \\\n%if %{with java}\n    --enable-java \\\n%else\n    --disable-java --disable-native-java\
       \ \\\n%endif\n    --with-xz"
     replacement: "%configure --enable-nls --disable-static \\\n    --enable-shared --disable-csharp --disable-rpath \\\n    --disable-java --disable-native-java \\\n    --disable-libasprintf --disable-openmp\
-      \ \\\n    --without-emacs --without-git --without-cvs --without-bzip2 \\\n    --with-included-libxml --with-included-libunistring \\\n    --with-xz"
+      \ \\\n    --without-emacs --without-git --without-cvs \\\n    --with-included-libxml --with-included-libunistring \\\n    --with-xz"
   - pattern: export CPPFLAGS="-I%{_includedir}/libxml2"
     replacement: '# glib2 disabled (circular dep)
 
@@ -96,9 +170,21 @@ rules:
   - pattern: '%{_mandir}/man1/msghack.1*'
     replacement: ''
   - pattern: autoreconf
-    replacement: '# autoreconf disabled for cross-compilation — use shipped configure'
+    replacement: '# autoreconf disabled for cross-compilation -- use shipped configure'
   - pattern: '%{_datadir}/locale/locale.alias'
     replacement: ''
   - pattern: "sed -e 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=\"\"|g' \\\n    -e 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' \\\n    -e 's|CC=.g..|& -Wl,--as-needed|' \\\n\
       \    -i $(find . -name libtool)"
     replacement: '# rpath elimination handled by mogrix'
+  # Strip _libintl_ namespace renames from intl/config.h AFTER configure runs.
+  # gettext-runtime/intl/configure generates config.h with lines like:
+  #   #define memchr _libintl_memchr
+  # These conflict with gnulib's rpl_memchr wrappers from the force-included headers.
+  # Must happen after configure but before make, so we inject it before %make_build.
+  - pattern: "%make_build %{?with_java:GCJFLAGS=\"-findirect-dispatch\"}"
+    replacement: "# Strip _libintl_ namespace renames from intl config.h\nfind . -path '*/intl/config.h' -exec sed -i '/#define.*_libintl_/d' {} \\;\n\n%make_build %{?with_java:GCJFLAGS=\"-findirect-dispatch\"}"
+  # Libtool wrapper script replacement (see lesson #3 above).
+  # Cross-compiled libtool installs bash wrapper scripts that exec the real binary
+  # from .libs/. On IRIX there's no bash, so we replace wrappers with actual ELF binaries.
+  - pattern: "    aclocaldir=%{_datadir}/aclocal EXAMPLESFILES=\"\""
+    replacement: "    aclocaldir=%{_datadir}/aclocal EXAMPLESFILES=\"\"\n\n# Fix libtool wrapper scripts: cross-compile libtool installs bash wrappers\n# instead of real binaries. Replace with actual ELF binaries from build tree.\nfor f in ${RPM_BUILD_ROOT}%{_bindir}/* ${RPM_BUILD_ROOT}%{_libdir}/gettext/*; do\n  [ -f \"$f\" ] || continue\n  head -1 \"$f\" | grep -q '^#!.*/bash' || continue\n  real=$(sed -n 's|^exec \"\\$progdir/\\$program\" .*|\\1|p' \"$f\" | head -1)\n  if [ -z \"$real\" ]; then\n    bname=$(basename \"$f\")\n    real=$(find . -name \"$bname\" -path '*/.libs/*' -type f | head -1)\n  else\n    bname=$(basename \"$f\")\n    real=$(find . -name \"$bname\" -path '*/.libs/*' -type f | head -1)\n  fi\n  if [ -n \"$real\" ] && file \"$real\" | grep -q ELF; then\n    cp -f \"$real\" \"$f\"\n  fi\ndone"

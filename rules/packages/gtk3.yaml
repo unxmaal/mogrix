@@ -41,7 +41,7 @@ rules:
     # Make atk-bridge-2.0 optional (IRIX has no AT-SPI2 accessibility bus)
     - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"dependency('atk-bridge-2.0', version: at_spi2_atk_req)\" --new \"dependency('atk-bridge-2.0', version: at_spi2_atk_req, required: false)\" --no-backup --quiet"
     # Guard atk-bridge pkgconfig reference
-    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"atk_pkgs += ['atk-bridge-2.0']\" --new $'if atkbridge_dep.found()\\n    atk_pkgs += [\\'atk-bridge-2.0\\']\\n  endif' --no-backup --quiet"
+    - "perl -0pi -e \"s/atk_pkgs \\+= \\['atk-bridge-2.0'\\]/if atkbridge_dep.found()\\n    atk_pkgs += ['atk-bridge-2.0']\\n  endif/\" meson.build"
     # IRIX XEvent union lacks xcookie member (pre-X11R7.5).
     # Add Xge.h include and replace ->xcookie with cast through XGenericEventCookie*.
     # Files: gdkdevicemanager-xi2.c, gdkdisplay-x11.c, gdkeventsource.c, gdkwindow-x11.c, gtkdnd.c

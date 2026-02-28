@@ -4,8 +4,11 @@ rules:
     add:
     - --disable-docs
   prep_commands:
-  - $MOGRIX_ROOT/tools/safepatch bin/fribidi-benchmark.c --old 'utime (' --new 'fribidi_bench_utime (' --no-backup --quiet
-  - $MOGRIX_ROOT/tools/safepatch bin/fribidi-benchmark.c --old 'utime ()' --new 'fribidi_bench_utime ()' --no-backup --quiet
+  # Rename user-defined utime() to avoid conflict with POSIX utime() on IRIX
+  # Pattern: definition at line start 'utime (' and calls '= utime ()'
+  # Avoid matching struct member 'tms_utime'
+  - "sed -i 's/^utime (/fribidi_bench_utime (/' bin/fribidi-benchmark.c"
+  - "sed -i 's/= utime/= fribidi_bench_utime/g' bin/fribidi-benchmark.c"
   install_cleanup:
   - rm -rf %{buildroot}%{_mandir}/man3
   spec_replacements:

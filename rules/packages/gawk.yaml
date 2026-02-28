@@ -7,6 +7,18 @@ smoke_test:
 - command: /usr/sgug/bin/gawk --version
   expect: 5.3.0
 rules:
+  # IRIX has all these standard functions — configure misdetects during cross-compile
+  ac_cv_overrides:
+    ac_cv_func_memcmp: "yes"
+    ac_cv_func_memcpy: "yes"
+    ac_cv_func_memset: "yes"
+    ac_cv_func_memmove: "yes"
+    ac_cv_func_tzset: "yes"
+    ac_cv_func_strtod: "yes"
+    ac_cv_func_strchr: "yes"
+    ac_cv_func_snprintf: "yes"
+    ac_cv_func_usleep: "yes"
+
   drop_buildrequires:
   - ghostscript
   - glibc-all-langpacks
@@ -19,7 +31,7 @@ rules:
   prep_commands:
   - "for f in node.c re.c support/pma.c builtin.c; do $MOGRIX_ROOT/tools/safepatch $f --old '%zu' --new '%u' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zd' --new '%d' --count 0 --no-backup --quiet || :; $MOGRIX_ROOT/tools/safepatch $f --old '%zx' --new '%x' --count 0 --no-backup --quiet || :; done"
   - "$MOGRIX_ROOT/tools/safepatch support/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old ' test' --new '' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old 'awklib po test' --new 'awklib po' --no-backup --quiet"
   drop_subpackages:
   - doc
   - all-langpacks

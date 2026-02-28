@@ -45,12 +45,58 @@ class CompatInjector:
         return self.resolve_functions(functions)
 
     def resolve_functions(self, function_names: list[str]) -> list[Path]:
-        """Resolve function names to unique source files."""
-        files = set()
+        """Resolve function names to unique source files.
+
+        When a file declares 'provides' in the catalog, any functions it
+        provides are considered already supplied.  If a standalone file
+        would only duplicate a symbol already provided by another included
+        file, the standalone file is skipped.  This prevents duplicate
+        symbol errors (e.g. openat-compat.c provides stpcpy, so the
+        standalone runtime/stpcpy.c is not needed when openat is also
+        requested).
+        """
+        functions = self.catalog.get("functions", {})
+
+        # First pass: collect all files and what each provides
+        file_for_func: dict[str, Path] = {}
         for func in function_names:
             path = self.get_source_file(func)
             if path:
-                files.add(path)
+                file_for_func[func] = path
+
+        # Build set of symbols already provided by multi-symbol files
+        provided_symbols: set[str] = set()
+        for func in function_names:
+            entry = functions.get(func, {})
+            provides = entry.get("provides", [])
+            if provides:
+                provided_symbols.update(provides)
+
+        # Second pass: include files, but skip standalone files for
+        # symbols that are already provided by a multi-symbol file
+        files = set()
+        for func in function_names:
+            path = file_for_func.get(func)
+            if not path:
+                continue
+            # If this function is provided by another (multi-symbol) file,
+            # check if that other file is also being included
+            entry = functions.get(func, {})
+            if not entry.get("provides"):
+                # This is a standalone file — check if symbol is already
+                # provided by a multi-symbol file that's in our set
+                if func in provided_symbols:
+                    # Find the providing file and check it's included
+                    for other_func in function_names:
+                        other_entry = functions.get(other_func, {})
+                        other_provides = other_entry.get("provides", [])
+                        if func in other_provides and other_func in file_for_func:
+                            # The multi-symbol file is included — skip standalone
+                            break
+                    else:
+                        files.add(path)
+                    continue
+            files.add(path)
         return sorted(files)
 
     def get_extra_files(self, function_names: list[str]) -> list[Path]:

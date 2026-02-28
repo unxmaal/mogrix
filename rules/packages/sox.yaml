@@ -46,6 +46,11 @@ rules:
       %{_libdir}/libsox.so.3.*
 
       '
+  # lsx_strncasecmp is defined in util.c but not exported from libsox.so.
+  # The export-symbols-regex only includes 'strcasecmp' (matching lsx_strcasecmp)
+  # but not 'strncasecmp'. Must run AFTER patches (lsx_symbols.patch modifies the regex).
+  - pattern: 'autoreconf -vfi'
+    replacement: "autoreconf -vfi\nsed -i 's/strcasecmp|tell/strn?casecmp|tell/g' src/Makefile.am src/Makefile.in"
 smoke_test:
 - command: /usr/sgug/bin/sox --version 2>&1 | head -1
   expect: sox

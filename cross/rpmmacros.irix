@@ -34,6 +34,9 @@
 %_docdir                %{_prefix}/share/doc
 %_sysconfdir            %{_prefix}/etc
 
+# Temp directory for rpm scriptlets (/var/tmp may be read-only in sandboxes)
+%_tmppath               %{_topdir}/tmp
+
 # Build directories
 %_builddir              %{_topdir}/BUILD
 %_buildrootdir          %{_topdir}/BUILDROOT

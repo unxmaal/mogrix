@@ -11,7 +11,7 @@
  * relocate DT_INIT for _RLDN32_LIST libraries loaded at non-preferred
  * addresses, causing SIGILL.
  *
- * See rules/INDEX.md: "IRIX rld MIPS_GOTSYM threshold"
+ * See cross/bin/fix-anon-relocs for the linker-side fix.
  */
 
 #define NULL ((void*)0)

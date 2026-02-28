@@ -379,51 +379,45 @@ class SpecWriter:
 _mogrix_origdir=$(pwd)
 (cd .. && cp -a "$(basename "$_mogrix_origdir")" "$(basename "$_mogrix_origdir").origfedora" 2>/dev/null || true)
 """
-        content = re.sub(
-            r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
-            f"\\1\n{origfedora_cmd}",
-            content,
-            count=1,
-            flags=re.MULTILINE,
-        )
+        # Build all %prep injections into a single block, then inject once.
+        # Each injection previously did its own regex substitution on %setup/%autosetup,
+        # but each substitution consumed the match (count=1), making subsequent ones fail.
+        # Now we build the full block and inject it in one operation.
+        prep_injection_parts = []
 
-        # Inject compat prep commands (after %setup or %autosetup)
+        # 1. origfedora copy (always)
+        prep_injection_parts.append(origfedora_cmd)
+
+        # 2. MOGRIX_ROOT export (always — needed by safepatch in prep_commands)
+        mogrix_root_export = f'export MOGRIX_ROOT="{MOGRIX_ROOT}"'
+        prep_injection_parts.append(mogrix_root_export)
+
+        # 3. Compat prep commands (compat function sources)
         if compat_prep:
-            content = re.sub(
-                r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
-                f"\\1\n\n{compat_prep}",
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
+            prep_injection_parts.append(compat_prep)
 
-        # Inject patch application commands (after %setup)
-        # NOTE: Skip if spec uses %autosetup - it applies all patches automatically
+        # 4. Patch application commands (only for %setup, not %autosetup)
         if patch_prep:
             uses_autosetup = bool(re.search(r"^%autosetup\b", content, re.MULTILINE))
             if not uses_autosetup:
                 patch_comment = "# Apply mogrix patches"
-                content = re.sub(
-                    r"^(%setup(?:[ \t]+.*)?)$",
-                    lambda m: f"{m.group(0)}\n\n{patch_comment}\n{patch_prep}",
-                    content,
-                    count=1,
-                    flags=re.MULTILINE,
-                )
+                prep_injection_parts.append(f"{patch_comment}\n{patch_prep}")
 
-        # Inject custom prep commands (e.g., sed for Makefile fixes)
+        # 5. Custom prep commands (safepatch, sed, etc.)
         if result.prep_commands:
             prep_cmds = "\n".join(result.prep_commands)
             prep_comment = "# Cross-compilation prep fixes (injected by mogrix)"
-            # MOGRIX_ROOT must be available in %prep for safepatch calls
-            mogrix_root_export = f'export MOGRIX_ROOT="{MOGRIX_ROOT}"'
-            content = re.sub(
-                r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
-                lambda m: f"{m.group(0)}\n\n{mogrix_root_export}\n{prep_comment}\n{prep_cmds}",
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
+            prep_injection_parts.append(f"{prep_comment}\n{prep_cmds}")
+
+        # Single injection after %setup or %autosetup
+        prep_block = "\n\n".join(prep_injection_parts)
+        content = re.sub(
+            r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
+            f"\\1\n{prep_block}",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
 
         # Inject CPPFLAGS for header overlays
         if cppflags:

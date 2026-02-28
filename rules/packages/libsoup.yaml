@@ -17,7 +17,7 @@ rules:
   - doc
   # IRIX sys/socket.h defines sa_len as a macro — rename local variable in soup-socket.c
   prep_commands:
-  - perl -pi -e 's/\bsa_len\b/sock_addr_len/g' libsoup/soup-socket.c
+  - "sed -i 's/sa_len/sock_addr_len/g' libsoup/soup-socket.c"
   spec_replacements:
   # Replace meson build with cross-compile
   - pattern: "%meson %gtkdoc_flags\n%meson_build"

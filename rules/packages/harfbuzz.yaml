@@ -1,4 +1,11 @@
 package: harfbuzz
+# Re-enablement audit (Feb 2025): glib, gobject, cairo, ICU re-enabled.
+# harfbuzz has a circular dependency with glib2 (glib2 links harfbuzz, harfbuzz
+# links glib2). Resolved by two-pass bootstrap: first build harfbuzz without glib
+# (already done), then rebuild with glib+gobject+cairo+icu once glib2 is in staging.
+# This produces new libraries: libharfbuzz-gobject.so, libharfbuzz-cairo.so,
+# libharfbuzz-icu.so. The existing libharfbuzz.so ABI is unchanged.
+# Graphite2 stays disabled (not in staging). Introspection disabled (no gobject-introspection).
 rules:
   drop_buildrequires:
   - gobject-introspection-devel
@@ -10,7 +17,7 @@ rules:
 
       export CXXFLAGS="%{optflags}"
 
-      %configure --disable-static --without-graphite2 --without-gobject --without-glib --disable-introspection --without-cairo --with-icu
+      %configure --disable-static --without-graphite2 --with-gobject --with-glib --disable-introspection --with-cairo --with-icu
 
       '
   - pattern: 'License:        MIT-Modern-Variant'
@@ -21,6 +28,10 @@ rules:
       Provides: libharfbuzz-subset.so.0(mips-32)
 
       Provides: libharfbuzz-icu.so.0(mips-32)
+
+      Provides: libharfbuzz-gobject.so.0(mips-32)
+
+      Provides: libharfbuzz-cairo.so.0(mips-32)
 
       Provides: harfbuzz(mips-32) = %{version}-%{release}
 
@@ -60,6 +71,8 @@ rules:
       %{_libdir}/libharfbuzz.so.0*
 
       %{_libdir}/libharfbuzz-cairo.so.*
+
+      %{_libdir}/libharfbuzz-gobject.so.0*
 
       %{_libdir}/libharfbuzz-subset.so.0*
 
@@ -107,6 +120,16 @@ rules:
       %{_datadir}/gir-1.0/HarfBuzz-0.0.gir'
     replacement: '%files devel
 
+      %{_bindir}/hb-info
+
+      %{_bindir}/hb-view
+
+      %{_bindir}/hb-ot-shape-closure
+
+      %{_bindir}/hb-shape
+
+      %{_bindir}/hb-subset
+
       %doc %{_datadir}/gtk-doc
 
       %{_includedir}/harfbuzz/
@@ -115,6 +138,8 @@ rules:
 
       %{_libdir}/libharfbuzz-cairo.so
 
+      %{_libdir}/libharfbuzz-gobject.so
+
       %{_libdir}/libharfbuzz-icu.so
 
       %{_libdir}/libharfbuzz-subset.so
@@ -122,6 +147,8 @@ rules:
       %{_libdir}/pkgconfig/harfbuzz.pc
 
       %{_libdir}/pkgconfig/harfbuzz-cairo.pc
+
+      %{_libdir}/pkgconfig/harfbuzz-gobject.pc
 
       %{_libdir}/pkgconfig/harfbuzz-icu.pc
 

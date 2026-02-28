@@ -4,13 +4,35 @@ package: libunistring
 
 rules:
 
+  # gnulib cross-compilation incorrectly replaces memchr with rpl_memchr.
+  # IRIX memchr works correctly — override the gnulib detection.
+  ac_cv_overrides:
+    gl_cv_func_memchr_works: "yes"
+
   configure_flags:
     add:
       - --disable-static
       - --disable-rpath
 
-  # Info file not compressed
+  # The irix-cc force-include chain (-D_GL_CONFIG_H_INCLUDED=1 + -include time.h)
+  # causes gnulib's string.h to process before config.h renames mbsnlen/memchr
+  # to libunistring_* prefixed names. Fix: force-include the generated config.h
+  # so renaming macros are active before irix-cc's own force-includes.
+  # Must be AFTER configure (which generates lib/config.h).
+  # Fix gnulib symbol renaming: irix-cc force-includes time.h which triggers
+  # gnulib's string.h processing before config.h renames are active. This causes
+  # declarations to use 'mbsnlen' but call sites to use 'libunistring_mbsnlen'.
+  # Add the rename macro at make time only (not configure time, which would
+  # cause double-renaming in config.h).
+  # TODO: Fix gnulib mbsnlen symbol renaming conflict with irix-cc force-includes.
+  # See knowledge DB finding #129 for full analysis of the problem.
+  # Root cause: irix-cc -D_GL_CONFIG_H_INCLUDED=1 causes gnulib string.h to
+  # process before lib/config.h renames are active. Possible fix: force-include
+  # lib/config.h before time.h in irix-cc, or suppress _GL_CONFIG_H_INCLUDED for
+  # this package.
+
   spec_replacements:
+    # Info file not compressed
     - pattern: "%{_infodir}/%{name}.info*"
       replacement: "%{_infodir}/%{name}.info"
 
