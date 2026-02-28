@@ -44,6 +44,12 @@ for _arg in "$@"; do
     case "$_arg" in *.S|*.s) _has_asm_source=true; break ;; esac
 done
 if [ "$_has_asm_source" = "false" ]; then
+    # Define _GL_CONFIG_H_INCLUDED BEFORE force-including time.h so that gnulib's
+    # replacement headers (sys/types.h, string.h, etc.) don't error with
+    # "Please include config.h first." when they get pulled in via time.h's include
+    # chain. This is safe: _GL_CONFIG_H_INCLUDED is a gnulib-internal macro that
+    # non-gnulib code never checks. Affects libidn2, man-db, wget2, etc.
+    CLANG_FLAGS="$CLANG_FLAGS -D_GL_CONFIG_H_INCLUDED=1"
     CLANG_FLAGS="$CLANG_FLAGS -include $SYSROOT/usr/include/time.h"
 fi
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"

@@ -56,7 +56,7 @@ rules:
       \      -DHAVE_GETCWD=1 \\\n      -DHAVE_MKSTEMP=1 \\\n      -DHAVE_REALPATH=1 \\\n      -DHAVE_SETENV=1 \\\n      -DHAVE_UNSETENV=1 \\\n      -DHAVE_GETLINE=1 \\\n      -DHAVE_ASPRINTF=1 \\\n    \
       \  -DHAVE_VASPRINTF=1 \\\n      -DHAVE_OPENAT=1 \\\n      -DHAVE_FSTATAT=1 \\\n      -DHAVE_FACCESSAT=1 \\\n      -DHAVE_MKDIRAT=1 \\\n      -DHAVE_UNLINKAT=1 \\\n      -DHAVE_RENAMEAT=1 \\\n    \
       \  -DHAVE_READLINKAT=1 \\\n      -DHAVE_SYMLINKAT=1 \\\n      -DHAVE_LINKAT=1 \\\n      -DHAVE_FCHMODAT=1 \\\n      -DHAVE_FCHOWNAT=1 \\\n      -DHAVE_MKFIFOAT=1 \\\n      -DHAVE_MKNODAT=1 \\\n  \
-      \    -DHAVE_UTIMENSAT=1 \\\n      -DHAVE_FUTIMENS=1 \\\n      -DHAVE_STPCPY=1 \\\n      -DHAVE_STPNCPY=1 \\\n      -DHAVE_SETPROGNAME=1 \\\n      -DCMAKE_INSTALL_PREFIX=/usr/sgug \\\n      -DCMAKE_INSTALL_LIBDIR=lib32\
+      \    -DHAVE_UTIMENSAT=1 \\\n      -DHAVE_FUTIMENS=1 \\\n      -DHAVE_UTIMES=1 \\\n      -DHAVE_LOCALTIME_R=1 \\\n      -DHAVE_STATVFS=1 \\\n      -DHAVE_GETADDRINFO=1 \\\n      -DHAVE_REGCOMP=1 \\\n      -DHAVE_PUTENV=1 \\\n      -DHAVE_FDATASYNC=1 \\\n      -DHAVE_STPCPY=1 \\\n      -DHAVE_STPNCPY=1 \\\n      -DHAVE_SETPROGNAME=1 \\\n      -DCMAKE_INSTALL_PREFIX=/usr/sgug \\\n      -DCMAKE_INSTALL_LIBDIR=lib32\
       \ \\\n      -DCMAKE_INSTALL_SHAREDSTATEDIR:PATH=/usr/sgug/var/lib"
   - pattern: "-DCMAKE_INSTALL_PREFIX=%{_usr} \\\n      -DCMAKE_INSTALL_SHAREDSTATEDIR:PATH=%{_var}/lib"
     replacement: ''

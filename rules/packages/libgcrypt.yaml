@@ -15,6 +15,18 @@ rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
     gcry_cv_gcc_has_platform_cflags: "no"
+    ac_cv_func_clock: "yes"
+    ac_cv_func_memmove: "yes"
+
+  # random-csprng.c falls through to the "use times" fallback (#else after
+  # HAVE_GETHRTIME / HAVE_CLOCK_GETTIME), which uses struct tms and times()
+  # without including sys/times.h. Add the include.
+  prep_commands:
+    # random-csprng.c falls through to "use times" fallback which needs sys/times.h
+    - "sed -i '/#include <sys\\/time.h>/a #include <sys/times.h>' random/random-csprng.c"
+    # IRIX ctype_core.h defines _L as a macro (lowercase ctype class).
+    # benchmark.c uses _L as a variable name, causing collision.
+    - "sed -i 's/ _L/ ccm_L/g' tests/benchmark.c"
 
   # Remove static library (libtool builds it despite --disable-static)
   install_cleanup:

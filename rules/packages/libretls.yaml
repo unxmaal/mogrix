@@ -46,6 +46,9 @@ rules:
         s/if HOST_LINUX\nlibcompat_la_SOURCES \+= compat\/getentropy_irix\.c\nendif/libcompat_la_SOURCES += compat\/getentropy_irix.c/s
       ' Makefile.am
 
-    # 5. Fix MAP_ANON: IRIX has no MAP_ANON or MAP_ANONYMOUS
+    # 5. Fix clock_gettime type conflict: IRIX uses timespec_t*, libretls uses struct timespec*
+    - "perl -pi -e 's/int clock_gettime\\(clockid_t clock_id, struct timespec \\*tp\\);/#ifndef __sgi\\nint clock_gettime(clockid_t clock_id, struct timespec *tp);\\n#endif/' include/compat/time.h"
+
+    # 6. Fix MAP_ANON: IRIX has no MAP_ANON or MAP_ANONYMOUS
     # Define MAP_ANON as 0 (our arc4random_irix.h uses /dev/zero instead)
     - "$MOGRIX_ROOT/tools/safepatch include/compat/sys/mman.h --old '#error \"System does not support mapping anonymous pages?\"' --new '#define MAP_ANON 0' --no-backup --quiet"

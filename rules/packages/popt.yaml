@@ -17,6 +17,7 @@ rules:
     ac_cv_func_mbsrtowcs: 'no'
     ac_cv_func_vasprintf: 'yes'
     ac_cv_func_stpcpy: 'yes'
+    ac_cv_func_strerror: 'yes'
   spec_replacements:
   - pattern: export LD="/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
     replacement: 'export LD="/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"

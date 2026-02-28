@@ -9,13 +9,32 @@ add_patch:
   - flex.sgifixes.patch
 
 rules:
+  # Autoconf's char memset() test conflicts with clang strict prototypes
+  # when IRIX headers provide the real prototype. Force-detect as present.
+  ac_cv_overrides:
+    ac_cv_func_memset: "yes"
+    ac_cv_func_alloca_works: "yes"
+    ac_cv_func_dup2: "yes"
+    ac_cv_func_regcomp: "yes"
+    ac_cv_func_strcasecmp: "yes"
+    ac_cv_func_strchr: "yes"
+    ac_cv_func_strdup: "yes"
+    ac_cv_func_strtol: "yes"
+    ac_cv_func_reallocarray: "no"
+
   # IRIX basename() is in libgen.so, not libc. flex bootstraps a HOST binary
   # (stage1flex) before cross-compiling, so we can't use inject_compat_functions
   # or LIBS (both affect the HOST link). Instead, add a compat basename.c
   # to the cross-compiled flex sources only (not stage1flex).
+  #
+  # Also: mogrix's generic compat injection sets LIBS=-lmogrix-compat globally,
+  # which breaks the HOST stage1flex build (can't link MIPS .a with x86_64 ld).
+  # Fix: remove the LIBS export and add compat library directly to flex_LDADD
+  # via Makefile.am, so only the cross-compiled flex binary links it.
   prep_commands:
     - 'printf "#include <string.h>\nchar *basename(const char *p) { const char *b = strrchr(p, 47); return (char*)(b ? b+1 : p); }\n" > src/irix_basename.c'
     - "echo 'flex_SOURCES += irix_basename.c' >> src/Makefile.am"
+    - "echo 'flex_LDADD = $(LDADD) -L$(abs_top_builddir)/mogrix-compat -lmogrix-compat' >> src/Makefile.am"
 
   # make install puts extra docs (AUTHORS, COPYING, ONEWS) in pkgdocdir
   # that aren't listed in %files. Remove only those, keep NEWS and README.md.
@@ -26,3 +45,8 @@ rules:
   spec_replacements:
     - pattern: "autoreconf -i"
       replacement: "AUTOPOINT=true autoreconf -i && touch doc/flex.1"
+    # Unset LIBS before configure — mogrix generic compat sets LIBS to link
+    # libmogrix-compat.a, but this breaks stage1flex (HOST x86_64 can't link
+    # MIPS .a). The compat library is linked via flex_LDADD in Makefile.am instead.
+    - pattern: "%configure --docdir=%{_pkgdocdir}"
+      replacement: "unset LIBS\n%configure --docdir=%{_pkgdocdir}"

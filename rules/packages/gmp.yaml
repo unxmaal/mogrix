@@ -2,6 +2,12 @@
 package: gmp
 
 rules:
+  # gmp-impl.h has #define strchr index for non-STDC compilers, but on IRIX
+  # index() isn't declared in scope. We need to ensure HAVE_STRING_H is defined
+  # so the code path uses strchr directly, not the index() alias.
+  # Also force ac_cv_func_obstack_vprintf to avoid configure check failure.
+  prep_commands:
+    - "sed -i '/#define strchr.*index/d' gmp-impl.h || true"
 
   drop_buildrequires:
     - texinfo

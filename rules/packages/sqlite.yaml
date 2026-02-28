@@ -27,6 +27,7 @@ rules:
   # Force libtool to build shared libraries (it mis-detects cross-compilation)
   ac_cv_overrides:
     lt_cv_deplibs_check_method: "pass_all"
+    ac_cv_func_malloc_usable_size: "no"
 
   # IRIX compatibility environment variables
   export_vars:
@@ -55,6 +56,11 @@ rules:
       replacement: "%bcond_with tcl"
     - pattern: "%bcond_without sqldiff"
       replacement: "%bcond_with sqldiff"
+    # Fix multi-line CFLAGS export — the backslash continuations break mogrix
+    # compat injection which inserts code after "export CFLAGS=..." line.
+    # Collapse to a single line so the emitter can inject after it cleanly.
+    - pattern: "export CFLAGS=\"$RPM_OPT_FLAGS $RPM_LD_FLAGS \\\n               -DSQLITE_ENABLE_COLUMN_METADATA=1 \\\n               -DSQLITE_DISABLE_DIRSYNC=1 \\\n               -DSQLITE_SECURE_DELETE=1 \\\n               -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1 \\\n               -DSQLITE_ENABLE_FTS3_PARENTHESIS=1 \\\n               -DSQLITE_ENABLE_DBPAGE_VTAB \\\n               -Wall -fno-strict-aliasing\""
+      replacement: "export CFLAGS=\"$RPM_OPT_FLAGS $RPM_LD_FLAGS -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_DISABLE_DIRSYNC=1 -DSQLITE_SECURE_DELETE=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS=1 -DSQLITE_ENABLE_DBPAGE_VTAB -Wall -fno-strict-aliasing\""
     # Fix libtool to build shared libraries for IRIX using generic script
     - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
       replacement: |

@@ -19,6 +19,16 @@ add_patch:
   - readline-8.2-shobj-irix-clang.patch
 
 rules:
+  # Fix gettimeofday prototype conflict: IRIX declares gettimeofday(struct timeval *, ...)
+  # (variadic) but readline's posixtime.h declares gettimeofday(struct timeval *, void *).
+  # Clang rejects the conflict. Define HAVE_GETTIMEOFDAY to skip the conflicting declaration.
+  ac_cv_overrides:
+    ac_cv_func_gettimeofday: "yes"
+
+  # Also sed out the conflicting declaration in posixtime.h
+  prep_commands:
+    - "sed -i 's/extern int gettimeofday PARAMS.*;//' lib/posixtime.h || true"
+
   spec_replacements:
     # After make_install: create .so symlinks and fix pkg-config
     # shlib-install doesn't create symlinks because host_os='irix' doesn't

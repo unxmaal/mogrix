@@ -26,6 +26,7 @@ rules:
       - --disable-rpath
       - --disable-languages
       - --disable-doc
+      - --disable-tests
       - --enable-install-gpg-error-config
     remove:
       - --with-libiconv-prefix

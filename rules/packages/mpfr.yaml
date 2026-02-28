@@ -5,6 +5,10 @@ rules:
   configure_flags:
     add:
     - --disable-thread-safe
+  install_cleanup:
+    # Remove unpackaged doc files that cause rpmbuild to fail
+    - "rm -f %{buildroot}%{_pkgdocdir}/COPYING %{buildroot}%{_pkgdocdir}/COPYING.LESSER"
+
   spec_replacements:
   - pattern: rm -f $RPM_BUILD_ROOT%{_infodir}/dir
     replacement: rm -rf $RPM_BUILD_ROOT%{_infodir}

@@ -1050,7 +1050,10 @@ int futimens(int fd, const struct timespec times[2]) {
 
 /*
  * stpcpy - copy a string, returning a pointer to its end
+ * Guarded: when stpcpy.c is also compiled (generic compat injection),
+ * skip this copy to avoid duplicate symbol errors.
  */
+#ifndef MOGRIX_OPENAT_SKIP_STPCPY
 char *stpcpy(char *dest, const char *src) {
     while ((*dest = *src) != '\0') {
         dest++;
@@ -1058,10 +1061,14 @@ char *stpcpy(char *dest, const char *src) {
     }
     return dest;
 }
+#endif
 
 /*
  * stpncpy - copy a fixed-size string, returning a pointer to its end
+ * Guarded: when stpncpy.c is also compiled (generic compat injection),
+ * skip this copy to avoid duplicate symbol errors.
  */
+#ifndef MOGRIX_OPENAT_SKIP_STPNCPY
 char *stpncpy(char *dest, const char *src, size_t n) {
     size_t i;
     for (i = 0; i < n && src[i] != '\0'; i++) {
@@ -1077,3 +1084,4 @@ char *stpncpy(char *dest, const char *src, size_t n) {
     }
     return dest + n;
 }
+#endif

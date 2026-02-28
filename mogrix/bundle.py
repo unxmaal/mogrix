@@ -631,6 +631,9 @@ class BundleBuilder:
                 pos += entry_size
 
             if modified:
+                # Ensure file is writable (RPM-extracted files may be read-only)
+                import stat
+                f.chmod(f.stat().st_mode | stat.S_IWUSR)
                 f.write_bytes(data)
                 stripped_count += 1
 
@@ -947,6 +950,9 @@ class BundleBuilder:
                         continue
                     if soname in self._irix_sonames:
                         manifest.irix_sonames.add(soname)
+                        continue
+                    # Skip absolute paths (not real sonames)
+                    if soname.startswith("/"):
                         continue
                     # Staging fallback
                     if STAGING_LIB_DIR.is_dir():
