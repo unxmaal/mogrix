@@ -27,6 +27,9 @@ RPMLINT_CONFIG = Path(__file__).parent.parent / "rpmlint.toml"
 # Default user directories for inputs/outputs
 MOGRIX_INPUTS = Path.home() / "mogrix_inputs"
 MOGRIX_OUTPUTS = Path.home() / "mogrix_outputs"
+# Conversion workspace (working dirs + intermediate SRPMs)
+# Separate from SRPMS repo to keep ~/mogrix_outputs/SRPMS/ clean for dnf repo mirror
+MOGRIX_CONVERTED = MOGRIX_OUTPUTS / "converted"
 
 
 @click.group()
@@ -38,14 +41,14 @@ def main():
     Workflow (Fedora packages):
       1. mogrix setup-cross                    # One-time setup
       2. mogrix fetch <package> -y             # → ~/mogrix_inputs/SRPMS/
-      3. mogrix convert <srpm>                 # → ~/mogrix_outputs/SRPMS/
+      3. mogrix convert <srpm>                 # → ~/mogrix_outputs/converted/ + SRPMS/
       4. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
       5. mogrix stage <rpms>                   # → /opt/sgug-staging/
 
     \b
     Workflow (upstream git/tarball packages):
       1. mogrix create-srpm <package>          # → ~/mogrix_inputs/SRPMS/
-      2. mogrix convert <srpm>                 # → ~/mogrix_outputs/SRPMS/
+      2. mogrix convert <srpm>                 # → ~/mogrix_outputs/converted/ + SRPMS/
       3. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
     """
     pass
@@ -292,8 +295,8 @@ def _convert_srpm_full(
     if output_dir:
         out_path = Path(output_dir)
     else:
-        # Default: ~/mogrix_outputs/SRPMS/<name>-converted
-        out_path = MOGRIX_OUTPUTS / "SRPMS" / f"{srpm_path.stem}-converted"
+        # Default: ~/mogrix_outputs/converted/<name>-converted
+        out_path = MOGRIX_CONVERTED / f"{srpm_path.stem}-converted"
 
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -412,10 +415,16 @@ def _convert_srpm_full(
             output_dir=out_path,
         )
 
+        # Copy SRPM to repo directory (~/mogrix_outputs/SRPMS/)
+        srpms_repo = MOGRIX_OUTPUTS / "SRPMS"
+        srpms_repo.mkdir(parents=True, exist_ok=True)
+        repo_srpm = srpms_repo / new_srpm.name
+        shutil.copy2(new_srpm, repo_srpm)
+
         # Summary
         console.print("\n[bold green]Conversion complete![/bold green]")
-        console.print(f"[bold]Output directory:[/bold] {out_path}")
-        console.print(f"[bold]Converted SRPM:[/bold] {new_srpm}")
+        console.print(f"[bold]Workspace:[/bold] {out_path}")
+        console.print(f"[bold]SRPM (repo):[/bold] {repo_srpm}")
         console.print(f"[bold]Rules applied:[/bold] {len(result.applied_rules)}")
 
         if result.compat_functions:
@@ -1309,10 +1318,10 @@ def test_prep(package: str, compare: bool, snapshot_dir: str | None, rpmbuild_di
 
     rpmbuild_path = Path(rpmbuild_dir) if rpmbuild_dir else Path.home() / "rpmbuild"
 
-    # Find the converted SRPM
-    srpms_dir = MOGRIX_OUTPUTS / "SRPMS"
+    # Find the converted SRPM in the conversion workspace
+    converted_dir = MOGRIX_CONVERTED
     # Match package-VERSION (dash after name) or package-converted (for upstream)
-    all_converted = sorted(srpms_dir.glob(f"{package}*-converted/{package}*.src.rpm"))
+    all_converted = sorted(converted_dir.glob(f"{package}*-converted/{package}*.src.rpm"))
     # Filter to exact package name: next char after package name must be - or .
     candidates = [
         c for c in all_converted
@@ -1321,9 +1330,9 @@ def test_prep(package: str, compare: bool, snapshot_dir: str | None, rpmbuild_di
     ]
     if not candidates:
         # Fallback: try any match in the converted directory
-        candidates = sorted(srpms_dir.glob(f"{package}-*-converted/*.src.rpm"))
+        candidates = sorted(converted_dir.glob(f"{package}-*-converted/*.src.rpm"))
     if not candidates:
-        console.print(f"[red]No converted SRPM found for '{package}' in {srpms_dir}[/red]")
+        console.print(f"[red]No converted SRPM found for '{package}' in {converted_dir}[/red]")
         console.print("\n[bold]Run first:[/bold]")
         console.print(f"  mogrix fetch {package} -y")
         console.print(f"  mogrix convert ~/mogrix_inputs/SRPMS/{package}*.src.rpm")
