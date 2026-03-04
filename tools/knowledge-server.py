@@ -76,15 +76,60 @@ class KnowledgeDB:
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self.conn = sqlite3.connect(str(db_path))
-        self.conn.row_factory = sqlite3.Row
-        # DELETE journal: single file, no -wal/-shm satellites that can get
-        # accidentally deleted and lose data.  synchronous=FULL means every
-        # commit is fsync'd before returning — slower, but this DB is tiny
-        # and we never want to lose knowledge.
-        self.conn.execute("PRAGMA journal_mode=DELETE")
-        self.conn.execute("PRAGMA synchronous=FULL")
+        self.conn = self._open_connection()
         self.migrate()
+
+    def _open_connection(self) -> sqlite3.Connection:
+        """Open a fresh SQLite connection with correct pragmas."""
+        conn = sqlite3.connect(str(self.db_path))
+        conn.row_factory = sqlite3.Row
+        # WAL mode: allows concurrent readers + single writer without blocking.
+        # Previously used DELETE journal which caused the connection to go
+        # permanently read-only when a write was blocked (e.g., concurrent
+        # access from Bash SQL or another session). WAL handles this gracefully.
+        # The -wal/-shm satellite files are harmless — SQLite auto-creates
+        # and auto-checkpoints them. If they get deleted, the next connection
+        # recreates them from the main DB file.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        # Wait up to 5 seconds for locks before failing — prevents spurious
+        # "database is locked" errors from brief concurrent access.
+        conn.execute("PRAGMA busy_timeout=5000")
+        return conn
+
+    def _reconnect(self):
+        """Close and reopen the connection. Called on readonly/locked errors."""
+        log("Reconnecting to knowledge DB (previous connection went stale)")
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        self.conn = self._open_connection()
+
+    def _execute_write(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
+        """Execute a write statement with one retry on readonly/locked errors."""
+        try:
+            return self.conn.execute(sql, params)
+        except sqlite3.OperationalError as e:
+            err = str(e).lower()
+            if "readonly" in err or "locked" in err:
+                log(f"Write failed ({e}), reconnecting and retrying")
+                self._reconnect()
+                return self.conn.execute(sql, params)
+            raise
+
+    def _commit(self):
+        """Commit with one retry on readonly/locked errors."""
+        try:
+            self.conn.commit()
+        except sqlite3.OperationalError as e:
+            err = str(e).lower()
+            if "readonly" in err or "locked" in err:
+                log(f"Commit failed ({e}), reconnecting and retrying")
+                self._reconnect()
+                # Re-raise — the transaction was lost, caller needs to re-execute
+                raise
+            raise
 
     def migrate(self):
         """Add new tables. Existing tables untouched (CREATE IF NOT EXISTS)."""
@@ -170,7 +215,7 @@ class KnowledgeDB:
             END
         """)
 
-        self.conn.commit()
+        self._commit()
         log("DB migration complete")
 
     def search_rules(self, query: str, limit: int = 10) -> list[dict]:
@@ -267,58 +312,58 @@ class KnowledgeDB:
         notes: str | None = None,
     ) -> int:
         """Insert a new rule. Returns the new rule ID."""
-        c = self.conn.execute(
+        c = self._execute_write(
             """
             INSERT INTO rules (problem_class, keywords, mechanism, location, notes)
             VALUES (?, ?, ?, ?, ?)
             """,
             (problem_class, keywords, mechanism, location, notes),
         )
-        self.conn.commit()
+        self._commit()
         return c.lastrowid
 
     def add_finding(self, topic: str, finding: str, source: str | None = None,
                     project: str = "mogrix") -> int:
         """Insert into existing findings table."""
-        c = self.conn.execute(
+        c = self._execute_write(
             """
             INSERT INTO findings (topic, finding, source, project)
             VALUES (?, ?, ?, ?)
             """,
             (topic, finding, source, project),
         )
-        self.conn.commit()
+        self._commit()
         return c.lastrowid
 
     def add_decision(self, topic: str, decision: str, rationale: str | None = None,
                      alternatives: str | None = None, project: str = "mogrix") -> int:
         """Insert into existing decisions table."""
-        c = self.conn.execute(
+        c = self._execute_write(
             """
             INSERT INTO decisions (topic, decision, rationale, alternatives_rejected, project)
             VALUES (?, ?, ?, ?, ?)
             """,
             (topic, decision, rationale, alternatives, project),
         )
-        self.conn.commit()
+        self._commit()
         return c.lastrowid
 
     def add_negative(self, category: str, description: str,
                      package: str | None = None, severity: str = "normal") -> int:
         """Insert into negative_knowledge table."""
-        c = self.conn.execute(
+        c = self._execute_write(
             """
             INSERT INTO negative_knowledge (category, description, package, severity)
             VALUES (?, ?, ?, ?)
             """,
             (category, description, package, severity),
         )
-        self.conn.commit()
+        self._commit()
         return c.lastrowid
 
     def increment_hit_count(self, rule_id: int):
         """Bump hit_count and updated_at for a rule."""
-        self.conn.execute(
+        self._execute_write(
             """
             UPDATE rules SET hit_count = hit_count + 1,
                              updated_at = datetime('now')
@@ -326,7 +371,7 @@ class KnowledgeDB:
             """,
             (rule_id,),
         )
-        self.conn.commit()
+        self._commit()
 
     def get_active_tasks(self) -> list[dict]:
         """Return all active tasks."""
@@ -342,14 +387,14 @@ class KnowledgeDB:
 
     def create_session(self, session_id: str) -> dict:
         """Create a session_meta record and return context summary."""
-        self.conn.execute(
+        self._execute_write(
             """
             INSERT OR REPLACE INTO session_meta (session_id, start_time)
             VALUES (?, datetime('now'))
             """,
             (session_id,),
         )
-        self.conn.commit()
+        self._commit()
 
         # Gather stats
         rule_count = self.conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0]
@@ -405,7 +450,7 @@ class KnowledgeDB:
 
     def update_session_interaction(self, session_id: str):
         """Bump interaction count and last rules check time."""
-        self.conn.execute(
+        self._execute_write(
             """
             UPDATE session_meta
             SET interaction_count = interaction_count + 1,
@@ -414,7 +459,7 @@ class KnowledgeDB:
             """,
             (session_id,),
         )
-        self.conn.commit()
+        self._commit()
 
     def close(self):
         self.conn.close()
@@ -555,7 +600,7 @@ def migrate_index(db: KnowledgeDB, index_path: Path) -> int:
     count += _parse_2col_table(db, text, "Anti-Patterns",
                                col_map={"anti-pattern": "problem_class", "do this instead": "mechanism"})
 
-    db.conn.commit()
+    db._commit()
     log(f"Migrated {count} rules from INDEX.md")
     return count
 
@@ -1302,14 +1347,14 @@ class KnowledgeServer:
         tasks_snapshot = ", ".join(t["subject"] for t in active_tasks) if active_tasks else None
 
         # Insert into sessions table
-        self.db.conn.execute(
+        self.db._execute_write(
             """
             INSERT INTO sessions (summary, tasks_started, tasks_completed, key_findings)
             VALUES (?, ?, ?, ?)
             """,
             (status, current_task, tasks_snapshot, key_findings),
         )
-        self.db.conn.commit()
+        self.db._commit()
 
         session_row = self.db.conn.execute(
             "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
