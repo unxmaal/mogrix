@@ -1343,13 +1343,6 @@ class BundleBuilder:
                 ': ${JSC_largeHeapGrowthFactor=1.1}\n'
                 'export JSC_largeHeapGrowthFactor'
             )
-        # libevent: IRIX /dev/poll backend crashes — force poll() instead
-        lib32_dir = bundle_dir / "_lib32"
-        if lib32_dir.is_dir() and any(
-            f.name.startswith("libevent") for f in lib32_dir.iterdir()
-        ):
-            extra_env_lines.append("EVENT_NODEVPOLL=1")
-            extra_env_lines.append("export EVENT_NODEVPOLL")
         extra_env_block = (
             "\n".join(extra_env_lines) + "\n" if extra_env_lines else ""
         )

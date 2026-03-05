@@ -192,7 +192,9 @@ if [ "$is_shared" = "1" ]; then
     # Generated when linking against versioned libs (libstdc++, glibc).
     # Only strip if linking succeeded and output file exists.
     if [ "$rc" = "0" ] && [ -n "$output_file" ] && [ -f "$output_file" ]; then
-        python3 "$STRIP_VERNEED" "$output_file" >/dev/null 2>&1 || true
+        if ! python3 "$STRIP_VERNEED" "$output_file" >/dev/null 2>&1; then
+            echo "irix-ld: WARNING: strip-verneed failed for $output_file" >&2
+        fi
     fi
 
     # Fix anonymous R_MIPS_REL32 relocations for IRIX rld compatibility.
@@ -202,7 +204,9 @@ if [ "$is_shared" = "1" ]; then
     # Safe for all libraries — exits early if no anonymous R_MIPS_REL32 found.
     FIX_ANON_RELOCS="${FIX_ANON_RELOCS:-$(dirname "$0")/fix-anon-relocs}"
     if [ "$rc" = "0" ] && [ -n "$output_file" ] && [ -f "$output_file" ]; then
-        python3 "$FIX_ANON_RELOCS" "$output_file" "$output_file" >/dev/null 2>&1 || true
+        if ! python3 "$FIX_ANON_RELOCS" "$output_file" "$output_file" >/dev/null 2>&1; then
+            echo "irix-ld: WARNING: fix-anon-relocs failed for $output_file" >&2
+        fi
     fi
 
     exit $rc

@@ -2067,6 +2067,8 @@ def setup_cross(
         # (source, destination, description)
         (CROSS_DIR / "bin" / "irix-cc", staging_path / "bin" / "irix-cc", "C compiler wrapper"),
         (CROSS_DIR / "bin" / "irix-ld", staging_path / "bin" / "irix-ld", "Linker wrapper"),
+        (CROSS_DIR / "bin" / "strip-verneed", staging_path / "bin" / "strip-verneed", "Strip GNU version sections"),
+        (CROSS_DIR / "bin" / "fix-anon-relocs", staging_path / "bin" / "fix-anon-relocs", "Fix anonymous R_MIPS_REL32"),
         (CROSS_DIR / "rpmmacros.irix", staging_path.parent.parent / "rpmmacros.irix", "RPM macros"),
     ]
 
@@ -2187,9 +2189,12 @@ def stage(
         "usr/sgug/bin/irix-cc",
         "usr/sgug/bin/irix-cxx",
         "usr/sgug/bin/irix-ld",
+        "usr/sgug/bin/fix-anon-relocs",
+        "usr/sgug/bin/strip-verneed",
         "usr/sgug/include/dicl-clang-compat",
         "usr/sgug/include/mogrix-compat",
         "usr/sgug/lib32/libsoft_float_stubs.a",
+        "usr/sgug/lib32/libmogrix_compat.so",
         "rpmmacros.irix",
     }
 
@@ -2444,10 +2449,13 @@ def _clean_staged_packages(
 
     removed_count = 0
 
+    # Libraries to always keep (compat preload, toolchain)
+    preserve_libs = {"libmogrix_compat.so"}
+
     # Clean libraries (keeping pre-existing and soft_float_stubs)
     if lib_dir.exists():
         for lib in lib_dir.glob("*.so*"):
-            if lib.name not in preexisting_libs:
+            if lib.name not in preexisting_libs and lib.name not in preserve_libs:
                 console.print(f"  Removing: {lib.name}")
                 lib.unlink()
                 removed_count += 1
@@ -2482,10 +2490,36 @@ def _clean_staged_packages(
                 console.print(f"  Removing: {header.name}")
                 header.unlink()
                 removed_count += 1
+        # Remove header subdirectories that aren't pre-existing or compat
+        preserve_include_dirs = preexisting_headers | {"dicl-clang-compat", "mogrix-compat", "c++"}
+        for subdir in include_dir.iterdir():
+            if subdir.name in preserve_include_dirs:
+                continue
+            if subdir.is_symlink():
+                console.print(f"  Removing: include/{subdir.name} (symlink)")
+                subdir.unlink()
+                removed_count += 1
+            elif subdir.is_dir():
+                console.print(f"  Removing: include/{subdir.name}/")
+                shutil.rmtree(subdir)
+                removed_count += 1
+
+    # Clean lib32 subdirectories that were installed by RPMs
+    # (skip regular files and file symlinks — handled by *.so*/*.a/*.la globs above)
+    if lib_dir.exists():
+        preserve_lib_dirs = {"pkgconfig"}
+        for subdir in lib_dir.iterdir():
+            if subdir.name in preserve_lib_dirs:
+                continue
+            # Only remove actual directories (not symlinks to files like libgcc_s.so)
+            if subdir.is_dir() and not subdir.is_symlink():
+                console.print(f"  Removing: lib32/{subdir.name}/")
+                shutil.rmtree(subdir)
+                removed_count += 1
 
     # Clean binaries (keeping wrappers)
     if bin_dir.exists():
-        preserve_bins = {"irix-cc", "irix-cxx", "irix-ld"}
+        preserve_bins = {"irix-cc", "irix-cxx", "irix-ld", "fix-anon-relocs", "strip-verneed"}
         for binary in bin_dir.iterdir():
             if binary.is_file() and binary.name not in preserve_bins:
                 console.print(f"  Removing: bin/{binary.name}")

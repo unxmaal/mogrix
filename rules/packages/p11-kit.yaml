@@ -71,8 +71,8 @@ rules:
     # meson's import('python').find_installation() finds the cross-target python, which doesn't exist.
     # Replace with find_program('python3') which finds the build-machine python.
     - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"python = import('python').find_installation()\" --new \"python = find_program('python3')\" --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version = .*$' --new '# python_version check skipped for IRIX cross' --regex --no-backup --quiet || :"
-    - "$MOGRIX_ROOT/tools/safepatch meson.build --old '^python_version_req = .*$' --new '# python_version_req skipped' --regex --no-backup --quiet || :"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"python_version = python.language_version()\" --new '# python_version check skipped for IRIX cross' --no-backup --quiet || :"
+    - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"python_version_req = '>\" --new \"# python_version_req = '>\" --no-backup --quiet || :"
     - "perl -0777 -pi -e 's/^if not python_version.*?^endif/# python version check skipped for IRIX cross/ms' meson.build || :"
     # Create package-specific meson cross file that adds compat library link args
     # and -lpthread (IRIX needs explicit pthread linking)

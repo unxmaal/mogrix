@@ -15,9 +15,25 @@ rules:
     - --enable-pcre
   configure_disable:
   - dynamic
+  ac_cv_overrides:
+    # IRIX has sigprocmask, not BSD sigblock/sigsetmask
+    ac_cv_func_sigblock: "no"
+    ac_cv_func_sigsetmask: "no"
+    ac_cv_func_sigprocmask: "yes"
+    # IRIX has sigaction — needed with sigprocmask for POSIX_SIGNALS detection
+    # Without this, zsh falls back to its own sigemptyset/sigaddset macros that
+    # treat sigset_t as int, but IRIX n32 sigset_t is a struct { __sigbits[4] }
+    ac_cv_func_sigaction: "yes"
+    # IRIX has select — needed for 'cost' variable in zle_refresh.c.
+    # HAVE_POLL references 'cost' but it's only defined under HAVE_SELECT.
+    ac_cv_func_select: "yes"
+    # Prevent gnulib-style gettimeofday redeclaration conflict
+    ac_cv_func_gettimeofday: "yes"
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch Src/jobs.c --delete-line 'PR_SET_NAME' --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch Src/jobs.c --delete-line 'prctl' --no-backup --quiet"
+  # Note: the sigemptyset/sigaddset macro issue is fixed by ac_cv_func_sigaction
+  # override above, which enables POSIX_SIGNALS and skips zsh's fallback macros.
   spec_replacements:
   - pattern: zsh{path,xmod}s.h
     replacement: zshpaths.h zshxmods.h

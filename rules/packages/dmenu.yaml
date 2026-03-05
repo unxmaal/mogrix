@@ -6,8 +6,8 @@ rules:
 
   prep_commands:
     # Disable Xinerama (not available on IRIX)
-    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '^XINERAMALIBS.*' --new '#XINERAMALIBS =' --regex --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch config.mk --old '^XINERAMAFLAGS.*' --new '#XINERAMAFLAGS =' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'XINERAMALIBS  = -lXinerama' --new '#XINERAMALIBS =' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'XINERAMAFLAGS = -DXINERAMA' --new '#XINERAMAFLAGS =' --no-backup --quiet"
     # Fix %zu format — IRIX libc doesn't support it (size_t is 4 bytes on n32)
     - "$MOGRIX_ROOT/tools/safepatch dmenu.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
     # Remove _XOPEN_SOURCE=700 and _POSIX_C_SOURCE — they hide IRIX functions.

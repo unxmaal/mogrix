@@ -12,6 +12,8 @@ rules:
   - lynx
   export_vars:
     CFLAGS: -Wno-deprecated-declarations
+  prep_commands:
+  - sed -i 's/^char \*strstr(char \*buf, char \*sub)/char *strstr(const char *buf, const char *sub)/' src/strstr.c
   configure_flags:
     add:
     - --with-screen=ncurses

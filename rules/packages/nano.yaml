@@ -7,6 +7,16 @@ rules:
   configure_flags:
     add:
     - --disable-libmagic
+  ac_cv_overrides:
+    # Prevent gnulib from redeclaring IRIX functions (conflicting types)
+    ac_cv_func_gettimeofday: "yes"
+    gl_cv_func_gettimeofday_clobber: "no"
+    ac_cv_func_nanosleep: "yes"
+    gl_cv_func_nanosleep: "yes"
+    ac_cv_func_sigaction: "yes"
+    ac_cv_func_sigprocmask: "yes"
+    gl_cv_func_working_mktime: "yes"
+    ac_cv_func_timegm: "yes"
   drop_subpackages:
   - default-editor
   - -n default-editor

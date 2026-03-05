@@ -27,6 +27,10 @@ rules:
     # IRIX ctype_core.h defines _L as a macro (lowercase ctype class).
     # benchmark.c uses _L as a variable name, causing collision.
     - "sed -i 's/ _L/ ccm_L/g' tests/benchmark.c"
+    # Exclude tests from SUBDIRS — test binaries need -lpthread which
+    # the autotools build doesn't add, and we can't run cross-compiled
+    # tests anyway. Use perl (more reliable than sed with $ in RPM specs).
+    - "sed -i 's/ tests//' Makefile.in Makefile.am"
 
   # Remove static library (libtool builds it despite --disable-static)
   install_cleanup:
