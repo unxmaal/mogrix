@@ -115,11 +115,30 @@ The compat versions call `malloc` (which resolves to dlmalloc), ensuring consist
 
 **Problem**: IRIX rld doesn't support `__tls_get_addr`.
 
-**Symptom**: Undefined symbol `__tls_get_addr` at runtime.
+**Symptom**: Undefined symbol `__tls_get_addr` at runtime (NOT a link error — it crashes at runtime because rld does lazy symbol resolution).
 
-**Solution**: Patch source to use static variables or pthreads instead.
+**Solution**: Disable TLS at configure time. Use `sed` to `#define` or `#undef` the TLS macro in config headers — **not** `CFLAGS -D`, because autoconf may override CFLAGS. For meson packages, use `-Dtls=disabled`.
 
-**Affected packages**: rpm (patched to remove `static __thread`)
+**Affected packages**: rpm (patched to remove `static __thread`), gnutls, gdbm, pixman, cairo (GTK3 rendering crash traced to pixman TLS)
+
+### IRIX X11R6.3 Missing APIs
+
+**Problem**: IRIX ships X11R6.3, which lacks some APIs added in later X11 releases.
+
+**Missing:** `XA_UTF8_STRING`, `Xutf8TextListToTextProperty`, `Xutf8LookupString`, `XICCallback` typedef.
+
+**Solutions:**
+- `XA_UTF8_STRING` → `XInternAtom(dpy, "UTF8_STRING", False)`
+- `Xutf8*` functions → `Xmb*` equivalents (multi-byte, works for ASCII/Latin1)
+- `XICCallback` → `XIMCallback` (identical struct, different typedef name)
+
+**Affected packages**: st, xclip, xnedit, any X11 app using UTF-8 input methods
+
+### dlopen of libpthread/libstdc++ Crashes
+
+**Problem**: IRIX system libraries crash when loaded via `dlopen()` rather than being linked at load time as NEEDED dependencies.
+
+**Solution**: Link the executable with `-lpthread -lstdc++` directly so rld loads them at startup. Don't rely on plugins or shared libraries pulling them in via dlopen.
 
 ---
 

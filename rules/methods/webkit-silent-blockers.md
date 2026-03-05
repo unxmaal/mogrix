@@ -112,6 +112,22 @@ These were investigated and found safe:
 
 ---
 
+## TLS/HTTPS Configuration
+
+### WEBKIT_TLS_CAFILE_PEM Behind DEVELOPER_MODE
+
+**Problem**: WebKit's `WEBKIT_TLS_CAFILE_PEM` environment variable (which tells GnuTLS where to find CA certs) is guarded by `#if ENABLE(DEVELOPER_MODE)`. Production builds ignore it — HTTPS fails silently because GnuTLS can't find CA certs at the compiled-in system path (which doesn't exist on IRIX).
+
+**Fix**: Remove the `#if ENABLE(DEVELOPER_MODE)` guard via `prep_commands`. The bundle wrapper sets `WEBKIT_TLS_CAFILE_PEM` to the bundled CA cert file. Note: GnuTLS ignores `SSL_CERT_FILE` (that's OpenSSL-only).
+
+### soup_session_get_tls_database is soup3 Only
+
+**Problem**: `soup_session_get_tls_database()` is a libsoup3 API. WebKit's soup2 backend can't call it directly.
+
+**Fix**: Use `g_object_get(G_OBJECT(session), "tls-database", &db, NULL)` instead — this works for both soup2 and soup3.
+
+---
+
 ## Debugging Methodology
 
 1. **MOGRIX_DIAG tags**: Compile-time `fprintf(stderr, "MOGRIX_DIAG: tag\n")` at critical points. Output visible in crash handler logs or captured stderr.

@@ -86,8 +86,16 @@ def migrate(dry_run: bool = False) -> None:
     plugin = MogrixPlugin()
     migrate_plugin(db, plugin.name, plugin.get_schema_sql(), plugin.version)
 
-    # 5. Migrate rules: problem_class->title, mechanism->category, location->file_path, notes->description
+    # 5. Migrate rules: problem_class->title, mechanism->category, notes->description
+    # The old `location` field was a free-text note about where a fix was applied,
+    # NOT a file path to a rule document. Store it in description, not file_path.
+    # Actual file_path values come from sync_rules scanning rules/ directories.
     for r in old_rules:
+        location = r["location"] or ""
+        notes = r["notes"] or ""
+        description = notes
+        if location:
+            description = f"{notes} | Location: {location}" if notes else f"Location: {location}"
         db.execute_write(
             "INSERT INTO rules (title, keywords, category, file_path, description, hit_count, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -95,8 +103,8 @@ def migrate(dry_run: bool = False) -> None:
                 r["problem_class"],
                 r["keywords"],
                 r["mechanism"] or "",
-                r["location"] or "",
-                r["notes"] or "",
+                "",  # file_path left empty — populated by sync_rules
+                description,
                 r["hit_count"],
                 r["created_at"],
                 r["updated_at"],

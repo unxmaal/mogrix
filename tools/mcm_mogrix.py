@@ -438,6 +438,9 @@ class MogrixPlugin(MCMPlugin):
             return f"{kind.title()} #{entry_id} stored: [{topic}] {detail[:100]}..."
 
         # --- Override sync_rules to handle .yaml package rules ---
+        # FastMCP keeps first registration, so we must remove the core tool first
+        if hasattr(mcp, "_tool_manager") and "sync_rules" in mcp._tool_manager._tools:
+            del mcp._tool_manager._tools["sync_rules"]
 
         @mcp.tool()
         def sync_rules() -> str:
