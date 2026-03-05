@@ -1,23 +1,21 @@
 package: harfbuzz
-# Re-enablement audit (Feb 2025): glib, gobject, cairo, ICU re-enabled.
-# harfbuzz has a circular dependency with glib2 (glib2 links harfbuzz, harfbuzz
-# links glib2). Resolved by two-pass bootstrap: first build harfbuzz without glib
-# (already done), then rebuild with glib+gobject+cairo+icu once glib2 is in staging.
-# This produces new libraries: libharfbuzz-gobject.so, libharfbuzz-cairo.so,
-# libharfbuzz-icu.so. The existing libharfbuzz.so ABI is unchanged.
+# Bootstrap pass 1: without cairo and ICU (circular deps).
+# Once cairo is built, do pass 2 with --with-cairo --with-icu re-enabled.
 # Graphite2 stays disabled (not in staging). Introspection disabled (no gobject-introspection).
 rules:
   drop_buildrequires:
   - gobject-introspection-devel
   - graphite2-devel
   - gtk-doc
+  drop_subpackages:
+  - icu
   spec_replacements:
   - pattern: '%configure --disable-static --with-graphite2 --with-gobject --enable-introspection'
     replacement: 'export CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx"
 
       export CXXFLAGS="%{optflags}"
 
-      %configure --disable-static --without-graphite2 --with-gobject --with-glib --disable-introspection --with-cairo --with-icu
+      %configure --disable-static --without-graphite2 --with-gobject --with-glib --disable-introspection --without-cairo --without-icu
 
       '
   - pattern: 'License:        MIT-Modern-Variant'
@@ -27,11 +25,7 @@ rules:
 
       Provides: libharfbuzz-subset.so.0(mips-32)
 
-      Provides: libharfbuzz-icu.so.0(mips-32)
-
       Provides: libharfbuzz-gobject.so.0(mips-32)
-
-      Provides: libharfbuzz-cairo.so.0(mips-32)
 
       Provides: harfbuzz(mips-32) = %{version}-%{release}
 
@@ -70,11 +64,11 @@ rules:
 
       %{_libdir}/libharfbuzz.so.0*
 
-      %{_libdir}/libharfbuzz-cairo.so.*
-
       %{_libdir}/libharfbuzz-gobject.so.0*
 
       %{_libdir}/libharfbuzz-subset.so.0*
+
+      %{_libdir}/libharfbuzz-cairo.so.*
 
       '
   - pattern: '%files devel
@@ -122,15 +116,11 @@ rules:
 
       %{_bindir}/hb-info
 
-      %{_bindir}/hb-view
-
       %{_bindir}/hb-ot-shape-closure
 
       %{_bindir}/hb-shape
 
       %{_bindir}/hb-subset
-
-      %doc %{_datadir}/gtk-doc
 
       %{_includedir}/harfbuzz/
 
@@ -140,8 +130,6 @@ rules:
 
       %{_libdir}/libharfbuzz-gobject.so
 
-      %{_libdir}/libharfbuzz-icu.so
-
       %{_libdir}/libharfbuzz-subset.so
 
       %{_libdir}/pkgconfig/harfbuzz.pc
@@ -150,12 +138,16 @@ rules:
 
       %{_libdir}/pkgconfig/harfbuzz-gobject.pc
 
-      %{_libdir}/pkgconfig/harfbuzz-icu.pc
-
       %{_libdir}/pkgconfig/harfbuzz-subset.pc
 
       %{_libdir}/cmake/harfbuzz/
 
       '
+  - pattern: '%files icu
+
+      %{_libdir}/libharfbuzz-icu.so.*'
+    replacement: '# %files icu removed (ICU disabled)'
+  install_cleanup:
+  - rm -rf %{buildroot}%{_datadir}/gtk-doc
   prep_commands:
   - $MOGRIX_ROOT/tools/safepatch Makefile.in --old 'SUBDIRS = src util test perf docs' --new 'SUBDIRS = src util docs' --no-backup --quiet

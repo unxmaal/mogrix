@@ -7,7 +7,7 @@
 # string/     : strdup, strndup, strcasestr, strsep, basename
 # stdio/      : getline, asprintf, funopen (BSD cookie I/O - USE THIS, not fopencookie),
 #               dprintf, open_memstream
-# stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r, bsearch
+# stdlib/     : reallocarray, secure_getenv, mkdtemp, qsort_r, bsearch, posix_memalign
 # runtime/    : __muloti4, stpcpy, spawn (posix_spawn/posix_spawnp/file_actions)
 # dicl/       : openat-compat.c (17 POSIX "at" functions: openat, fstatat, futimens, etc.)
 # functions/  : getopt_long
@@ -212,6 +212,12 @@ functions:
     header: stdlib.h
     description: POSIX-compliant bsearch (IRIX libc crashes on nmemb=0)
     notes: IRIX bsearch underflows nmemb-1 when nmemb=0, causing SIGSEGV
+
+  posix_memalign:
+    file: stdlib/posix_memalign.c
+    header: stdlib.h
+    description: Aligned memory allocation (POSIX.1-2001)
+    notes: IRIX has memalign() but not posix_memalign(). Wraps memalign with POSIX semantics.
 
   qsort_r:
     file: stdlib/qsort_r.c

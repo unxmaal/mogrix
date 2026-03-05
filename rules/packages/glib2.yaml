@@ -106,6 +106,9 @@ rules:
     replacement: '# File triggers removed for cross-compilation (cannot run MIPS binaries on build host)'
   - pattern: '%files -f glib20.lang'
     replacement: '%files'
+  # proxy-libintl is built as a subproject when system intl is not found
+  - pattern: '%{_libdir}/libglib-2.0.so.0*'
+    replacement: "%{_libdir}/libglib-2.0.so.0*\n%{_libdir}/libintl.so*"
   - pattern: '%{_libdir}/libgirepository-2.0.so.0*
 
       %dir %{_libdir}/girepository-1.0

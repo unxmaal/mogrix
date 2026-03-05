@@ -411,9 +411,12 @@ _mogrix_origdir=$(pwd)
 
         # Single injection after %setup or %autosetup
         prep_block = "\n\n".join(prep_injection_parts)
+        # Escape backslashes in prep_block so re.sub doesn't interpret them
+        # as regex group references (e.g. \w in perl commands)
+        prep_block_escaped = prep_block.replace("\\", "\\\\")
         content = re.sub(
             r"^(%(?:auto)?setup(?:[ \t]+.*)?)$",
-            f"\\1\n{prep_block}",
+            f"\\1\n{prep_block_escaped}",
             content,
             count=1,
             flags=re.MULTILINE,

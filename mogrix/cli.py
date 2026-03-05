@@ -914,6 +914,16 @@ CROSS_BINDIR = Path("/opt/cross/bin")
     default=None,
     help="Directory to copy built RPMs (default: ~/mogrix_outputs/RPMS/)",
 )
+@click.option(
+    "--no-isolate",
+    is_flag=True,
+    help="Skip overlayfs staging isolation (use current staging as-is)",
+)
+@click.option(
+    "--skip-dep-check",
+    is_flag=True,
+    help="Skip post-build ELF dependency validation",
+)
 def build(
     srpm: str,
     rpmbuild_dir: str | None,
@@ -921,6 +931,8 @@ def build(
     macros: str | None,
     dry_run: bool,
     output_dir: str | None,
+    no_isolate: bool,
+    skip_dep_check: bool,
 ):
     """Build a converted SRPM.
 
@@ -975,6 +987,21 @@ def build(
                 console.print(f"  [red]![/red] {err}")
             console.print("\n[bold]Try running:[/bold] mogrix setup-cross")
             raise SystemExit(1)
+
+    # Per-build staging isolation
+    isolated = None
+    build_deps = []
+    if cross and not dry_run and not no_isolate:
+        from mogrix.isolated_build import IsolatedStaging
+
+        isolated = IsolatedStaging(
+            base_staging=Path("/opt/sgug-staging"),
+            rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+            rules_dir=RULES_DIR,
+        )
+        build_deps = isolated.resolve_build_deps(input_path)
+        if build_deps:
+            console.print(f"[bold]Build deps:[/bold] {', '.join(build_deps)}")
 
     # Validate cross-compilation environment
     if cross:
@@ -1047,7 +1074,10 @@ def build(
     console.print(f"[bold]Command:[/bold] {' '.join(cmd)}\n")
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        if isolated and build_deps:
+            result = isolated.build_with_fallback(cmd, build_deps)
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode == 0:
             import shutil
@@ -1061,6 +1091,26 @@ def build(
                 console.print(f"\n[bold]Built RPMs:[/bold]")
                 for rpm in rpms:
                     console.print(f"  {rpm}")
+
+            # Post-build ELF dependency validation
+            if cross and rpms and not skip_dep_check:
+                from mogrix.validate_deps import validate_rpm_deps
+
+                console.print("\n[bold]Validating ELF dependencies...[/bold]")
+                out_rpms_check = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
+                unresolved = validate_rpm_deps(rpms, out_rpms_check, IRIX_SYSROOT)
+                if unresolved:
+                    console.print("\n[bold red]✗ Unresolved NEEDED sonames:[/bold red]")
+                    for rpm_name, missing in sorted(unresolved.items()):
+                        console.print(f"  [bold]{rpm_name}:[/bold]")
+                        for soname in missing:
+                            console.print(f"    [red]• {soname}[/red]")
+                    console.print(
+                        "\n[dim]Use --skip-dep-check to bypass this check.[/dim]"
+                    )
+                    raise SystemExit(1)
+                else:
+                    console.print("[green]✓ All ELF dependencies resolve[/green]")
 
             # Copy RPMs to output directory
             out_rpms = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
@@ -2148,10 +2198,13 @@ def stage(
         "libbz2.a", "libformw.a", "libhistory.a", "liblzma.a", "liblzma.la",
         "libmenuw.a", "libncursesw.a", "libpanelw.a", "libreadline.a",
         "libtinfow.a", "libz.a",
+        "libstdc++.so", "libstdc++.so.6",
+        "libgcc_s.so", "libgcc_s.so.1",
     }
 
     PREEXISTING_HEADERS = {
         "bzlib.h", "gnumake.h", "lzma.h", "zconf.h", "zlib.h",
+        "zlib_name_mangling.h",
         "lzma", "ncursesw", "readline",
     }
 
@@ -2212,6 +2265,7 @@ def stage(
                 continue
 
             console.print(f"  [green]✓ Installed[/green]")
+            _record_staged_package(staging_path, rpm_file.name)
 
         except Exception as e:
             console.print(f"  [red]✗ Error:[/red] {e}")
@@ -2221,6 +2275,72 @@ def stage(
 
     console.print("\n[bold green]Staging complete![/bold green]")
     console.print("\nStaged libraries are now available for cross-compilation.")
+
+
+MANIFEST_FILE = ".mogrix-staged.json"
+
+
+def _record_staged_package(staging_path: Path, rpm_filename: str) -> None:
+    """Record a staged RPM in the manifest file."""
+    import json
+    from datetime import datetime
+
+    manifest_path = staging_path / MANIFEST_FILE
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            manifest = {}
+
+    if "packages" not in manifest:
+        manifest["packages"] = {}
+
+    # Parse package name from RPM filename (e.g., "ncurses-devel-6.4-3.mips.rpm")
+    import re
+    match = re.match(r"^(.+?)-(\d+[\d.]*(?:[-~]\w[\w.]*)*)\.\w+\.rpm$", rpm_filename)
+    pkg_name = match.group(1) if match else rpm_filename
+
+    manifest["packages"][pkg_name] = {
+        "rpm": rpm_filename,
+        "staged_at": datetime.now().isoformat(),
+    }
+
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def _clear_manifest(staging_path: Path) -> None:
+    """Remove the staging manifest file."""
+    manifest_path = staging_path / MANIFEST_FILE
+    if manifest_path.exists():
+        manifest_path.unlink()
+        console.print("  [dim]Cleared staging manifest[/dim]")
+
+
+def _show_manifest(staging_path: Path) -> None:
+    """Show contents of the staging manifest."""
+    import json
+
+    manifest_path = staging_path / MANIFEST_FILE
+    if not manifest_path.exists():
+        console.print("[dim]No staging manifest found (packages staged before tracking was added)[/dim]")
+        return
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        console.print("[yellow]Manifest file is corrupt[/yellow]")
+        return
+
+    packages = manifest.get("packages", {})
+    if not packages:
+        console.print("[dim]No packages recorded in manifest[/dim]")
+        return
+
+    console.print(f"\n[bold]Manifest ({len(packages)} packages):[/bold]")
+    for name, info in sorted(packages.items()):
+        staged_at = info.get("staged_at", "unknown")
+        console.print(f"  {name}: {info.get('rpm', '?')} (staged {staged_at})")
 
 
 def _fix_multiarch_headers(staging_path: Path) -> None:
@@ -2302,6 +2422,9 @@ def _list_staged_packages(staging_path: Path, preexisting_libs: set, preexisting
     else:
         console.print("  [dim](include directory not found)[/dim]")
 
+    # Show manifest (packages tracked by mogrix stage)
+    _show_manifest(staging_path)
+
 
 def _clean_staged_packages(
     staging_path: Path,
@@ -2376,6 +2499,9 @@ def _clean_staged_packages(
             console.print(f"  Removing: {subdir}/")
             shutil.rmtree(dir_path)
             removed_count += 1
+
+    # Clear the manifest
+    _clear_manifest(staging_path)
 
     if removed_count > 0:
         console.print(f"\n[bold green]Cleaned {removed_count} items[/bold green]")

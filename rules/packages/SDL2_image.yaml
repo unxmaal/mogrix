@@ -1,0 +1,39 @@
+# SDL2_image - Image loading library for SDL2 (autoconf-based)
+# Cross-compile for IRIX 6.5
+# Supports: JPEG, PNG, TIFF, WebP, BMP, PCX, GIF, SVG (nanosvg bundled)
+# Disabled: AVIF, JXL (modern codecs not ported)
+package: SDL2_image
+
+rules:
+  drop_buildrequires:
+    - libavif-devel
+    - libjxl-devel
+    - chrpath
+
+  configure_flags:
+    add:
+      - --disable-dependency-tracking
+      - --disable-jpg-shared
+      - --disable-png-shared
+      - --disable-tif-shared
+      - --disable-webp-shared
+      - --disable-static
+      - --disable-avif
+      - --disable-avif-shared
+      - --disable-jxl
+      - --disable-jxl-shared
+      - --disable-stb-image
+
+  spec_replacements:
+    # Remove the chrpath and libtool install commands (we don't build showimage)
+    - pattern: "mkdir -p %{buildroot}%{_bindir}\n./libtool --mode=install /usr/bin/install showimage %{buildroot}%{_bindir}/showimage2\nchrpath -d %{buildroot}%{_bindir}/showimage2"
+      replacement: "# showimage2 not built for IRIX cross-compile"
+
+    # Remove showimage2 from %files
+    - pattern: "%{_bindir}/showimage2"
+      replacement: "# showimage2 not included"
+
+    # Add the -2.0.so unversioned symlink to main %files (libtool creates it,
+    # glob %{_libdir}/libSDL2_image-2.0.so.* doesn't match it)
+    - pattern: "%{_libdir}/libSDL2_image-2.0.so.*"
+      replacement: "%{_libdir}/libSDL2_image-2.0.so.*\n%{_libdir}/libSDL2_image-2.0.so"

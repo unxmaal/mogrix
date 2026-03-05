@@ -45,7 +45,7 @@ rules:
     # The corruption leads to Bus error (SIGBUS) on MIPS when ncurses tries
     # to allocate buffers based on the garbage column count.
     - pattern: "--without-ada\""
-      replacement: "--without-ada\n    --disable-ext-colors\""
+      replacement: "--without-ada\n    --disable-ext-colors\n    --without-cxx-shared\""
     # CRITICAL: Convert terminfo symlinks to hardlinks after install
     # Host tic creates symlinks by default, but symlinks cause rpm memory exhaustion
     # on IRIX when installing ncurses-term (2700+ files). SGUG-RSE used hardlinks.

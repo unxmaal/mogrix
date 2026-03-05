@@ -409,15 +409,23 @@ class BundleBuilder:
                     needed_sonames.update(self._readelf_needed(target))
 
         # For each needed soname missing from _lib32/, try to find a
-        # versioned file that provides it (via ELF SONAME header).
+        # versioned file that provides it (via ELF SONAME header or prefix).
         created = []
         for soname in sorted(needed_sonames):
             soname_path = lib_dir / soname
             if soname_path.exists():
                 continue
             # Look for a file whose ELF SONAME matches
+            prefix = soname.split(".so")[0]
+            best_fallback: str | None = None
             for candidate in lib_dir.iterdir():
-                if not candidate.name.startswith(soname.split(".so")[0]):
+                # Prefix must match exactly up to ".so" or "." boundary
+                # to avoid e.g. "libm" matching "libmogrix_compat.so"
+                cname = candidate.name
+                if not cname.startswith(prefix):
+                    continue
+                rest = cname[len(prefix):]
+                if rest and not rest.startswith("."):
                     continue
                 target = candidate.resolve() if candidate.is_symlink() else candidate
                 if not target.exists() or not self._is_elf(target):
@@ -427,14 +435,29 @@ class BundleBuilder:
                     ["readelf", "-d", str(target)],
                     capture_output=True, text=True,
                 )
+                has_soname = False
                 for line in result.stdout.splitlines():
-                    if "(SONAME)" in line and f"[{soname}]" in line:
-                        # Create symlink to the candidate
-                        soname_path.symlink_to(candidate.name)
-                        created.append(f"{soname} -> {candidate.name}")
-                        break
+                    if "(SONAME)" in line:
+                        has_soname = True
+                        if f"[{soname}]" in line:
+                            # Exact SONAME match
+                            soname_path.symlink_to(candidate.name)
+                            created.append(f"{soname} -> {candidate.name}")
+                            break
                 if soname_path.exists():
                     break
+                # Track shortest-named candidate with no SONAME as fallback
+                # (e.g. zlib-ng has no SONAME; libz.so.1 is the best target)
+                if not has_soname and (
+                    best_fallback is None
+                    or len(candidate.name) < len(best_fallback)
+                ):
+                    best_fallback = candidate.name
+            # Fallback: library has no SONAME (e.g. zlib-ng), link to
+            # shortest versioned file with matching prefix
+            if not soname_path.exists() and best_fallback:
+                soname_path.symlink_to(best_fallback)
+                created.append(f"{soname} -> {best_fallback} (no-SONAME fallback)")
 
         if created:
             console.print(
