@@ -4,6 +4,7 @@ Domain-specific extensions for the mogrix cross-compilation knowledge system:
 - boundaries table (ABI crossing maps for golang-irix)
 - tasks table (cross-session task tracking)
 - check_compat tool (searches compat/catalog.yaml)
+- sync_rules override (handles .yaml package rules + .md methods)
 - Backward-compatible tool aliases (knowledge_query, report_finding)
 """
 from __future__ import annotations
@@ -18,61 +19,205 @@ from mcm_engine.db import KnowledgeDB
 from mcm_engine.tracker import SessionTracker
 
 
+def _parse_yaml_rule(path: Path) -> dict:
+    """Extract metadata from a mogrix YAML rule file.
+
+    Returns dict with title, keywords, category, description.
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    result: dict[str, str] = {}
+
+    # Title from package name or filename
+    pkg = data.get("package", "")
+    if pkg:
+        result["title"] = f"{pkg} package rules"
+    else:
+        result["title"] = f"{path.stem} package rules"
+
+    # Description from first comment line
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            desc = stripped.lstrip("# ").strip()
+            if desc:
+                result["description"] = desc
+                break
+
+    # Keywords: package name + rule type names
+    kw_parts = [pkg or path.stem]
+    rules = data.get("rules", {})
+    if isinstance(rules, dict):
+        kw_parts.extend(rules.keys())
+    result["keywords"] = ", ".join(kw_parts)
+
+    result["category"] = "packages"
+    return result
+
+
+def _parse_md_rule(path: Path) -> dict:
+    """Extract metadata from a markdown rule file.
+
+    Expected format:
+        # Title
+        **Keywords:** kw1, kw2
+        **Category:** cat
+        Body text...
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+
+    result: dict[str, str] = {}
+    lines = content.split("\n")
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            result["title"] = stripped[2:].strip()
+            break
+
+    for line in lines:
+        stripped = line.strip()
+        kw_match = re.match(r"\*\*Keywords?:\*\*\s*(.+)", stripped, re.IGNORECASE)
+        if kw_match:
+            result["keywords"] = kw_match.group(1).strip()
+            continue
+        cat_match = re.match(r"\*\*Category:\*\*\s*(.+)", stripped, re.IGNORECASE)
+        if cat_match:
+            result["category"] = cat_match.group(1).strip()
+            continue
+
+    in_body = False
+    desc_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not in_body:
+            if stripped.startswith("# ") and not stripped.startswith("## "):
+                continue
+            if re.match(r"\*\*(Keywords?|Category):\*\*", stripped, re.IGNORECASE):
+                continue
+            if stripped == "":
+                continue
+            in_body = True
+        if in_body:
+            if stripped == "" and desc_lines:
+                break
+            if stripped.startswith("## "):
+                break
+            desc_lines.append(stripped)
+
+    if desc_lines:
+        result["description"] = " ".join(desc_lines)
+
+    return result
+
+
+def _is_real_file_path(fp: str) -> bool:
+    """Heuristic: does this look like a real file path vs. free text?
+
+    Rejects globs, comma-separated lists, plain English phrases, N/A, etc.
+    """
+    if not fp:
+        return False
+    # Reject known non-path patterns
+    if fp in ("N/A", "n/a", "none", "None"):
+        return False
+    if "*" in fp or "," in fp:
+        return False
+    # Must contain a dot or slash to look like a path
+    if "." not in fp and "/" not in fp:
+        return False
+    # Reject if it contains spaces (likely free text like "Bundle wrappers")
+    if " " in fp:
+        return False
+    return True
+
+
 class CompatCatalog:
-    """Searches compat/catalog.yaml for function implementations."""
+    """Parses compat/catalog.yaml on demand. No DB mirror.
+
+    Ported from knowledge-server.py CompatCatalog.
+    """
 
     def __init__(self, catalog_path: Path):
-        self._path = catalog_path
-        self._data: dict | None = None
+        self.catalog_path = catalog_path
 
-    def _load(self) -> dict:
-        if self._data is None:
-            try:
-                with open(self._path) as f:
-                    raw = yaml.safe_load(f)
-                self._data = raw.get("functions", {}) if raw else {}
-            except (OSError, yaml.YAMLError):
-                self._data = {}
-        return self._data
+    def search(self, symbol: str) -> dict | None:
+        """Search catalog for a symbol. Returns match info or None."""
+        try:
+            with open(self.catalog_path) as f:
+                data = yaml.safe_load(f)
+        except FileNotFoundError:
+            return {"error": f"Catalog not found: {self.catalog_path}"}
+        except Exception as e:
+            return {"error": f"Catalog parse error: {e}"}
 
-    def search(self, symbol: str) -> dict:
-        functions = self._load()
-        sym_lower = symbol.lower()
+        functions = data.get("functions", {})
+        symbol_lower = symbol.lower()
 
         # Direct name match
         for name, info in functions.items():
-            if name.lower() == sym_lower:
-                return self._format(name, info, "direct match")
+            if name.lower() == symbol_lower:
+                result = {
+                    "found": True,
+                    "name": name,
+                    "file": info.get("file", ""),
+                    "header": info.get("header", ""),
+                    "description": info.get("description", ""),
+                }
+                if info.get("notes"):
+                    result["notes"] = info["notes"]
+                if info.get("provides"):
+                    result["provides"] = info["provides"]
+                if info.get("source_patterns"):
+                    result["source_patterns"] = info["source_patterns"]
+                return result
 
         # Check provides lists
         for name, info in functions.items():
             provides = info.get("provides", [])
             if isinstance(provides, list):
                 for p in provides:
-                    if p.lower() == sym_lower:
-                        return self._format(name, info, f"provides: {p}")
+                    if isinstance(p, str) and p.lower() == symbol_lower:
+                        return {
+                            "found": True,
+                            "name": name,
+                            "matched_via": f"provides: {p}",
+                            "file": info.get("file", ""),
+                            "header": info.get("header", ""),
+                            "description": info.get("description", ""),
+                        }
 
         # Check source_patterns
         for name, info in functions.items():
             patterns = info.get("source_patterns", [])
             if isinstance(patterns, list):
-                for pat in patterns:
-                    pat_str = pat if isinstance(pat, str) else pat.get("pattern", "")
-                    if symbol in pat_str:
-                        return self._format(name, info, f"source_pattern: {pat_str}")
+                for sp in patterns:
+                    pat = sp.get("pattern", "") if isinstance(sp, dict) else str(sp)
+                    if symbol_lower in pat.lower():
+                        return {
+                            "found": True,
+                            "name": name,
+                            "matched_via": f"source_pattern: {pat}",
+                            "file": info.get("file", ""),
+                            "header": info.get("header", ""),
+                            "description": info.get("description", ""),
+                        }
 
         return {"found": False, "symbol": symbol}
-
-    def _format(self, name: str, info: dict, matched_via: str) -> dict:
-        return {
-            "found": True,
-            "name": name,
-            "file": info.get("file", ""),
-            "header": info.get("header", ""),
-            "description": info.get("description", ""),
-            "matched_via": matched_via,
-            "notes": info.get("notes", ""),
-        }
 
 
 class MogrixPlugin(MCMPlugin):
@@ -170,13 +315,18 @@ class MogrixPlugin(MCMPlugin):
         db = server.db
         tracker = server.tracker
 
-        # Resolve catalog path relative to project root
+        # Resolve paths relative to project root
         project_root = server.project_root
         catalog_path = project_root / "compat" / "catalog.yaml"
         catalog = CompatCatalog(catalog_path)
 
-        # Get search_all_fn from server for report_error auto-search
+        # Get search_all_fn from server for backward-compat alias
         search_all_fn = getattr(server, "_search_all_fn", None)
+
+        # Get rules_paths from config for sync_rules override
+        from mcm_engine.config import load_config
+        config = load_config(project_root=project_root)
+        rules_paths = config.resolve_rules_paths(project_root)
 
         @mcp.tool()
         def check_compat(symbol: str) -> str:
@@ -190,18 +340,34 @@ class MogrixPlugin(MCMPlugin):
             """
             tracker.record_call("check_compat", topic=symbol)
             result = catalog.search(symbol)
-            if result.get("found"):
-                parts = [
-                    f"FOUND: {result['name']}",
-                    f"  File: compat/{result['file']}",
-                    f"  Header: {result['header']}",
-                    f"  Description: {result['description']}",
-                    f"  Matched via: {result['matched_via']}",
-                ]
-                if result.get("notes"):
-                    parts.append(f"  Notes: {result['notes']}")
-                return "\n".join(parts)
-            return f"NOT FOUND: {symbol}\nNo compat implementation exists. You may need to write one."
+
+            if result is None:
+                return f"'{symbol}' not found in compat catalog."
+
+            if result.get("error"):
+                return f"Error: {result['error']}"
+
+            if not result.get("found"):
+                return (
+                    f"'{symbol}' not in compat catalog.\n\n"
+                    "If you need this function, create it in compat/ and add to "
+                    "compat/catalog.yaml. See rules/methods/compat-functions.md."
+                )
+
+            lines = [f"## Compat: {result['name']}\n"]
+            lines.append(f"- **File**: compat/{result['file']}")
+            lines.append(f"- **Header**: {result.get('header', 'N/A')}")
+            lines.append(f"- **Description**: {result.get('description', '')}")
+            if result.get("matched_via"):
+                lines.append(f"- **Matched via**: {result['matched_via']}")
+            if result.get("notes"):
+                lines.append(f"- **Notes**: {result['notes']}")
+            if result.get("provides"):
+                lines.append(f"- **Also provides**: {', '.join(result['provides'])}")
+            if result.get("source_patterns"):
+                lines.append(f"- **Source patterns**: {result['source_patterns']}")
+
+            return "\n".join(lines)
 
         # --- Backward-compat aliases ---
 
@@ -250,14 +416,15 @@ class MogrixPlugin(MCMPlugin):
             tracker.record_store()
 
             if type == "negative":
+                category = topic if topic != "general" else "failed_attempt"
                 db.execute_write(
                     "INSERT INTO negative_knowledge "
                     "(category, what_failed, why_failed, correct_approach, severity, project) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    (topic, detail, "", "", severity, package or "mogrix"),
+                    (category, detail, "", "", severity, package or "mogrix"),
                 )
                 db.commit()
-                return f"Stored negative knowledge: {topic} — {detail[:100]}"
+                return f"Negative knowledge stored: [{category}] {detail[:100]}..."
 
             kind = "decision" if type == "decision" else "finding"
             db.execute_write(
@@ -267,7 +434,96 @@ class MogrixPlugin(MCMPlugin):
                 (topic, kind, detail[:200], detail, "", package or "mogrix", rationale, ""),
             )
             db.commit()
-            return f"Stored {kind}: {topic} — {detail[:100]}"
+            entry_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            return f"{kind.title()} #{entry_id} stored: [{topic}] {detail[:100]}..."
+
+        # --- Override sync_rules to handle .yaml package rules ---
+
+        @mcp.tool()
+        def sync_rules() -> str:
+            """Re-index all rule files (.md and .yaml) across configured rules directories.
+
+            Mogrix override: also indexes YAML package rule files and only orphan-deletes
+            rules whose file_path looks like a real file path (not free text or globs
+            from legacy migration).
+            """
+            tracker.record_call("sync_rules")
+
+            rule_files: list[tuple[Path, str]] = []  # (path, type)
+            missing_paths: list[str] = []
+
+            for rp in rules_paths:
+                if rp.exists():
+                    rule_files.extend((f, "md") for f in sorted(rp.rglob("*.md")))
+                    rule_files.extend((f, "yaml") for f in sorted(rp.rglob("*.yaml")))
+                else:
+                    missing_paths.append(str(rp))
+
+            if not rule_files and missing_paths:
+                return f"No rules directories found: {', '.join(missing_paths)}"
+
+            indexed = 0
+            updated = 0
+            removed = 0
+
+            for rule_file, ftype in rule_files:
+                try:
+                    rel_path = str(rule_file.relative_to(project_root))
+                except ValueError:
+                    rel_path = str(rule_file)
+
+                if ftype == "yaml":
+                    parsed = _parse_yaml_rule(rule_file)
+                else:
+                    parsed = _parse_md_rule(rule_file)
+
+                if not parsed.get("title"):
+                    continue
+
+                title = parsed["title"]
+                keywords = parsed.get("keywords", "")
+                category = parsed.get("category", "")
+                description = parsed.get("description", "")
+
+                existing = db.execute(
+                    "SELECT id FROM rules WHERE file_path = ?", (rel_path,)
+                ).fetchone()
+
+                if existing:
+                    db.execute_write(
+                        "UPDATE rules SET title = ?, keywords = ?, description = ?, "
+                        "category = ?, updated_at = datetime('now') WHERE id = ?",
+                        (title, keywords, description, category, existing["id"]),
+                    )
+                    updated += 1
+                else:
+                    db.execute_write(
+                        "INSERT INTO rules (title, keywords, file_path, description, category) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (title, keywords, rel_path, description, category),
+                    )
+                    indexed += 1
+
+            # Orphan removal: only delete rules whose file_path was found during
+            # this scan (i.e., files we actually manage). Legacy migrated rules
+            # with bare filenames, free text, or partial paths are left alone —
+            # they contain valuable knowledge even if the path doesn't resolve.
+            scanned_paths = {str(f.relative_to(project_root)) if f.is_relative_to(project_root) else str(f)
+                            for f, _ in rule_files}
+            all_rules = db.execute(
+                "SELECT id, file_path FROM rules WHERE file_path IS NOT NULL AND file_path != ''"
+            ).fetchall()
+            for rule in all_rules:
+                fp = rule["file_path"]
+                if fp not in scanned_paths:
+                    continue  # Not a managed file — leave it alone
+                full = project_root / fp
+                if not full.exists():
+                    db.execute_write("DELETE FROM rules WHERE id = ?", (rule["id"],))
+                    removed += 1
+
+            db.commit()
+            return f"Sync complete: {indexed} new, {updated} updated, {removed} orphans removed."
 
     def get_nudge(self, tracker: SessionTracker) -> str | None:
         """Domain nudge: remind about MCP-first workflow."""
