@@ -13,6 +13,9 @@ add_source:
   - xeatdatawords.patch
 
 rules:
-  # IRIX sysroot Xlibint.h lacks _XEatDataWords (added in libX11 1.6)
+  # _XEatDataWords is now in staged libX11/Xlibint.h.
+  # The old patch added a conflicting static inline; remove it if present.
+  # The original source doesn't define it, but the patch may have been applied
+  # from a previous convert. Use sed to strip any local static inline definition.
   prep_commands:
-    - "patch -p1 < %{_sourcedir}/xeatdatawords.patch"
+    - "sed -i '/^#ifndef _XEatDataWords/,/^#endif/d' src/Xfixesint.h || true"

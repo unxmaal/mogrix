@@ -1,0 +1,11 @@
+# xcb-proto - X11 XCB protocol descriptions (FC40: 1.16.0)
+# Build-time dep for libxcb. Provides XML protocol descriptions and
+# Python xcbgen module used by libxcb's build to generate C sources.
+package: xcb-proto
+
+rules:
+  spec_replacements:
+    # %python3_sitelib macro not defined in cross rpmmacros.
+    # Replace with the actual installed path.
+    - pattern: "%{python3_sitelib}/xcbgen"
+      replacement: "%{_prefix}/lib/python3.12/site-packages/xcbgen"

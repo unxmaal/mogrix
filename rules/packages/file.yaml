@@ -2,6 +2,7 @@ package: file
 rules:
   ac_cv_overrides:
     ac_cv_func_getopt_long: 'yes'
+    ac_cv_c_undeclared_builtin_options: 'none needed'
   export_vars:
     LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32
   configure_flags:
@@ -20,9 +21,9 @@ rules:
 
       # file-specific: Custom SONAME for libmagic (libmagic.so.1)
 
-      sed -i ''s|^soname_spec=.*|soname_spec="\\$libname\\$release\\$shared_ext.\\$major"|g'' libtool
+      sed -i ''s|^soname_spec=.*|soname_spec="\\$libname\\$shared_ext\\$major"|g'' libtool
 
-      sed -i ''s|^library_names_spec=.*|library_names_spec="\\$libname\\$release\\$shared_ext.\\$versuffix \\$libname\\$release\\$shared_ext.\\$major \\$libname\\$shared_ext"|g'' libtool
+      sed -i ''s|^library_names_spec=.*|library_names_spec="\\$libname\\$shared_ext\\$versuffix \\$libname\\$shared_ext\\$major \\$libname\\$shared_ext"|g'' libtool
 
       # Add mogrix-compat library to src/Makefile LIBS
 

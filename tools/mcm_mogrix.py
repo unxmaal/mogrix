@@ -220,6 +220,76 @@ class CompatCatalog:
         return {"found": False, "symbol": symbol}
 
 
+def _sweep_check(project_root: Path, keywords: str, title: str, file_path: str) -> str | None:
+    """Check if a fix might apply to other packages.
+
+    Scans all package YAML files for patterns similar to the one being fixed.
+    Returns a sweep advisory string if other packages might be affected, or None.
+    """
+    # Extract sweep-worthy patterns from keywords and title
+    patterns_to_check: list[tuple[str, str]] = []  # (pattern_regex, description)
+    combined = f"{keywords} {title}".lower()
+
+    # soname_spec / library_names_spec issues
+    if "soname" in combined or "library_names" in combined:
+        patterns_to_check.append((r"soname_spec|library_names_spec", "custom soname_spec/library_names_spec"))
+
+    # ac_cv override patterns
+    if "ac_cv_c_undeclared_builtin" in combined:
+        # Check which packages use autoreconf (may need this override)
+        patterns_to_check.append((r"autoreconf|autoconf", "autoreconf (may need ac_cv_c_undeclared_builtin_options)"))
+
+    # libtool fix patterns
+    if "libtool" in combined and ("shared_ext" in combined or "version_type" in combined):
+        patterns_to_check.append((r"fix-libtool|soname_spec|shared_ext", "custom libtool modifications"))
+
+    # Double-dot or naming issues
+    if "double.dot" in combined or "double-dot" in combined or "so.." in combined:
+        patterns_to_check.append((r"soname_spec|library_names_spec|\$major|\$shared_ext", "soname/library naming"))
+
+    if not patterns_to_check:
+        return None
+
+    pkg_dir = project_root / "rules" / "packages"
+    if not pkg_dir.exists():
+        return None
+
+    # Get the package being fixed (skip it in results)
+    fixed_pkg = ""
+    if file_path:
+        fixed_pkg = Path(file_path).stem
+
+    affected: list[tuple[str, str]] = []  # (package, matched_pattern_desc)
+
+    for yaml_file in sorted(pkg_dir.glob("*.yaml")):
+        if yaml_file.stem == fixed_pkg:
+            continue
+        try:
+            content = yaml_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        for pat_regex, pat_desc in patterns_to_check:
+            if re.search(pat_regex, content, re.IGNORECASE):
+                affected.append((yaml_file.stem, pat_desc))
+                break  # One match per package is enough
+
+    if not affected:
+        return None
+
+    lines = [
+        f"\n⚠️  SWEEP NEEDED — {len(affected)} other package(s) may have the same defect class:",
+    ]
+    for pkg, desc in affected[:15]:
+        lines.append(f"  - {pkg} ({desc})")
+    if len(affected) > 15:
+        lines.append(f"  ... and {len(affected) - 15} more")
+    lines.append(f"\nDefect: {title}")
+    lines.append("ACTION: Verify these packages don't have the same issue. "
+                  "Create a task to track the sweep if not done immediately.")
+    return "\n".join(lines)
+
+
 class MogrixPlugin(MCMPlugin):
     """Mogrix domain plugin for mcm-engine."""
 
@@ -229,7 +299,7 @@ class MogrixPlugin(MCMPlugin):
 
     @property
     def version(self) -> int:
-        return 1
+        return 2
 
     def get_schema_sql(self) -> str:
         return """
@@ -527,6 +597,94 @@ class MogrixPlugin(MCMPlugin):
 
             db.commit()
             return f"Sync complete: {indexed} new, {updated} updated, {removed} orphans removed."
+
+        # --- Override add_rule to add defect sweep check ---
+        if hasattr(mcp, "_tool_manager") and "add_rule" in mcp._tool_manager._tools:
+            del mcp._tool_manager._tools["add_rule"]
+
+        @mcp.tool()
+        def add_rule(
+            title: str,
+            keywords: str,
+            content: str = "",
+            category: str = "",
+            file_path: str = "",
+        ) -> str:
+            """Create or index a rule file, with automatic defect sweep check.
+
+            Mogrix override: after storing the rule, scans all package YAML files
+            for the same defect pattern. If other packages may be affected, returns
+            a SWEEP NEEDED advisory.
+
+            Args:
+                title: Rule title
+                keywords: Comma-separated search keywords
+                content: Rule body text (used when creating a new file)
+                category: Rule category (used for directory organization)
+                file_path: Relative path to existing rule file (indexes it if provided)
+            """
+            tracker.record_call("add_rule", topic=title)
+            tracker.record_store()
+
+            # Check for duplicate by title
+            existing = db.execute(
+                "SELECT id, file_path FROM rules WHERE title = ?", (title,)
+            ).fetchone()
+
+            if existing:
+                db.execute_write(
+                    "UPDATE rules SET keywords = ?, description = ?, category = ?, "
+                    "file_path = ?, updated_at = datetime('now') WHERE id = ?",
+                    (keywords, content[:500] if content else "", category,
+                     file_path or existing["file_path"], existing["id"]),
+                )
+                db.commit()
+                result_msg = f"Updated existing rule: {title} (id={existing['id']})"
+            else:
+                if file_path:
+                    full = project_root / file_path
+                    if full.exists() and not content:
+                        parsed = _parse_yaml_rule(full) if file_path.endswith(".yaml") else _parse_md_rule(full)
+                        if parsed.get("description"):
+                            content = parsed["description"]
+
+                db.execute_write(
+                    "INSERT INTO rules (title, keywords, file_path, description, category) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (title, keywords, file_path, content[:500] if content else "", category),
+                )
+                db.commit()
+                entry_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+                result_msg = f"Rule #{entry_id} added: {title}"
+                if file_path:
+                    result_msg += f"\n  File: {file_path}"
+
+            # Defect sweep check
+            sweep = _sweep_check(project_root, keywords, title, file_path)
+            if sweep:
+                result_msg += sweep
+
+                # Auto-create sweep task in DB
+                sweep_subject = f"Defect sweep: {title[:80]}"
+                existing_task = db.execute(
+                    "SELECT id FROM tasks WHERE subject = ? AND status = 'active'",
+                    (sweep_subject,)
+                ).fetchone()
+                if not existing_task:
+                    db.execute_write(
+                        "INSERT INTO tasks (subject, status, description, project) "
+                        "VALUES (?, 'active', ?, 'mogrix')",
+                        (sweep_subject, sweep),
+                    )
+                    db.commit()
+                    result_msg += "\n📋 Sweep task created in knowledge DB."
+
+            # Append nudge if applicable
+            nudge = tracker.get_nudge()
+            if nudge:
+                result_msg += f"\n\n---\n{nudge}"
+
+            return result_msg
 
     def get_nudge(self, tracker: SessionTracker) -> str | None:
         """Domain nudge: remind about MCP-first workflow."""

@@ -8,28 +8,45 @@ rules:
   # IRIX memchr works correctly — override the gnulib detection.
   ac_cv_overrides:
     gl_cv_func_memchr_works: "yes"
+    # Prevent gnulib from redeclaring IRIX functions (conflicting types).
+    # IRIX gettimeofday uses varargs (...) not POSIX (void *restrict) —
+    # gnulib tries to replace it, causing conflicting type errors.
+    ac_cv_func_gettimeofday: "yes"
+    gl_cv_func_gettimeofday_clobber: "no"
+    gl_cv_func_gettimeofday_posix_signature: "yes"
+    # IRIX nanosleep is in libc but AC_SEARCH_LIBS fails in cross-compile.
+    # Without ac_cv_search, gnulib sets HAVE_NANOSLEEP=0 and provides its
+    # own declaration with different types (struct timespec vs timespec_t).
+    ac_cv_search_nanosleep: "none required"
+    ac_cv_func_nanosleep: "yes"
+    gl_cv_func_nanosleep: "yes"
+    # IRIX has sigprocmask + sigset_t — tell gnulib so it skips the
+    # NSIG<=32 static assert (IRIX has NSIG=65)
+    ac_cv_func_sigprocmask: "yes"
+    ac_cv_func_sigaction: "yes"
+    # IRIX perror works fine — prevent gnulib from replacing it.
+    # gnulib's perror.c calls strerror_r expecting XSI (int) return,
+    # but our compat strerror_r is GNU (char*) variant.
+    gl_cv_func_perror_works: "yes"
+    gl_cv_func_strerror_0_works: "yes"
+    # IRIX errno.h may be "incomplete" (missing ENOTSUP etc.) which makes
+    # gnulib generate its own errno.h → forces REPLACE_PERROR=1 →
+    # gnulib perror.c calls strerror_r expecting XSI int return, but our
+    # compat provides GNU char* return → type mismatch.
+    gl_cv_header_errno_h_complete: "yes"
 
   configure_flags:
     add:
       - --disable-static
       - --disable-rpath
 
-  # The irix-cc force-include chain (-D_GL_CONFIG_H_INCLUDED=1 + -include time.h)
-  # causes gnulib's string.h to process before config.h renames mbsnlen/memchr
-  # to libunistring_* prefixed names. Fix: force-include the generated config.h
-  # so renaming macros are active before irix-cc's own force-includes.
-  # Must be AFTER configure (which generates lib/config.h).
-  # Fix gnulib symbol renaming: irix-cc force-includes time.h which triggers
-  # gnulib's string.h processing before config.h renames are active. This causes
-  # declarations to use 'mbsnlen' but call sites to use 'libunistring_mbsnlen'.
-  # Add the rename macro at make time only (not configure time, which would
-  # cause double-renaming in config.h).
-  # TODO: Fix gnulib mbsnlen symbol renaming conflict with irix-cc force-includes.
-  # See knowledge DB finding #129 for full analysis of the problem.
-  # Root cause: irix-cc -D_GL_CONFIG_H_INCLUDED=1 causes gnulib string.h to
-  # process before lib/config.h renames are active. Possible fix: force-include
-  # lib/config.h before time.h in irix-cc, or suppress _GL_CONFIG_H_INCLUDED for
-  # this package.
+  # gnulib symbol renaming: irix-cc -D_GL_CONFIG_H_INCLUDED=1 causes gnulib
+  # string.h to process before lib/config.h renames mbsnlen → libunistring_mbsnlen.
+  # Declarations get 'mbsnlen' but call sites get 'libunistring_mbsnlen'.
+  # The rename IS correct at the object level — only the declaration is missing.
+  # Fix: allow implicit function declarations for this package only.
+  export_vars:
+    CFLAGS: "%{optflags} -Wno-implicit-function-declaration"
 
   spec_replacements:
     # Info file not compressed

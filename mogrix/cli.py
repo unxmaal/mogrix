@@ -1073,6 +1073,21 @@ def build(
         console.print("[bold]Mode:[/bold] IRIX cross-compilation")
     console.print(f"[bold]Command:[/bold] {' '.join(cmd)}\n")
 
+    # Remove old RPMs for this package before building, so stale output
+    # can't be mistaken for fresh builds (e.g. by batch build agents).
+    if is_srpm and not dry_run:
+        import re as _re
+        _m = _re.match(r"^(.+?)-[\d]", input_path.name)
+        if _m:
+            _pkg_prefix = _m.group(1)
+            _out_dir = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
+            if _out_dir.exists():
+                _old = set(_out_dir.glob(f"{_pkg_prefix}-[0-9]*.rpm"))
+                _old |= set(_out_dir.glob(f"{_pkg_prefix}-*-[0-9]*.rpm"))
+                for old_rpm in sorted(_old):
+                    console.print(f"[dim]Removing old RPM:[/dim] {old_rpm.name}")
+                    old_rpm.unlink()
+
     try:
         if isolated and build_deps:
             result = isolated.build_with_fallback(cmd, build_deps)
@@ -2070,6 +2085,7 @@ def setup_cross(
         (CROSS_DIR / "bin" / "strip-verneed", staging_path / "bin" / "strip-verneed", "Strip GNU version sections"),
         (CROSS_DIR / "bin" / "fix-anon-relocs", staging_path / "bin" / "fix-anon-relocs", "Fix anonymous R_MIPS_REL32"),
         (CROSS_DIR / "rpmmacros.irix", staging_path.parent.parent / "rpmmacros.irix", "RPM macros"),
+        (CROSS_DIR / "pkgconfig" / "pthread-stubs.pc", staging_path / "lib32" / "pkgconfig" / "pthread-stubs.pc", "pthread-stubs (IRIX has pthreads in libc)"),
     ]
 
     # Add dicl-clang-compat headers (IRIX header fixes for clang)
@@ -2195,6 +2211,7 @@ def stage(
         "usr/sgug/include/mogrix-compat",
         "usr/sgug/lib32/libsoft_float_stubs.a",
         "usr/sgug/lib32/libmogrix_compat.so",
+        "usr/sgug/lib32/pkgconfig/pthread-stubs.pc",
         "rpmmacros.irix",
     }
 
