@@ -478,8 +478,9 @@ class BundleBuilder:
             return
 
         # Collect all NEEDED sonames from binaries.
-        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps).
-        needed = {"libmogrix_compat.so", "irix_rld_stubs.so"}
+        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps)
+        # and libgcc_s (quad-float builtins needed by many libs but not declared).
+        needed = {"libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"}
         for bin_subdir in ("_bin", "_sbin"):
             d = bundle_dir / bin_subdir
             if not d.is_dir():
@@ -1131,6 +1132,18 @@ class BundleBuilder:
             lib_dir.mkdir(exist_ok=True)
             shutil.copy2(str(rld_stubs_src), str(lib_dir / "irix_rld_stubs.so"))
 
+        # Always include libgcc_s.so.1 — many mogrix-built shared libs use
+        # 128-bit long double (quad-float) operations that need __getf2,
+        # __multf3, etc. from libgcc. These libs don't declare DT_NEEDED
+        # libgcc_s.so.1, so the dep resolver misses it.
+        libgcc_src = STAGING_LIB_DIR / "libgcc_s.so.1"
+        if libgcc_src.exists():
+            lib_dir = bundle_dir / "_lib32"
+            lib_dir.mkdir(exist_ok=True)
+            dest = lib_dir / "libgcc_s.so.1"
+            if not dest.exists():
+                shutil.copy2(str(libgcc_src), str(dest))
+
         # Create missing soname symlinks.  -devel RPMs (excluded from bundles)
         # often contain unversioned .so symlinks (e.g. libz.so → libz.so.1)
         # that are needed at runtime when the ELF SONAME is unversioned.
@@ -1252,7 +1265,7 @@ class BundleBuilder:
                 '#!/bin/sh\n'
                 'LD_LIBRARYN32_PATH="$dir/_lib32:/usr/lib32"\n'
                 'export LD_LIBRARYN32_PATH\n'
-                '_RLDN32_LIST=libmogrix_compat.so:DEFAULT\n'
+                '_RLDN32_LIST="$dir/_lib32/libmogrix_compat.so:$dir/_lib32/libgcc_s.so.1:DEFAULT"\n'
                 'export _RLDN32_LIST\n'
                 'exec "$dir/_bin/dpid" "\\$@"\n'
                 'DPID_EOF\n'
@@ -1343,6 +1356,16 @@ class BundleBuilder:
                 ': ${JSC_largeHeapGrowthFactor=1.1}\n'
                 'export JSC_largeHeapGrowthFactor'
             )
+        # libevent: IRIX /dev/poll doesn't work with STREAMS-based PTY masters.
+        # Disable devpoll backend so libevent falls back to poll() syscall.
+        has_libevent = any(
+            f.name.startswith("libevent")
+            for f in (bundle_dir / "_lib32").iterdir()
+            if f.is_file() or f.is_symlink()
+        ) if (bundle_dir / "_lib32").is_dir() else False
+        if has_libevent:
+            extra_env_lines.append('EVENT_NODEVPOLL=1')
+            extra_env_lines.append("export EVENT_NODEVPOLL")
         extra_env_block = (
             "\n".join(extra_env_lines) + "\n" if extra_env_lines else ""
         )
@@ -1364,14 +1387,20 @@ class BundleBuilder:
         manifest.binaries = binaries + [f"sbin/{b}" for b in sbin_binaries]
 
         # Generate wrapper scripts at bundle root, named after the commands
-        # Build _RLDN32_LIST from all preload libraries in the bundle
+        # Build _RLDN32_LIST from all preload libraries in the bundle.
+        # Use absolute paths ($dir/_lib32/...) so child processes (e.g. user's
+        # shell spawned by tmux) can find them even outside the bundle's
+        # LD_LIBRARYN32_PATH.
+        # libgcc_s.so.1 must be preloaded because libunistring/libintl use
+        # 128-bit quad-float builtins (__getf2, __multf3, etc.) but don't
+        # declare DT_NEEDED libgcc_s.so.1. IRIX rld won't find it otherwise.
         rld_list_libs = []
-        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so"):
+        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"):
             if (bundle_dir / "_lib32" / preload_name).exists():
-                rld_list_libs.append(preload_name)
+                rld_list_libs.append(f"$dir/_lib32/{preload_name}")
         if rld_list_libs:
             rld_list_value = ":".join(rld_list_libs) + ":DEFAULT"
-            rld_list_block = f"_RLDN32_LIST={rld_list_value}\nexport _RLDN32_LIST\n"
+            rld_list_block = f'_RLDN32_LIST="{rld_list_value}"\nexport _RLDN32_LIST\n'
         else:
             rld_list_block = ""
 

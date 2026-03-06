@@ -122,12 +122,14 @@ class TestDiscovery:
 
         # For each wrapper, generate tests
         seen_commands = set()
+        has_smoke = set()  # wrappers with explicit smoke tests
         for wrapper in wrappers:
             # YAML smoke_tests matching this binary
             for st in self._find_smoke_tests_for_binary(wrapper):
                 cmd = self._adapt_command(st["command"], wrapper)
                 if cmd not in seen_commands:
                     seen_commands.add(cmd)
+                    has_smoke.add(wrapper)
                     tests.append(
                         TestCase(
                             binary=wrapper,
@@ -139,18 +141,19 @@ class TestDiscovery:
                         )
                     )
 
-            # Auto-test: <wrapper> --version
-            auto_cmd = f"$BUNDLE_DIR/{wrapper} --version"
-            if auto_cmd not in seen_commands:
-                tests.append(
-                    TestCase(
-                        binary=wrapper,
-                        kind="auto",
-                        command=auto_cmd,
-                        expect=None,
-                        timeout=5,
+            # Auto-test: <wrapper> --version (skip if smoke test already covers it)
+            if wrapper not in has_smoke:
+                auto_cmd = f"$BUNDLE_DIR/{wrapper} --version"
+                if auto_cmd not in seen_commands:
+                    tests.append(
+                        TestCase(
+                            binary=wrapper,
+                            kind="auto",
+                            command=auto_cmd,
+                            expect=None,
+                            timeout=5,
+                        )
                     )
-                )
 
         return tests
 

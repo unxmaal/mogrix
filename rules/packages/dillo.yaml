@@ -4,7 +4,6 @@ package: dillo
 # No explicit configure flag needed — dillo enables Xft by default when found.
 
 add_patch:
-  - dillo-openssl.patch
   - dillo.irixfixes.patch
 
 upstream:
@@ -45,6 +44,12 @@ rules:
     # Use static FLTK linking to avoid R_MIPS_REL32 vtable relocation issues on IRIX
     # Replace fltk-config --ldflags with explicit static archive path
     - "$MOGRIX_ROOT/tools/safepatch configure.ac --old 'LIBFLTK_LIBS=`$FLTK_CONFIG --ldflags`' --new 'LIBFLTK_LIBS=\"-Wl,-Bstatic -lfltk -lfltk_images -lfltk_forms -Wl,-Bdynamic -lXcursor -lpthread -lX11\"' --no-backup --quiet"
+
+  spec_replacements:
+    - pattern: "pushd doc"
+      replacement: "cd doc"
+    - pattern: "popd"
+      replacement: "cd .."
 
   explicit_provides:
     - "dillo"

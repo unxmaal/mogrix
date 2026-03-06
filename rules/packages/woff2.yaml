@@ -32,8 +32,9 @@ rules:
         -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
         -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
         -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
-        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
+        -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_SKIP_RPATH=TRUE \
         -DUNIX=1

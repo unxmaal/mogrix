@@ -3126,6 +3126,16 @@ def create_srpm(packages: tuple[str, ...], output_dir: str | None):
     default="/opt/irix-sysroot",
     help="IRIX sysroot path for native lib detection",
 )
+@click.option(
+    "--test/--no-test",
+    default=True,
+    help="Test bundle on IRIX after creation (default: enabled)",
+)
+@click.option(
+    "--test-host",
+    default="192.168.0.81",
+    help="IRIX host for testing (default: 192.168.0.81)",
+)
 def bundle(
     packages: tuple[str, ...],
     output: str | None,
@@ -3134,6 +3144,8 @@ def bundle(
     include: tuple[str, ...],
     name: str | None,
     sysroot: str,
+    test: bool,
+    test_host: str,
 ):
     """Create a self-contained app bundle for IRIX.
 
@@ -3196,7 +3208,7 @@ def bundle(
             trampoline_exclude.update(pkg_exclude)
 
     builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
-    builder.create_bundle(
+    manifest = builder.create_bundle(
         target_package=target_package,
         output_dir=output_dir,
         extra_packages=extra if extra else None,
@@ -3204,6 +3216,48 @@ def bundle(
         suite_name=suite_name,
         trampoline_exclude=trampoline_exclude if trampoline_exclude else None,
     )
+
+    # Auto-test on IRIX after bundle creation
+    if test and manifest.bundle_dir and manifest.bundle_dir.is_dir():
+        from mogrix.test import (
+            TestDiscovery,
+            ScriptGenerator,
+            IRIXTestRunner,
+            TestReport,
+            print_report,
+        )
+
+        console.print("\n[bold]Testing bundle on IRIX...[/bold]")
+        runner = IRIXTestRunner(host=test_host, user="root")
+        ok, msg = runner.check_connectivity()
+        if not ok:
+            console.print(f"[yellow]IRIX not reachable ({msg}) — skipping test[/yellow]")
+            return
+
+        discovery = TestDiscovery(RULES_DIR)
+        tests = discovery.discover(manifest.bundle_dir)
+        if not tests:
+            console.print("[yellow]No tests discovered — skipping[/yellow]")
+            return
+
+        remote_dir = "/tmp/mogrix-test"
+        remote_bundle = f"{remote_dir}/{manifest.bundle_dir.name}"
+        ok, msg = runner.deploy_bundle(manifest.bundle_dir, remote_dir)
+        if not ok:
+            console.print(f"[red]Deploy failed: {msg}[/red]")
+            return
+
+        generator = ScriptGenerator()
+        script = generator.generate(tests)
+        console.print(f"[dim]Running {len(tests)} tests on {test_host}...[/dim]")
+        rc, stdout, stderr = runner.run_script(script, remote_bundle)
+        runner.cleanup(remote_bundle)
+
+        results = runner.parse_results(stdout)
+        report = TestReport(bundle_name=manifest.bundle_dir.name, results=results)
+        print_report(report, console)
+        if report.failed > 0:
+            console.print(f"\n[red]{report.failed} test(s) failed[/red]")
 
 
 @main.command()
