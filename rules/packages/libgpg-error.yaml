@@ -2,7 +2,7 @@
 # Build system: autoconf/automake/libtool
 #
 # IMPORTANT: Cross-compilation requires a platform-specific lock object file.
-# The file at compat/libgpg-error/lock-obj-pub.irix6.5.h was generated on IRIX
+# The file at patches/packages/libgpg-error/lock-obj-pub.irix6.5.h was generated on IRIX
 # by cross-compiling gen-posix-lock-obj.c and running it on the target.
 # IRIX needs 32 bytes for pthread_mutex_t (vs 24 on Linux MIPS).
 #
@@ -30,6 +30,18 @@ rules:
       - --enable-install-gpg-error-config
     remove:
       - --with-libiconv-prefix
+
+  # IRIX has pthreads in libpthread, but configure only tests '' and '-pthread'
+  # (not '-lpthread'), so gl_pthread_api stays 'no' and USE_POSIX_THREADS is
+  # never defined. This causes LOCK_ABI_VERSION = -1 (not available), but the
+  # lock-obj-pub header sets _vers = 1 → "lock ABI version mismatch" abort.
+  # Force pthread detection and link -lpthread.
+  ac_cv_overrides:
+    ac_cv_header_pthread_h: "yes"
+    ac_cv_lib_pthread_pthread_kill: "yes"
+
+  export_vars:
+    LIBS: "-lpthread"
 
   # Install the lock object file so mkheader can find it during cross-compilation
   prep_commands:

@@ -25,7 +25,7 @@ rules:
         -DCMAKE_INSTALL_PREFIX=%{_prefix} \
         -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
         -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}" \
-        -DCMAKE_CXX_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}" \
+        -DCMAKE_CXX_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags} -fno-exceptions" \
         -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
         -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
         -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
@@ -53,5 +53,9 @@ rules:
       %{_bindir}/woff2_decompress
       %{_bindir}/woff2_info
 smoke_test:
-- command: "/usr/sgug/bin/woff2_info"
-  expect: "Usage"
+- command: "/usr/sgug/bin/woff2_info 2>&1"
+  expect: "One argument"
+- command: "/usr/sgug/bin/woff2_decompress 2>&1"
+  expect: "One argument"
+- command: "/usr/sgug/bin/woff2_compress 2>&1"
+  expect: "One argument"
