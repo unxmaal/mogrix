@@ -1,4 +1,11 @@
 package: pango
+smoke_test:
+  - command: "/usr/sgug/bin/pango-view --version 2>&1"
+    expect: "pango"
+  - command: "/usr/sgug/bin/pango-list 2>&1 | head -1"
+    expect: ""
+  - command: "/usr/sgug/bin/pango-segmentation --help 2>&1"
+    expect: "pango-segmentation"
 rules:
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"'-D_POSIX_C_SOURCE=200809L', \" --new '' --no-backup --quiet"

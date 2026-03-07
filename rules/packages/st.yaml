@@ -1,4 +1,9 @@
 package: st
+
+smoke_test:
+  - command: "/usr/sgug/bin/st -v 2>&1"
+    expect: "st"
+
 rules:
   inject_compat_functions:
   - openpty

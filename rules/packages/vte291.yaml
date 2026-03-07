@@ -1,4 +1,7 @@
 package: vte291
+smoke_test:
+  - command: "/usr/sgug/bin/vte-2.91 --help 2>&1"
+    expect: "Terminal"
 upstream:
   url: https://download.gnome.org/sources/vte/0.58/vte-0.58.3.tar.xz
   version: "0.58.3"

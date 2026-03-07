@@ -21,6 +21,8 @@ nudges:
   # Set to false to revert to advisory-only nudges.
   mandatory_stop_blocking: true
   mandatory_stop_grace: 5
+  # After N ignored nudges of the same type, escalate to blocking.
+  nudge_escalation_threshold: 3
 
 server_name: mogrix-knowledge
 

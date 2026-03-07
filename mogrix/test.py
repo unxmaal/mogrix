@@ -158,12 +158,21 @@ class TestDiscovery:
         return tests
 
     def _find_smoke_tests_for_binary(self, binary: str) -> list[dict]:
-        """Find smoke_test entries that reference a given binary name."""
+        """Find smoke_test entries that reference a given binary name.
+
+        Uses word-boundary matching to avoid substring false positives
+        (e.g. 'vi' matching 'vile', 'st' matching 'stow').
+        """
+        import re
         results = []
+        # Match /usr/sgug/bin/<binary> followed by end-of-string, space, or quote
+        pat = re.compile(
+            r"/usr/sgug/(?:s?bin)/" + re.escape(binary) + r"(?:\s|$|[\"'])"
+        )
         for pkg_name, tests in self._smoke_tests.items():
             for test in tests:
                 cmd = test.get("command", "")
-                if f"/usr/sgug/bin/{binary}" in cmd or f"/usr/sgug/sbin/{binary}" in cmd:
+                if pat.search(cmd):
                     enriched = dict(test)
                     enriched["_source"] = f"{pkg_name}.yaml"
                     results.append(enriched)
@@ -269,9 +278,9 @@ run_test() {
         esac
     fi
 
-    # Check expectations
+    # Check expectations (check combined stdout+stderr)
     if [ -n "$expect" ]; then
-        case "$stdout" in
+        case "$allout" in
             *"$expect"*)
                 echo "MOGRIX_RESULT|$name|PASS|$rc|matched: $expect"
                 PASS=`expr $PASS + 1`

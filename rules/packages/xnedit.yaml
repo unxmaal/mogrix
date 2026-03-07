@@ -55,6 +55,5 @@ rules:
         %{_datadir}/applications/xnedit.desktop
         %{_datadir}/icons/xnedit.png
 smoke_test:
-- command: "/usr/sgug/bin/xnedit"
-  args: "-V"
+- command: "/usr/sgug/bin/xnedit -V 2>&1"
   expect: "XNEdit"

@@ -1,4 +1,9 @@
 package: vim
+
+smoke_test:
+  - command: "/usr/sgug/bin/vim --version 2>&1"
+    expect: "VIM"
+
 rules:
   drop_buildrequires:
   - perl(ExtUtils::Embed)

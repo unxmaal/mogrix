@@ -1,4 +1,9 @@
 package: groff
+smoke_test:
+  - command: "/usr/sgug/bin/groff --version 2>&1 | head -1"
+    expect: "groff"
+  - command: "/usr/sgug/bin/gdiffmk --version 2>&1"
+    expect: "gdiffmk"
 rules:
   drop_buildrequires:
   - netpbm-progs

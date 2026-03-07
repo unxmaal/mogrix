@@ -251,6 +251,19 @@ rules:
 
       %endif'
     replacement: '# gnutls dlopen requirement handled by bundling'
+smoke_test:
+  - command: "/usr/sgug/bin/gapplication help 2>&1"
+    expect: "gapplication"
+  - command: "/usr/sgug/bin/gdbus help 2>&1"
+    expect: "gdbus"
+  - command: "/usr/sgug/bin/gio help 2>&1"
+    expect: "gio"
+  - command: "/usr/sgug/bin/gio-querymodules --help 2>&1"
+    expect: ""
+  - command: "/usr/sgug/bin/glib-compile-schemas --help 2>&1"
+    expect: "glib-compile-schemas"
+  - command: "/usr/sgug/bin/gsettings help 2>&1"
+    expect: "gsettings"
   install_cleanup:
   - rm -rf %{buildroot}%{_datadir}/locale
   - rm -rf %{buildroot}%{_datadir}/gettext

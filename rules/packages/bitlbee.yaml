@@ -1,4 +1,7 @@
 package: bitlbee
+smoke_test:
+  - command: "/usr/sgug/bin/bitlbee -V 2>&1"
+    expect: "BitlBee"
 rules:
   inject_compat_functions:
   - strcasestr

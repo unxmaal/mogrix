@@ -4,6 +4,10 @@
 
 package: p11-kit
 
+smoke_test:
+  - command: "/usr/sgug/bin/p11-kit --help 2>&1"
+    expect: "p11-kit"
+
 rules:
   # Compat functions needed
   inject_compat_functions:

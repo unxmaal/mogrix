@@ -47,5 +47,7 @@ rules:
 
       '
 smoke_test:
-- command: /usr/sgug/bin/dfrotz --version 2>&1 | head -1
-  expect: Frotz
+- command: "/usr/sgug/bin/dfrotz -h 2>&1 | head -1"
+  expect: "FROTZ"
+- command: "/usr/sgug/bin/frotz -h 2>&1 | head -1"
+  expect: "FROTZ"

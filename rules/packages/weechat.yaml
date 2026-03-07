@@ -1,4 +1,7 @@
 package: weechat
+smoke_test:
+  - command: "/usr/sgug/bin/weechat -v 2>&1"
+    expect: ""
 rules:
   inject_compat_functions:
   - mkdtemp
