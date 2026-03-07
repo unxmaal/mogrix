@@ -82,3 +82,10 @@ build-results/
 docs/007-2478-008.pdf
 rld.debug
 go1.24.1.linux-amd64.tar.gz
+
+# Cross-compilation build artifacts
+cross/build-runtime/gcc-9.5.0/
+cross/build-runtime/build/
+cross/build-runtime/libgcc_s.so.1
+cross/build-runtime/libstdc++.so.6
+cross/build-runtime/test_stdcxx*
