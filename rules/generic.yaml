@@ -203,6 +203,8 @@ generic:
   # /usr/bin/env is restored since it exists on IRIX.
   install_cleanup:
     - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i 's|/usr/bin/|/usr/sgug/bin/|g; s|/usr/sgug/bin/env|/usr/bin/env|g'"
+    # Fix #!/bin/bash shebangs — IRIX has no /bin/bash, use /usr/sgug/bin/bash
+    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '#!/bin/bash\\|#! /bin/bash' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i '1s|^#! */bin/bash|#!/usr/sgug/bin/bash|'"
     # Remove libtool archives - IRIX doesn't use them
     - "rm -f %{buildroot}%{_libdir}/*.la"
     # Remove info dir file - rebuilt by install-info on target

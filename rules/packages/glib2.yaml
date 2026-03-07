@@ -264,7 +264,7 @@ smoke_test:
     expect: "glib-compile-schemas"
   - command: "/usr/sgug/bin/gsettings help 2>&1"
     expect: "gsettings"
-  install_cleanup:
+install_cleanup:
   - rm -rf %{buildroot}%{_datadir}/locale
   - rm -rf %{buildroot}%{_datadir}/gettext
   - rm -f %{buildroot}%{_bindir}/glib-gettextize

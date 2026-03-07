@@ -1817,6 +1817,188 @@ def audit_rules(rules_dir: str | None, verbose: bool):
             console.print(f"  {key}={val}")
 
 
+@main.command("rebuild-order")
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def rebuild_order(rules_dir: str | None, as_json: bool):
+    """Compute global dependency-ordered build plan for all packages with rules.
+
+    Uses the roadmap resolver to topologically sort all packages so that
+    dependencies are built before dependents.
+    """
+    import json as json_mod
+    import sqlite3
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+
+    # Need repo index DB
+    db_path = rules_path / "roadmap_index.db"
+    if not db_path.exists():
+        console.print(f"[red]Roadmap index not found at {db_path}[/red]")
+        console.print("Run: mogrix roadmap <any-package> --refresh")
+        raise SystemExit(1)
+
+    from mogrix.roadmap import RoadmapResolver
+
+    db = sqlite3.connect(str(db_path))
+    loader = RuleLoader(rules_path)
+    resolver = RoadmapResolver(
+        db=db,
+        rule_loader=loader,
+        rules_dir=rules_path,
+        rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+        stop_at_rules=True,
+    )
+
+    build_order, cycles = resolver.resolve_all()
+    db.close()
+
+    if as_json:
+        console.print(json_mod.dumps({
+            "build_order": build_order,
+            "cycles": cycles,
+            "total": len(build_order),
+        }, indent=2))
+        return
+
+    console.print(f"[bold]Global Build Order ({len(build_order)} packages)[/bold]\n")
+    for i, pkg in enumerate(build_order, 1):
+        console.print(f"  {i:3d}. {pkg}")
+
+    if cycles:
+        console.print(f"\n[yellow]Dependency cycles ({len(cycles)}):[/yellow]")
+        for cycle in cycles:
+            console.print(f"  {' -> '.join(cycle)} -> {cycle[0]}")
+
+    console.print(f"\n[bold]Total:[/bold] {len(build_order)} packages")
+
+
+@main.command("audit-smoke-coverage")
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+def audit_smoke_coverage(rules_dir: str | None):
+    """Audit smoke test coverage across all packages.
+
+    Reports which packages have smoke tests, which are library-only,
+    and which are missing smoke tests entirely.
+    """
+    import yaml
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+    packages_dir = rules_path / "packages"
+
+    if not packages_dir.exists():
+        console.print(f"[red]No packages directory at {packages_dir}[/red]")
+        raise SystemExit(1)
+
+    has_smoke = []
+    library_only = []
+    missing = []
+
+    for yaml_file in sorted(packages_dir.glob("*.yaml")):
+        with open(yaml_file) as f:
+            try:
+                data = yaml.safe_load(f)
+            except yaml.YAMLError:
+                continue
+
+        if not data:
+            continue
+
+        pkg_name = data.get("package", yaml_file.stem)
+        smoke = data.get("smoke_test")
+
+        if smoke == "library-only":
+            library_only.append(pkg_name)
+        elif smoke:
+            has_smoke.append(pkg_name)
+        else:
+            missing.append(pkg_name)
+
+    total = len(has_smoke) + len(library_only) + len(missing)
+    coverage = (len(has_smoke) + len(library_only)) / total * 100 if total else 0
+
+    console.print(f"[bold]Smoke Test Coverage Audit[/bold]\n")
+    console.print(f"  Packages scanned: {total}")
+    console.print(f"  With smoke tests: [green]{len(has_smoke)}[/green]")
+    console.print(f"  Library-only:     [cyan]{len(library_only)}[/cyan]")
+    console.print(f"  [red]Missing:[/red]          [red]{len(missing)}[/red]")
+    console.print(f"  Coverage:         {coverage:.0f}%\n")
+
+    if missing:
+        console.print(f"[bold red]Packages missing smoke tests ({len(missing)}):[/bold red]")
+        for pkg in missing:
+            console.print(f"  - {pkg}")
+
+    if library_only:
+        console.print(f"\n[bold cyan]Library-only packages ({len(library_only)}):[/bold cyan]")
+        for pkg in library_only:
+            console.print(f"  - {pkg}")
+
+
+@main.command("pre-scan")
+@click.option(
+    "--rpm-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Directory containing built RPMs (default: ~/mogrix_outputs/RPMS/)",
+)
+def pre_scan(rpm_dir: str | None):
+    """Pre-scan existing RPMs for Gate 2 issues.
+
+    Checks shebangs, hardcoded paths, and ELF ABI in built RPMs
+    BEFORE starting a clean rebuild. Fix rules first, then rebuild.
+    """
+    from mogrix.gates import pre_scan_rpms
+
+    scan_dir = Path(rpm_dir) if rpm_dir else MOGRIX_OUTPUTS / "RPMS"
+
+    if not scan_dir.exists():
+        console.print(f"[red]RPM directory not found: {scan_dir}[/red]")
+        raise SystemExit(1)
+
+    rpms = sorted(f for f in scan_dir.glob("*.rpm") if not f.name.endswith(".src.rpm"))
+    console.print(f"[bold]Pre-scanning {len(rpms)} RPMs in:[/bold] {scan_dir}\n")
+
+    results = pre_scan_rpms(scan_dir)
+
+    total_errors = 0
+    total_warnings = 0
+    failed_rpms = []
+
+    for rpm_name, result in sorted(results.items()):
+        errors = [i for i in result.issues if i.severity == "error"]
+        warnings = [i for i in result.issues if i.severity == "warning"]
+        total_errors += len(errors)
+        total_warnings += len(warnings)
+
+        if errors or warnings:
+            failed_rpms.append(rpm_name)
+            console.print(f"[bold]{rpm_name}[/bold]")
+            for issue in result.issues:
+                color = "red" if issue.severity == "error" else "yellow"
+                console.print(f"  [{color}]{issue.severity}[/{color}] {issue.file}: {issue.message}")
+
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  RPMs scanned: {len(results)}")
+    console.print(f"  RPMs with issues: [{'red' if failed_rpms else 'green'}]{len(failed_rpms)}[/{'red' if failed_rpms else 'green'}]")
+    console.print(f"  Errors: [{'red' if total_errors else 'green'}]{total_errors}[/{'red' if total_errors else 'green'}]")
+    console.print(f"  Warnings: [{'yellow' if total_warnings else 'green'}]{total_warnings}[/{'yellow' if total_warnings else 'green'}]")
+
+    if total_errors:
+        console.print(f"\n[red]Fix these issues in package rules before rebuilding.[/red]")
+        raise SystemExit(1)
+
+
 @main.command()
 @click.argument("packages", nargs=-1, required=True)
 @click.option(
@@ -2086,6 +2268,9 @@ def setup_cross(
         (CROSS_DIR / "bin" / "fix-anon-relocs", staging_path / "bin" / "fix-anon-relocs", "Fix anonymous R_MIPS_REL32"),
         (CROSS_DIR / "rpmmacros.irix", staging_path.parent.parent / "rpmmacros.irix", "RPM macros"),
         (CROSS_DIR / "pkgconfig" / "pthread-stubs.pc", staging_path / "lib32" / "pkgconfig" / "pthread-stubs.pc", "pthread-stubs (IRIX has pthreads in libc)"),
+        # Runtime libraries (cross-compiled from GCC 9.5.0 source)
+        (CROSS_DIR / "lib32" / "libgcc_s.so.1", staging_path / "lib32" / "libgcc_s.so.1", "libgcc_s runtime (from GCC 9.5.0)"),
+        (CROSS_DIR / "lib32" / "libstdc++.so.6", staging_path / "lib32" / "libstdc++.so.6", "libstdc++ runtime (from GCC 9.5.0)"),
     ]
 
     # Add dicl-clang-compat headers (IRIX header fixes for clang)
@@ -2127,6 +2312,18 @@ def setup_cross(
             dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
         console.print(f"  [green]✓[/green] {desc}")
+
+    # Create dev symlinks for runtime libraries
+    runtime_symlinks = [
+        ("libgcc_s.so.1", "libgcc_s.so"),
+        ("libstdc++.so.6", "libstdc++.so"),
+    ]
+    for target, link_name in runtime_symlinks:
+        link_path = staging_path / "lib32" / link_name
+        if link_path.exists() or link_path.is_symlink():
+            link_path.unlink()
+        link_path.symlink_to(target)
+        console.print(f"  [green]✓[/green] Symlink: {link_name} → {target}")
 
     # Create C++ wrapper as symlink/copy of C wrapper
     cxx_wrapper = staging_path / "bin" / "irix-cxx"
@@ -2216,19 +2413,16 @@ def stage(
     }
 
     # Pre-existing libraries that came with the staging area (not from our RPMs)
+    # Only runtime libs deployed by setup-cross survive a clean.
+    # All other libs/headers come from mogrix-rebuilt packages via `mogrix stage`.
+    # SGUG-RSE preexisting artifacts (libbz2.a, libncursesw.a, bzlib.h, etc.)
+    # are no longer preserved — we rebuild everything from source.
     PREEXISTING_LIBS = {
-        "libbz2.a", "libformw.a", "libhistory.a", "liblzma.a", "liblzma.la",
-        "libmenuw.a", "libncursesw.a", "libpanelw.a", "libreadline.a",
-        "libtinfow.a", "libz.a",
         "libstdc++.so", "libstdc++.so.6",
         "libgcc_s.so", "libgcc_s.so.1",
     }
 
-    PREEXISTING_HEADERS = {
-        "bzlib.h", "gnumake.h", "lzma.h", "zconf.h", "zlib.h",
-        "zlib_name_mangling.h",
-        "lzma", "ncursesw", "readline",
-    }
+    PREEXISTING_HEADERS: set[str] = set()
 
     if list_staged:
         _list_staged_packages(staging_path, PREEXISTING_LIBS, PREEXISTING_HEADERS)
@@ -2494,8 +2688,8 @@ def _clean_staged_packages(
     # Clean pkgconfig files
     if pkgconfig_dir.exists():
         for pc in pkgconfig_dir.glob("*.pc"):
-            # Keep pre-existing ones
-            if pc.name not in {"liblzma.pc", "zlib.pc", "ncursesw.pc"}:
+            # Keep only pthread-stubs.pc (deployed by setup-cross)
+            if pc.name not in {"pthread-stubs.pc"}:
                 console.print(f"  Removing: pkgconfig/{pc.name}")
                 pc.unlink()
                 removed_count += 1

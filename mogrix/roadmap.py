@@ -242,7 +242,11 @@ class RoadmapResolver:
                     drops.update(cls_drops)
 
             # 3. Package-specific drops
-            pkg_drops = pkg_rules.get("rules", {}).get("drop_buildrequires", [])
+            pkg_drops = (pkg_rules or {}).get("rules", {})
+            if pkg_drops:
+                pkg_drops = pkg_drops.get("drop_buildrequires", [])
+            else:
+                pkg_drops = []
             drops.update(pkg_drops)
 
         self._drops_cache[pkg] = drops
@@ -536,6 +540,32 @@ class RoadmapResolver:
                 info.non_fedora_source = self._non_fedora.get(pkg, "")
 
         return result
+
+    def resolve_all(self) -> tuple[list[str], list[list[str]]]:
+        """Compute a global topological build order for ALL packages with rules.
+
+        Returns:
+            (build_order, cycles) — build_order is a list of package names
+            sorted so that dependencies come before dependents.
+        """
+        all_packages = set(self._rule_packages.keys())
+        edges: list[tuple[str, str]] = []
+
+        for pkg in all_packages:
+            buildrequires = self._get_buildrequires(pkg)
+            drops = self._compute_effective_drops(pkg)
+
+            for req in buildrequires:
+                src_pkg, cls, _detail = self._resolve_provider(req, drops, pkg)
+
+                if cls in (Classification.DROPPED, Classification.SYSROOT,
+                           Classification.UNRESOLVABLE):
+                    continue
+
+                if src_pkg and src_pkg != pkg and src_pkg in all_packages:
+                    edges.append((src_pkg, pkg))
+
+        return self._topological_sort(edges, all_packages)
 
     def _classify_package(self, pkg: str) -> Classification:
         """Classify a package based on mogrix state (not as a dep provider)."""
