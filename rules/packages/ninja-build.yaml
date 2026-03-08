@@ -3,6 +3,9 @@
 # configure.py --bootstrap directly invokes CXX for each source file
 package: ninja-build
 rules:
+  inject_compat_functions:
+  - posix_spawn
+  - pselect
   drop_buildrequires:
   - re2c
   - asciidoc

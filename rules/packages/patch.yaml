@@ -5,8 +5,15 @@ smoke_test:
 rules:
   inject_compat_functions:
   - posix_spawn
+  - timegm
   drop_requires:
   - ed
+  export_vars:
+    # _GNU_SOURCE must be defined before gnulib headers are processed.
+    # See diffutils.yaml and gnutls.yaml for full explanation.
+    CPPFLAGS: "-D_GNU_SOURCE=1 $CPPFLAGS"
+  ac_cv_overrides:
+    ac_cv_func_timegm: "yes"
   spec_replacements:
   - pattern: '%patch 100 -p1 -b .selinux'
     replacement: '# %patch 100 skipped - no SELinux on IRIX'

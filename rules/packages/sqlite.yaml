@@ -12,6 +12,11 @@
 package: sqlite
 
 rules:
+  # lemon is a build-time parser generator — runs on the build host (x86-64),
+  # not on IRIX. Dropping it prevents an x86-64 binary in a .mips.rpm which
+  # would fail dep-check (libc.so.6 unresolvable).
+  drop_subpackages:
+    - lemon
   # Note: bcond_invert is not implemented, using spec_replacements instead
 
   configure_flags:

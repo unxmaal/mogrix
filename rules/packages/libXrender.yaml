@@ -3,6 +3,11 @@
 # IRIX X server may not support Render — Xft degrades gracefully.
 package: libXrender
 
+build_after:
+  - libX11
+  - libXext
+  - xorg-x11-proto-devel
+
 rules:
   drop_buildrequires:
     - xorg-x11-util-macros

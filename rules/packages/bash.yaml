@@ -1,6 +1,10 @@
 # bash package rules for IRIX cross-compilation
 package: bash
 
+build_after:
+  - readline
+  - ncurses
+
 bundle_trampoline_exclude:
   - bashbug-32
 

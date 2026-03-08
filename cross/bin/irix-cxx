@@ -91,9 +91,12 @@ for arg in "$@"; do
     esac
 done
 
-# Check if this is preprocess-only (-E flag present)
+# Check if this is preprocess-only (-E flag present) or dependency-only (-M, -MM)
 preprocess_only=false
 if echo " $* " | grep -q " -E "; then
+    preprocess_only=true
+fi
+if echo " $* " | grep -qE " -M | -MM "; then
     preprocess_only=true
 fi
 

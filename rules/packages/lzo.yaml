@@ -1,2 +1,8 @@
 # lzo - fast compression library
 package: lzo
+
+rules:
+  spec_replacements:
+    # minilzo is built with hardcoded 'gcc' — must use cross-compiler
+    - pattern: "gcc %{optflags} -fpic -Iinclude/lzo -o minilzo/minilzo.o -c minilzo/minilzo.c\ngcc -g -shared -Wl,-z,now -o libminilzo.so.0 -Wl,-soname,libminilzo.so.0 minilzo/minilzo.o"
+      replacement: "%{__cc} %{optflags} -fpic -Iinclude/lzo -o minilzo/minilzo.o -c minilzo/minilzo.c\n%{__cc} -shared -o libminilzo.so.0 -Wl,-soname,libminilzo.so.0 minilzo/minilzo.o"

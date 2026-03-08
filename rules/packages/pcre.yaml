@@ -1,4 +1,6 @@
+# pcre v1 is not in Fedora 40 (replaced by pcre2). Skip from rebuild-all.
 package: pcre
+skip: true
 rules:
   configure_flags:
     add:

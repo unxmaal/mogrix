@@ -1,5 +1,10 @@
 package: telescope
 
+build_after:
+  - libretls
+  - openssl
+  - ncurses
+
 add_source:
   - endian.irix.h
 

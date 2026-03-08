@@ -1,4 +1,11 @@
 package: dillo
+
+build_after:
+  - fltk
+  - openssl
+  - libpng
+  - libjpeg-turbo
+  - zlib-ng
 # Re-enablement audit (Feb 2025): Xft anti-aliased fonts re-enabled.
 # libXft now in staging. Xft is auto-detected by configure when headers are present.
 # No explicit configure flag needed — dillo enables Xft by default when found.

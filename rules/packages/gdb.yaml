@@ -3,6 +3,14 @@
 # The Fedora spec is too complex: 46 patches, %include mechanism, PGO builds,
 # RPM integration, multiple subpackages. For IRIX we just need core debugging.
 package: gdb
+
+build_after:
+  - ncurses
+  - readline
+  - gmp
+  - mpfr
+  - expat
+  - zlib-ng
 upstream:
   url: https://ftp.gnu.org/gnu/gdb/gdb-14.2.tar.xz
   version: "14.2"

@@ -1,10 +1,15 @@
 package: mpfr
+
+build_after:
+  - gmp
+
 rules:
   ac_cv_overrides:
     ax_cv_c_compiler_vendor: clang
   configure_flags:
     add:
     - --disable-thread-safe
+    - "--with-gmp=/opt/sgug-staging/usr/sgug"
   install_cleanup:
     # Remove unpackaged doc files that cause rpmbuild to fail
     - "rm -f %{buildroot}%{_pkgdocdir}/COPYING %{buildroot}%{_pkgdocdir}/COPYING.LESSER"

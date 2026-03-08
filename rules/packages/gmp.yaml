@@ -21,6 +21,12 @@ rules:
   drop_buildrequires:
     - fipscheck
 
+  install_cleanup:
+    # irix-cc defines __mips=64, so gmp.h's multilib dispatch looks for
+    # gmp-mips64.h. Our n32 build creates gmp-mips.h. Create alias.
+    - "ln -sf gmp-mips.h %{buildroot}%{_includedir}/gmp-mips64.h"
+    - "ln -sf gmp-mparam-mips.h %{buildroot}%{_includedir}/gmp-mparam-mips64.h"
+
   spec_replacements:
     # Disable FIPS (fipshmac not available, not needed for IRIX)
     - pattern: "%bcond_without fips"

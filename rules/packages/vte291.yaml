@@ -1,4 +1,12 @@
 package: vte291
+
+build_after:
+  - glib2
+  - gtk3
+  - pango
+  - cairo
+  - pcre2
+
 smoke_test:
   - command: "/usr/sgug/bin/vte-2.91 --help 2>&1"
     expect: "Terminal"

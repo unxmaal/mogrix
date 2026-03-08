@@ -1,4 +1,8 @@
 package: atk
+
+build_after:
+  - glib2
+
 upstream:
   url: https://download.gnome.org/sources/atk/2.36/atk-2.36.0.tar.xz
   version: "2.36.0"

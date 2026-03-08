@@ -1,9 +1,19 @@
+# enscript - text to PostScript converter
+# NOTE: Bundled gettext has strerror@U@ and stpcpy conflicts.
+# Low priority — skip from rebuild-all for now.
 package: enscript
+skip: true
 rules:
   configure_disable:
   - nls
   add_patch:
   - makefile-in-add-885913-885915.patch
+  ac_cv_overrides:
+    # Our compat provides stpcpy — tell bundled gettext so it doesn't
+    # define its own static version (conflicts with extern declaration)
+    ac_cv_func_stpcpy: "yes"
+  export_vars:
+    CPPFLAGS: "-DHAVE_STPCPY=1 $CPPFLAGS"
   spec_replacements:
   - pattern: autoreconf -fiv
     replacement: 'true # skip autoreconf (no autopoint)'

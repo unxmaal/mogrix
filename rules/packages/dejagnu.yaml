@@ -1,5 +1,7 @@
 # dejagnu package rules for IRIX cross-compilation
+# SRPM not available in FC40 inputs — skip from rebuild-all
 package: dejagnu
+skip: true
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:

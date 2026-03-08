@@ -1,10 +1,35 @@
 # bison package rules for IRIX cross-compilation
+# NOTE: bison has deep gnulib conflicts (getopt.h, string.h, perror.c).
+# Low priority — bison is a build-time tool, not an IRIX user application.
+# Skip from rebuild-all for now.
 package: bison
+skip: true
 
 classes:
   - nls-disabled
 
 rules:
+  ac_cv_overrides:
+    # IRIX has sigprocmask/sigaction — tell gnulib so it doesn't provide
+    # its own replacement which has a hardcoded NSIG<=32 constraint (IRIX NSIG=65)
+    ac_cv_func_sigprocmask: "yes"
+    ac_cv_func_sigaction: "yes"
+    ac_cv_member_struct_sigaction_sa_sigaction: "yes"
+    # Our compat strerror_r is POSIX (returns int), not GNU (returns char*).
+    # Tell gnulib not to replace perror() — it uses GNU strerror_r calling convention.
+    gl_cv_func_strerror_r_works: "yes"
+    ac_cv_func_strerror_r: "yes"
+    ac_cv_func_perror: "yes"
+
+  prep_commands:
+    # gnulib's string.in.h uses _GL_ATTRIBUTE_DEALLOC_FREE and _GL_ATTRIBUTE_MALLOC
+    # which may not be defined when headers are included before config.h.
+    # Add fallback defines at the top of the file.
+    - "sed -i '1i\\#ifndef _GL_ATTRIBUTE_DEALLOC\\n#define _GL_ATTRIBUTE_DEALLOC(f, i)\\n#endif\\n#ifndef _GL_ATTRIBUTE_DEALLOC_FREE\\n#define _GL_ATTRIBUTE_DEALLOC_FREE\\n#endif\\n#ifndef _GL_ATTRIBUTE_MALLOC\\n#define _GL_ATTRIBUTE_MALLOC\\n#endif' lib/string.in.h"
+    # gnulib's perror.c calls strerror_r expecting GNU return type (char*),
+    # but our compat provides POSIX (int). Provide stub that calls real perror.
+    - "printf '#include <stdio.h>\\nvoid rpl_perror(const char *s) { perror(s); }\\n' > lib/perror.c"
+
   # make install puts extra docs not listed in %files
   install_cleanup:
     - "rm -f %{buildroot}%{_pkgdocdir}/AUTHORS %{buildroot}%{_pkgdocdir}/COPYING %{buildroot}%{_pkgdocdir}/NEWS %{buildroot}%{_pkgdocdir}/README %{buildroot}%{_pkgdocdir}/THANKS %{buildroot}%{_pkgdocdir}/TODO"

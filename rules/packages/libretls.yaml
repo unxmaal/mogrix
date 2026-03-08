@@ -1,5 +1,8 @@
 package: libretls
 
+build_after:
+  - openssl
+
 add_source:
   - arc4random_irix.h
   - getentropy_irix.c

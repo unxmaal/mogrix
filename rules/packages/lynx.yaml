@@ -1,4 +1,10 @@
 package: lynx
+
+build_after:
+  - ncurses
+  - openssl
+  - zlib-ng
+
 upstream:
   url: https://invisible-mirror.net/archives/lynx/tarballs/lynx2.9.2.tar.bz2
   version: 2.9.2

@@ -4,6 +4,10 @@
 # Deps: SDL2, SDL2_image
 package: decker
 
+build_after:
+  - SDL2
+  - SDL2_image
+
 upstream:
   url: https://github.com/JohnEarnest/Decker
   version: "1.64"

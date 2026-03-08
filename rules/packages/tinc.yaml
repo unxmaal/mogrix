@@ -1,4 +1,9 @@
 package: tinc
+
+build_after:
+  - openssl
+  - zlib-ng
+
 add_source:
 - irix-device.c
 upstream:

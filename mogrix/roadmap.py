@@ -548,10 +548,34 @@ class RoadmapResolver:
             (build_order, cycles) — build_order is a list of package names
             sorted so that dependencies come before dependents.
         """
-        all_packages = set(self._rule_packages.keys())
+        all_packages = set(self._rule_packages)
         edges: list[tuple[str, str]] = []
 
+        # Filter out packages with skip: true
+        for pkg in list(all_packages):
+            pkg_rules = self.rule_loader.load_package(pkg)
+            if pkg_rules and pkg_rules.get("skip"):
+                all_packages.discard(pkg)
+
+        # Host-provided build tools: these create false dep cycles because
+        # Fedora specs list them as BuildRequires but in cross-compilation
+        # we use the host's versions. Excluding them from the dep graph
+        # breaks the massive SCC that otherwise contains 100+ packages.
+        host_tools = {"autoconf", "automake", "libtool", "make", "cmake",
+                       "ninja-build", "m4", "bison", "flex", "gettext",
+                       "sed", "grep", "gawk", "diffutils", "findutils",
+                       "patch", "tar", "gzip", "xz", "bzip2", "zip",
+                       "ed", "less", "time", "groff"}
+
         for pkg in all_packages:
+            # Read explicit build_after from YAML (for upstream packages
+            # that have no spec in the repo metadata DB)
+            pkg_rules = self.rule_loader.load_package(pkg)
+            if pkg_rules:
+                for dep in pkg_rules.get("build_after", []):
+                    if dep in all_packages and dep != pkg:
+                        edges.append((dep, pkg))
+
             buildrequires = self._get_buildrequires(pkg)
             drops = self._compute_effective_drops(pkg)
 
@@ -563,7 +587,9 @@ class RoadmapResolver:
                     continue
 
                 if src_pkg and src_pkg != pkg and src_pkg in all_packages:
-                    edges.append((src_pkg, pkg))
+                    # Skip edges from host-provided tools to break false cycles
+                    if src_pkg not in host_tools:
+                        edges.append((src_pkg, pkg))
 
         return self._topological_sort(edges, all_packages)
 
@@ -665,38 +691,50 @@ class RoadmapResolver:
         adjacency: dict[str, list[str]],
         reverse_adj: dict[str, list[str]],
     ) -> list[str]:
-        """Order nodes within an SCC using a greedy heuristic.
+        """Order nodes within an SCC using Kahn's algorithm on internal edges.
 
-        Picks the node with the fewest unresolved deps (within the SCC) first.
-        This gives a reasonable build order for bootstrapping cycles:
-        the first package is the one to build with minimal deps, then its
-        dependents become unblocked, etc.
+        Computes in-degree from SCC-internal edges only, then picks nodes
+        with zero in-degree first (sorted alphabetically for determinism).
+        When a node is "built", its dependents' in-degrees decrease.
+        This respects direct dependency chains (gmp before mpfr) even though
+        the SCC as a whole is cyclic.
         """
         scc_set = set(scc)
-        remaining = set(scc)
-        resolved: set[str] = set()
+
+        # Compute in-degree within the SCC
+        in_degree: dict[str, int] = {node: 0 for node in scc}
+        scc_adj: dict[str, list[str]] = defaultdict(list)
+        for node in scc:
+            for dependent in adjacency.get(node, []):
+                if dependent in scc_set and dependent != node:
+                    # Deduplicate edges
+                    if dependent not in scc_adj[node]:
+                        scc_adj[node].append(dependent)
+                        in_degree[dependent] += 1
+
         result: list[str] = []
+        # Start with nodes that have zero in-degree within the SCC
+        queue = sorted([n for n in scc if in_degree[n] == 0])
 
+        while queue:
+            node = queue.pop(0)
+            result.append(node)
+            for dependent in sorted(scc_adj.get(node, [])):
+                in_degree[dependent] -= 1
+                if in_degree[dependent] == 0:
+                    queue.append(dependent)
+                    queue.sort()
+
+        # Any remaining nodes (all have cycles among themselves) — add by
+        # fewest remaining in-degree
+        remaining = [n for n in scc if n not in set(result)]
         while remaining:
-            # Count how many SCC-internal deps each remaining node has unresolved
-            best = None
-            best_count = float("inf")
-            for node in sorted(remaining):
-                # Count deps within SCC that haven't been "resolved" yet
-                unresolved = sum(
-                    1
-                    for dep in reverse_adj.get(node, [])
-                    if dep in scc_set and dep in remaining
-                )
-                if unresolved < best_count:
-                    best_count = unresolved
-                    best = node
-
-            if best is None:
-                break
-            result.append(best)
-            remaining.discard(best)
-            resolved.add(best)
+            remaining.sort(key=lambda n: (in_degree[n], n))
+            node = remaining.pop(0)
+            result.append(node)
+            for dependent in scc_adj.get(node, []):
+                if dependent in set(remaining):
+                    in_degree[dependent] -= 1
 
         return result
 

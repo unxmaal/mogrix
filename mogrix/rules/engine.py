@@ -231,7 +231,7 @@ class RuleEngine:
 
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""
-        rules = pkg_rules.get("rules", pkg_rules)
+        rules = pkg_rules.get("rules") or pkg_rules
 
         # Handle add_patch at top level (outside rules section)
         if "add_patch" in pkg_rules:

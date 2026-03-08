@@ -1,5 +1,10 @@
 package: ir8
 
+build_after:
+  - gtk3
+  - webkitgtk
+  - glib2
+
 add_source:
   - main.c
   - ir8-window.c

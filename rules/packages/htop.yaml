@@ -1,2 +1,30 @@
 # htop - interactive process viewer
 package: htop
+
+build_after:
+  - ncurses
+
+rules:
+  drop_buildrequires:
+    - hwloc-devel
+    - lm_sensors-devel
+    - libnl3-devel
+    - platform-python
+    - /usr/bin/pathfix.py
+    - python
+
+  configure_flags:
+    add:
+      - "--disable-hwloc"
+      - "--disable-sensors"
+      - "--disable-unicode"
+      - "--enable-proc=off"
+    remove:
+      - "--enable-hwloc"
+  configure_disable:
+    - linux-affinity
+    - capabilities
+  ac_cv_overrides:
+    # IRIX has these functions
+    ac_cv_func_gettimeofday: "yes"
+    ac_cv_func_getpagesize: "yes"

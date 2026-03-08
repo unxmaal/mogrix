@@ -2,6 +2,17 @@
 # Cross-compile for IRIX 6.5 with X11+OpenGL video, no audio backends
 package: SDL2
 
+build_after:
+  - libX11
+  - libXext
+  - libXcursor
+  - libXi
+  - libXrandr
+  - libXrender
+  - libXinerama
+  - libxcb
+  - xcb-proto
+
 rules:
   drop_buildrequires:
     - mesa-libGL-devel

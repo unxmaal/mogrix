@@ -86,6 +86,8 @@ rules:
     replacement: (cd $RPM_BUILD_ROOT%{_mandir} && mv man5/config.5ossl man5/openssl.cnf.5)
   install_cleanup:
   - ln -sf configuration-mips.h $RPM_BUILD_ROOT%{_includedir}/openssl/configuration-mips64.h
+  # Fix #!/bin/bash shebangs — IRIX doesn't have bash at /bin/bash
+  - sed -i '1s|^#!/bin/bash|#!/usr/sgug/bin/bash|' $RPM_BUILD_ROOT%{_bindir}/renew-dummy-cert || true
   - sed -i 's|^ssl_conf = ssl_module|# ssl_conf = ssl_module
   - sed -i 's|^\.include = /etc/crypto-policies|# .include = /etc/crypto-policies
   - sed -i 's|= /etc/pki/|= /usr/sgug/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf

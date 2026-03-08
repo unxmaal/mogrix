@@ -1088,19 +1088,23 @@ def build(
                     console.print(f"[dim]Removing old RPM:[/dim] {old_rpm.name}")
                     old_rpm.unlink()
 
+    # Snapshot RPMs before build so we can identify which ones are new
+    rpms_dir = rpmbuild_path / "RPMS"
+    pre_build_rpms = set(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else set()
+
     try:
         if isolated and build_deps:
             result = isolated.build_with_fallback(cmd, build_deps)
         else:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
 
         if result.returncode == 0:
             import shutil
 
             console.print("\n[bold green]✓ Build succeeded[/bold green]")
-            # Collect built RPMs
-            rpms_dir = rpmbuild_path / "RPMS"
-            rpms = list(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else []
+            # Collect only newly built RPMs (not stale ones from prior builds)
+            post_build_rpms = set(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else set()
+            rpms = sorted(post_build_rpms - pre_build_rpms)
 
             if rpms:
                 console.print(f"\n[bold]Built RPMs:[/bold]")
@@ -1817,6 +1821,63 @@ def audit_rules(rules_dir: str | None, verbose: bool):
             console.print(f"  {key}={val}")
 
 
+@main.command("rebuild-all")
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option("--keep-old", is_flag=True, help="Don't relocate old outputs")
+@click.option("--resume", is_flag=True, help="Skip packages that already passed gates")
+@click.option("--dry-run", is_flag=True, help="Compute plan without building")
+@click.option("--skip-gates", is_flag=True, help="Treat gate failures as warnings")
+@click.option("--from-list", type=click.Path(exists=True), help="File with package names to build")
+def rebuild_all_cmd(
+    rules_dir: str | None,
+    keep_old: bool,
+    resume: bool,
+    dry_run: bool,
+    skip_gates: bool,
+    from_list: str | None,
+):
+    """Full dependency-ordered rebuild with quality gates.
+
+    Gate 0: Clean slate — relocate old outputs, reset staging, clean rpmbuild.
+    Gate 2: Build validation — ELF ABI, shebangs, hardcoded paths.
+
+    Each package is: convert -> build -> gate 2 check -> stage.
+    Packages are built in dependency order so downstream builds link
+    against freshly-built upstream libraries.
+
+    Examples:
+      mogrix rebuild-all --dry-run            # Preview build order
+      mogrix rebuild-all                      # Full clean rebuild
+      mogrix rebuild-all --keep-old --resume  # Incremental rebuild
+      mogrix rebuild-all --from-list pkgs.txt # Rebuild specific packages
+    """
+    from mogrix.rebuild import rebuild_all
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+
+    pkg_list = None
+    if from_list:
+        pkg_list = [
+            line.strip()
+            for line in Path(from_list).read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+
+    rebuild_all(
+        rules_dir=rules_path,
+        keep_old=keep_old,
+        resume=resume,
+        dry_run=dry_run,
+        skip_gates=skip_gates,
+        from_list=pkg_list,
+    )
+
+
 @main.command("rebuild-order")
 @click.option(
     "--rules-dir",
@@ -1832,20 +1893,20 @@ def rebuild_order(rules_dir: str | None, as_json: bool):
     dependencies are built before dependents.
     """
     import json as json_mod
-    import sqlite3
+
+    from mogrix.repometa import RepoMetaCache
+    from mogrix.roadmap import RoadmapResolver
 
     rules_path = Path(rules_dir) if rules_dir else RULES_DIR
 
-    # Need repo index DB
-    db_path = rules_path / "roadmap_index.db"
-    if not db_path.exists():
-        console.print(f"[red]Roadmap index not found at {db_path}[/red]")
+    cache = RepoMetaCache(release="40")
+    try:
+        db = cache.ensure_index(refresh=False)
+    except Exception as e:
+        console.print(f"[red]Failed to load repo index: {e}[/red]")
         console.print("Run: mogrix roadmap <any-package> --refresh")
         raise SystemExit(1)
 
-    from mogrix.roadmap import RoadmapResolver
-
-    db = sqlite3.connect(str(db_path))
     loader = RuleLoader(rules_path)
     resolver = RoadmapResolver(
         db=db,

@@ -3,6 +3,10 @@
 # No FC40 SRPM — uses create-srpm from GitHub.
 package: tmux
 
+build_after:
+  - libevent
+  - ncurses
+
 add_source:
   - forkpty-irix.c
 

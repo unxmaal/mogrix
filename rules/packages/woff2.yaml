@@ -1,4 +1,6 @@
 package: woff2
+build_after:
+- brotli
 rules:
   drop_subpackages:
   - tools
@@ -6,6 +8,15 @@ rules:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+  prep_commands:
+  # cmake FindBrotli*.cmake uses find_library/find_path with HINTS from
+  # pkg-config raw libdir (/usr/sgug/lib32) which doesn't exist on the build
+  # host. Add the staging path as an explicit HINTS entry.
+  # Note: \\$ escapes the $ so RPM shell doesn't expand cmake variables.
+  - "sed -i 's|HINTS \\${PC_BROTLIDEC_LIBDIR}|HINTS /opt/sgug-staging/usr/sgug/lib32 \\${PC_BROTLIDEC_LIBDIR}|' cmake/FindBrotliDec.cmake || true"
+  - "sed -i 's|HINTS \\${PC_BROTLIENC_LIBDIR}|HINTS /opt/sgug-staging/usr/sgug/lib32 \\${PC_BROTLIENC_LIBDIR}|' cmake/FindBrotliEnc.cmake || true"
+  - "sed -i 's|HINTS \\${PC_BROTLIDEC_INCLUDEDIR}|HINTS /opt/sgug-staging/usr/sgug/include \\${PC_BROTLIDEC_INCLUDEDIR}|' cmake/FindBrotliDec.cmake || true"
+  - "sed -i 's|HINTS \\${PC_BROTLIENC_INCLUDEDIR}|HINTS /opt/sgug-staging/usr/sgug/include \\${PC_BROTLIENC_INCLUDEDIR}|' cmake/FindBrotliEnc.cmake || true"
   spec_replacements:
   # Replace Fedora cmake macros with explicit cross-compilation
   - pattern: |
@@ -34,6 +45,7 @@ rules:
         -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
         -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
         -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
+        -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
         -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_SKIP_RPATH=TRUE \

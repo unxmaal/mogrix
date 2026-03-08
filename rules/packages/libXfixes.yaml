@@ -1,5 +1,10 @@
 package: libXfixes
 
+build_after:
+  - libX11
+  - libXext
+  - xorg-x11-proto-devel
+
 upstream:
   url: https://xorg.freedesktop.org/archive/individual/lib/libXfixes-5.0.3.tar.bz2
   version: "5.0.3"

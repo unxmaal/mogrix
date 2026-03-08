@@ -24,6 +24,17 @@ rules:
   - rm -f %{buildroot}%{_datadir}/%{name}/%{version}/tmac/Xps.tmac
   - rm -f %{buildroot}%{_datadir}/%{name}/%{version}/font/FontMap-X11
   - rm -f %{buildroot}%{_libdir}/charset.alias
+  configure_flags:
+    add:
+      - "--with-urw-fonts-dir=/nonexistent"
+  export_vars:
+    # Disable gropdf — prevents trying to run cross-compiled groff for PDF generation
+    GHOSTSCRIPT: "missing"
+  prep_commands:
+  # Remove doc/groff.info target from all (can't run cross-compiled groff)
+  - "sed -i '/^all:.*doc\\/groff\\.info/d' Makefile.in"
+  # Remove generate_man_files target from all
+  - "sed -i '/^all:.*generate_man_files/d' Makefile.in"
   spec_replacements:
   - pattern: '%autosetup -S git'
     replacement: '%autosetup -p1'
@@ -32,14 +43,11 @@ rules:
   - pattern: '%make_build'
     replacement: '# Remove doc generation from ''all'' target (can''t run cross-compiled groff)
 
-      sed -i ''/^all:.*doc\/groff\.info/d'' Makefile
-
-      sed -i ''/^all:.*generate_man_files/d'' Makefile
-
       GROFF_NODOC="PROCESSEDEXAMPLEFILES= PROCESSEDEXAMPLEFILES_PS= PROCESSEDEXAMPLEFILES_HTML= HDTBLPROCESSEDEXAMPLEFILES= MOMPROCESSEDEXAMPLEFILES= PROCESSEDDOCFILES= PROCESSEDDOCFILES_PS= PROCESSEDDOCFILES_TXT=
       PROCESSEDDOCFILES_HTML= PROCESSEDDOCFILES_PDF= GENERATEDDOCFILES="
 
-      %make_build $GROFF_NODOC
+      # Use host groff for any font/contrib generation (can''t run cross-compiled MIPS binary)
+      %make_build GROFFBIN=/usr/bin/groff GROFF_BIN_PATH=/usr/bin $GROFF_NODOC
 
       '
   - pattern: '%make_install'

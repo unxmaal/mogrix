@@ -1,4 +1,12 @@
 package: cmake
+
+build_after:
+  - zlib-ng
+  - bzip2
+  - xz
+  - curl
+  - openssl
+
 upstream:
   url: https://github.com/Kitware/CMake/releases/download/v3.28.2/cmake-3.28.2.tar.gz
   version: "3.28.2"

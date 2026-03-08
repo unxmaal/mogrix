@@ -34,6 +34,27 @@ rules:
   inject_compat_functions:
   - strtoimax
   prep_commands:
+  # IRIX libstdc++ has _GLIBCXX_USE_C99_STDIO=0, so std::to_string is disabled.
+  # Provide a shim header that implements std::to_string via snprintf.
+  - |
+    cat > src/to_string_shim.h << 'SHIM'
+    #ifndef MOGRIX_TO_STRING_SHIM_H
+    #define MOGRIX_TO_STRING_SHIM_H
+    #include <string>
+    #include <cstdio>
+    namespace std {
+      inline string to_string(int n) { char b[32]; snprintf(b,sizeof(b),"%d",n); return b; }
+      inline string to_string(long n) { char b[32]; snprintf(b,sizeof(b),"%ld",n); return b; }
+      inline string to_string(long long n) { char b[32]; snprintf(b,sizeof(b),"%lld",n); return b; }
+      inline string to_string(unsigned n) { char b[32]; snprintf(b,sizeof(b),"%u",n); return b; }
+      inline string to_string(unsigned long n) { char b[32]; snprintf(b,sizeof(b),"%lu",n); return b; }
+      inline string to_string(unsigned long long n) { char b[32]; snprintf(b,sizeof(b),"%llu",n); return b; }
+      inline string to_string(float n) { char b[64]; snprintf(b,sizeof(b),"%f",n); return b; }
+      inline string to_string(double n) { char b[64]; snprintf(b,sizeof(b),"%f",n); return b; }
+    }
+    #endif
+    SHIM
+  - "$MOGRIX_ROOT/tools/safepatch src/qcstring.h --insert-top '#include \"to_string_shim.h\"' --no-backup --quiet"
   # IRIX stdio.h defines fileno as a macro like OpenBSD/AIX.
   # ::fileno() breaks because the macro expands to ::((p)->_file).
   # Add __sgi to the existing OpenBSD/AIX guard.

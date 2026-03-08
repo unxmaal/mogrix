@@ -1,4 +1,10 @@
 package: snownews
+
+build_after:
+  - libxml2
+  - curl
+  - ncurses
+
 upstream:
   url: https://sourceforge.net/projects/snownews/files/snownews-1.11.tar.gz/download
   version: '1.11'
