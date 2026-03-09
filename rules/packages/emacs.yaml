@@ -1,14 +1,47 @@
 # emacs package rules for IRIX cross-compilation
 package: emacs
 blocked: true
-blocked_reason: "no SRPM in mogrix_inputs"
+blocked_reason: "Emacs 29.2 explicitly rejects IRIX in configure. Last IRIX support was ~emacs 23.x. Needs extensive porting work."
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - emacs.sgifixes.patch
+# Old sgifixes.patch targeted emacs 23.3 (jpeg version check workaround
+# and fakemail.c includes). Emacs 29.2 has completely different configure
+# and no longer ships fakemail.c — patch is no longer applicable.
+# Use --without-jpeg configure flag instead if jpeg detection is problematic.
 
 # Linux-only dependencies to remove
 # NOTE: libacl-devel/libselinux-devel handled by generic.yaml
 drop_buildrequires:
   - glibc-devel
 
+rules:
+  configure_flags:
+    add:
+      - --without-jpeg
+      - --without-gif
+      - --without-tiff
+      - --without-xpm
+      - --without-png
+      - --without-rsvg
+      - --without-imagemagick
+      - --without-xft
+      - --without-libotf
+      - --without-m17n-flt
+      - --without-toolkit-scroll-bars
+      - --without-xaw3d
+      - --without-xim
+      - --without-gpm
+      - --without-dbus
+      - --without-gconf
+      - --without-gsettings
+      - --without-selinux
+      - --without-gnutls
+      - --without-xml2
+      - --without-modules
+      - --without-threads
+      - --without-json
+      - --without-lcms2
+      - --without-harfbuzz
+      - --without-cairo
+      - --without-sound
+      - --with-x=no
+      - --with-x-toolkit=no

@@ -1088,6 +1088,31 @@ def build(
                     console.print(f"[dim]Removing old RPM:[/dim] {old_rpm.name}")
                     old_rpm.unlink()
 
+    # Build lock: prevent concurrent builds of the same package
+    import re as _re_lock
+    import os as _os_lock
+    _lock_pkg = None
+    _lock_file = None
+    if is_srpm:
+        _m_lock = _re_lock.match(r"^(.+?)-[\d]", input_path.name)
+        if _m_lock:
+            _lock_pkg = _m_lock.group(1)
+            _lock_file = rpmbuild_path / f".lock.{_lock_pkg}"
+            if _lock_file.exists():
+                try:
+                    _lock_pid = int(_lock_file.read_text().strip())
+                    # Check if the PID is still running
+                    _os_lock.kill(_lock_pid, 0)
+                    console.print(f"[red]Build lock exists for {_lock_pkg} (PID {_lock_pid} is running)[/red]")
+                    console.print(f"[red]Another build of {_lock_pkg} is already in progress.[/red]")
+                    console.print(f"[dim]Lock file: {_lock_file}[/dim]")
+                    console.print("[dim]If this is stale, remove it manually.[/dim]")
+                    raise SystemExit(1)
+                except (ValueError, ProcessLookupError, PermissionError):
+                    # PID is gone or invalid — stale lock, remove it
+                    _lock_file.unlink(missing_ok=True)
+            _lock_file.write_text(str(_os_lock.getpid()))
+
     # Snapshot RPMs before build so we can identify which ones are new
     rpms_dir = rpmbuild_path / "RPMS"
     pre_build_rpms = set(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else set()
@@ -1156,6 +1181,10 @@ def build(
     except FileNotFoundError:
         console.print("[red]Error: rpmbuild not found. Install rpm-build package.[/red]")
         raise SystemExit(1)
+    finally:
+        # Always clean up the build lock
+        if _lock_file and _lock_file.exists():
+            _lock_file.unlink(missing_ok=True)
 
 
 def _validate_cross_env(dry_run: bool = False):

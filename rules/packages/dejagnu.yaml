@@ -1,11 +1,6 @@
 # dejagnu package rules for IRIX cross-compilation
-# SRPM not available in FC40 inputs — skip from rebuild-all
 package: dejagnu
-blocked: true
-blocked_reason: "no SRPM in mogrix_inputs"
-skip: true
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - dejagnu.sgifixes.patch
-
+# Old sgifixes.patch targeted 1.6.2 (configure.ac + runtest.in).
+# dejagnu 1.6.3 already ships a proper runtest script and uses
+# AC_CONFIG_FILES([Makefile]) — patch is no longer needed.

@@ -1,16 +1,27 @@
 # elfutils - ELF utilities and library
-# Has sgifixes patches, needs compat functions
+# Regenerated sgifixes patch for 0.191 (was 0.177).
+# Key IRIX fixes: program_invocation_short_name->getprogname(), unlocked stdio,
+# tdestroy stubs, posix_madvise->madvise, stdio_ext.h guards.
 
 package: elfutils
 blocked: true
-blocked_reason: "no SRPM in mogrix_inputs"
+blocked_reason: "Missing glibc-specific dependencies: argp (argp_parse), fts (fts_close), obstack. These are not available on IRIX and need to be provided as compat libraries or standalone packages before elfutils can build."
 
-# IRIX-specific patches from SGUG-RSE
+# IRIX-specific patches
 add_patch:
   - elfutils.sgifixes.patch
 
 rules:
-  # Compat functions needed
+  # Remove autoreconf call that requires autopoint (gettext-devel)
+  # Our patch doesn't touch autotools files, so autoreconf isn't needed
+  spec_replacements:
+    - pattern: "autoreconf -f -v -i"
+      replacement: "# autoreconf disabled - not needed for IRIX cross-build"
+    # Fix bash-isms: ${var/pattern/} is not POSIX sh. Use sed or case.
+    - pattern: 'RPM_OPT_FLAGS="${RPM_OPT_FLAGS/-Wall/}"'
+      replacement: 'RPM_OPT_FLAGS=$(echo "$RPM_OPT_FLAGS" | sed "s/-Wall//")'
+    - pattern: 'RPM_OPT_FLAGS="${RPM_OPT_FLAGS} -Wformat"'
+      replacement: 'RPM_OPT_FLAGS="$RPM_OPT_FLAGS -Wformat"'
 
   # NOTE: libdicl/systemtap-sdt-devel drop_buildrequires/drop_requires handled by generic.yaml
 
@@ -18,6 +29,8 @@ rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   ac_cv_overrides:
     ac_cv_func_mmap_fixed_mapped: "no"
+    # __thread compiles fine but linker can't resolve __tls_get_addr at configure time
+    ac_cv_tls: "yes"
 
   # Configure flags
   configure_flags:
@@ -36,4 +49,3 @@ rules:
     - nls
 
   # NOTE: libdicl remove_lines handled by generic.yaml
-

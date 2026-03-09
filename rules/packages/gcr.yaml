@@ -1,9 +1,75 @@
 # gcr package rules for IRIX cross-compilation
+# Meson-based build — uses explicit meson cross-compilation commands
 package: gcr
-blocked: true
-blocked_reason: "no SRPM in mogrix_inputs"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - gcr.sgifixes.patch
 
+rules:
+  drop_buildrequires:
+    - meson
+    - pkgconfig(gi-docgen)
+    - pkgconfig(gobject-introspection-1.0)
+    - pkgconfig(gtk4)
+    - pkgconfig(libsystemd)
+    - pkgconfig(systemd)
+    - systemd-rpm-macros
+    - vala
+    - valgrind-devel
+    - /usr/bin/gpg2
+    - /usr/bin/ssh-add
+    - /usr/bin/ssh-agent
+    - /usr/bin/xsltproc
+
+  # Keep devel subpackage for headers and pkgconfig files
+
+  spec_replacements:
+    # Replace %meson + %meson_build with explicit meson cross-compilation
+    # Copy host-runnable Python scripts (glib-mkenums, glib-genmarshal) to local bin dir
+    - pattern: "%meson\n%meson_build"
+      replacement: "mkdir -p _hostbin\nfor tool in glib-mkenums glib-genmarshal glib-compile-resources glib-compile-schemas gdbus-codegen; do\n  if [ -f /opt/sgug-staging/usr/sgug/bin/$tool ]; then\n    cp /opt/sgug-staging/usr/sgug/bin/$tool _hostbin/\n    chmod +x _hostbin/$tool\n  fi\ndone\n# Patch gdbus-codegen: fix shebang to avoid meson virtualenv, add codegen module path\nsed -i '1s|#!/usr/bin/env python3|#!/usr/bin/python3|' _hostbin/gdbus-codegen\nsed -i '2i import sys; sys.path.insert(0, \"/opt/sgug-staging/usr/sgug/share/glib-2.0\")' _hostbin/gdbus-codegen\nexport PATH=$(pwd)/_hostbin:$PATH\nMOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  --libexecdir=%{_libexecdir} \\\n  -Dgtk4=false \\\n  -Dgtk_doc=false \\\n  -Dintrospection=false \\\n  -Dvapi=false \\\n  -Dssh_agent=false \\\n  -Dsystemd=disabled \\\n  --default-library=shared\n/home/edodd/.local/bin/meson compile -C _build"
+
+    # Replace %meson_install
+    - pattern: "%meson_install"
+      replacement: "DESTDIR=$RPM_BUILD_ROOT /home/edodd/.local/bin/meson install -C _build --no-rebuild"
+
+    # Remove %find_lang (NLS not built)
+    - pattern: "%find_lang gcr-4"
+      replacement: "# find_lang skipped for cross-build"
+
+    # Remove systemd scriptlets
+    - pattern: "%post\n%systemd_user_post gcr-ssh-agent.service\n\n%preun\n%systemd_user_preun gcr-ssh-agent.service\n\n%postun\n%systemd_user_postun_with_restart gcr-ssh-agent.service"
+      replacement: "# systemd scriptlets removed for cross-build"
+
+    # Fix %files to use simple list instead of lang file
+    - pattern: "%files libs -f gcr-4.lang"
+      replacement: "%files libs"
+
+    # Remove binaries and systemd files from main %files (not built)
+    - pattern: "%{_bindir}/gcr-viewer-gtk4"
+      replacement: "# gcr-viewer-gtk4 not built (gtk4 disabled)"
+    - pattern: "%{_libexecdir}/gcr-ssh-agent\n%{_libexecdir}/gcr4-ssh-askpass\n%{_userunitdir}/gcr-ssh-agent.service\n%{_userunitdir}/gcr-ssh-agent.socket"
+      replacement: "# ssh-agent/systemd files not built"
+
+    # Remove girepository from libs %files
+    - pattern: "%dir %{_libdir}/girepository-1.0\n%{_libdir}/girepository-1.0/Gck-2.typelib\n%{_libdir}/girepository-1.0/Gcr-4.typelib"
+      replacement: "# introspection disabled for cross-build"
+
+    # Remove /usr/bin/gpg2 requirement
+    - pattern: "Requires: /usr/bin/gpg2"
+      replacement: "# gpg2 not required on IRIX"
+
+    # Remove gir/vala/doc from devel %files (introspection/vapi disabled)
+    - pattern: "%dir %{_datadir}/gir-1.0\n%{_datadir}/gir-1.0/Gck-2.gir\n%{_datadir}/gir-1.0/Gcr-4.gir\n%dir %{_datadir}/vala\n%dir %{_datadir}/vala/vapi\n%{_datadir}/vala/vapi/gck-2.deps\n%{_datadir}/vala/vapi/gck-2.vapi\n%{_datadir}/vala/vapi/gcr-4.deps\n%{_datadir}/vala/vapi/gcr-4.vapi\n%doc %{_datadir}/doc/gck-2/\n%doc %{_datadir}/doc/gcr-4/"
+      replacement: "# gir/vala/doc disabled for cross-build"
+
+    # Fix ssh-agent line removal: keep gcr4-ssh-askpass since it gets built
+    - pattern: "# ssh-agent/systemd files not built"
+      replacement: "%{_libexecdir}/gcr4-ssh-askpass"
+
+install_cleanup:
+  - rm -rf %{buildroot}%{_datadir}/locale
+  - rm -rf %{buildroot}%{_datadir}/gir-1.0
+  - rm -rf %{buildroot}%{_libdir}/girepository-1.0
+  - rm -rf %{buildroot}%{_userunitdir}

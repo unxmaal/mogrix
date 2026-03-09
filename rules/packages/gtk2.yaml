@@ -1,9 +1,75 @@
 # gtk2 package rules for IRIX cross-compilation
 package: gtk2
-blocked: true
-blocked_reason: "no SRPM in mogrix_inputs"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - gtk2.sgifixes.patch
 
+rules:
+  drop_buildrequires:
+    - cups-devel
+    - colord-devel
+    - pkgconfig(colord)
+
+  configure_disable:
+    - nls
+
+  spec_replacements:
+    # Remove the host triplet mismatch check in %install
+    # autoconf resolves mips-irix6.5 to mips-unknown-irix6.5, causing a mismatch
+    - pattern: "# Make sure that the host value that is passed to the compile\n# is the same as the host that we're using in the spec file\n#\ncompile_host=`grep 'host_triplet =' gtk/Makefile | sed \"s/.* = //\"`\n\nif test \"x$compile_host\" != \"x$host\" ; then\n  echo 1>&2 \"Host mismatch: compile='$compile_host', spec file='$host'\" && exit 1\nfi"
+      replacement: "# Host triplet check removed for cross-compilation (autoconf adds 'unknown' vendor)"
+
+    # Create man directory before writing man page symlinks (make install may not create it)
+    - pattern: "echo \".so man1/gtk-query-immodules-2.0.1\" > $RPM_BUILD_ROOT%{_mandir}/man1/gtk-query-immodules-2.0-%{__isa_bits}.1"
+      replacement: "mkdir -p $RPM_BUILD_ROOT%{_mandir}/man1\necho \".so man1/gtk-query-immodules-2.0.1\" > $RPM_BUILD_ROOT%{_mandir}/man1/gtk-query-immodules-2.0-%{__isa_bits}.1"
+
+    # Replace %{__isa_bits} with 32 for MIPS n32
+    - pattern: "%{__isa_bits}"
+      replacement: "32"
+
+    # Skip docs copy in %install (gtk-doc not generated during cross-build)
+    - pattern: "#\n# Make cleaned-up versions of tutorials, examples, and faq for installation\n#\nmkdir -p tmpdocs\ncp -aR docs/tutorial/html tmpdocs/tutorial\ncp -aR docs/faq/html tmpdocs/faq"
+      replacement: "#\n# Docs skipped for cross-build\n#\nmkdir -p tmpdocs/tutorial tmpdocs/faq tmpdocs/examples"
+
+    # Remove gtk-doc files from devel %files
+    - pattern: "%{_datadir}/gtk-doc\n%doc tmpdocs/tutorial\n%doc tmpdocs/faq\n%doc tmpdocs/examples"
+      replacement: "# gtk-doc disabled for cross-build"
+
+    # Skip python pathfix (no python on IRIX, macro not available)
+    - pattern: "# Use python3 shebang instead of ambiguous python\n%{__python3} %{_rpmconfigdir}/redhat/pathfix.py -pn -i %{__python3} $RPM_BUILD_ROOT%{_bindir}/gtk-builder-convert"
+      replacement: "# python pathfix skipped for cross-build"
+
+    # Man page for gtk-update-icon-cache may not exist during cross-build
+    - pattern: "rm $RPM_BUILD_ROOT%{_mandir}/man1/gtk-update-icon-cache.1*"
+      replacement: "rm -f $RPM_BUILD_ROOT%{_mandir}/man1/gtk-update-icon-cache.1*"
+
+    # Disable gtk-doc generation (not available during cross-build)
+    # Also disable NLS to prevent make install from entering po/ dirs with missing .gmo files
+    - pattern: "(if ! test -x configure; then NOCONFIGURE=1 ./autogen.sh; CONFIGFLAGS=--enable-gtk-doc; fi;"
+      replacement: "(if ! test -x configure; then NOCONFIGURE=1 ./autogen.sh; CONFIGFLAGS=--enable-gtk-doc; fi;\n CONFIGFLAGS=\"$CONFIGFLAGS --disable-gtk-doc --disable-nls\";"
+
+    # Skip --enable-man (requires xsltproc/docbook which may not work cross)
+    - pattern: "\t--enable-man\t\t\\"
+      replacement: "\t--disable-man\t\t\\"
+
+    # Disable libtool relinking during install (breaks cross-compilation)
+    # The getcwd() failure causes relinking to fail finding .o files
+    - pattern: "make install DESTDIR=$RPM_BUILD_ROOT        \\\n             RUN_QUERY_IMMODULES_TEST=false"
+      replacement: "# Disable libtool relinking for cross-build\nsed -i 's|need_relink=yes|need_relink=no|g' libtool\nsed -i 's|^hardcode_into_libs=yes|hardcode_into_libs=no|' libtool\nfor f in $(find . -name '*.la'); do\n  sed -i 's|^relink_command=.*|relink_command=\"\"|' \"$f\"\ndone\n# Stub out po directory installs (no .gmo files in cross-build)\nfor d in po po-properties; do\n  if test -d \"$d\"; then\n    printf 'install install-data install-data-local install-exec install-recursive:\\n\\t@true\\n' > \"$d/Makefile\"\n  fi\ndone\n# Also stub out docs dir install\nfor d in docs docs/tutorial docs/faq docs/reference docs/reference/gtk docs/reference/gdk; do\n  if test -d \"$d\" && test -f \"$d/Makefile\"; then\n    sed -i 's|^install-data-local:.*|install-data-local:\\n\\t@true|' \"$d/Makefile\"\n  fi\ndone\nmake install DESTDIR=$RPM_BUILD_ROOT        \\\n             RUN_QUERY_IMMODULES_TEST=false"
+
+    # Remove girepository from %files (introspection not built during cross-compilation)
+    - pattern: "%{_libdir}/girepository-1.0"
+      replacement: "# girepository disabled for cross-build"
+
+    # Remove gir data from devel %files
+    - pattern: "%{_datadir}/gir-1.0"
+      replacement: "# gir data disabled for cross-build"
+
+    # Remove man pages that may not be generated during cross-build
+    - pattern: "%{_mandir}/man1/gtk-builder-convert.1*"
+      replacement: "# gtk-builder-convert man page not generated"
+
+    # Add locale/gir/gtk-doc cleanup in %install (install_cleanup misplaces due to triggerpostun bug)
+    - pattern: "# Remove unpackaged files"
+      replacement: "# Remove unpackaged files\nrm -rf $RPM_BUILD_ROOT%{_datadir}/locale\nrm -rf $RPM_BUILD_ROOT%{_datadir}/gir-1.0\nrm -rf $RPM_BUILD_ROOT%{_libdir}/girepository-1.0\nrm -rf $RPM_BUILD_ROOT%{_datadir}/gtk-doc"

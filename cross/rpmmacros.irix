@@ -135,3 +135,49 @@ AutoProv:               no
 %_qt5_settingsdir       %{_sysconfdir}/xdg
 %_qt5_sysconfdir        %{_sysconfdir}
 %_qt5_translationdir    %{_datadir}/qt5/translations
+
+# Meson cross-compilation macros
+# Generates a cross-file on the fly, then runs meson setup
+%_meson_cross_file %{_builddir}/_meson_cross.txt
+
+%_cross_meson /usr/bin/meson
+
+%_vpath_builddir %{_target_platform}
+
+%meson \
+  printf '[binaries]\\nc = %%s\\ncpp = %%s\\nar = %%s\\nstrip = %%s\\npkgconfig = %%s\\n[built-in options]\\nc_args = %%s\\ncpp_args = %%s\\nc_link_args = []\\ncpp_link_args = []\\n[properties]\\nsys_root = %%s\\npkg_config_libdir = %%s\\n[host_machine]\\nsystem = %%s\\ncpu_family = %%s\\ncpu = %%s\\nendian = %%s\\n' \\\
+    "'%{__cc}'" "'%{__cxx}'" "'%{__ar}'" "'%{__strip}'" "'pkg-config'" \\\
+    "['-O2', '-mxgot', '-include', 'alloca.h']" "['-O2', '-mxgot', '-include', 'alloca.h']" \\\
+    "'/opt/sgug-staging'" "'%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig'" \\\
+    "'irix'" "'mips'" "'mips'" "'big'" \\\
+    > %{_meson_cross_file}; \
+  if [ -f mogrix-compat/libmogrix-compat.a ]; then \
+    _compat_dir="$(pwd)/mogrix-compat"; \
+    sed -i "s|^c_link_args = \\[\\]|c_link_args = ['-L${_compat_dir}', '-lmogrix-compat']|" %{_meson_cross_file}; \
+    sed -i "s|^cpp_link_args = \\[\\]|cpp_link_args = ['-L${_compat_dir}', '-lmogrix-compat']|" %{_meson_cross_file}; \
+  fi; \
+  export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig"; \
+  export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"; \
+  %{_cross_meson} setup \\\
+    --cross-file=%{_meson_cross_file} \\\
+    --prefix=%{_prefix} \\\
+    --libdir=%{_libdir} \\\
+    --bindir=%{_bindir} \\\
+    --sbindir=%{_sbindir} \\\
+    --includedir=%{_includedir} \\\
+    --datadir=%{_datadir} \\\
+    --mandir=%{_mandir} \\\
+    --infodir=%{_infodir} \\\
+    --sysconfdir=%{_sysconfdir} \\\
+    --buildtype=plain \\\
+    %{?*} \\\
+    %{_vpath_builddir}
+
+%meson_build \
+  %{_cross_meson} compile -C %{_vpath_builddir} %{?_smp_mflags}
+
+%meson_install \
+  DESTDIR=%{buildroot} %{_cross_meson} install -C %{_vpath_builddir} --no-rebuild
+
+%meson_test \
+  %{nil}

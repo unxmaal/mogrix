@@ -1,6 +1,4 @@
 package: libarchive
-blocked: true
-blocked_reason: "no SRPM in mogrix_inputs"
 add_patch:
 - libarchive.sgifixes.patch
 rules:
@@ -17,3 +15,14 @@ rules:
   configure_disable:
   - acl
   - xattr
+  # libarchive cpio/cmdline.c defines its own 'struct option' which conflicts
+  # with the mogrix compat getopt.h definition. Suppress compat's version.
+  prep_commands:
+  - 'sed -i "1i #define _MOGRIX_NO_GETOPT_STRUCT_OPTION 1" cpio/cmdline.c'
+  # Replace bash-isms in %install replace() function:
+  # ${file%%.*} and ${binary##bsd} work in dash, but ${pattern^^} (uppercase) doesn't.
+  spec_replacements:
+  - pattern: '${pattern^^}'
+    replacement: '$(echo $pattern | tr a-z A-Z)'
+  - pattern: '${binary^^}'
+    replacement: '$(echo $binary | tr a-z A-Z)'
