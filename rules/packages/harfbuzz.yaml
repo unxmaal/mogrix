@@ -2,6 +2,11 @@ package: harfbuzz
 # Bootstrap pass 1: without cairo and ICU (circular deps).
 # Once cairo is built, do pass 2 with --with-cairo --with-icu re-enabled.
 # Graphite2 stays disabled (not in staging). Introspection disabled (no gobject-introspection).
+
+build_after:
+  - freetype
+  - glib2
+
 rules:
   drop_buildrequires:
   - gobject-introspection-devel

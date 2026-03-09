@@ -1,4 +1,9 @@
 package: git
+
+build_after:
+  - openssl
+  - curl
+
 rules:
   drop_buildrequires:
   - libsecret-devel

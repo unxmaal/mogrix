@@ -1,5 +1,7 @@
 # expect package rules for IRIX cross-compilation
 package: expect
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:

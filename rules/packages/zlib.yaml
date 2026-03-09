@@ -3,6 +3,8 @@
 # Successfully cross-compiled for IRIX N32
 
 package: zlib
+blocked: true
+blocked_reason: "FC40 uses zlib-ng — no zlib SRPM available. Use zlib-ng instead."
 
 rules:
   # Export CC for cross-compilation (zlib uses ./configure not %configure)

@@ -16,8 +16,8 @@ rules:
     - --without-included-regex
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old ' gnulib-tests' --new '' --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old ' tests' --new '' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old ' gnulib-tests' --new '' --count 0 --no-backup --quiet"
+  - "sed -i 's/^SUBDIRS = \\(.*\\) tests$/SUBDIRS = \\1/' Makefile.am || true"
   spec_replacements:
   - pattern: autoreconf -fi
     replacement: AUTOPOINT=true autoreconf -fi

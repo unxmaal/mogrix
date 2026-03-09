@@ -1,7 +1,9 @@
 # ctags - universal ctags source code indexer
 package: ctags
-
 rules:
+  export_vars:
+    # IRIX has basename() in libgen, not libc
+    LDFLAGS: "-lgen $LDFLAGS"
   drop_buildrequires:
     - libseccomp-devel
     - python3-docutils

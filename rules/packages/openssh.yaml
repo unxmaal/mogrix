@@ -1,4 +1,8 @@
 package: openssh
+
+build_after:
+  - openssl
+
 add_source:
 - explicit_bzero.irix.c
 - digest-openssl.irix.c

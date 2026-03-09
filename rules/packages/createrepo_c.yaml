@@ -1,6 +1,8 @@
 # createrepo_c - Repository metadata generator
 # cmake-based build, needs glib2
 package: createrepo_c
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 
 rules:
   # Replace bash-specific pushd/popd with POSIX cd

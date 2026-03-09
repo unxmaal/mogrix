@@ -1833,6 +1833,7 @@ def audit_rules(rules_dir: str | None, verbose: bool):
 @click.option("--dry-run", is_flag=True, help="Compute plan without building")
 @click.option("--skip-gates", is_flag=True, help="Treat gate failures as warnings")
 @click.option("--from-list", type=click.Path(exists=True), help="File with package names to build")
+@click.option("--no-fail-fast", is_flag=True, help="Continue building after failures (default: stop at first failure)")
 def rebuild_all_cmd(
     rules_dir: str | None,
     keep_old: bool,
@@ -1840,6 +1841,7 @@ def rebuild_all_cmd(
     dry_run: bool,
     skip_gates: bool,
     from_list: str | None,
+    no_fail_fast: bool,
 ):
     """Full dependency-ordered rebuild with quality gates.
 
@@ -1875,6 +1877,7 @@ def rebuild_all_cmd(
         dry_run=dry_run,
         skip_gates=skip_gates,
         from_list=pkg_list,
+        fail_fast=not no_fail_fast,
     )
 
 

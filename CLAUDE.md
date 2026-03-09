@@ -1,8 +1,9 @@
 # Claude Instructions
 
 > **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
-> Read `rules/GENERIC_SUMMARY.md` when starting a package. Use `knowledge_query` MCP tool for problem keywords.
-> Use `session_start` MCP tool at session start for context summary. Check `plan.md` if relevant.
+> Read `rules/GENERIC_SUMMARY.md` when starting a package. 
+> ALWAYS Use `knowledge_query` MCP tool for problem keywords.
+> ALWAYS Use `session_start` MCP tool at session start for context summary. Check `plan.md` if relevant.
 > If you don't know what to do, check `rules/methods/before-you-start.md`.
 >
 > **When you hit a compile/link error for a missing function**: Use `check_compat` MCP tool BEFORE writing a fix. We likely already have a compat implementation — it just needs to be compiled/linked. Also grep `compat/include/` and `compat/` for the symbol name. Many IRIX-missing POSIX functions (pselect, posix_spawn, getline, mkdtemp, etc.) already have implementations.

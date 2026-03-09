@@ -15,10 +15,24 @@ upstream:
   license: "BSD-3-Clause AND MIT-open-group AND Zlib AND Apache-2.0"
   summary: "Cross-platform make system"
   source_dir: cmake-3.28.2
+add_source:
+  - mogrix-to-string-compat.h
 rules:
   inject_compat_functions:
   - mkdtemp
   - stpcpy
+  - setenv
+  prep_commands:
+  # IRIX cstdio doesn't put snprintf in namespace std — jsoncpp uses std::snprintf
+  - "$MOGRIX_ROOT/tools/safepatch Utilities/cmjsoncpp/include/json/config.h --old 'std::snprintf' --new 'snprintf' --no-backup --quiet"
+  # IRIX libstdc++ _GLIBCXX_USE_C99_STDIO=0 — no std::to_string
+  # Inject via cmConfigure.cmake.h.in (included by all Source/*.cxx)
+  - "cp %{_sourcedir}/mogrix-to-string-compat.h Source/"
+  - "$MOGRIX_ROOT/tools/safepatch Source/cmConfigure.cmake.h.in --old '#pragma once' --insert-after '#ifdef __cplusplus\n#include \"mogrix-to-string-compat.h\"\n#endif' --no-backup --quiet"
+  # Also cover Utilities/cmcppdap (third-party, not covered by cmConfigure.h)
+  - "cp %{_sourcedir}/mogrix-to-string-compat.h Utilities/cmcppdap/include/"
+  - "$MOGRIX_ROOT/tools/safepatch Utilities/cmcppdap/src/network.cpp --insert-top '#include \"mogrix-to-string-compat.h\"' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Utilities/cmcppdap/src/content_stream.cpp --insert-top '#include \"mogrix-to-string-compat.h\"' --no-backup --quiet"
   export_vars:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig

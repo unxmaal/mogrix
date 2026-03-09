@@ -1,4 +1,6 @@
 package: libarchive
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 add_patch:
 - libarchive.sgifixes.patch
 rules:

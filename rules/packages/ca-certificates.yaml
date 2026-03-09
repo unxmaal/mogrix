@@ -2,6 +2,8 @@
 # Required for TLS verification
 
 package: ca-certificates
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 
 rules:
   # This package is mostly data files

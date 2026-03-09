@@ -11,6 +11,8 @@
 #   - Solution: Use -include irix-compat.h that provides isinf() macro
 
 package: gpgme
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 
 rules:
   # IRIX needs _SGI_SOURCE and SCM_RIGHTS, plus isinf via compat header

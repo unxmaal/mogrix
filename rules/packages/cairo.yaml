@@ -4,6 +4,14 @@
 
 package: cairo
 
+build_after:
+  - freetype
+  - fontconfig
+  - harfbuzz
+  - pixman
+  - glib2
+  - libpng
+
 rules:
 
   prep_commands:

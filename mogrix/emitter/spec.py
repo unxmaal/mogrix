@@ -744,19 +744,19 @@ _mogrix_origdir=$(pwd)
             stripped = lines[i].strip()
             if re.match(r"^%if\b", stripped):
                 # Find matching %endif, tracking nesting.
-                # %endif may already be commented (#%endif) by inner handlers.
+                # Both commented and uncommented %if/%endif are tracked
+                # symmetrically to handle nesting correctly.
                 depth = 1
                 j = i + 1
                 all_commented = True
                 endif_idx = None
                 while j < len(lines) and depth > 0:
                     s = lines[j].strip()
-                    # Check for %if/%endif (both commented and uncommented)
                     bare = s.lstrip("#").strip()
-                    if re.match(r"^%if\b", bare) and not s.startswith("#"):
-                        # Only count uncommented %if as nesting
+                    if re.match(r"^%if\b", bare):
+                        # Count both commented and uncommented %if for nesting
                         depth += 1
-                    elif bare == "%endif":
+                    elif bare == "%endif" or bare == "%endif #":
                         depth -= 1
                         if depth == 0:
                             endif_idx = j

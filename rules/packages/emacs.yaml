@@ -1,5 +1,7 @@
 # emacs package rules for IRIX cross-compilation
 package: emacs
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:

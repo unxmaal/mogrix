@@ -696,21 +696,50 @@ class RoadmapResolver:
         Computes in-degree from SCC-internal edges only, then picks nodes
         with zero in-degree first (sorted alphabetically for determinism).
         When a node is "built", its dependents' in-degrees decrease.
-        This respects direct dependency chains (gmp before mpfr) even though
-        the SCC as a whole is cyclic.
+
+        To break cycles correctly, explicit build_after edges (user-declared
+        dependencies) are preserved while auto-detected edges are candidates
+        for cutting. This ensures e.g. freetype builds before fontconfig
+        even though they're in a cycle with harfbuzz and cairo.
         """
         scc_set = set(scc)
 
-        # Compute in-degree within the SCC
+        # Collect explicit build_after edges within this SCC
+        explicit_edges: set[tuple[str, str]] = set()
+        for node in scc:
+            pkg_rules = self.rule_loader.load_package(node)
+            if pkg_rules:
+                for dep in pkg_rules.get("build_after", []):
+                    if dep in scc_set and dep != node:
+                        explicit_edges.add((dep, node))
+
+        # Compute in-degree within the SCC, but only from non-explicit edges.
+        # Explicit (build_after) edges are "hard" — we cut the auto-detected
+        # ones to break the cycle while respecting the user's ordering intent.
         in_degree: dict[str, int] = {node: 0 for node in scc}
         scc_adj: dict[str, list[str]] = defaultdict(list)
         for node in scc:
             for dependent in adjacency.get(node, []):
                 if dependent in scc_set and dependent != node:
-                    # Deduplicate edges
                     if dependent not in scc_adj[node]:
                         scc_adj[node].append(dependent)
                         in_degree[dependent] += 1
+
+        # If all nodes have in-degree > 0 and we have explicit edges,
+        # cut non-explicit edges to create zero in-degree nodes.
+        # This breaks the cycle at auto-detected edges while preserving
+        # the user-declared build_after ordering.
+        if explicit_edges and all(in_degree[n] > 0 for n in scc):
+            for node in scc:
+                non_explicit_incoming = 0
+                for src in scc:
+                    if node in scc_adj.get(src, []) and (src, node) not in explicit_edges:
+                        non_explicit_incoming += 1
+                # Cut non-explicit incoming edges
+                for src in list(scc):
+                    if node in scc_adj.get(src, []) and (src, node) not in explicit_edges:
+                        scc_adj[src].remove(node)
+                        in_degree[node] -= 1
 
         result: list[str] = []
         # Start with nodes that have zero in-degree within the SCC

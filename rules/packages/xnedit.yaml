@@ -1,4 +1,6 @@
 package: xnedit
+blocked: true
+blocked_reason: "needs Motif (Xm/Xm.h) — not in cross-compilation sysroot"
 upstream:
   url: https://github.com/unixwork/xnedit/archive/refs/tags/v1.6.1.tar.gz
   version: "1.6.1"

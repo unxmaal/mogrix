@@ -1,4 +1,10 @@
 package: libSM
+
+build_after:
+  - libICE
+  - xorg-x11-proto-devel
+  - xorg-x11-xtrans-devel
+
 rules:
   drop_buildrequires:
     - libuuid-devel

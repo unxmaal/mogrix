@@ -1,0 +1,3 @@
+package: xorg-x11-util-macros
+# Noarch package: just autotools m4 macros for X.Org builds.
+# Installs xorg-macros.m4 and pkg-config file. No compiled code.

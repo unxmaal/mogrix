@@ -17,7 +17,10 @@ set(CMAKE_SYSROOT /opt/sgug-staging)
 # Both paths needed: /opt/sgug-staging re-roots pkg-config hints correctly
 # (e.g. /usr/sgug/lib32 → /opt/sgug-staging/usr/sgug/lib32), while
 # /opt/sgug-staging/usr/sgug provides the default lib32/ search.
-set(CMAKE_FIND_ROOT_PATH /opt/sgug-staging /opt/sgug-staging/usr/sgug)
+# /opt/sgug-staging/usr/sgug: mogrix-built libraries (primary)
+# /opt/sgug-staging: sysroot for pkg-config re-rooting
+# /opt/irix-sysroot: IRIX native system libraries (libXt, libX11, etc.)
+set(CMAKE_FIND_ROOT_PATH /opt/sgug-staging /opt/sgug-staging/usr/sgug /opt/irix-sysroot)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
@@ -28,13 +31,18 @@ set(CMAKE_INSTALL_PREFIX /usr/sgug)
 set(CMAKE_INSTALL_LIBDIR lib32)
 
 # Tell cmake to search lib32 (IRIX n32 ABI) in addition to default lib/
-set(CMAKE_SYSTEM_LIBRARY_PATH /usr/sgug/lib32)
+# Also /usr/lib32 for IRIX native libraries (libXt, libX11, etc. from irix-sysroot)
+set(CMAKE_SYSTEM_LIBRARY_PATH /usr/sgug/lib32 /usr/lib32)
 # CMAKE_LIBRARY_PATH helps find_library search lib32 under sysroot
-list(APPEND CMAKE_LIBRARY_PATH /opt/sgug-staging/usr/sgug/lib32)
+list(APPEND CMAKE_LIBRARY_PATH /opt/sgug-staging/usr/sgug/lib32 /opt/irix-sysroot/usr/lib32)
+# Also search IRIX native includes
+set(CMAKE_SYSTEM_PREFIX_PATH /opt/sgug-staging/usr/sgug /opt/irix-sysroot/usr)
 
 # Tell pkg-config where to find .pc files for cross-compilation
-# PKG_CONFIG_SYSROOT_DIR prefixes -I/-L paths so cmake IMPORTED_TARGET
-# include dirs exist on disk. find_library still works via CMAKE_SYSTEM_LIBRARY_PATH.
+# PKG_CONFIG_SYSROOT_DIR is needed so cmake IMPORTED_TARGET include dirs
+# exist on disk (e.g. /opt/sgug-staging/usr/sgug/include/gtk-3.0).
+# This can cause double-prefixing in find_library with ONLY mode — for
+# affected packages, pre-set cache variables (e.g. -DHarfBuzz_LIBRARY=...).
 set(ENV{PKG_CONFIG_PATH} "")
 set(ENV{PKG_CONFIG_LIBDIR} "/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig")
 set(ENV{PKG_CONFIG_SYSROOT_DIR} "/opt/sgug-staging")

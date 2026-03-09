@@ -17,6 +17,7 @@ rules:
   - cpputest-devel
   - ca-certificates
   - hicolor-icon-theme
+  - libzstd-devel
   drop_requires:
   - hicolor-icon-theme
   export_vars:
@@ -39,7 +40,7 @@ rules:
       \ \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DICONV_INCLUDE_PATH=/opt/irix-sysroot/usr/include \\\n  -DICONV_FOUND:BOOL=TRUE \\\n  -DPREFIX=%{_prefix} \\\
       \n  -DLIBDIR=%{_libdir} \\\n  -DENABLE_PYTHON=OFF \\\n  -DENABLE_PERL=OFF \\\n  -DENABLE_RUBY=OFF \\\n  -DENABLE_LUA=OFF \\\n  -DENABLE_TCL=OFF \\\n  -DENABLE_GUILE=OFF \\\n  -DENABLE_PHP=OFF \\\n\
       \  -DENABLE_JAVASCRIPT=OFF \\\n  -DENABLE_ENCHANT=OFF \\\n  -DENABLE_SPELL=OFF \\\n  -DENABLE_DOC=OFF \\\n  -DENABLE_MAN=OFF \\\n  -DENABLE_TESTS=OFF \\\n  -DENABLE_HEADLESS=OFF \\\n  -DENABLE_NLS=OFF\
-      \ \\\n  -DENABLE_CJSON=OFF \\\n  -DLIBGCRYPT_CONFIG_EXECUTABLE=/opt/sgug-staging/usr/sgug/bin/libgcrypt-config\ncd _build && make %{?_smp_mflags}\n"
+      \ \\\n  -DENABLE_CJSON=OFF \\\n  -DENABLE_ZSTD=OFF \\\n  -DLIBGCRYPT_CONFIG_EXECUTABLE=/opt/sgug-staging/usr/sgug/bin/libgcrypt-config\ncd _build && make %{?_smp_mflags}\n"
   - pattern: '%cmake3_install'
     replacement: cd _build && make install DESTDIR=%{buildroot}
   - pattern: '%{_bindir}/%{name}-headless

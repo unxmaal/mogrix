@@ -4,6 +4,9 @@
 # RPM integration, multiple subpackages. For IRIX we just need core debugging.
 package: gdb
 
+add_source:
+  - mogrix-to-string-compat.h
+
 build_after:
   - ncurses
   - readline
@@ -30,6 +33,10 @@ rules:
     /usr/lib: /usr/lib
     /usr/include: /usr/include
   prep_commands:
+  # Copy std::to_string compat header (IRIX libstdc++ has _GLIBCXX_USE_C99_STDIO=0)
+  # and include it from common-defs.h (included by all gdb C++ files)
+  - "cp %{_sourcedir}/mogrix-to-string-compat.h ."
+  - "echo '#include \"../mogrix-to-string-compat.h\"' >> gdbsupport/common-defs.h"
   # libiberty/filedescriptor.c uses dup2() without including unistd.h
   - "$MOGRIX_ROOT/tools/safepatch libiberty/filedescriptor.c --insert-top '#include <unistd.h>' --no-backup --quiet"
   # libiberty/fibheap.c uses LONG_MIN without including limits.h
@@ -40,7 +47,9 @@ rules:
   - "$MOGRIX_ROOT/tools/safepatch libiberty/pex-unix.c --old \"$(printf 'static int\\npex_unix_wait')\" --new \"$(printf 'static pid_t\\npex_unix_wait')\" --no-backup --quiet"
   # gnulib's inttypes.h chain fails to define PRIo64 during cross-compile
   # Add it after __STDC_FORMAT_MACROS in common-defs.h (included by every file)
-  - "$MOGRIX_ROOT/tools/safepatch gdbsupport/common-defs.h --old '__STDC_FORMAT_MACROS' --insert-after \"$(printf '#ifndef PRIo64\\n#define PRIo64 \"llo\"\\n#endif')\" --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch gdbsupport/common-defs.h --old '#define __STDC_FORMAT_MACROS 1' --insert-after \"$(printf '#ifndef PRIo64\\n#define PRIo64 \"llo\"\\n#endif')\" --no-backup --quiet"
+  # strsignal is used but not declared in IRIX headers; provide prototype
+  - "$MOGRIX_ROOT/tools/safepatch gdbsupport/signals-state-save-restore.cc --insert-top 'extern \"C\" char *strsignal(int);' --no-backup --quiet"
   # GDB 14.2 removed IRIX target support — remove IRIX from the obsolete list
   - "$MOGRIX_ROOT/tools/safepatch gdb/configure.tgt --delete-line '*-*-irix*' --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch gdb/configure.host --delete-line '*-*-irix*' --no-backup --quiet"

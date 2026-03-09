@@ -2,6 +2,10 @@
 # Unblocks cairo, pango, gd, emacs
 package: fontconfig
 
+build_after:
+  - freetype
+  - expat
+
 rules:
 
   drop_subpackages:

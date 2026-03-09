@@ -1,5 +1,7 @@
 # pcre v1 is not in Fedora 40 (replaced by pcre2). Skip from rebuild-all.
 package: pcre
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 skip: true
 rules:
   configure_flags:

@@ -45,6 +45,28 @@ def _is_elf(filepath: Path) -> bool:
         return False
 
 
+def _is_mips_elf(filepath: Path) -> bool:
+    """Check if an ELF file is MIPS architecture (e_machine == 8).
+
+    Cross-compiled packages may contain host (x86-64) build tools like
+    qmake, moc, etc. These should be skipped during dep validation.
+    """
+    try:
+        with open(filepath, "rb") as f:
+            header = f.read(20)
+        if len(header) < 20 or header[:4] != b"\x7fELF":
+            return False
+        # e_machine is at offset 18 (2 bytes), little-endian or big-endian
+        ei_data = header[5]  # 1 = little-endian, 2 = big-endian
+        if ei_data == 1:
+            e_machine = int.from_bytes(header[18:20], "little")
+        else:
+            e_machine = int.from_bytes(header[18:20], "big")
+        return e_machine == 8  # EM_MIPS
+    except (OSError, PermissionError):
+        return False
+
+
 def _readelf_needed(elf_path: Path) -> list[str]:
     """Get NEEDED sonames from an ELF binary using readelf."""
     result = subprocess.run(
@@ -74,8 +96,14 @@ def _scan_elf_needed(extract_dir: Path) -> tuple[set[str], set[str]]:
         for filename in files:
             filepath = Path(root) / filename
             if filepath.is_symlink():
+                # Symlinks to .so files also count as provided
+                if ".so" in filename:
+                    provided.add(filename)
                 continue
             if _is_elf(filepath):
+                # Skip non-MIPS binaries (e.g. x86-64 host build tools)
+                if not _is_mips_elf(filepath):
+                    continue
                 for soname in _readelf_needed(filepath):
                     needed.add(soname)
                 # If this is a .so file, it provides its own soname

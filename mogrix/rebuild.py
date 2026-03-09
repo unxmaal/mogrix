@@ -195,6 +195,8 @@ def gate0_clean_slate(
 
 def convert_package(package: str, rules_dir: Path) -> Path | None:
     """Convert a package SRPM. Returns path to converted SRPM or None."""
+    converted_dir = MOGRIX_OUTPUTS / "SRPMS"
+
     # Find the source SRPM
     srpms_dir = MOGRIX_INPUTS / "SRPMS"
     candidates = sorted(srpms_dir.glob(f"{package}-[0-9]*.src.rpm"))
@@ -214,7 +216,6 @@ def convert_package(package: str, rules_dir: Path) -> Path | None:
         return None
 
     # Find the converted SRPM
-    converted_dir = MOGRIX_OUTPUTS / "SRPMS"
     converted = sorted(converted_dir.glob(f"{package}-[0-9]*.src.rpm"))
     if not converted:
         _log(f"  [red]No converted SRPM found after convert[/red]")
@@ -432,6 +433,7 @@ def rebuild_all(
     dry_run: bool = False,
     skip_gates: bool = False,
     from_list: list[str] | None = None,
+    fail_fast: bool = True,
 ) -> RebuildPlan:
     """Execute a full dependency-ordered rebuild.
 
@@ -487,16 +489,29 @@ def rebuild_all(
 
         # Re-stage trustworthy packages so their libs are available for rebuilds.
         # Gate0 reset staging to pristine — we need to restore what passed cleanly.
+        # Use stored gate results for RPM names (handles subpackages like libbrotli).
         rpms_dir = outputs_dir / "RPMS"
         restaged = 0
         for pkg in plan.build_order:
             if pkg not in completed:
                 continue
-            # Find this package's RPMs in outputs
-            pkg_rpms = sorted(rpms_dir.glob(f"{pkg}-[0-9]*.mips.rpm"))
-            pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.mips.rpm"))
-            # Deduplicate
-            pkg_rpms = sorted(set(pkg_rpms))
+            # Try gate results first — has the exact list of produced RPMs
+            gate_file = plan.gate_results_dir / pkg / "build-gate.json"
+            pkg_rpms = []
+            if gate_file.exists():
+                try:
+                    data = json.loads(gate_file.read_text())
+                    for rpm_name in data.get("rpms", []):
+                        rpm_path = rpms_dir / rpm_name
+                        if rpm_path.exists():
+                            pkg_rpms.append(rpm_path)
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            # Fallback to name-based glob if gate results unavailable
+            if not pkg_rpms:
+                pkg_rpms = sorted(rpms_dir.glob(f"{pkg}-[0-9]*.mips.rpm"))
+                pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.mips.rpm"))
+                pkg_rpms = sorted(set(pkg_rpms))
             if pkg_rpms:
                 staged = stage_package(pkg_rpms, staging_dir)
                 if staged:
@@ -505,10 +520,23 @@ def rebuild_all(
 
     # Build each package in order
     failed = []
+    skipped_blocked = []
     for i, package in enumerate(plan.build_order, 1):
         if package in completed:
             _log(f"[dim]{i:3d}/{plan.total} {package} — already passed, skipping[/dim]")
             continue
+
+        # Check for blocked packages (blocked: true in rule YAML)
+        rule_file = rules_dir / "packages" / f"{package}.yaml"
+        if rule_file.exists():
+            import yaml as _yaml
+            with open(rule_file) as _f:
+                _pkg_rules = _yaml.safe_load(_f) or {}
+            if _pkg_rules.get("blocked"):
+                reason = _pkg_rules.get("blocked_reason", "no reason given")
+                _log(f"[dim]{i:3d}/{plan.total} {package} — blocked: {reason}[/dim]")
+                skipped_blocked.append(package)
+                continue
 
         _log(f"\n[bold]{'='*60}[/bold]")
         _log(f"[bold]{i:3d}/{plan.total} Building: {package}[/bold]")
@@ -525,6 +553,9 @@ def rebuild_all(
             failed.append(package)
             save_gate_result(plan.gate_results_dir, package, result)
             _log(f"  [red]FAILED: {result.error}[/red]")
+            if fail_fast:
+                _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
+                break
             continue
 
         # Step 2: Build (each package gets its own isolated rpmbuild dir)
@@ -536,6 +567,9 @@ def rebuild_all(
             failed.append(package)
             save_gate_result(plan.gate_results_dir, package, result)
             _log(f"  [red]FAILED: build error[/red]")
+            if fail_fast:
+                _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
+                break
             continue
 
         result.success = True
@@ -560,6 +594,9 @@ def rebuild_all(
                     plan.results[package] = result
                     failed.append(package)
                     save_gate_result(plan.gate_results_dir, package, result, gate2)
+                    if fail_fast:
+                        _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
+                        break
                     continue
 
         # Step 4: Stage
@@ -583,6 +620,8 @@ def rebuild_all(
     _log(f"  [red]Failed:[/red] {len(failed)}")
     if completed:
         _log(f"  [dim]Skipped (resume):[/dim] {len(completed)}")
+    if skipped_blocked:
+        _log(f"  [yellow]Blocked:[/yellow] {len(skipped_blocked)} ({', '.join(skipped_blocked)})")
 
     if failed:
         _log(f"\n[red]Failed packages:[/red]")

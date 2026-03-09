@@ -84,10 +84,16 @@ rules:
 
       popd'
     replacement: (cd $RPM_BUILD_ROOT%{_mandir} && mv man5/config.5ossl man5/openssl.cnf.5)
+  # Fix shebangs AFTER install commands copy/move files into bindir
+  # (install_cleanup runs too early — install -m755 overwrites the fixed files)
+  - pattern: "mv $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/misc/tsget $RPM_BUILD_ROOT%{_bindir}"
+    replacement: |-
+      mv $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/misc/tsget $RPM_BUILD_ROOT%{_bindir}
+      # Fix shebangs for IRIX (must be after install/mv commands)
+      sed -i '1s|^#!/bin/bash|#!/usr/sgug/bin/bash|' $RPM_BUILD_ROOT%{_bindir}/renew-dummy-cert $RPM_BUILD_ROOT%{_bindir}/make-dummy-cert || true
+      sed -i '1s|^#!/usr/bin/perl|#!/usr/sgug/bin/perl|' $RPM_BUILD_ROOT%{_bindir}/CA.pl $RPM_BUILD_ROOT%{_bindir}/tsget.pl $RPM_BUILD_ROOT%{_bindir}/tsget || true
   install_cleanup:
   - ln -sf configuration-mips.h $RPM_BUILD_ROOT%{_includedir}/openssl/configuration-mips64.h
-  # Fix #!/bin/bash shebangs — IRIX doesn't have bash at /bin/bash
-  - sed -i '1s|^#!/bin/bash|#!/usr/sgug/bin/bash|' $RPM_BUILD_ROOT%{_bindir}/renew-dummy-cert || true
   - sed -i 's|^ssl_conf = ssl_module|# ssl_conf = ssl_module
   - sed -i 's|^\.include = /etc/crypto-policies|# .include = /etc/crypto-policies
   - sed -i 's|= /etc/pki/|= /usr/sgug/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf

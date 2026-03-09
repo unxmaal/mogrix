@@ -1,4 +1,10 @@
 package: libICE
+
+build_after:
+  - xorg-x11-proto-devel
+  - xorg-x11-xtrans-devel
+  - xorg-x11-util-macros
+
 rules:
   spec_replacements:
     # Set ACLOCAL_PATH so autoreconf finds xorg-macros.m4 from staging

@@ -142,7 +142,11 @@ COMPAT_DIR=$(pwd)/mogrix-compat
   \
   -DRuby_EXECUTABLE=/home/edodd/projects/github/unxmaal/mogrix/cross/native-tools/ruby \
   -DIMPORT_EXECUTABLES= \
-  -DCMAKE_CROSSCOMPILING=ON
+  -DCMAKE_CROSSCOMPILING=ON \
+  -DHarfBuzz_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include/harfbuzz \
+  -DHarfBuzz_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libharfbuzz.so \
+  -DHarfBuzz_ICU_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include/harfbuzz \
+  -DHarfBuzz_ICU_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libharfbuzz-icu.so
 
 cd _build && make %{?_smp_mflags} VERBOSE=1
 

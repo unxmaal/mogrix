@@ -247,6 +247,13 @@ class RuleEngine:
                 f"add_source: {len(pkg_rules['add_source'])} sources"
             )
 
+        # Handle install_cleanup at top level (outside rules section)
+        if "install_cleanup" in pkg_rules and pkg_rules is not rules:
+            result.install_cleanup.extend(pkg_rules["install_cleanup"])
+            result.applied_rules.append(
+                f"install_cleanup: {len(pkg_rules['install_cleanup'])} commands (top-level)"
+            )
+
         # Inject compat functions
         if "inject_compat_functions" in rules:
             funcs = rules["inject_compat_functions"]

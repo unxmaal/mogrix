@@ -1,4 +1,6 @@
 package: libmetalink
+blocked: true
+blocked_reason: "no SRPM in mogrix_inputs"
 rules:
   configure_flags:
     add:

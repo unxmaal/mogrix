@@ -1,22 +1,12 @@
-# tree-pkg - File system tree viewer
-# Simple Makefile-based package, minimal dependencies
+# tree - directory listing in tree format
 package: tree-pkg
-
 rules:
-  # IRIX pwd.h defines 'struct comment' which conflicts with tree's struct
-  add_patch:
-    - irix-comment-rename.patch
-
-  # Export cross-compiler for Makefile
-  export_vars:
-    CC: "%{__cc}"
-
-  # Replace the sed that sets LINUX define - use __sgi for IRIX
-  spec_replacements:
-    # Fix the platform define for IRIX
-    - pattern: "sed -e 's/LINUX/__linux__/' -i tree.c"
-      replacement: "sed -e 's/LINUX/__sgi/' -i tree.c"
-
-    # Override CFLAGS in make to use our cross-compiler flags
-    - pattern: '%make_build CFLAGS="$RPM_OPT_FLAGS $(getconf LFS_CFLAGS)" LDFLAGS="$LDFLAGS"'
-      replacement: '%make_build CC="%{__cc}" CFLAGS="$RPM_OPT_FLAGS" LDFLAGS="$LDFLAGS"'
+  prep_commands:
+  # Makefile hardcodes CC=gcc — must override for cross-compilation
+  - "$MOGRIX_ROOT/tools/safepatch Makefile --old 'CC=gcc' --new 'CC=%{__cc}' --no-backup --quiet"
+  # IRIX pwd.h defines 'struct comment' — rename tree's to avoid collision
+  - "$MOGRIX_ROOT/tools/safepatch tree.h --old 'struct comment {' --new 'struct tree_comment {' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch tree.h --old 'struct comment *next;' --new 'struct tree_comment *next;' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch tree.h --old 'struct comment *comments;' --new 'struct tree_comment *comments;' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch tree.h --old 'struct comment *infocheck' --new 'struct tree_comment *infocheck' --no-backup --quiet"
+  - "for f in info.c file.c tree.c; do $MOGRIX_ROOT/tools/safepatch $f --old 'struct comment' --new 'struct tree_comment' --count 0 --no-backup --quiet || :; done"
