@@ -1,7 +1,5 @@
-# findutils has deep gnulib conflicts (getopt.h, perror, nanosleep).
-# Needs systemic compat header fix. Skip from rebuild-all for now.
+# findutils - GNU find, xargs, locate
 package: findutils
-skip: true
 classes:
 - nls-disabled
 smoke_test:

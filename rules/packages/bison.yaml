@@ -1,9 +1,5 @@
-# bison package rules for IRIX cross-compilation
-# NOTE: bison has deep gnulib conflicts (getopt.h, string.h, perror.c).
-# Low priority — bison is a build-time tool, not an IRIX user application.
-# Skip from rebuild-all for now.
+# bison - GNU parser generator
 package: bison
-skip: true
 
 classes:
   - nls-disabled

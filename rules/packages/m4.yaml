@@ -1,9 +1,5 @@
 # m4 package rules for IRIX cross-compilation
-# NOTE: m4 has persistent gnulib nanosleep conflicts due to RPM spec quoting
-# stripping. Low priority — m4 is a build-time tool, not an IRIX user app.
-# Skip from rebuild-all for now.
 package: m4
-skip: true
 
 smoke_test:
   - command: "/usr/sgug/bin/m4 --version"
@@ -18,16 +14,22 @@ rules:
   export_vars:
     CFLAGS: "%{optflags} -DWCHAR_MAX=0x7fffffff"
 
-  spec_replacements:
-    # After configure, fix gnulib's generated time.h — it redeclares nanosleep
-    # with a conflicting type vs IRIX's nanosleep(const timespec_t*, timespec_t*).
-    # GNULIB_PORTCHECK forces REPLACE_NANOSLEEP even when gl_cv_func_nanosleep=yes.
-    - pattern: "%make_build"
-      replacement: "grep -v _GL_FUNCDECL_SYS..nanosleep lib/time.h > lib/time.h.tmp && grep -v _GL_FUNCDECL_RPL..nanosleep lib/time.h.tmp > lib/time.h.tmp2 && grep -v 'define nanosleep rpl_nanosleep' lib/time.h.tmp2 > lib/time.h && rm -f lib/time.h.tmp lib/time.h.tmp2 || true\n%make_build"
   # IRIX wchar.h hides C99/XPG5 functions behind _WCHAR_CORE_EXTENSIONS_1
   # (requires __c99 or _XOPEN_SOURCE>=500, neither set with clang).
   # Tell configure they're missing so gnulib provides its own replacements.
   ac_cv_overrides:
+    # IRIX has nanosleep and it works fine. Tell gnulib not to replace it.
+    # The type mismatch (timespec_t vs struct timespec) is harmless since
+    # they're the same struct, but gnulib's rpl_nanosleep #define macro
+    # renames IRIX's force-included declaration and causes type conflicts.
+    ac_cv_search_nanosleep: "none required"
+    gl_cv_func_nanosleep: "yes"
+    # Tell gnulib IRIX has no strerror_r at all — let gnulib provide its own
+    # complete replacement. Our compat strerror_r (GNU char* variant) conflicts
+    # with gnulib's wrapper which expects to call an int-returning XSI variant.
+    ac_cv_func___xpg_strerror_r: "no"
+    ac_cv_func_strerror_r: "no"
+    ac_cv_have_decl_strerror_r: "no"
     ac_cv_func_mbsinit: "no"
     gl_cv_func_mbsinit_works: "no"
     ac_cv_func_wcrtomb: "no"

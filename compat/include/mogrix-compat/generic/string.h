@@ -38,8 +38,11 @@ char *strcasestr(const char *haystack, const char *needle);
 /* strsep - BSD extension, token extraction */
 char *strsep(char **stringp, const char *delim);
 
-/* strerror_r - POSIX/GNU thread-safe error string */
-char *strerror_r(int errnum, char *buf, size_t buflen);
+/* strerror_r - NOT declared here. Our compat provides the GNU variant
+ * (returns char*) but gnulib may declare the XSI variant (returns int).
+ * The implementation in compat/error/strerror_r.c is linked via
+ * inject_compat_functions; callers get the declaration from gnulib's
+ * string.h or their own headers. */
 
 /* explicit_bzero - OpenBSD/glibc, zero memory without optimization */
 void explicit_bzero(void *buf, size_t len);
