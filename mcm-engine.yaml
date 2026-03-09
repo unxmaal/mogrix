@@ -12,11 +12,11 @@ plugins:
   - tools.mcm_mogrix:MogrixPlugin
 
 nudges:
-  store_reminder_turns: 8
-  checkpoint_turns: 20
-  mandatory_stop_turns: 40
+  store_reminder_turns: 4
+  checkpoint_turns: 10
+  mandatory_stop_turns: 20
   hyper_focus_threshold: 3
-  rules_check_interval: 10
+  rules_check_interval: 5
   # Block tool calls (return error) after mandatory_stop + grace without checkpoint.
   # Set to false to revert to advisory-only nudges.
   mandatory_stop_blocking: true
