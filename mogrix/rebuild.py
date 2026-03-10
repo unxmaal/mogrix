@@ -239,8 +239,11 @@ def build_package(package: str, converted_srpm: Path) -> tuple[bool, list[Path],
     pkg_rpmbuild.mkdir(parents=True, exist_ok=True)
 
     # Snapshot output RPMs before build to detect new ones
+    # Include both .mips.rpm and .noarch.rpm — subpackages may be noarch
     out_rpms_dir = MOGRIX_OUTPUTS / "RPMS"
-    pre_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) if out_rpms_dir.exists() else set()
+    pre_build_rpms = set()
+    if out_rpms_dir.exists():
+        pre_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
 
     result = subprocess.run(
         [str(MOGRIX_BIN), "build", str(converted_srpm), "--cross",
@@ -262,7 +265,9 @@ def build_package(package: str, converted_srpm: Path) -> tuple[bool, list[Path],
 
     # The CLI copies built RPMs to MOGRIX_OUTPUTS/RPMS/ — collect from there.
     # Snapshot comparison finds exactly the RPMs this build produced.
-    post_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) if out_rpms_dir.exists() else set()
+    post_build_rpms = set()
+    if out_rpms_dir.exists():
+        post_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
     new_rpms = sorted(post_build_rpms - pre_build_rpms)
 
     # Fallback to name-based glob if snapshot detection finds nothing
@@ -271,6 +276,7 @@ def build_package(package: str, converted_srpm: Path) -> tuple[bool, list[Path],
         m = _re.match(r"^(.+?)-[\d]", converted_srpm.name)
         pkg_prefix = m.group(1) if m else package
         new_rpms = sorted(out_rpms_dir.glob(f"{pkg_prefix}*.mips.rpm"))
+        new_rpms += sorted(out_rpms_dir.glob(f"{pkg_prefix}*.noarch.rpm"))
 
     # Clean up the per-package rpmbuild dir
     shutil.rmtree(pkg_rpmbuild, ignore_errors=True)
@@ -509,8 +515,9 @@ def rebuild_all(
                     pass
             # Fallback to name-based glob if gate results unavailable
             if not pkg_rpms:
-                pkg_rpms = sorted(rpms_dir.glob(f"{pkg}-[0-9]*.mips.rpm"))
-                pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.mips.rpm"))
+                for ext in ("mips.rpm", "noarch.rpm"):
+                    pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-[0-9]*.{ext}"))
+                    pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.{ext}"))
                 pkg_rpms = sorted(set(pkg_rpms))
             if pkg_rpms:
                 staged = stage_package(pkg_rpms, staging_dir)

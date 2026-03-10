@@ -1,5 +1,9 @@
 # m4 package rules for IRIX cross-compilation
+# gnulib's test library unconditionally compiles strerror_r.c which conflicts
+# with our GNU char*-returning compat. Needs gnulib strerror_r exclusion or
+# a compat that provides both signatures. Low priority — build tool only.
 package: m4
+skip: true
 
 smoke_test:
   - command: "/usr/sgug/bin/m4 --version"
@@ -24,12 +28,13 @@ rules:
     # renames IRIX's force-included declaration and causes type conflicts.
     ac_cv_search_nanosleep: "none required"
     gl_cv_func_nanosleep: "yes"
-    # Tell gnulib IRIX has no strerror_r at all — let gnulib provide its own
-    # complete replacement. Our compat strerror_r (GNU char* variant) conflicts
-    # with gnulib's wrapper which expects to call an int-returning XSI variant.
+    # Our compat strerror_r returns char* (GNU variant). Tell gnulib it exists
+    # and returns char* so gnulib doesn't declare its own int-returning version.
     ac_cv_func___xpg_strerror_r: "no"
-    ac_cv_func_strerror_r: "no"
-    ac_cv_have_decl_strerror_r: "no"
+    ac_cv_func_strerror_r: "yes"
+    ac_cv_have_decl_strerror_r: "yes"
+    ac_cv_func_strerror_r_char_p: "yes"
+    gl_cv_func_strerror_r_works: "yes"
     ac_cv_func_mbsinit: "no"
     gl_cv_func_mbsinit_works: "no"
     ac_cv_func_wcrtomb: "no"
