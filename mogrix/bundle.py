@@ -478,9 +478,8 @@ class BundleBuilder:
             return
 
         # Collect all NEEDED sonames from binaries.
-        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps)
-        # and libgcc_s (quad-float builtins needed by many libs but not declared).
-        needed = {"libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"}
+        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps).
+        needed = {"libmogrix_compat.so", "irix_rld_stubs.so"}
         for bin_subdir in ("_bin", "_sbin"):
             d = bundle_dir / bin_subdir
             if not d.is_dir():
@@ -1132,17 +1131,12 @@ class BundleBuilder:
             lib_dir.mkdir(exist_ok=True)
             shutil.copy2(str(rld_stubs_src), str(lib_dir / "irix_rld_stubs.so"))
 
-        # Always include libgcc_s.so.1 — many mogrix-built shared libs use
-        # 128-bit long double (quad-float) operations that need __getf2,
-        # __multf3, etc. from libgcc. These libs don't declare DT_NEEDED
-        # libgcc_s.so.1, so the dep resolver misses it.
-        libgcc_src = STAGING_LIB_DIR / "libgcc_s.so.1"
-        if libgcc_src.exists():
-            lib_dir = bundle_dir / "_lib32"
-            lib_dir.mkdir(exist_ok=True)
-            dest = lib_dir / "libgcc_s.so.1"
-            if not dest.exists():
-                shutil.copy2(str(libgcc_src), str(dest))
+        # NOTE: Do NOT force-include libgcc_s.so.1 here. It has non-weak
+        # pthread symbol refs that cause either "unresolvable symbol" (if
+        # libpthread isn't loaded) or "_RLD_PTHREADS_START invoked twice"
+        # (if libpthread is preloaded via _RLDN32_LIST). Packages that need
+        # libgcc_s quad-float builtins (__getf2, __multf3) should add -lgcc_s
+        # to their link flags so it appears as a proper DT_NEEDED entry.
 
         # Create missing soname symlinks.  -devel RPMs (excluded from bundles)
         # often contain unversioned .so symlinks (e.g. libz.so → libz.so.1)
@@ -1265,7 +1259,7 @@ class BundleBuilder:
                 '#!/bin/sh\n'
                 'LD_LIBRARYN32_PATH="$dir/_lib32:/usr/lib32"\n'
                 'export LD_LIBRARYN32_PATH\n'
-                '_RLDN32_LIST="$dir/_lib32/libmogrix_compat.so:$dir/_lib32/libgcc_s.so.1:DEFAULT"\n'
+                '_RLDN32_LIST="$dir/_lib32/libmogrix_compat.so:DEFAULT"\n'
                 'export _RLDN32_LIST\n'
                 'exec "$dir/_bin/dpid" "\\$@"\n'
                 'DPID_EOF\n'
@@ -1391,11 +1385,12 @@ class BundleBuilder:
         # Use absolute paths ($dir/_lib32/...) so child processes (e.g. user's
         # shell spawned by tmux) can find them even outside the bundle's
         # LD_LIBRARYN32_PATH.
-        # libgcc_s.so.1 must be preloaded because libunistring/libintl use
-        # 128-bit quad-float builtins (__getf2, __multf3, etc.) but don't
-        # declare DT_NEEDED libgcc_s.so.1. IRIX rld won't find it otherwise.
+        # NOTE: Do NOT preload libgcc_s.so.1 — it has non-weak pthread
+        # refs that cause rld errors. Do NOT preload libpthread.so — it
+        # causes "_RLD_PTHREADS_START invoked twice". Only preload compat
+        # libs that have no problematic dependencies.
         rld_list_libs = []
-        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"):
+        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so"):
             if (bundle_dir / "_lib32" / preload_name).exists():
                 rld_list_libs.append(f"$dir/_lib32/{preload_name}")
         if rld_list_libs:

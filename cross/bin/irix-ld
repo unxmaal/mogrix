@@ -170,6 +170,15 @@ if [ "$is_shared" = "1" ]; then
         # emits R_MIPS_32 absolute relocations in .eh_frame for C++ exception
         # handling, even with -fPIC. LLD 18 rejects these without -z notext.
         # This affects ALL C++ shared libraries (double-conversion, woff2, etc.).
+        # Auto-link libgcc_s for quad-float builtins (__floatditf, __addtf3,
+        # __trunctfsf2, etc.) used by MIPS 128-bit long double. Without this,
+        # libs like libtiff, libglib, libunistring silently omit NEEDED
+        # libgcc_s.so.1, causing "unresolvable symbol" at runtime on IRIX.
+        # Skip for libgcc_s itself to avoid circular dependency.
+        LIBGCC_S_FLAG="-lgcc_s"
+        case "$filtered_args" in
+            *libgcc_s*) LIBGCC_S_FLAG="" ;;
+        esac
         $LLD \
           -Bsymbolic \
           --no-rosegment \
@@ -184,6 +193,7 @@ if [ "$is_shared" = "1" ]; then
           -L$STAGING/lib32 \
           -L$SYSROOT/lib32 \
           -L$SYSROOT/usr/lib32 \
+          $LIBGCC_S_FLAG \
           $CRTEND
         rc=$?
     fi

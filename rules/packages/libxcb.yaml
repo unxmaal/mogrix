@@ -12,8 +12,11 @@ rules:
     - --disable-doxygen
     remove:
     - --enable-selinux
-  export_vars:
-    LDFLAGS: -lX11
+  # NOTE: Do NOT add -lX11 to LDFLAGS. libxcb is lower-level than libX11
+  # (libX11 depends on libxcb, not vice versa). Adding -lX11 caused the linker
+  # to pull in IRIX native libX11.so.1 from the sysroot, embedding the wrong
+  # soname as NEEDED. This caused dual libX11 loading at runtime (sgug .so.6
+  # AND native .so.1), corrupting X11 state and breaking display in SDL2 apps.
   spec_replacements:
   - pattern: 'sed -i ''s/pthread-stubs //'' configure.ac
 

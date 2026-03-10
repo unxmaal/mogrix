@@ -181,6 +181,7 @@ rules:
           -DSDL_DISKAUDIO=ON \
           -DSDL_DUMMYAUDIO=ON \
           -DSDL_VIDEO_X11=ON \
+          -DSDL_X11_SHARED=OFF \
           -DSDL_VIDEO_X11_XCURSOR=ON \
           -DSDL_VIDEO_X11_XFIXES=ON \
           -DSDL_VIDEO_X11_XINPUT=ON \
@@ -188,6 +189,7 @@ rules:
           -DSDL_VIDEO_X11_XSCRNSAVER=OFF \
           -DSDL_VIDEO_OPENGL=ON \
           -DSDL_VIDEO_OPENGL_GLX=ON \
+          -DSDL_OPENGL_ES_SHARED=OFF \
           -DSDL_VIDEO_OPENGLES=OFF \
           -DSDL_VIDEO_WAYLAND=OFF \
           -DSDL_VIDEO_KMSDRM=OFF \
