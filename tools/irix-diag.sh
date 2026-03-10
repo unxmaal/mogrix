@@ -144,7 +144,10 @@ echo "  [5/8] Soname resolution check..."
         [ -h "$f" ] && continue
         needs=`elfdump -L "$f" 2>/dev/null | grep NEEDED | sed 's/.*\[//' | sed 's/\]//'`
         for n in $needs; do
-            all_needed="$all_needed $n"
+            # Skip non-soname tokens (elfdump column numbers, "NEEDED" keyword)
+            case "$n" in
+                *lib*|*.so*) all_needed="$all_needed $n" ;;
+            esac
         done
     done
 
