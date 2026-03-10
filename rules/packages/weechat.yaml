@@ -1,4 +1,7 @@
 package: weechat
+smoke_test:
+  - command: "/usr/sgug/bin/weechat -v 2>&1"
+    expect: ""
 rules:
   inject_compat_functions:
   - mkdtemp
@@ -14,6 +17,7 @@ rules:
   - cpputest-devel
   - ca-certificates
   - hicolor-icon-theme
+  - libzstd-devel
   drop_requires:
   - hicolor-icon-theme
   export_vars:
@@ -28,15 +32,15 @@ rules:
   - pattern: "%cmake3 \\\n  -DPREFIX=%{_prefix} \\\n  -DLIBDIR=%{_libdir} \\\n  -DENABLE_ENCHANT=ON \\\n  -DENABLE_PHP=OFF \\\n%if %{with check}\n  -DENABLE_TESTS=ON \\\n%else\n  -DENABLE_TESTS=OFF \\\n\
       %endif\n%if %{with docs}\n  -DENABLE_DOC=ON \\\n  -DENABLE_DOC_INCOMPLETE=ON \\\n  -DENABLE_MAN=ON \\\n%else\n  -DENABLE_DOC=OFF \\\n  -DENABLE_MAN=OFF \\\n%endif\n  -DCA_FILE=/etc/pki/tls/certs/ca-bundle.crt\
       \ \\\n  %{nil}\n%cmake3_build\n"
-    replacement: "export COMPAT_DIR=$(pwd)/mogrix-compat\ncmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \\\n  -DCMAKE_SYSTEM_NAME=IRIX \\\
+    replacement: "export COMPAT_DIR=$(pwd)/mogrix-compat\nunset LIBS\ncmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \\\n  -DCMAKE_SYSTEM_NAME=IRIX \\\
       \n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_CXX_COMPILER=%{__cxx} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir}\
-      \ \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a\
-      \ -lgen -lpthread\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n\
+      \ \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 -L$COMPAT_DIR $COMPAT_DIR/libmogrix-compat.a\
+      \ -lgen -lpthread\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 -L$COMPAT_DIR $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n\
       \  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY\
       \ \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DICONV_INCLUDE_PATH=/opt/irix-sysroot/usr/include \\\n  -DICONV_FOUND:BOOL=TRUE \\\n  -DPREFIX=%{_prefix} \\\
       \n  -DLIBDIR=%{_libdir} \\\n  -DENABLE_PYTHON=OFF \\\n  -DENABLE_PERL=OFF \\\n  -DENABLE_RUBY=OFF \\\n  -DENABLE_LUA=OFF \\\n  -DENABLE_TCL=OFF \\\n  -DENABLE_GUILE=OFF \\\n  -DENABLE_PHP=OFF \\\n\
       \  -DENABLE_JAVASCRIPT=OFF \\\n  -DENABLE_ENCHANT=OFF \\\n  -DENABLE_SPELL=OFF \\\n  -DENABLE_DOC=OFF \\\n  -DENABLE_MAN=OFF \\\n  -DENABLE_TESTS=OFF \\\n  -DENABLE_HEADLESS=OFF \\\n  -DENABLE_NLS=OFF\
-      \ \\\n  -DENABLE_CJSON=OFF\ncd _build && make %{?_smp_mflags}\n"
+      \ \\\n  -DENABLE_CJSON=OFF \\\n  -DENABLE_ZSTD=OFF \\\n  -DLIBGCRYPT_CONFIG_EXECUTABLE=/opt/sgug-staging/usr/sgug/bin/libgcrypt-config\ncd _build && make %{?_smp_mflags}\n"
   - pattern: '%cmake3_install'
     replacement: cd _build && make install DESTDIR=%{buildroot}
   - pattern: '%{_bindir}/%{name}-headless

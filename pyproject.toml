@@ -7,12 +7,13 @@ name = "mogrix"
 version = "0.1.0"
 description = "SRPM conversion engine for IRIX"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0",
     "click>=8.0",
     "rich>=13.0",
     "specfile>=0.38.0",
+    "mcm-engine @ file:///home/edodd/projects/github/unxmaal/mcm-engine",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,9 @@ lint = [
 
 [project.scripts]
 mogrix = "mogrix.cli:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

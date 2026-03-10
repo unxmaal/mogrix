@@ -1,4 +1,9 @@
 package: vim
+
+smoke_test:
+  - command: "/usr/sgug/bin/vim --version 2>&1"
+    expect: "VIM"
+
 rules:
   drop_buildrequires:
   - perl(ExtUtils::Embed)
@@ -15,7 +20,6 @@ rules:
   - gpm-devel
   - libsodium-devel
   - glibc-gconv-extra
-  - ncurses-devel
   - autoconf
   - gettext
   - libtool
@@ -33,6 +37,8 @@ rules:
   - "$MOGRIX_ROOT/tools/safepatch src/structs.h --insert-top \"$(printf '#ifdef OP_NONE\\n#undef OP_NONE\\n#endif')\" --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch src/osdef1.h.in --delete-line 'struct pollfd.*for poll' --regex --no-backup --quiet || :"
   - "$MOGRIX_ROOT/tools/safepatch src/osdef1.h.in --delete-line 'extern int.*poll.struct pollfd' --regex --no-backup --quiet || :"
+  export_vars:
+    LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32"
   spec_replacements:
   - pattern: '%bcond_without gui'
     replacement: '%bcond_with gui'

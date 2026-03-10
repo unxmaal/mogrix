@@ -5,3 +5,8 @@ rules:
     - --with-libexpat
     remove:
     - --with-libxml2
+  # Man pages are installed uncompressed on IRIX (no gzip).
+  # The original glob metalink*.3.* expects .3.gz suffix.
+  spec_replacements:
+  - pattern: '%{_mandir}/man3/metalink*.3.*'
+    replacement: '%{_mandir}/man3/metalink*'

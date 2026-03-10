@@ -1,1 +1,14 @@
 package: rlwrap
+
+build_after:
+  - ncurses
+  - readline
+
+rules:
+  # Upstream bug: extra ')' in signals.c line 469 (#else branch of HAVE_SETITIMER).
+  # Cross-compile doesn't detect setitimer so it hits this broken code path.
+  # Fix both: tell autoconf IRIX has setitimer, and fix the typo just in case.
+  ac_cv_overrides:
+    ac_cv_func_setitimer: "yes"
+  prep_commands:
+    - "sed -i 's/alarm(msecs == 0 ? 0 : 1 + msecs\\/1000));/alarm(msecs == 0 ? 0 : 1 + msecs\\/1000);/' src/signals.c || true"

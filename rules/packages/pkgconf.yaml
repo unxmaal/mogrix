@@ -8,6 +8,17 @@ smoke_test:
   - command: "/usr/sgug/bin/pkg-config --list-all"
 
 rules:
+  # atf-tests and kyua are test frameworks not available for IRIX
+  # autoconf/automake/gcc/libtool/make are host tools installed via apt, not RPM
+  drop_buildrequires:
+    - atf-tests
+    - kyua
+    - autoconf
+    - automake
+    - gcc
+    - libtool
+    - make
+
   # IRIX has strndup declared but not implemented in libc.
   # strdup IS in IRIX libc, but it uses libc's malloc internally.
   # Since dlmalloc replaces malloc/free, we must also replace strdup

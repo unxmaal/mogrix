@@ -84,7 +84,7 @@ mkdir -p _build && cd _build
 CC="%{__cc}" \
 CXX="%{__cxx}" \
 CFLAGS="%{optflags}" \
-CXXFLAGS="%{optflags} -Drestrict=__restrict__" \
+CXXFLAGS="%{optflags} -Drestrict=__restrict__ -D_GLIBCXX_USE_CXX11_ABI=0" \
 LDFLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32 -L${COMPAT_DIR} -lmogrix-compat" \
 ../configure \
   --host=mips-sgi-irix6.5 \

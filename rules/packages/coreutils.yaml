@@ -36,6 +36,23 @@ rules:
     gl_cv_func_pthread_sigmask_macro: 'no'
     gl_cv_func_pthread_sigmask_in_libc_works: 'yes'
     gl_cv_func_pthread_sigmask_in_LIBMULTITHREAD: 'yes'
+    ac_cv_func_sigaction: 'yes'
+    gl_cv_func_sigaction_works: 'yes'
+    ac_cv_func_gettimeofday: 'yes'
+    gl_cv_func_gettimeofday_clobber: 'no'
+    gl_cv_func_nanosleep: 'yes'
+    ac_cv_func_nanosleep: 'yes'
+    gl_cv_func_nanosleep_works: 'yes'
+    ac_cv_have_decl_alarm: 'yes'
+    gl_cv_have_raw_decl_sigaction: 'yes'
+    ac_cv_type_struct_sigaction: 'yes'
+    gl_cv_type_sigset_t: 'yes'
+    HAVE_SIGACTION: '1'
+    HAVE_STRUCT_SIGACTION_SA_SIGACTION: '1'
+    ac_cv_func_sigprocmask: 'yes'
+    gl_cv_func_sigprocmask: 'yes'
+    HAVE_POSIX_SIGNALBLOCKING: '1'
+    HAVE_SIGSET_T: '1'
   spec_replacements:
   - pattern: 'Source105:  coreutils-colorls.sh'
     replacement: 'Source51:   coreutils-colorls.sh'
@@ -54,7 +71,9 @@ rules:
   - pattern: '%configure $config_single'
     replacement: LIBS="$LIBS -lpthread" %configure --disable-year2038 --disable-xattr --without-selinux --without-openssl --without-libgmp $config_single
   - pattern: --enable-no-install-program=kill,uptime
-    replacement: --enable-no-install-program=kill,uptime,stdbuf,pinky,who,users,seq
+    replacement: --enable-no-install-program=kill,uptime,stdbuf,pinky,who,users,seq,timeout
+  - pattern: '%make_build all V=1'
+    replacement: '%make_build all V=1'
   - pattern: ln -fv ../lib/parse-datetime.{c,y} .
     replacement: ln -fv ../lib/parse-datetime.c ../lib/parse-datetime.y .
   - pattern: --enable-systemd
@@ -78,9 +97,14 @@ rules:
   - pattern: cp %SOURCE50 .
     replacement: 'cp %SOURCE50 .
 
-      sed -i ''/pinky/d; /stdbuf/d; /\/users$/d; /\/who$/d; /\/seq$/d'' supported_utils'
+      sed -i ''/pinky/d; /stdbuf/d; /\/users$/d; /\/who$/d; /\/seq$/d; /\/timeout$/d'' supported_utils'
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet || true; $MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zd' --new '%d' --count 0 --no-backup --quiet || true; $MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zx' --new '%x' --count 0 --no-backup --quiet || true"
+  - "sed -i 's/NSIG <= 32/NSIG <= 256/' lib/signal.in.h || true"
+  - "perl -0777 -i -pe 's/^#if !@HAVE_STRUCT_SIGACTION@.*?^#endif//ms' lib/signal.in.h || true"
+  - "perl -0777 -i -pe 's/_GL_FUNCDECL_SYS\\s*\\(nanosleep.*?\\);//gs' lib/time.in.h || true"
+  - "perl -0777 -i -pe 's/_GL_FUNCDECL_SYS\\s*\\(gettimeofday.*?\\);//gs' lib/sys_time.in.h || true"
+  - "echo '/* disabled for IRIX - native sigprocmask works */' > lib/sigprocmask.c"
   install_cleanup:
   - rm -rf %{buildroot}%{_infodir}
   - rm -rf %{buildroot}%{_mandir}

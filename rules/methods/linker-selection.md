@@ -160,6 +160,16 @@ The patches fix the relocation bug. Correct output looks like:
 0003606c  00007e03 R_MIPS_REL32      00000000   poptHelpOptions
 ```
 
+## C++ Shared Libraries: R_MIPS_32 in .eh_frame
+
+**Error:** `relocation R_MIPS_32 cannot be used against 'foo'; recompile with -fPIC`
+
+**Root cause:** MIPS clang always emits absolute `R_MIPS_32` relocations in `.eh_frame` for C++ exception handling, even with `-fPIC`. LLD 18 rejects these in shared library links.
+
+**Systemic fix in irix-ld:** Added `-z notext` to the LLD shared library invocation. This allows text relocations from `.eh_frame` in all C++ shared libraries. No per-package `LDFLAGS` needed.
+
+**Affects:** All C++ shared libraries — double-conversion, woff2, libptytty, GraphicsMagick, and any other C++ `.so`.
+
 ## Debugging Linker Issues
 
 If you suspect a linker problem:

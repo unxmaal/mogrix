@@ -409,15 +409,23 @@ class BundleBuilder:
                     needed_sonames.update(self._readelf_needed(target))
 
         # For each needed soname missing from _lib32/, try to find a
-        # versioned file that provides it (via ELF SONAME header).
+        # versioned file that provides it (via ELF SONAME header or prefix).
         created = []
         for soname in sorted(needed_sonames):
             soname_path = lib_dir / soname
             if soname_path.exists():
                 continue
             # Look for a file whose ELF SONAME matches
+            prefix = soname.split(".so")[0]
+            best_fallback: str | None = None
             for candidate in lib_dir.iterdir():
-                if not candidate.name.startswith(soname.split(".so")[0]):
+                # Prefix must match exactly up to ".so" or "." boundary
+                # to avoid e.g. "libm" matching "libmogrix_compat.so"
+                cname = candidate.name
+                if not cname.startswith(prefix):
+                    continue
+                rest = cname[len(prefix):]
+                if rest and not rest.startswith("."):
                     continue
                 target = candidate.resolve() if candidate.is_symlink() else candidate
                 if not target.exists() or not self._is_elf(target):
@@ -427,14 +435,29 @@ class BundleBuilder:
                     ["readelf", "-d", str(target)],
                     capture_output=True, text=True,
                 )
+                has_soname = False
                 for line in result.stdout.splitlines():
-                    if "(SONAME)" in line and f"[{soname}]" in line:
-                        # Create symlink to the candidate
-                        soname_path.symlink_to(candidate.name)
-                        created.append(f"{soname} -> {candidate.name}")
-                        break
+                    if "(SONAME)" in line:
+                        has_soname = True
+                        if f"[{soname}]" in line:
+                            # Exact SONAME match
+                            soname_path.symlink_to(candidate.name)
+                            created.append(f"{soname} -> {candidate.name}")
+                            break
                 if soname_path.exists():
                     break
+                # Track shortest-named candidate with no SONAME as fallback
+                # (e.g. zlib-ng has no SONAME; libz.so.1 is the best target)
+                if not has_soname and (
+                    best_fallback is None
+                    or len(candidate.name) < len(best_fallback)
+                ):
+                    best_fallback = candidate.name
+            # Fallback: library has no SONAME (e.g. zlib-ng), link to
+            # shortest versioned file with matching prefix
+            if not soname_path.exists() and best_fallback:
+                soname_path.symlink_to(best_fallback)
+                created.append(f"{soname} -> {best_fallback} (no-SONAME fallback)")
 
         if created:
             console.print(
@@ -455,8 +478,9 @@ class BundleBuilder:
             return
 
         # Collect all NEEDED sonames from binaries.
-        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps).
-        needed = {"libmogrix_compat.so", "irix_rld_stubs.so"}
+        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps)
+        # and libgcc_s (quad-float builtins needed by many libs but not declared).
+        needed = {"libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"}
         for bin_subdir in ("_bin", "_sbin"):
             d = bundle_dir / bin_subdir
             if not d.is_dir():
@@ -1108,6 +1132,18 @@ class BundleBuilder:
             lib_dir.mkdir(exist_ok=True)
             shutil.copy2(str(rld_stubs_src), str(lib_dir / "irix_rld_stubs.so"))
 
+        # Always include libgcc_s.so.1 — many mogrix-built shared libs use
+        # 128-bit long double (quad-float) operations that need __getf2,
+        # __multf3, etc. from libgcc. These libs don't declare DT_NEEDED
+        # libgcc_s.so.1, so the dep resolver misses it.
+        libgcc_src = STAGING_LIB_DIR / "libgcc_s.so.1"
+        if libgcc_src.exists():
+            lib_dir = bundle_dir / "_lib32"
+            lib_dir.mkdir(exist_ok=True)
+            dest = lib_dir / "libgcc_s.so.1"
+            if not dest.exists():
+                shutil.copy2(str(libgcc_src), str(dest))
+
         # Create missing soname symlinks.  -devel RPMs (excluded from bundles)
         # often contain unversioned .so symlinks (e.g. libz.so → libz.so.1)
         # that are needed at runtime when the ELF SONAME is unversioned.
@@ -1229,7 +1265,7 @@ class BundleBuilder:
                 '#!/bin/sh\n'
                 'LD_LIBRARYN32_PATH="$dir/_lib32:/usr/lib32"\n'
                 'export LD_LIBRARYN32_PATH\n'
-                '_RLDN32_LIST=libmogrix_compat.so:DEFAULT\n'
+                '_RLDN32_LIST="$dir/_lib32/libmogrix_compat.so:$dir/_lib32/libgcc_s.so.1:DEFAULT"\n'
                 'export _RLDN32_LIST\n'
                 'exec "$dir/_bin/dpid" "\\$@"\n'
                 'DPID_EOF\n'
@@ -1320,12 +1356,15 @@ class BundleBuilder:
                 ': ${JSC_largeHeapGrowthFactor=1.1}\n'
                 'export JSC_largeHeapGrowthFactor'
             )
-        # libevent: IRIX /dev/poll backend crashes — force poll() instead
-        lib32_dir = bundle_dir / "_lib32"
-        if lib32_dir.is_dir() and any(
-            f.name.startswith("libevent") for f in lib32_dir.iterdir()
-        ):
-            extra_env_lines.append("EVENT_NODEVPOLL=1")
+        # libevent: IRIX /dev/poll doesn't work with STREAMS-based PTY masters.
+        # Disable devpoll backend so libevent falls back to poll() syscall.
+        has_libevent = any(
+            f.name.startswith("libevent")
+            for f in (bundle_dir / "_lib32").iterdir()
+            if f.is_file() or f.is_symlink()
+        ) if (bundle_dir / "_lib32").is_dir() else False
+        if has_libevent:
+            extra_env_lines.append('EVENT_NODEVPOLL=1')
             extra_env_lines.append("export EVENT_NODEVPOLL")
         extra_env_block = (
             "\n".join(extra_env_lines) + "\n" if extra_env_lines else ""
@@ -1348,14 +1387,20 @@ class BundleBuilder:
         manifest.binaries = binaries + [f"sbin/{b}" for b in sbin_binaries]
 
         # Generate wrapper scripts at bundle root, named after the commands
-        # Build _RLDN32_LIST from all preload libraries in the bundle
+        # Build _RLDN32_LIST from all preload libraries in the bundle.
+        # Use absolute paths ($dir/_lib32/...) so child processes (e.g. user's
+        # shell spawned by tmux) can find them even outside the bundle's
+        # LD_LIBRARYN32_PATH.
+        # libgcc_s.so.1 must be preloaded because libunistring/libintl use
+        # 128-bit quad-float builtins (__getf2, __multf3, etc.) but don't
+        # declare DT_NEEDED libgcc_s.so.1. IRIX rld won't find it otherwise.
         rld_list_libs = []
-        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so"):
+        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"):
             if (bundle_dir / "_lib32" / preload_name).exists():
-                rld_list_libs.append(preload_name)
+                rld_list_libs.append(f"$dir/_lib32/{preload_name}")
         if rld_list_libs:
             rld_list_value = ":".join(rld_list_libs) + ":DEFAULT"
-            rld_list_block = f"_RLDN32_LIST={rld_list_value}\nexport _RLDN32_LIST\n"
+            rld_list_block = f'_RLDN32_LIST="{rld_list_value}"\nexport _RLDN32_LIST\n'
         else:
             rld_list_block = ""
 

@@ -1,5 +1,11 @@
 package: time
 rules:
+  inject_compat_functions:
+  - timegm
+  export_vars:
+    CPPFLAGS: "-D_GNU_SOURCE=1 $CPPFLAGS"
+  ac_cv_overrides:
+    ac_cv_func_timegm: "yes"
   spec_replacements:
   - pattern: '%{gpgverify} --keyring=''%{SOURCE2}'' --signature=''%{SOURCE1}'' --data=''%{SOURCE0}'''
     replacement: '# gpgverify removed for cross-build'

@@ -1,7 +1,43 @@
 # binutils package rules for IRIX cross-compilation
 package: binutils
+blocked: true
+blocked_reason: "binutils configure tries to compile+run test executables, which fails under cross-compilation. IRIX has native assembler/linker and we use LLVM tools. Not needed on target."
+aliases:
+  - "binutils%{?_with_debug:-debug}"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - binutils2_23.sgifixes.patch
+
+rules:
+  # Fix brace expansion that doesn't work in /bin/sh
+  # sed -i ... bfd/Makefile{.am,.in}  ->  two separate sed commands
+  spec_replacements:
+  - pattern: "sed -i -e 's/%''{release}/%{release}/g' bfd/Makefile{.am,.in}"
+    replacement: "sed -i -e 's/%''{release}/%{release}/g' bfd/Makefile.am bfd/Makefile.in"
+  - pattern: "opcodes/Makefile.{am,in}"
+    replacement: "opcodes/Makefile.am opcodes/Makefile.in"
+  - pattern: "bfd/Makefile.{am,in}"
+    replacement: "bfd/Makefile.am bfd/Makefile.in"
+  # Replace bash-only pushd/popd in shell functions with POSIX cd equivalents
+  # run_target_configuration: pushd $builddir ... popd
+  - pattern: "    pushd $builddir\n\n    echo \"BUILDING the Binutils"
+    replacement: "    cd $builddir\n\n    echo \"BUILDING the Binutils"
+  - pattern: "    ../configure --target=$target $CARGS $SARGS $RARGS $TARGS  || cat config.log\n\n    popd\n}"
+    replacement: "    ../configure --target=$target $CARGS $SARGS $RARGS $TARGS  || cat config.log\n\n    cd ..\n}"
+  # build_target: pushd $builddir ... popd
+  - pattern: "    pushd $builddir\n\n%if %{with docs}"
+    replacement: "    cd $builddir\n\n%if %{with docs}"
+  - pattern: "%endif\n    \n    popd\n}\n\n# run_tests()"
+    replacement: "%endif\n    \n    cd ..\n}\n\n# run_tests()"
+  # run_tests: pushd build-$target ... popd
+  - pattern: "    pushd build-$target\n\n    # FIXME"
+    replacement: "    cd build-$target\n\n    # FIXME"
+  - pattern: "    fi\n\n    popd\n}\n\n#----------------------------------------------------------------------------\n\n# There is a problem"
+    replacement: "    fi\n\n    cd ..\n}\n\n#----------------------------------------------------------------------------\n\n# There is a problem"
+  # install_binutils: pushd build-$target ... popd
+  - pattern: "    pushd build-$target\n    \n    if test x$native"
+    replacement: "    cd build-$target\n    \n    if test x$native"
+  - pattern: "    fi\n\n    popd\n}\n\n#----------------------------------------------------------------------------\n\ninstall_binutils"
+    replacement: "    fi\n\n    cd ..\n}\n\n#----------------------------------------------------------------------------\n\ninstall_binutils"
 

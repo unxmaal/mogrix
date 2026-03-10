@@ -1,4 +1,7 @@
 package: libxml2
+smoke_test:
+  - command: "/usr/sgug/bin/xmllint --version 2>&1"
+    expect: "libxml"
 add_patch:
 - libxml2-disable-check.patch
 rules:

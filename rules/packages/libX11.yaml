@@ -1,0 +1,48 @@
+# libX11 1.8.7 - X Window System client library (FC40: 1.8.7-3)
+# Autotools build. Needs xorgproto, xtrans, libxcb.
+# Skip autoreconf — tarball has pre-generated configure.
+
+package: libX11
+
+rules:
+
+  prep_commands:
+    # Fix %zu format specifier — IRIX libc doesn't support %zu/%zd/%zx
+    - "sed -i 's/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g' src/XlibInt.c"
+
+  spec_replacements:
+    # Skip autoreconf — use pre-generated configure from tarball
+    - pattern: "autoreconf -v --install --force\n"
+      replacement: "# autoreconf skipped — using pre-generated configure\n"
+
+    # Add explicit Provides
+    - pattern: "URL:            https://www.x.org"
+      replacement: |
+        URL:            https://www.x.org
+        Provides: libX11(mips-32) = %{version}-%{release}
+        Provides: libX11.so.6(mips-32)
+        Provides: libX11-xcb.so.1(mips-32)
+        Provides: pkgconfig(x11)
+
+  configure_flags:
+    add:
+      - --disable-static
+      - --disable-specs
+      - --without-xmlto
+      - --without-fop
+
+  ac_cv_overrides:
+    # libX11 uses transport layer — need to tell it TCP is available
+    ac_cv_func_poll: 'yes'
+    # xorg malloc(0) check — can't run test during cross-compile
+    xorg_cv_malloc0_returns_null: 'no'
+    # working mmap check
+    ac_cv_func_mmap_fixed_mapped: 'yes'
+    # Force libX11 to use its own xreallocarray — compat lib provides
+    # reallocarray at link time but IRIX headers don't declare it
+    ac_cv_func_reallocarray: 'no'
+
+  drop_buildrequires:
+    - xorg-x11-util-macros
+    - xmlto
+    - "pkgconfig(xext)"

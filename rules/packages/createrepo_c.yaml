@@ -1,6 +1,8 @@
 # createrepo_c - Repository metadata generator
-# cmake-based build, needs glib2
+# cmake-based build, needs glib2, curl, libxml2, bzip2, openssl, zlib, sqlite, rpm, zstd, drpm
 package: createrepo_c
+blocked: true
+blocked_reason: "missing dependencies: curl-devel (no pkgconfig/headers), libzstd (not staged), drpm (not staged), libmodulemd (not staged)"
 
 rules:
   # Replace bash-specific pushd/popd with POSIX cd
@@ -20,6 +22,6 @@ rules:
     - pattern: "make install DESTDIR=%{buildroot}\npopd"
       replacement: "make install DESTDIR=%{buildroot}\ncd .."
 
-    # Replace %cmake macro with actual cmake command (macro not available on build host)
+    # Replace %cmake macro with actual cmake command with cross-compilation toolchain
     - pattern: "%cmake .."
-      replacement: "cmake .. -DCMAKE_INSTALL_PREFIX=%{_prefix} -DLIB_SUFFIX=32"
+      replacement: "cmake .. -DCMAKE_TOOLCHAIN_FILE=/home/edodd/projects/github/unxmaal/mogrix/cross/cmake-irix-toolchain.cmake -DCMAKE_INSTALL_PREFIX=%{_prefix} -DLIB_SUFFIX=32 -DBZIP2_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/libbz2.so -DBZIP2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include -DWITH_ZCHUNK=OFF -DWITH_LIBMODULEMD=OFF -DENABLE_DRPM=OFF"

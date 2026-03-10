@@ -1,4 +1,7 @@
 package: mc
+smoke_test:
+  - command: "/usr/sgug/bin/mc --version 2>&1 | head -1"
+    expect: "Midnight Commander"
 # Re-enablement audit (Feb 2025): SFTP virtual filesystem re-enabled.
 # libssh2 now in staging. vfs-sftp was removed from configure_disable.
 # mc auto-detects libssh2 and enables the SFTP VFS panel.

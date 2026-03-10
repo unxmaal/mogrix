@@ -1,5 +1,9 @@
 # m4 package rules for IRIX cross-compilation
+# gnulib's test library unconditionally compiles strerror_r.c which conflicts
+# with our GNU char*-returning compat. Needs gnulib strerror_r exclusion or
+# a compat that provides both signatures. Low priority — build tool only.
 package: m4
+skip: true
 
 smoke_test:
   - command: "/usr/sgug/bin/m4 --version"
@@ -13,10 +17,24 @@ smoke_test:
 rules:
   export_vars:
     CFLAGS: "%{optflags} -DWCHAR_MAX=0x7fffffff"
+
   # IRIX wchar.h hides C99/XPG5 functions behind _WCHAR_CORE_EXTENSIONS_1
   # (requires __c99 or _XOPEN_SOURCE>=500, neither set with clang).
   # Tell configure they're missing so gnulib provides its own replacements.
   ac_cv_overrides:
+    # IRIX has nanosleep and it works fine. Tell gnulib not to replace it.
+    # The type mismatch (timespec_t vs struct timespec) is harmless since
+    # they're the same struct, but gnulib's rpl_nanosleep #define macro
+    # renames IRIX's force-included declaration and causes type conflicts.
+    ac_cv_search_nanosleep: "none required"
+    gl_cv_func_nanosleep: "yes"
+    # Our compat strerror_r returns char* (GNU variant). Tell gnulib it exists
+    # and returns char* so gnulib doesn't declare its own int-returning version.
+    ac_cv_func___xpg_strerror_r: "no"
+    ac_cv_func_strerror_r: "yes"
+    ac_cv_have_decl_strerror_r: "yes"
+    ac_cv_func_strerror_r_char_p: "yes"
+    gl_cv_func_strerror_r_works: "yes"
     ac_cv_func_mbsinit: "no"
     gl_cv_func_mbsinit_works: "no"
     ac_cv_func_wcrtomb: "no"

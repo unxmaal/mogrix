@@ -5,3 +5,13 @@ package: tk
 add_patch:
   - tk.sgifixes.patch
 
+rules:
+  configure_flags:
+    add:
+      - --with-tcl=/opt/sgug-staging/usr/sgug/lib32
+      - --enable-threads
+
+  spec_replacements:
+    # Fix brace expansion — /bin/sh doesn't support {a,b} syntax
+    - pattern: "mkdir -p %{buildroot}/%{_includedir}/%{name}-private/{generic/ttk,unix}"
+      replacement: "mkdir -p %{buildroot}/%{_includedir}/%{name}-private/generic/ttk %{buildroot}/%{_includedir}/%{name}-private/unix"

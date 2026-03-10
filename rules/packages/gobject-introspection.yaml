@@ -1,23 +1,17 @@
 # gobject-introspection - GObject introspection
-# Has sgifixes patches, needs compat functions
+# BLOCKED: Requires cross-compiled Python development files (python3-devel for IRIX)
+# which are not available. The meson build requires python dependency for the
+# g-ir-scanner tool which embeds Python.
 
 package: gobject-introspection
+blocked: true
+blocked_reason: "requires cross-compiled Python3 development files for IRIX (not available)"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - gobject-introspection.sgifixes.patch
 
 rules:
-  # Compat functions needed
-
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
-
-  # Uses meson build system
-  # Meson options for IRIX:
-  # -Ddoctool=disabled
-  # -Dgtk_doc=false
-  # -Dcairo=disabled (if cairo not available)
-
   # NOTE: libdicl remove_lines handled by generic.yaml
-

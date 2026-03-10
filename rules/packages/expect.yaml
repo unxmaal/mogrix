@@ -1,7 +1,26 @@
 # expect package rules for IRIX cross-compilation
 package: expect
+blocked: true
+blocked_reason: "K&R C codebase with undeclared functions (expDiagLogPtrStrStr, fcntl, open). Needs extensive source patching. Low priority."
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - expect.sgifixes.patch
+rules:
+  spec_replacements:
+    # Fix tcl/tclinclude paths to use staging prefix
+    - pattern: "--with-tcl=%{_libdir} --with-tk=%{_libdir} --enable-shared \\\n\t--with-tclinclude=%{_includedir}/tcl-private/generic"
+      replacement: "--with-tcl=/opt/sgug-staging/usr/sgug/lib32 --with-tk=/opt/sgug-staging/usr/sgug/lib32 --enable-shared \\\n\t--with-tclinclude=/opt/sgug-staging/usr/sgug/include/tcl-private/generic"
+    # After autoconf: fix configure for cross-compilation, and fix source files
+    # (must be after patches which may re-introduce issues)
+    - pattern: "autoconf\n( cd testsuite"
+      replacement: "autoconf\nsed -i '/as_fn_error.*Expect.*cross compiled/d' configure\nsed -i 's/pty_${PTY_TYPE}/pty_termios/' configure\nsed -i 's/exp_${EVENT_TYPE}/exp_event/' configure\nsed -i 's/exp_${EVENT_ABLE}/exp_inter/' configure\n# Source fixes for IRIX (after patches)\nsed -i 's/F_DUPFD_CLOEXEC/F_DUPFD/g' exp_command.c\nsed -i '1i #include <fcntl.h>' exp_pty.c\nsed -i '1i #include <fcntl.h>' exp_clib.c\nsed -i 's/zone_name (timeptr)/\"\"/' exp_strf.c\n( cd testsuite"
+    # After configure: patch expect_cf.h to add HAVE_TERMIOS/HAVE_TERMIO
+    - pattern: "make %{?_smp_mflags}"
+      replacement: "echo '#define HAVE_TERMIOS 1' >> expect_cf.h\necho '#define HAVE_TERMIO 1' >> expect_cf.h\necho '#define HAVE_TCSETATTR 1' >> expect_cf.h\necho '#define POSIX 1' >> expect_cf.h\nmake %{?_smp_mflags}"
 
+  prep_commands:
+    # Add missing includes for IRIX — these seds must run in %prep after patches
+    - "sed -i '1i #include <fcntl.h>' pty_termios.c"
+    # exp_memmove.c provides memmove but conflicts with system string.h.
+    # On IRIX our cross-compiler has memmove, so skip compiling exp_memmove entirely.
+    - "echo '/* skip — system memmove is fine */' > exp_memmove.c"
+    # pty_termios.c also needs sys/types.h for open()
+    - "sed -i '1i #include <sys/types.h>\\n#include <sys/stat.h>' pty_termios.c"

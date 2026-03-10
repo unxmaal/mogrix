@@ -1,0 +1,11 @@
+--- a/src/Makefile.in
++++ b/src/Makefile.in
+@@ -808,7 +808,7 @@
+ 	$(AM_V_GEN)$(SHELL) $^
+
+ builtins.def: builtins.def.in $(top_builddir)/config.h
+-	$(AM_V_CC)$(COMPILE) -E -x c -o $@ $<
++	$(AM_V_CC)$(COMPILE) -E -x c $< | perl -ne 'print if /^\w+cmd\s/ or m{^/[*]} or /^ [*]/ or /^$$/' > $@
+
+ builtins.c builtins.h: mkbuiltins builtins.def
+ 	$(AM_V_GEN)$(SHELL) $^

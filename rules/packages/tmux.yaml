@@ -3,6 +3,10 @@
 # No FC40 SRPM — uses create-srpm from GitHub.
 package: tmux
 
+build_after:
+  - libevent
+  - ncurses
+
 add_source:
   - forkpty-irix.c
 
@@ -55,6 +59,13 @@ rules:
     # Add man page to %files (template only has bindir)
     - pattern: "%{_bindir}/*"
       replacement: "%{_bindir}/*\n%{_mandir}/man1/tmux.1*"
+
+  # IRIX libc has no setenv/unsetenv. tmux has its own compat/setenv.c but
+  # configure's AC_CHECK_FUNCS finds setenv in libmogrix-compat.a (from
+  # inject_compat_functions) and skips it. Force "no" so tmux compiles its
+  # own compat version, which is patched in prep_commands above.
+  ac_cv_overrides:
+    ac_cv_func_setenv: "no"
 
   configure_flags:
     add:

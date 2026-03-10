@@ -1,4 +1,24 @@
 package: webkitgtk
+
+build_after:
+  - gtk3
+  - glib2
+  - cairo
+  - pango
+  - fontconfig
+  - freetype
+  - harfbuzz
+  - libxml2
+  - libxslt
+  - icu
+  - libpng
+  - libjpeg-turbo
+  - libwebp
+  - sqlite
+  - libsecret
+  - libsoup
+  - cmake
+
 upstream:
   url: https://webkitgtk.org/releases/webkitgtk-2.42.5.tar.xz
   version: "2.42.5"
@@ -13,6 +33,7 @@ add_source:
   - webkit_subprocess_diag.h
   - IPCSemaphoreUnix_irix.cpp
   - compile-llint-twostep.sh
+  - irix_filesystem_posix.cpp
 add_patch:
   - jit-mips-vmov-fp64.patch
   - jit-bigendian-jsvalue32.patch
@@ -28,6 +49,12 @@ rules:
       replacement: "-DENABLE_C_LOOP=OFF"
     - pattern: "-DENABLE_DFG_JIT=OFF"
       replacement: "-DENABLE_DFG_JIT=ON"
+    # IRIX has no libstdc++fs.a — disable std::filesystem so WebKit uses POSIX fallbacks
+    - pattern: "-DCMAKE_CROSSCOMPILING=ON"
+      replacement: "-DCMAKE_CROSSCOMPILING=ON \\\n  -DSTD_FILESYSTEM_IS_AVAILABLE=OFF \\\n  -DSTD_EXPERIMENTAL_FILESYSTEM_IS_AVAILABLE=OFF"
+    # Limit parallelism to avoid race conditions in cmake script copy/LLInt generation
+    - pattern: "make %{?_smp_mflags} VERBOSE=1"
+      replacement: "make -j4 VERBOSE=1"
   inject_compat_functions:
     - strdup
     - getline
@@ -37,6 +64,18 @@ rules:
     - mincore
     - __muloti4
   prep_commands:
+    # IRIX has no libstdc++fs.a — force-disable std::filesystem and std::experimental::filesystem.
+    # PlatformHave.h uses __has_include(<filesystem>) which succeeds (GCC 9 has the header)
+    # but the library (libstdc++fs.a) doesn't exist for IRIX, causing link failures.
+    # Disable both the cmake check and the __has_include check, then inject POSIX implementations.
+    - "$MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/PlatformHave.h --old '__has_include(<filesystem>)' --new '0 /* no libstdc++fs on IRIX */' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch Source/WTF/wtf/PlatformHave.h --old '__has_include(<experimental/filesystem>)' --new '0 /* no libstdc++fs on IRIX */' --no-backup --quiet"
+    - $MOGRIX_ROOT/tools/safepatch Source/cmake/WebKitCompilerFlags.cmake --old 'check_cxx_source_compiles("${FILESYSTEM_TEST_SOURCE}" STD_FILESYSTEM_IS_AVAILABLE)' --new 'set(STD_FILESYSTEM_IS_AVAILABLE OFF)' --no-backup --quiet
+    # Inject POSIX filesystem implementations as an #else block for HAVE(STD_FILESYSTEM)
+    - cp %{_sourcedir}/irix_filesystem_posix.cpp Source/WTF/wtf/irix_filesystem_posix.cpp
+    # Insert #else + #include before the LAST #endif for HAVE(STD_FILESYSTEM) in FileSystem.cpp
+    # Use perl to only replace the last occurrence by reading the whole file
+    - "perl -i -0777 -pe 's{(#endif // HAVE\\(STD_FILESYSTEM\\) \\|\\| HAVE\\(STD_EXPERIMENTAL_FILESYSTEM\\))\\n\\n(\\} // namespace)}{#else\\n#include \"irix_filesystem_posix.cpp\"\\n$1\\n\\n$2}' Source/WTF/wtf/FileSystem.cpp"
     # Use host preprocessor for IDL code generation (cross-compiler includes
     # IRIX-compat stdarg.h with 'typedef char *va_list' that breaks IDL parser)
     - $MOGRIX_ROOT/tools/safepatch Source/cmake/WebKitCompilerFlags.cmake --old '\"${CMAKE_CXX_COMPILER}\" -E -P -x c++' --new '\"/usr/bin/g++\" -E -P -x c++' --no-backup --quiet

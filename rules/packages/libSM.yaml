@@ -1,7 +1,18 @@
 package: libSM
+
+build_after:
+  - libICE
+  - xorg-x11-proto-devel
+  - xorg-x11-xtrans-devel
+
 rules:
   drop_buildrequires:
     - libuuid-devel
+  ac_cv_overrides:
+    # Cross-compile: configure tries to link a test program to check if the
+    # compiler can detect undeclared builtins, but irix-cc cross-link fails
+    # (undefined symbol: main). "none needed" tells configure to skip.
+    ac_cv_c_undeclared_builtin_options: "none needed"
   configure_flags:
     remove:
       - "--with-libuuid"

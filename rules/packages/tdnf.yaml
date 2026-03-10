@@ -32,6 +32,13 @@ smoke_test:
 
 package: tdnf
 
+build_after:
+  - rpm
+  - libsolv
+  - curl
+  - openssl
+  - libxml2
+
 # IRIX-specific patches
 # client-defines.sgifixes.patch - fixes hardcoded /etc paths to /usr/sgug/etc
 # gpgcheck-rpm419.sgifixes.patch - fixes gpgcheck for rpm 4.19 API

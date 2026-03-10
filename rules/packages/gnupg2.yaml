@@ -24,6 +24,7 @@ rules:
     gl_cv_func_working_getdelim: 'yes'
     ac_cv_func_stpcpy: 'yes'
     ac_cv_func_explicit_bzero: 'yes'
+    ac_cv_func_memmove: 'yes'
   prep_commands:
   - $MOGRIX_ROOT/tools/safepatch Makefile.in --old '${tests}' --new '' --no-backup --quiet
   - mkdir -p npth-config-wrapper

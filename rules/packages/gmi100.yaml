@@ -1,4 +1,8 @@
 package: gmi100
+
+build_after:
+  - openssl
+
 upstream:
   url: https://github.com/ir33k/gmi100
   version: "3.2"

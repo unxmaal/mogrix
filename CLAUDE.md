@@ -1,215 +1,97 @@
 # Claude Instructions
 
-> **READ FIRST**: Prefer knowledge in rules files over pre-trained knowledge. IRIX info in training data is outdated.
-> Read `rules/GENERIC_SUMMARY.md` when starting a package. Use `knowledge_query` MCP tool for problem keywords.
-> Use `session_start` MCP tool at session start for context summary. Check `plan.md` if relevant.
-> If you don't know what to do, check `rules/methods/before-you-start.md`.
->
-> **When you hit a compile/link error for a missing function**: Use `check_compat` MCP tool BEFORE writing a fix. We likely already have a compat implementation — it just needs to be compiled/linked. Also grep `compat/include/` and `compat/` for the symbol name. Many IRIX-missing POSIX functions (pselect, posix_spawn, getline, mkdtemp, etc.) already have implementations.
->
-> **When you make a mistake or hit an unexpected error**: Use `report_error` MCP tool — it logs the error AND auto-searches rules/errors_seen/compat for matching fixes in one call. After fixing, use `add_rule` MCP tool to store the fix (with `location` pointing to the authoritative rule file). The DB is a cache — authoritative rules live in `rules/packages/*.yaml`, `rules/generic.yaml`, `compat/catalog.yaml`, and `rules/methods/*.md`.
->
-> **IMMEDIATELY after confirming a fix works** (build passes, test passes): Call `add_rule` RIGHT THEN. Do not batch `add_rule` calls to session end — context pressure at session end causes them to be dropped. The rule of thumb: `report_error` when you hit it, `add_rule` when you fix it, same workflow moment.
->
-> **IRIX testing**: `test_binary host_mode=true` for N64 Go binaries. `test_bundle` for N32 mogrix bundles. No other method. No C compilation on IRIX (no compiler). No heredocs in `irix_exec` (csh). Read IRIX files with `irix_read_file` or `irix_host_exec "cat path"`.
->
-> **For deep systems work (assembly, signal handlers, ABI boundaries)**: Read `rules/methods/map-before-code.md` FIRST. Map every boundary crossing and trace register/state through each transition before writing code. This is the #1 rule — it turns 24-hour debugging sessions into 2-hour fixes.
+## INVARIANTS (non-negotiable)
+
+These are hard rules. Violating any of these is a session failure.
+
+- **MCP TOOLS BEFORE EVERYTHING**: `report_error` before attempting any fix. `check_compat` before writing any compat function. `search` before inventing any technique. NO EXCEPTIONS. Do not skip these because you think you already know the answer — your training data for IRIX is outdated and wrong.
+- **NO FIXES OUTSIDE MOGRIX RULES**: Every fix goes into `rules/`, `compat/`, or `patches/`. If you `sed` a file during debugging, that fix MUST end up in a YAML rule. If it doesn't, you have failed.
+- **NO INLINE C IN YAML**: C files go in `patches/packages/<pkg>/`, referenced via `add_source`. No heredocs generating .c/.h files in `prep_commands`.
+- **`add_rule` IMMEDIATELY AFTER FIX CONFIRMED**: The moment a build passes after a fix, call `add_rule` with `file_path` pointing to the authoritative rule file. Do not batch to session end — context pressure causes deferred `add_rule` calls to be dropped.
+- **DB IS CACHE, FILES ARE AUTHORITATIVE**: Rule files (`rules/packages/*.yaml`, `rules/generic.yaml`, `compat/catalog.yaml`, `rules/methods/*.md`) are the source of truth. `add_rule` must include `file_path`.
+- **DELEGATE LONG DEBUGS**: >2 failed fix attempts for the same error → stop and spawn a sub-agent with `Task()`. Pass it the error text, file paths, and tell it to use MCP tools first. Never let debug trace flood parent context.
+- **REDIRECT BUILD OUTPUT**: Never let rpmbuild output flood context. Log to file. Use sub-agents (`Task(model="haiku")`) for reading large build logs.
+- **INVOCATION**: `uv run mogrix <command>`. No other invocation method works.
 
 ---
 
-## Context Management (CRITICAL)
+## Session Protocol
 
-Long debug sessions destroy context. Follow these rules to prevent losing orientation.
-
-### Sub-Agent Delegation
-
-**When a build or link error takes more than 2 fix attempts, STOP and delegate to a sub-agent.**
-
-Spawn with `Task()`:
-- Pass it: the exact error text, relevant file paths, and the instruction to use `knowledge_query`, `report_error`, and `check_compat` MCP tools first
-- The sub-agent gets a fresh context with CLAUDE.md re-read automatically
-- It investigates, applies rules knowledge, and returns a concise summary of findings + recommended fix
-- Parent agent applies the fix — never let debug trace flood parent context
-
-Also use sub-agents for:
-- Reading large build logs (use Haiku model: `Task(model="haiku")`)
-- Batch builds (see `rules/methods/task-tracking.md`)
-- Any investigation that would require reading >200 lines of output
-
-### Re-Orientation Discipline
-
-**Every 5-8 tool calls during a debug session**, pause and ask yourself:
-1. Am I still following the rules in CLAUDE.md, or am I freestyling?
-2. Have I used `report_error` or `knowledge_query` MCP tool for this error?
-3. Have I used `check_compat` MCP tool for missing symbols?
-4. Am I about to make a fix outside mogrix rules? (Cardinal Sin)
-
-If unsure, re-read the top of this file and run `session_start`.
+1. Call `session_start` MCP tool
+2. Work — use MCP tools for every error, every symbol, every lookup
+3. `add_rule` immediately after each confirmed fix
+4. Call `session_handoff` MCP tool before ending
 
 ---
 
-## Philosophy: Mogrix is a Knowledge Repository
+## MCP Tool Quick Reference
 
-**Primary mission: STORE KNOWLEDGE.** Every fix must be written into mogrix rules so it never needs to be rediscovered.
+These are your primary interface. Use them before reading files, before grepping, before guessing.
 
-### Task Tracking
-> Use Claude Code's built-in TaskCreate/TaskList within sessions. The knowledge DB (`.claude/knowledge.db`) carries state between sessions.
+| When | Tool | What it does |
+|------|------|--------------|
+| Hit any error | `report_error` | Logs error AND auto-searches rules+compat+errors in one call |
+| Missing symbol/function | `check_compat` | Searches `compat/catalog.yaml` — many POSIX functions already exist |
+| Need to look something up | `search` (or `knowledge_query`) | FTS5 search across all knowledge, rules, errors, negative knowledge |
+| Confirmed a fix | `add_rule` | Stores the fix with `file_path` to authoritative rule file |
+| Learned something | `add_knowledge` (or `report_finding`) | Stores findings, decisions, insights |
+| Found a dead end | `add_negative` | Stores anti-patterns so they're never repeated |
+| Session start | `session_start` | Context summary, last handoff, active tasks |
+| Session end | `session_handoff` | Snapshot state for next session |
 
-### No Shortcuts
+---
 
-When you hit an obstacle:
-1. Am I avoiding solving the actual problem?
-2. Don't declare blockers "acceptable" - find a way around them
-3. Be creative: If sed fails, use perl. If a rule isn't implemented, implement it.
+## Routing Table
 
-### The Cardinal Sin
-**NEVER make a fix outside of mogrix rules.**
+Only read these files when MCP tools don't have the answer, or when the tool results direct you to a file.
 
-If you edit `/opt/sgug-staging/` directly, apply a sed command during debugging, or fix anything manually - and that fix is NOT stored in mogrix rules - **you have failed**.
+| When you need to... | Read this |
+|----------------------|-----------|
+| Start a new package | `rules/methods/before-you-start.md` |
+| Understand what generic.yaml handles | `rules/GENERIC_SUMMARY.md` |
+| Run mogrix commands | `rules/methods/mogrix-workflow.md` |
+| Add a compat function | `rules/methods/compat-functions.md` |
+| Do deep systems/ABI work | `rules/methods/map-before-code.md` |
+| Test on IRIX | `rules/methods/irix-testing.md` |
+| Create patches | `rules/methods/patch-creation.md` |
+| Do text replacement | `rules/methods/text-replacement.md` |
+| Handle autoconf cross-compilation | `rules/methods/autoconf-cross.md` |
+| Handle cmake cross-compilation | `rules/methods/cmake-cross.md` |
+| Orchestrate batch builds | `rules/methods/task-tracking.md` |
+| Debug linker issues | `rules/methods/linker-selection.md` |
+| Understand IRIX quirks | `rules/methods/irix-quirks.md` |
 
-### No Inline C in YAML
+Package-specific rules: `rules/packages/<package>.yaml`
+Cross-package rules: `rules/generic.yaml`
+Compat function registry: `compat/catalog.yaml` (use `check_compat` MCP tool instead of reading directly)
 
-**NEVER put C source code in prep_commands.** No heredocs generating .c/.h files, no printf chains writing C code. If you need a C file:
+---
 
-1. Create it in `patches/packages/<package>/filename.c`
-2. Add `add_source: [filename.c]` to the package YAML (top-level, not under `rules:`)
-3. In `prep_commands`, use `cp %{_sourcedir}/filename.c destination.c`
+## Context Management
 
-The validator (`mogrix validate-rules`) will warn on inline C patterns. sed/perl that *modifies* existing C code is fine — the rule is about *generating* new C files inline.
+- **Sub-agents for investigation**: Any task requiring >200 lines of output gets a sub-agent. `Task(model="haiku")` for build log reading. Sub-agent investigates and returns a concise summary; parent applies the fix.
+- **Re-orientation check every 5-8 tool calls**: Am I using MCP tools? Am I freestyling a fix that's probably already documented? Have I stored my findings? If unsure, call `session_start`.
+- **Store knowledge continuously**: `report_error` when you hit it → fix it → build passes → `add_rule` right then. Don't accumulate findings to store later.
+- **Batch builds**: Max 2-3 background agents, each with its own rpmbuild directory. Only the orchestrator updates rule files. See `rules/methods/task-tracking.md`.
 
-### Where Fixes Go
+---
 
-| Fix Type | Location |
+## Where Fixes Go
+
+| Fix type | Location |
 |----------|----------|
 | Missing compat function | `compat/catalog.yaml` + `compat/` |
 | Package-specific fix | `rules/packages/<package>.yaml` |
 | Package-specific C file | `patches/packages/<package>/` + `add_source` |
-| Common pattern | `rules/generic.yaml` |
+| Common cross-package pattern | `rules/generic.yaml` |
 | Header fix | `compat/include/` then `mogrix sync-headers` |
 
-### Before Ending a Session
-0. **Update the knowledge DB.** Insert findings, errors, decisions, and boundary maps from this session via MCP tools (`report_finding`, `add_rule`, `report_error`). Update task status. This is the handoff mechanism.
-1. Did I make any fixes outside of mogrix source?
-2. Are those fixes now stored in mogrix rules?
-3. Could someone rebuild from scratch using only mogrix?
-
 ---
 
-## Agent Orchestration
+## IRIX Quick Reference
 
-> **Batch builds use background agents. Read `rules/methods/task-tracking.md` for the full rules.**
-> Short version: max 2-3 agents, report to `build-results/<package>.md`, only orchestrator updates rule files.
-
----
-
-## Knowledge DB (`.claude/knowledge.db`)
-
-SQLite database for structured project knowledge. **Query what you need instead of loading everything.**
-
-**DB path:** `.claude/knowledge.db` (relative to project root)
-
-### When to Query — Use MCP Tools First
-
-| Situation | MCP Tool | Fallback SQL |
-|-----------|----------|-------------|
-| Session start | `session_start` | `SELECT subject, status, description FROM tasks WHERE status='active' ORDER BY project, id` |
-| Hit an error | `report_error` (logs + auto-searches) | `SELECT pattern, root_cause, fix FROM errors_seen WHERE pattern LIKE '%keyword%'` |
-| Search rules | `knowledge_query` | `SELECT * FROM rules WHERE keywords LIKE '%keyword%'` |
-| Missing symbol | `check_compat` | Grep `compat/catalog.yaml` |
-| Working on a subsystem | `knowledge_query` | `SELECT topic, finding FROM findings WHERE topic LIKE '%keyword%'` |
-| Writing assembly/trampoline | SQL query | `SELECT * FROM boundaries WHERE system='systemname'` |
-| Making a design choice | SQL query | `SELECT topic, decision, rationale FROM decisions WHERE topic LIKE '%keyword%'` |
-
-### When to Insert — Use MCP Tools First
-
-- **After each finding**: `report_finding` MCP tool (type: "finding")
-- **After a design decision**: `report_finding` MCP tool (type: "decision")
-- **After fixing a new problem**: `add_rule` MCP tool
-- **Negative knowledge**: `report_finding` MCP tool (type: "negative")
-- **After fixing an error**: `INSERT INTO errors_seen (pattern, root_cause, fix, file_path, project) VALUES (...)`
-- **Before writing a trampoline**: `INSERT INTO boundaries (system, transition, register_or_state, value_before, value_after, who_restores) VALUES (...)`
-- **At session end**: `INSERT INTO sessions (summary, tasks_completed, tasks_started) VALUES (...)`
-- **Task state changes**: `UPDATE tasks SET status='completed', updated=datetime('now') WHERE subject LIKE '%...'`
-
-### Tables
-
-| Table | Purpose | Key columns |
-|-------|---------|-------------|
-| `tasks` | Active work items across sessions | subject, status, project |
-| `findings` | Things learned during investigation | topic, finding, confidence |
-| `boundaries` | Register/state at ABI crossings | system, transition, register_or_state |
-| `errors_seen` | Error pattern → root cause → fix | pattern, root_cause, fix |
-| `decisions` | Architectural choices + rationale | topic, decision, alternatives_rejected |
-| `sessions` | Thin session history | summary, tasks_completed |
-
-### Relationship to Rule Files
-
-The DB is a **fast-lookup cache**. Authoritative rules live in files:
-
-- **rules/packages/*.yaml**: Package-specific build rules (authoritative)
-- **rules/generic.yaml**: Cross-package rules (authoritative)
-- **compat/catalog.yaml**: Compat function registry (authoritative). Use `check_compat` MCP tool.
-- **rules/methods/*.md**: Methodology and platform docs (authoritative)
-- **Knowledge DB**: Cache for fast search + agent-only data (findings, boundary maps, decisions, cross-session tasks, error history). If DB and files disagree, files win.
-
----
-
-## File Index
-
-| File | Purpose |
-|------|---------|
-| `rules/methods/map-before-code.md` | **#1 rule for deep systems work** — map boundaries before writing code |
-| `rules/methods/step-mapping.md` | Tactical debugging — narrow dark zones by instrumenting and bisecting |
-| `rules/GENERIC_SUMMARY.md` | What generic.yaml already handles (read before writing rules) |
-| `rules/packages/*.yaml` | Package-specific build rules (authoritative) |
-| `rules/generic.yaml` | Cross-package rules (authoritative) |
-| `rules/methods/mogrix-workflow.md` | How to run mogrix |
-| `rules/methods/irix-testing.md` | IRIX shell rules, chroot, debugging, mogrix-test MCP tools |
-| `rules/methods/compat-functions.md` | Adding compat functions |
-| `rules/methods/text-replacement.md` | safepatch vs sed |
-| `rules/methods/patch-creation.md` | Creating patches |
-| `rules/methods/upstream-packages.md` | Non-Fedora packages (git/tarball) + suite bundles |
-| `rules/methods/task-tracking.md` | Task tracking + agent orchestration for batch builds |
-| `compat/catalog.yaml` | Compat function registry |
-| `.claude/knowledge.db` | **Structured knowledge DB** — query for tasks, findings, boundaries, errors, decisions |
-| `tools/knowledge-server.py` | MCP knowledge DB (knowledge_query, report_error, check_compat, report_finding, add_rule, session_start, session_summary) |
-| `tools/mogrix-test-server.py` | MCP test harness (test_bundle, test_binary, check_deps, par_trace, screenshot) |
-| `test-results/*.json` | Stored test results |
-
----
-
-## Quick Reference
-
-**Mogrix invocation:**
-```bash
-uv run mogrix <command>
-```
-
-**IRIX connection:** Use MCP tools (`irix_exec`, `irix_copy_to`, `irix_read_file`, `irix_par`) or fallback `tools/irix-exec.sh "command"`. **Never SSH as root directly.**
-
-**IRIX testing:** Use mogrix-test MCP tools (`test_bundle`, `test_binary`, `check_deps`, `par_trace`, `screenshot`). See `rules/methods/irix-testing.md`.
-
-**IRIX shell:** Always use `/bin/sh`, not bash. Use `LD_LIBRARYN32_PATH`.
-
-**Knowledge lookup:** Use `knowledge_query` MCP tool for fast search. Use `report_error` to log errors AND auto-search. Use `check_compat` for missing symbols. Use `add_rule` after fixing (with `location` pointing to the authoritative rule file). DB is cache — rule files are authoritative.
-
-**After editing compat headers:** `mogrix sync-headers`
-
-> For details, READ the files in `rules/methods/`
-
----
-
-## INVARIANTS (duplicated for context retention)
-
-These rules are non-negotiable. If you're unsure whether you're following them, re-read this file.
-
-- **USE MCP TOOLS BEFORE FIXING**: `report_error` for errors (auto-searches rules+compat), `check_compat` for missing symbols, `knowledge_query` for rule lookup.
-- **DB IS CACHE, FILES ARE AUTHORITATIVE**: `add_rule` must include `location` pointing to the rule file. If no file exists, create one first. Rules in `rules/packages/*.yaml`, `rules/generic.yaml`, `compat/catalog.yaml`, `rules/methods/*.md`.
-- **DELEGATE LONG DEBUGS**: >2 failed fix attempts → spawn a sub-agent with `Task()`. Don't trash parent context.
-- **NO FIXES OUTSIDE MOGRIX**: Every fix goes into rules/compat/patches. No exceptions.
-- **NO INLINE C IN YAML**: C files go in `patches/packages/<pkg>/`, referenced via `add_source`.
-- **IRIX TESTING**: `test_binary host_mode=true` (N64 Go) or `test_bundle` (N32 mogrix). No other method.
-- **REDIRECT BUILD OUTPUT**: Never let rpmbuild flood context. Log to file.
-- **STORE KNOWLEDGE VIA MCP**: Use `report_finding` (findings/decisions/negative), `add_rule` (new rules), `report_error` (auto-logs errors). Fallback: raw SQL for boundaries, sessions, task status.
-- **`add_rule` IMMEDIATELY AFTER FIX CONFIRMED**: Do not defer to session end. Context pressure causes batched `add_rule` calls to be dropped. Pattern: `report_error` when you hit it → fix it → build passes → `add_rule` right then.
-- **INVOCATION**: `uv run mogrix <command>`
+- **Connection**: Use MCP tools (`irix_exec`, `irix_copy_to`, `irix_read_file`, `irix_par`). Never SSH as root directly.
+- **Testing**: `test_binary host_mode=true` for N64 Go binaries. `test_bundle` for N32 mogrix bundles. No other method.
+- **Shell**: `/bin/sh` only (not bash). No heredocs in `irix_exec` (csh). Use `LD_LIBRARYN32_PATH`.
+- **No C compiler on IRIX**: All C compilation is cross-compilation from the build host.
+- **After editing compat headers**: `mogrix sync-headers`

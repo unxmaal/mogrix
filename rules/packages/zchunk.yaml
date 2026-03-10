@@ -3,12 +3,28 @@
 
 package: zchunk
 
-# IRIX-specific patches from SGUG-RSE
-add_patch:
-  - zchunk.sgifixes.patch
+# Old sgifixes.patch targeted 1.1.5, renaming 'bool stdout' to 'bool zcstdout'
+# in unzck.c and zck_gen_zdict.c. In 1.4.0, unzck.c is fixed upstream but
+# zck_gen_zdict.c still has 'bool stdout' (line 74). Use prep_commands
+# instead of a version-specific patch.
 
 rules:
-  # Compat functions needed
+  # Rename 'bool stdout' struct member to avoid conflict with stdio macro on IRIX
+  prep_commands:
+    - "sed -i 's/bool stdout;/bool zcstdout;/g' src/zck_gen_zdict.c"
+    - "sed -i 's/arguments->stdout/arguments->zcstdout/g' src/zck_gen_zdict.c"
+    # Rename static 'close' functions that conflict with POSIX close()
+    - "sed -i 's/static bool close(zckCtx/static bool comp_close_fn(zckCtx/g; s/comp->close = close;/comp->close = comp_close_fn;/g' src/lib/comp/nocomp/nocomp.c src/lib/comp/zstd/zstd.c"
+
+  inject_compat_functions:
+    - dprintf
+    - basename
+    - mkdtemp
+  install_cleanup:
+    - "gzip %{buildroot}%{_mandir}/man1/*.1 || true"
+    # Remove subproject installs (argp-standalone, zstd) that aren't in %files
+    - "rm -f %{buildroot}%{_includedir}/argp.h %{buildroot}%{_includedir}/zbuff.h %{buildroot}%{_includedir}/zdict.h %{buildroot}%{_includedir}/zstd.h %{buildroot}%{_includedir}/zstd_errors.h"
+    - "rm -f %{buildroot}%{_libdir}/libargp.a %{buildroot}%{_libdir}/libzstd.so* %{buildroot}%{_libdir}/pkgconfig/libzstd.pc"
 
   # NOTE: libdicl drop_buildrequires/drop_requires handled by generic.yaml
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
@@ -19,4 +35,3 @@ rules:
   # -Dwith-openssl=enabled
 
   # NOTE: libdicl remove_lines handled by generic.yaml
-

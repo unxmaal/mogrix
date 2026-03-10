@@ -1,13 +1,12 @@
 # ca-certificates - CA certificates bundle
 # Required for TLS verification
+# This is a noarch data package with no %setup/%autosetup in %prep,
+# so mogrix can't inject compat file copies. We add them manually.
+# Also has pushd/popd bash-isms.
 
 package: ca-certificates
 
 rules:
-  # This package is mostly data files
-  # No special compat functions needed
-
-  # Drop p11-kit dependency if not available
   drop_buildrequires:
     - p11-kit-devel
     - p11-kit-trust
@@ -15,3 +14,27 @@ rules:
   drop_requires:
     - p11-kit
     - p11-kit-trust
+
+  spec_replacements:
+  # Insert compat file copies at end of %prep (before %build).
+  # ca-certificates has no %setup, so mogrix can't auto-inject these.
+  - pattern: "%{name}/java\n\n%build"
+    replacement: "%{name}/java\nmkdir -p mogrix-compat\ncp %{SOURCE100} mogrix-compat/\ncp %{SOURCE101} mogrix-compat/\ncp %{SOURCE102} mogrix-compat/\ncp %{SOURCE103} mogrix-compat/\ncp %{SOURCE104} mogrix-compat/\ncp %{SOURCE105} mogrix-compat/\ncp %{SOURCE106} mogrix-compat/\ncp %{SOURCE107} mogrix-compat/\ncp %{SOURCE108} mogrix-compat/\ncp %{SOURCE109} mogrix-compat/\ncp %{SOURCE110} mogrix-compat/\n\n%build"
+  # Replace pushd/popd bash-isms
+  - pattern: "pushd %{name}/certs"
+    replacement: "cd %{name}/certs"
+  - pattern: "popd\npushd %{name}"
+    replacement: "cd ../..\ncd %{name}"
+  - pattern: "cat %{SOURCE3} >> %{p11_format_bundle}\npopd"
+    replacement: "cat %{SOURCE3} >> %{p11_format_bundle}\ncd .."
+  # Skip manpage generation (asciidoc/xmlto not available)
+  - pattern: "#manpage\ncp %{SOURCE10} %{name}/update-ca-trust.8.txt\nasciidoc -v -d manpage -b docbook %{name}/update-ca-trust.8.txt\nxmlto -v -o %{name} man %{name}/update-ca-trust.8.xml\n\ncp %{SOURCE9} %{name}/ca-legacy.8.txt\nasciidoc -v -d manpage -b docbook %{name}/ca-legacy.8.txt\nxmlto -v -o %{name} man %{name}/ca-legacy.8.xml"
+    replacement: "# manpage generation skipped (asciidoc/xmlto not available)"
+  # Skip manpage install
+  - pattern: "install -p -m 644 %{name}/update-ca-trust.8 $RPM_BUILD_ROOT%{_mandir}/man8\ninstall -p -m 644 %{name}/ca-legacy.8 $RPM_BUILD_ROOT%{_mandir}/man8"
+    replacement: "# manpage install skipped"
+  # Remove man page references from %files
+  - pattern: "%{_mandir}/man8/update-ca-trust.8.gz"
+    replacement: ""
+  - pattern: "%{_mandir}/man8/ca-legacy.8.gz"
+    replacement: ""

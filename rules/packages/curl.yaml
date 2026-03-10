@@ -5,6 +5,10 @@ package: curl
 # - libidn2: international domain name (IDN) support
 # - brotli: faster HTTP compression (Brotli content-encoding)
 # Verify with: curl --version (should show brotli, IDN2, PSL in Features line)
+
+build_after:
+  - openssl
+
 rules:
   drop_buildrequires:
   - krb5-devel

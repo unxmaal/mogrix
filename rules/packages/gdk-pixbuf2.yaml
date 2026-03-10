@@ -1,4 +1,7 @@
 package: gdk-pixbuf2
+smoke_test:
+  - command: "/usr/sgug/bin/gdk-pixbuf-query-loaders 2>&1 | head -1"
+    expect: "GdkPixbuf"
 
 rules:
   drop_buildrequires:

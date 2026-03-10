@@ -19,6 +19,49 @@ rules:
     - -DSCM_RIGHTS=0x01
     - -include irix-compat.h
 
+  # Skip gpg2 signature verification in %prep (not available on build host)
+  # Replace pushd/popd bash-isms with POSIX cd equivalents
+  spec_replacements:
+  - pattern: "gpg2 --import --import-options import-export,import-minimal %{SOURCE3} > ./gpg-keyring.gpg\ngpgv2 --keyring ./gpg-keyring.gpg %{SOURCE1} %{SOURCE0}"
+    replacement: '# gpg2 signature verification skipped for cross-build'
+  # Override configure to disable Qt/Python bindings not available in cross-build
+  # Disable Qt5/Qt6 bindings (not available on IRIX)
+  - pattern: "%bcond qt5 %[ 0%{?rhel} < 10 ]"
+    replacement: "%bcond qt5 0"
+  - pattern: "%bcond qt6 1"
+    replacement: "%bcond qt6 0"
+  # Disable all language bindings - cpp needs std::to_string (C++11) not in IRIX libstdc++
+  - pattern: "--enable-languages=cpp,%{?with_qt5:qt,}%{!?with_qt5:%{?with_qt6:qt6,}}python"
+    replacement: "--enable-languages="
+  - pattern: "pushd build\n%configure"
+    replacement: "export GPG_ERROR_CONFIG=/opt/sgug-staging/usr/sgug/bin/gpg-error-config\nexport LIBASSUAN_CONFIG=/opt/sgug-staging/usr/sgug/bin/libassuan-config\ncd build\n%configure"
+  - pattern: "%make_build\npopd"
+    replacement: "%make_build\ncd .."
+  - pattern: "pushd build-qt6\n%configure"
+    replacement: "cd build-qt6\n%configure"
+  - pattern: "pushd build\n%make_install\npopd"
+    replacement: "cd build\n%make_install\ncd .."
+  - pattern: "pushd build-qt6\n%make_install\npopd"
+    replacement: "cd build-qt6\n%make_install\ncd .."
+  - pattern: "pushd build\nmake check\npopd"
+    replacement: "cd build\nmake check\ncd .."
+
+  # Remove chrpath calls (not available on build host, not needed for IRIX)
+  - pattern: "chrpath -d %{buildroot}%{_bindir}/%{name}-tool\nchrpath -d %{buildroot}%{_bindir}/%{name}-json\nchrpath -d %{buildroot}%{_libdir}/lib%{name}pp.so*"
+    replacement: "# chrpath removed for cross-build"
+
+  # Remove gpgmepp (C++ binding) subpackages since we disabled C++ language bindings
+  - pattern: "%package -n %{name}pp\nSummary:        C++ bindings/wrapper for GPGME\nObsoletes:      gpgme-pp < 1.8.0-7\nProvides:       gpgme-pp = %{?epoch:%{epoch}:}%{version}-%{release}\nProvides:       gpgme-pp%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}\nRequires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}\n\n%description -n %{name}pp\n%{summary}.\n\n%package -n %{name}pp-devel\nSummary:        Development libraries and header files for %{name}-pp\nObsoletes:      gpgme-pp-devel < 1.8.0-7\nProvides:       gpgme-pp-devel = %{?epoch:%{epoch}:}%{version}-%{release}\nProvides:       gpgme-pp-devel%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}\nRequires:       %{name}pp%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}\nRequires:       %{name}-devel%{?_isa}\n\n%description -n %{name}pp-devel\n%{summary}"
+    replacement: "# gpgmepp subpackages removed - C++ bindings disabled for IRIX cross-build"
+  - pattern: "%files -n %{name}pp\n%doc lang/cpp/README\n%{_libdir}/lib%{name}pp.so.6*\n\n%files -n %{name}pp-devel\n%{_includedir}/%{name}++/\n%{_libdir}/lib%{name}pp.so\n%{_libdir}/cmake/Gpgmepp/"
+    replacement: "# gpgmepp files removed - C++ bindings disabled for IRIX cross-build"
+
+  # Remove python3-gpg subpackage (Python bindings disabled for IRIX)
+  - pattern: "%package -n python3-gpg\nSummary:        %{name} bindings for Python 3\n\n# Needed since Python 3.12+ drops distutils\n\nRequires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}\nObsoletes:      platform-python-gpg < %{version}-%{release}\n\n%description -n python3-gpg\n%{summary}."
+    replacement: "# python3-gpg subpackage removed - Python bindings disabled for IRIX"
+  - pattern: "%files -n python3-gpg\n%doc lang/python/README\n%{python3_sitearch}/gpg-*.egg-info/\n%{python3_sitearch}/gpg/"
+    replacement: "# python3-gpg files removed"
+
   # Configure flags
   configure_flags:
     add:
@@ -28,3 +71,4 @@ rules:
       - --disable-gpgsm-test
       - --disable-gpgconf-test
       - --disable-g13-test
+

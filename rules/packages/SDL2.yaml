@@ -2,6 +2,17 @@
 # Cross-compile for IRIX 6.5 with X11+OpenGL video, no audio backends
 package: SDL2
 
+build_after:
+  - libX11
+  - libXext
+  - libXcursor
+  - libXi
+  - libXrandr
+  - libXrender
+  - libXinerama
+  - libxcb
+  - xcb-proto
+
 rules:
   drop_buildrequires:
     - mesa-libGL-devel
@@ -201,4 +212,4 @@ rules:
 
     # Replace %cmake_install and remove cmake-installed license (RPM %license handles it)
     - pattern: "%cmake_install"
-      replacement: "make -C _build install DESTDIR=%{buildroot}\nrm -rf %{buildroot}%{_datadir}/licenses/SDL2"
+      replacement: "make -C _build install DESTDIR=%{buildroot}\nrm -rf %{buildroot}%{_datadir}/licenses/SDL2\n# cmake now produces SDL_config.h directly (no arch suffix).\n# Copy to both arch-suffixed names for Fedora multilib wrapper compatibility.\nif [ -f %{buildroot}%{_includedir}/SDL2/SDL_config-mips.h ]; then\n  cp %{buildroot}%{_includedir}/SDL2/SDL_config-mips.h %{buildroot}%{_includedir}/SDL2/SDL_config-mips64.h\nelif [ -f %{buildroot}%{_includedir}/SDL2/SDL_config.h ]; then\n  cp %{buildroot}%{_includedir}/SDL2/SDL_config.h %{buildroot}%{_includedir}/SDL2/SDL_config-mips.h\n  cp %{buildroot}%{_includedir}/SDL2/SDL_config.h %{buildroot}%{_includedir}/SDL2/SDL_config-mips64.h\nfi"

@@ -1,0 +1,26 @@
+# libXau 1.0.11 - X authorization library (FC40: 1.0.11-6)
+# Tiny autotools package. Depends only on xorgproto.
+
+package: libXau
+
+rules:
+
+  spec_replacements:
+    # Skip autoreconf
+    - pattern: "autoreconf -v --install --force\n"
+      replacement: "# autoreconf skipped — using pre-generated configure\n"
+
+    # Add explicit Provides
+    - pattern: "URL: http://www.x.org"
+      replacement: |
+        URL: http://www.x.org
+        Provides: libXau(mips-32) = %{version}-%{release}
+        Provides: libXau.so.6(mips-32)
+        Provides: pkgconfig(xau)
+
+  configure_flags:
+    add:
+      - --disable-static
+
+  drop_buildrequires:
+    - xorg-x11-util-macros

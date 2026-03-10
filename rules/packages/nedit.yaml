@@ -1,4 +1,6 @@
 package: nedit
+blocked: true
+blocked_reason: "needs Motif (Xm/Xm.h) — not in cross-compilation sysroot"
 upstream:
   url: https://downloads.sourceforge.net/project/nedit/nedit-source/nedit-5.7-src.tar.gz
   version: "5.7"
@@ -38,6 +40,5 @@ rules:
         cp source/nedit %{buildroot}%{_bindir}/nedit
         cp source/nc %{buildroot}%{_bindir}/nedit-nc
 smoke_test:
-- command: "/usr/sgug/bin/nedit"
-  args: "-V"
+- command: "/usr/sgug/bin/nedit -V 2>&1"
   expect: "NEdit"

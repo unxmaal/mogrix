@@ -1,5 +1,11 @@
 package: libXcomposite
 
+build_after:
+  - libX11
+  - libXext
+  - libXfixes
+  - xorg-x11-proto-devel
+
 upstream:
   url: https://xorg.freedesktop.org/archive/individual/lib/libXcomposite-0.4.4.tar.bz2
   version: "0.4.4"

@@ -1,0 +1,8 @@
+prefix=/usr/sgug
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib32
+
+Name: pthread-stubs
+Description: Stubs for pthread functions (IRIX has pthreads in libc)
+Version: 0.1
+Libs:

@@ -123,6 +123,22 @@ generic:
     # types (long vs int) that conflict with dicl-clang-compat/stdint.h.
     # On MIPS n32 both int and long are 32-bit so our stdint.h is correct.
     gl_cv_header_working_stdint_h: "yes"
+    # Gnulib gettimeofday: IRIX declares gettimeofday(struct timeval *, ...)
+    # (variadic) which conflicts with gnulib's POSIX prototype. Tell gnulib
+    # gettimeofday exists and works, so it doesn't generate a replacement
+    # wrapper with a conflicting declaration.
+    ac_cv_func_gettimeofday: "yes"
+    gl_cv_func_gettimeofday_clobber: "no"
+    gl_cv_func_gettimeofday_posix_signature: "almost"
+    # Gnulib nanosleep: IRIX has nanosleep but cross-compile can't test it.
+    ac_cv_func_nanosleep: "yes"
+    gl_cv_func_nanosleep: "yes"
+    # IRIX has sigaction/sigprocmask. Without these, gnulib generates its own
+    # struct sigaction which conflicts with IRIX sys/signal.h (NSIG=65 assertion,
+    # struct redefinition). Affects bison, diffutils, gzip, m4, patch, time, etc.
+    ac_cv_func_sigaction: "yes"
+    ac_cv_func_sigprocmask: "yes"
+    ac_cv_member_struct_sigaction_sa_sigaction: "yes"
     # Gnulib select() detection: IRIX select works correctly for EBADF
     # and zero-timeout cases. These tests can't run cross-compiled.
     gl_cv_func_select_detects_ebadf: "yes"
@@ -148,6 +164,19 @@ generic:
     - reallocarray
     - stpcpy
     - bsearch
+
+  # Gnulib signal.in.h fixes for IRIX:
+  # 1) verify(NSIG <= 32) fails because IRIX has NSIG=65
+  # 2) struct sigaction and _GL_FUNCDECL_SYS(sigaction) conflict with IRIX sys/signal.h
+  # Safe to run on all packages (|| true for packages without gnulib)
+  prep_commands:
+    - "sed -i '/verify.*NSIG/d' lib/signal.in.h 2>/dev/null || true"
+    - "sed -i '/_GL_FUNCDECL_SYS.*sigaction/,/;/d' lib/signal.in.h 2>/dev/null || true"
+    # Gnulib sys/time.in.h redeclares gettimeofday with non-variadic signature
+    # conflicting with IRIX's gettimeofday(struct timeval *, ...)
+    - "sed -i '/_GL_FUNCDECL_SYS.*gettimeofday/,/;/d' lib/sys_time.in.h 2>/dev/null || true"
+    # Gnulib time.in.h redeclares nanosleep conflicting with IRIX time.h
+    - "sed -i '/_GL_FUNCDECL_SYS.*nanosleep/,/;/d' lib/time.in.h 2>/dev/null || true"
 
   configure_flags:
     add:
@@ -203,6 +232,8 @@ generic:
   # /usr/bin/env is restored since it exists on IRIX.
   install_cleanup:
     - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i 's|/usr/bin/|/usr/sgug/bin/|g; s|/usr/sgug/bin/env|/usr/bin/env|g'"
+    # Fix #!/bin/bash shebangs — IRIX has no /bin/bash, use /usr/sgug/bin/bash
+    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '#!/bin/bash\\|#! /bin/bash' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i '1s|^#! */bin/bash|#!/usr/sgug/bin/bash|'"
     # Remove libtool archives - IRIX doesn't use them
     - "rm -f %{buildroot}%{_libdir}/*.la"
     # Remove info dir file - rebuilt by install-info on target

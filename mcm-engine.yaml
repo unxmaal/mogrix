@@ -1,0 +1,62 @@
+project_name: mogrix
+
+db_path: .claude/knowledge.db
+log_path: /tmp/mogrix-mcm.log
+
+rules_path:
+  - rules/packages/
+  - rules/methods/
+  - rules/
+
+plugins:
+  - tools.mcm_mogrix:MogrixPlugin
+
+nudges:
+  store_reminder_turns: 4
+  checkpoint_turns: 10
+  mandatory_stop_turns: 20
+  hyper_focus_threshold: 3
+  rules_check_interval: 5
+  # Block tool calls (return error) after mandatory_stop + grace without checkpoint.
+  # Set to false to revert to advisory-only nudges.
+  mandatory_stop_blocking: true
+  mandatory_stop_grace: 5
+  # After N ignored nudges of the same type, escalate to blocking.
+  nudge_escalation_threshold: 3
+
+server_name: mogrix-knowledge
+
+server_instructions: |
+  Mogrix knowledge DB for cross-compiling Fedora SRPMs to IRIX 6.5 (MIPS n32).
+
+  BEHAVIORAL MANDATES (non-negotiable):
+
+  1. MUST call `report_error` BEFORE attempting manual fixes for any build/link/runtime error.
+     It logs the error AND auto-searches rules, errors, and compat catalog in one call.
+
+  2. MUST call `check_compat` BEFORE writing compat function implementations.
+     Many IRIX-missing POSIX functions already have implementations in compat/.
+
+  3. MUST call `add_rule` IMMEDIATELY after confirming a fix works (build passes, test passes).
+     Do NOT defer add_rule calls to session end — context pressure causes them to be dropped.
+     Pattern: report_error when you hit it -> fix it -> build passes -> add_rule RIGHT THEN.
+
+  4. MUST delegate to a sub-agent after 2 failed fix attempts for the same error.
+     Long debug sessions destroy parent context.
+
+  5. NEVER make fixes outside mogrix rules. Every fix goes into rules/compat/patches.
+     If you sed a file during debugging, that fix must end up in a YAML rule.
+
+  6. DB is CACHE, files are AUTHORITATIVE. Rule files (rules/packages/*.yaml, rules/generic.yaml,
+     compat/catalog.yaml, rules/methods/*.md) are the source of truth. When using add_rule,
+     provide file_path pointing to the authoritative rule file.
+
+  Tool quick reference:
+  - `search` (or `knowledge_query`): Search rules, knowledge, errors, compat
+  - `report_error`: Log error + auto-search for fixes (THE KILLER FEATURE)
+  - `check_compat`: Search compat/catalog.yaml for a symbol
+  - `add_knowledge` (or `report_finding`): Store findings/decisions/insights
+  - `add_negative`: Store anti-patterns and dead ends
+  - `add_rule`: Create/index rule after fixing a problem
+  - `session_start`: Initialize session with context
+  - `session_handoff`: Snapshot state for next session

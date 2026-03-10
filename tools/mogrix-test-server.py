@@ -15,6 +15,7 @@ Configuration via environment variables:
 import json
 import os
 import re
+import shutil
 import signal
 import sqlite3
 import subprocess
@@ -478,9 +479,28 @@ def save_results(
     results: list[dict],
     summary: dict,
 ) -> Path:
-    """Save test results to test-results/<package>.json."""
+    """Save test results to test-results/<package>.json.
+
+    If a previous result exists, archive it to test-results/archive/<package>_<timestamp>.json
+    before overwriting. This preserves test history across bundle versions.
+    """
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RESULTS_DIR / f"{package}.json"
+    # Archive previous results if they exist
+    if out_path.exists():
+        archive_dir = RESULTS_DIR / "archive"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(out_path) as f:
+                old_data = json.load(f)
+            old_ts = old_data.get("timestamp", "unknown").replace(":", "")
+            archive_path = archive_dir / f"{package}_{old_ts}.json"
+            # Don't archive if same bundle was already tested (re-run)
+            if old_data.get("bundle_name") != bundle_name:
+                shutil.copy2(out_path, archive_path)
+                log(f"Archived previous results to {archive_path.name}")
+        except Exception:
+            pass  # Don't fail the save if archival fails
     data = {
         "package": package,
         "bundle_name": bundle_name,

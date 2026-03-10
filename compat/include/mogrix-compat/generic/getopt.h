@@ -4,16 +4,18 @@
  * Wrapper that includes the real getopt.h and adds GNU getopt_long
  * for IRIX compatibility.
  *
- * Skipped when gnulib provides its own getopt (detected via __GETOPT_PREFIX).
- * gnulib's getopt replacement uses rpl_ prefixed functions that conflict
- * with our declarations.
+ * Skipped when gnulib provides its own getopt. Detected via:
+ *   _GL_SYSTEM_GETOPT — set by gnulib's getopt.h before #include_next
+ *   __GETOPT_PREFIX   — set by some gnulib consumers directly
+ * gnulib's getopt replacement uses rpl_ prefixed functions and its own
+ * struct option in getopt-ext.h; we must not compete with those.
  */
 
 #ifndef _MOGRIX_COMPAT_GETOPT_H
 #define _MOGRIX_COMPAT_GETOPT_H
 
 /* If gnulib is providing its own getopt, don't interfere */
-#ifdef __GETOPT_PREFIX
+#if defined(_GL_SYSTEM_GETOPT) || defined(__GETOPT_PREFIX)
 #include_next <getopt.h>
 #else
 
@@ -80,6 +82,6 @@ int getopt_long_only(int argc, char * const argv[],
 }
 #endif
 
-#endif /* __GETOPT_PREFIX */
+#endif /* _GL_SYSTEM_GETOPT || __GETOPT_PREFIX */
 
 #endif /* _MOGRIX_COMPAT_GETOPT_H */

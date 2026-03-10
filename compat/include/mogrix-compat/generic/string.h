@@ -38,8 +38,12 @@ char *strcasestr(const char *haystack, const char *needle);
 /* strsep - BSD extension, token extraction */
 char *strsep(char **stringp, const char *delim);
 
-/* strerror_r - POSIX/GNU thread-safe error string */
+/* strerror_r - GNU variant (returns char*). Guard with #ifndef because
+ * gnulib #defines strerror_r to rpl_strerror_r when providing its own
+ * replacement, which would cause a type conflict with our char* declaration. */
+#ifndef strerror_r
 char *strerror_r(int errnum, char *buf, size_t buflen);
+#endif
 
 /* explicit_bzero - OpenBSD/glibc, zero memory without optimization */
 void explicit_bzero(void *buf, size_t len);

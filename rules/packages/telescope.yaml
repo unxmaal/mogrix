@@ -1,5 +1,10 @@
 package: telescope
 
+build_after:
+  - libretls
+  - openssl
+  - ncurses
+
 add_source:
   - endian.irix.h
 
@@ -114,14 +119,14 @@ rules:
     # BUILD_CC stays as host for code generators, CC becomes cross-compiler.
     # Also fix AR/RANLIB and disable shared lib (static only needed).
     - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'CC       = cc' --new 'CC       = /opt/sgug-staging/usr/sgug/bin/irix-cc' --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^BUILD_CC = .*' --new 'BUILD_CC = gcc' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'BUILD_CC = $(CC)' --new 'BUILD_CC = gcc' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'AR       = ar' --new 'AR       = /opt/cross/bin/llvm-ar' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'RANLIB   = ranlib' --new 'RANLIB   = /opt/cross/bin/llvm-ranlib' --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^CFLAGS   = .*' --new 'CFLAGS   = -std=c99 -Os -Wall' --regex --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^SONAME    = .*' --new 'SONAME    =' --regex --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^SOSYMLINK = .*' --new 'SOSYMLINK = false' --regex --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^BUILD_CFLAGS.*' --new 'BUILD_CFLAGS = -std=c99 -Os' --regex --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old '^BUILD_LDFLAGS.*' --new 'BUILD_LDFLAGS =' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'CFLAGS   = -std=c99 -Os -Wall -Wextra -Wpedantic' --new 'CFLAGS   = -std=c99 -Os -Wall' --no-backup --quiet"
+    - "perl -pi -e 's/^SONAME\\s*=.*/SONAME    =/' libgrapheme/config.mk"
+    - "perl -pi -e 's/^SOSYMLINK\\s*=.*/SOSYMLINK = false/' libgrapheme/config.mk"
+    - "perl -pi -e 's/^BUILD_CFLAGS\\s*=.*/BUILD_CFLAGS = -std=c99 -Os/' libgrapheme/config.mk"
+    - "perl -pi -e 's/^BUILD_LDFLAGS\\s*=.*/BUILD_LDFLAGS =/' libgrapheme/config.mk"
 
     # IOV_MAX: now provided globally by dicl-clang-compat/limits.h
     # (removed inline sed that injected IOV_MAX into imsg-buffer.c)

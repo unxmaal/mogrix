@@ -21,11 +21,9 @@
       }
     },
     "knowledge": {
-      "command": "python3",
-      "args": ["tools/knowledge-server.py"],
-      "env": {
-        "KNOWLEDGE_LOG": "/tmp/knowledge-mcp.log"
-      }
+      "command": "uv",
+      "args": ["run", "mcm-engine", "run"],
+      "env": {}
     },
     "ghidra": {
       "command": "python3",

@@ -7,6 +7,11 @@ rules:
     - "perl(IPC::Open3)"
 
   spec_replacements:
+    # mandoc uses its own configure.local — not autoconf.
+    # Must set CC explicitly or it detects host cc and builds n64.
+    - pattern: "echo 'CFLAGS=\"%{optflags} -fPIC\"' >> configure.local"
+      replacement: "echo 'CC=\"%{__cc}\"' >> configure.local\necho 'CFLAGS=\"%{optflags} -fPIC\"' >> configure.local\necho 'LD=\"%{__ld}\"' >> configure.local\necho 'AR=\"%{__ar}\"' >> configure.local\necho 'RANLIB=\"%{__ranlib}\"' >> configure.local\necho 'HAVE_ENDIAN=1' >> configure.local\necho 'HAVE_NTOHL=1' >> configure.local\necho 'HAVE_NANOSLEEP=1' >> configure.local\necho 'HAVE_OHASH=0' >> configure.local\necho 'HAVE_FTS=0' >> configure.local\necho 'HAVE_REWB_BSD=0' >> configure.local\necho 'HAVE_REWB_SYSV=1' >> configure.local\necho 'HAVE_STRCASESTR=0' >> configure.local\necho 'HAVE_STRINGLIST=0' >> configure.local\necho 'HAVE_STRLCAT=0' >> configure.local\necho 'HAVE_STRLCPY=0' >> configure.local\necho 'HAVE_STRNDUP=0' >> configure.local\necho 'HAVE_STRPTIME=1' >> configure.local\necho 'HAVE_STRSEP=0' >> configure.local\necho 'HAVE_STRTONUM=0' >> configure.local\necho 'HAVE_VASPRINTF=0' >> configure.local\necho 'HAVE_WCHAR=0' >> configure.local\necho 'HAVE_ISBLANK=1' >> configure.local\necho 'UTF8_LOCALE=' >> configure.local\necho 'LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\"' >> configure.local\necho 'LIBS=\"-lmogrix-compat -lgen\"' >> configure.local"
+
     # Remove Requires for update-alternatives (not available on IRIX)
     - pattern: "Requires(post):   %{_sbindir}/update-alternatives\nRequires(postun): %{_sbindir}/update-alternatives\nRequires(preun):  %{_sbindir}/update-alternatives"
       replacement: "# update-alternatives not available on IRIX"

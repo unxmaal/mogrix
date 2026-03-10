@@ -914,6 +914,16 @@ CROSS_BINDIR = Path("/opt/cross/bin")
     default=None,
     help="Directory to copy built RPMs (default: ~/mogrix_outputs/RPMS/)",
 )
+@click.option(
+    "--no-isolate",
+    is_flag=True,
+    help="Skip overlayfs staging isolation (use current staging as-is)",
+)
+@click.option(
+    "--skip-dep-check",
+    is_flag=True,
+    help="Skip post-build ELF dependency validation",
+)
 def build(
     srpm: str,
     rpmbuild_dir: str | None,
@@ -921,6 +931,8 @@ def build(
     macros: str | None,
     dry_run: bool,
     output_dir: str | None,
+    no_isolate: bool,
+    skip_dep_check: bool,
 ):
     """Build a converted SRPM.
 
@@ -975,6 +987,21 @@ def build(
                 console.print(f"  [red]![/red] {err}")
             console.print("\n[bold]Try running:[/bold] mogrix setup-cross")
             raise SystemExit(1)
+
+    # Per-build staging isolation
+    isolated = None
+    build_deps = []
+    if cross and not dry_run and not no_isolate:
+        from mogrix.isolated_build import IsolatedStaging
+
+        isolated = IsolatedStaging(
+            base_staging=Path("/opt/sgug-staging"),
+            rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+            rules_dir=RULES_DIR,
+        )
+        build_deps = isolated.resolve_build_deps(input_path)
+        if build_deps:
+            console.print(f"[bold]Build deps:[/bold] {', '.join(build_deps)}")
 
     # Validate cross-compilation environment
     if cross:
@@ -1046,21 +1073,88 @@ def build(
         console.print("[bold]Mode:[/bold] IRIX cross-compilation")
     console.print(f"[bold]Command:[/bold] {' '.join(cmd)}\n")
 
+    # Remove old RPMs for this package before building, so stale output
+    # can't be mistaken for fresh builds (e.g. by batch build agents).
+    if is_srpm and not dry_run:
+        import re as _re
+        _m = _re.match(r"^(.+?)-[\d]", input_path.name)
+        if _m:
+            _pkg_prefix = _m.group(1)
+            _out_dir = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
+            if _out_dir.exists():
+                _old = set(_out_dir.glob(f"{_pkg_prefix}-[0-9]*.rpm"))
+                _old |= set(_out_dir.glob(f"{_pkg_prefix}-*-[0-9]*.rpm"))
+                for old_rpm in sorted(_old):
+                    console.print(f"[dim]Removing old RPM:[/dim] {old_rpm.name}")
+                    old_rpm.unlink()
+
+    # Build lock: prevent concurrent builds of the same package
+    import re as _re_lock
+    import os as _os_lock
+    _lock_pkg = None
+    _lock_file = None
+    if is_srpm:
+        _m_lock = _re_lock.match(r"^(.+?)-[\d]", input_path.name)
+        if _m_lock:
+            _lock_pkg = _m_lock.group(1)
+            _lock_file = rpmbuild_path / f".lock.{_lock_pkg}"
+            if _lock_file.exists():
+                try:
+                    _lock_pid = int(_lock_file.read_text().strip())
+                    # Check if the PID is still running
+                    _os_lock.kill(_lock_pid, 0)
+                    console.print(f"[red]Build lock exists for {_lock_pkg} (PID {_lock_pid} is running)[/red]")
+                    console.print(f"[red]Another build of {_lock_pkg} is already in progress.[/red]")
+                    console.print(f"[dim]Lock file: {_lock_file}[/dim]")
+                    console.print("[dim]If this is stale, remove it manually.[/dim]")
+                    raise SystemExit(1)
+                except (ValueError, ProcessLookupError, PermissionError):
+                    # PID is gone or invalid — stale lock, remove it
+                    _lock_file.unlink(missing_ok=True)
+            _lock_file.write_text(str(_os_lock.getpid()))
+
+    # Snapshot RPMs before build so we can identify which ones are new
+    rpms_dir = rpmbuild_path / "RPMS"
+    pre_build_rpms = set(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else set()
+
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        if isolated and build_deps:
+            result = isolated.build_with_fallback(cmd, build_deps)
+        else:
+            result = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
 
         if result.returncode == 0:
             import shutil
 
             console.print("\n[bold green]✓ Build succeeded[/bold green]")
-            # Collect built RPMs
-            rpms_dir = rpmbuild_path / "RPMS"
-            rpms = list(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else []
+            # Collect only newly built RPMs (not stale ones from prior builds)
+            post_build_rpms = set(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else set()
+            rpms = sorted(post_build_rpms - pre_build_rpms)
 
             if rpms:
                 console.print(f"\n[bold]Built RPMs:[/bold]")
                 for rpm in rpms:
                     console.print(f"  {rpm}")
+
+            # Post-build ELF dependency validation
+            if cross and rpms and not skip_dep_check:
+                from mogrix.validate_deps import validate_rpm_deps
+
+                console.print("\n[bold]Validating ELF dependencies...[/bold]")
+                out_rpms_check = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
+                unresolved = validate_rpm_deps(rpms, out_rpms_check, IRIX_SYSROOT)
+                if unresolved:
+                    console.print("\n[bold red]✗ Unresolved NEEDED sonames:[/bold red]")
+                    for rpm_name, missing in sorted(unresolved.items()):
+                        console.print(f"  [bold]{rpm_name}:[/bold]")
+                        for soname in missing:
+                            console.print(f"    [red]• {soname}[/red]")
+                    console.print(
+                        "\n[dim]Use --skip-dep-check to bypass this check.[/dim]"
+                    )
+                    raise SystemExit(1)
+                else:
+                    console.print("[green]✓ All ELF dependencies resolve[/green]")
 
             # Copy RPMs to output directory
             out_rpms = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
@@ -1087,6 +1181,10 @@ def build(
     except FileNotFoundError:
         console.print("[red]Error: rpmbuild not found. Install rpm-build package.[/red]")
         raise SystemExit(1)
+    finally:
+        # Always clean up the build lock
+        if _lock_file and _lock_file.exists():
+            _lock_file.unlink(missing_ok=True)
 
 
 def _validate_cross_env(dry_run: bool = False):
@@ -1752,6 +1850,248 @@ def audit_rules(rules_dir: str | None, verbose: bool):
             console.print(f"  {key}={val}")
 
 
+@main.command("rebuild-all")
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option("--keep-old", is_flag=True, help="Don't relocate old outputs")
+@click.option("--resume", is_flag=True, help="Skip packages that already passed gates")
+@click.option("--dry-run", is_flag=True, help="Compute plan without building")
+@click.option("--skip-gates", is_flag=True, help="Treat gate failures as warnings")
+@click.option("--from-list", type=click.Path(exists=True), help="File with package names to build")
+@click.option("--no-fail-fast", is_flag=True, help="Continue building after failures (default: stop at first failure)")
+def rebuild_all_cmd(
+    rules_dir: str | None,
+    keep_old: bool,
+    resume: bool,
+    dry_run: bool,
+    skip_gates: bool,
+    from_list: str | None,
+    no_fail_fast: bool,
+):
+    """Full dependency-ordered rebuild with quality gates.
+
+    Gate 0: Clean slate — relocate old outputs, reset staging, clean rpmbuild.
+    Gate 2: Build validation — ELF ABI, shebangs, hardcoded paths.
+
+    Each package is: convert -> build -> gate 2 check -> stage.
+    Packages are built in dependency order so downstream builds link
+    against freshly-built upstream libraries.
+
+    Examples:
+      mogrix rebuild-all --dry-run            # Preview build order
+      mogrix rebuild-all                      # Full clean rebuild
+      mogrix rebuild-all --keep-old --resume  # Incremental rebuild
+      mogrix rebuild-all --from-list pkgs.txt # Rebuild specific packages
+    """
+    from mogrix.rebuild import rebuild_all
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+
+    pkg_list = None
+    if from_list:
+        pkg_list = [
+            line.strip()
+            for line in Path(from_list).read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+
+    rebuild_all(
+        rules_dir=rules_path,
+        keep_old=keep_old,
+        resume=resume,
+        dry_run=dry_run,
+        skip_gates=skip_gates,
+        from_list=pkg_list,
+        fail_fast=not no_fail_fast,
+    )
+
+
+@main.command("rebuild-order")
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
+def rebuild_order(rules_dir: str | None, as_json: bool):
+    """Compute global dependency-ordered build plan for all packages with rules.
+
+    Uses the roadmap resolver to topologically sort all packages so that
+    dependencies are built before dependents.
+    """
+    import json as json_mod
+
+    from mogrix.repometa import RepoMetaCache
+    from mogrix.roadmap import RoadmapResolver
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+
+    cache = RepoMetaCache(release="40")
+    try:
+        db = cache.ensure_index(refresh=False)
+    except Exception as e:
+        console.print(f"[red]Failed to load repo index: {e}[/red]")
+        console.print("Run: mogrix roadmap <any-package> --refresh")
+        raise SystemExit(1)
+
+    loader = RuleLoader(rules_path)
+    resolver = RoadmapResolver(
+        db=db,
+        rule_loader=loader,
+        rules_dir=rules_path,
+        rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+        stop_at_rules=True,
+    )
+
+    build_order, cycles = resolver.resolve_all()
+    db.close()
+
+    if as_json:
+        console.print(json_mod.dumps({
+            "build_order": build_order,
+            "cycles": cycles,
+            "total": len(build_order),
+        }, indent=2))
+        return
+
+    console.print(f"[bold]Global Build Order ({len(build_order)} packages)[/bold]\n")
+    for i, pkg in enumerate(build_order, 1):
+        console.print(f"  {i:3d}. {pkg}")
+
+    if cycles:
+        console.print(f"\n[yellow]Dependency cycles ({len(cycles)}):[/yellow]")
+        for cycle in cycles:
+            console.print(f"  {' -> '.join(cycle)} -> {cycle[0]}")
+
+    console.print(f"\n[bold]Total:[/bold] {len(build_order)} packages")
+
+
+@main.command("audit-smoke-coverage")
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+def audit_smoke_coverage(rules_dir: str | None):
+    """Audit smoke test coverage across all packages.
+
+    Reports which packages have smoke tests, which are library-only,
+    and which are missing smoke tests entirely.
+    """
+    import yaml
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+    packages_dir = rules_path / "packages"
+
+    if not packages_dir.exists():
+        console.print(f"[red]No packages directory at {packages_dir}[/red]")
+        raise SystemExit(1)
+
+    has_smoke = []
+    library_only = []
+    missing = []
+
+    for yaml_file in sorted(packages_dir.glob("*.yaml")):
+        with open(yaml_file) as f:
+            try:
+                data = yaml.safe_load(f)
+            except yaml.YAMLError:
+                continue
+
+        if not data:
+            continue
+
+        pkg_name = data.get("package", yaml_file.stem)
+        smoke = data.get("smoke_test")
+
+        if smoke == "library-only":
+            library_only.append(pkg_name)
+        elif smoke:
+            has_smoke.append(pkg_name)
+        else:
+            missing.append(pkg_name)
+
+    total = len(has_smoke) + len(library_only) + len(missing)
+    coverage = (len(has_smoke) + len(library_only)) / total * 100 if total else 0
+
+    console.print(f"[bold]Smoke Test Coverage Audit[/bold]\n")
+    console.print(f"  Packages scanned: {total}")
+    console.print(f"  With smoke tests: [green]{len(has_smoke)}[/green]")
+    console.print(f"  Library-only:     [cyan]{len(library_only)}[/cyan]")
+    console.print(f"  [red]Missing:[/red]          [red]{len(missing)}[/red]")
+    console.print(f"  Coverage:         {coverage:.0f}%\n")
+
+    if missing:
+        console.print(f"[bold red]Packages missing smoke tests ({len(missing)}):[/bold red]")
+        for pkg in missing:
+            console.print(f"  - {pkg}")
+
+    if library_only:
+        console.print(f"\n[bold cyan]Library-only packages ({len(library_only)}):[/bold cyan]")
+        for pkg in library_only:
+            console.print(f"  - {pkg}")
+
+
+@main.command("pre-scan")
+@click.option(
+    "--rpm-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Directory containing built RPMs (default: ~/mogrix_outputs/RPMS/)",
+)
+def pre_scan(rpm_dir: str | None):
+    """Pre-scan existing RPMs for Gate 2 issues.
+
+    Checks shebangs, hardcoded paths, and ELF ABI in built RPMs
+    BEFORE starting a clean rebuild. Fix rules first, then rebuild.
+    """
+    from mogrix.gates import pre_scan_rpms
+
+    scan_dir = Path(rpm_dir) if rpm_dir else MOGRIX_OUTPUTS / "RPMS"
+
+    if not scan_dir.exists():
+        console.print(f"[red]RPM directory not found: {scan_dir}[/red]")
+        raise SystemExit(1)
+
+    rpms = sorted(f for f in scan_dir.glob("*.rpm") if not f.name.endswith(".src.rpm"))
+    console.print(f"[bold]Pre-scanning {len(rpms)} RPMs in:[/bold] {scan_dir}\n")
+
+    results = pre_scan_rpms(scan_dir)
+
+    total_errors = 0
+    total_warnings = 0
+    failed_rpms = []
+
+    for rpm_name, result in sorted(results.items()):
+        errors = [i for i in result.issues if i.severity == "error"]
+        warnings = [i for i in result.issues if i.severity == "warning"]
+        total_errors += len(errors)
+        total_warnings += len(warnings)
+
+        if errors or warnings:
+            failed_rpms.append(rpm_name)
+            console.print(f"[bold]{rpm_name}[/bold]")
+            for issue in result.issues:
+                color = "red" if issue.severity == "error" else "yellow"
+                console.print(f"  [{color}]{issue.severity}[/{color}] {issue.file}: {issue.message}")
+
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  RPMs scanned: {len(results)}")
+    console.print(f"  RPMs with issues: [{'red' if failed_rpms else 'green'}]{len(failed_rpms)}[/{'red' if failed_rpms else 'green'}]")
+    console.print(f"  Errors: [{'red' if total_errors else 'green'}]{total_errors}[/{'red' if total_errors else 'green'}]")
+    console.print(f"  Warnings: [{'yellow' if total_warnings else 'green'}]{total_warnings}[/{'yellow' if total_warnings else 'green'}]")
+
+    if total_errors:
+        console.print(f"\n[red]Fix these issues in package rules before rebuilding.[/red]")
+        raise SystemExit(1)
+
+
 @main.command()
 @click.argument("packages", nargs=-1, required=True)
 @click.option(
@@ -2017,7 +2357,13 @@ def setup_cross(
         # (source, destination, description)
         (CROSS_DIR / "bin" / "irix-cc", staging_path / "bin" / "irix-cc", "C compiler wrapper"),
         (CROSS_DIR / "bin" / "irix-ld", staging_path / "bin" / "irix-ld", "Linker wrapper"),
+        (CROSS_DIR / "bin" / "strip-verneed", staging_path / "bin" / "strip-verneed", "Strip GNU version sections"),
+        (CROSS_DIR / "bin" / "fix-anon-relocs", staging_path / "bin" / "fix-anon-relocs", "Fix anonymous R_MIPS_REL32"),
         (CROSS_DIR / "rpmmacros.irix", staging_path.parent.parent / "rpmmacros.irix", "RPM macros"),
+        (CROSS_DIR / "pkgconfig" / "pthread-stubs.pc", staging_path / "lib32" / "pkgconfig" / "pthread-stubs.pc", "pthread-stubs (IRIX has pthreads in libc)"),
+        # Runtime libraries (cross-compiled from GCC 9.5.0 source)
+        (CROSS_DIR / "lib32" / "libgcc_s.so.1", staging_path / "lib32" / "libgcc_s.so.1", "libgcc_s runtime (from GCC 9.5.0)"),
+        (CROSS_DIR / "lib32" / "libstdc++.so.6", staging_path / "lib32" / "libstdc++.so.6", "libstdc++ runtime (from GCC 9.5.0)"),
     ]
 
     # Add dicl-clang-compat headers (IRIX header fixes for clang)
@@ -2059,6 +2405,18 @@ def setup_cross(
             dst.chmod(dst.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
         console.print(f"  [green]✓[/green] {desc}")
+
+    # Create dev symlinks for runtime libraries
+    runtime_symlinks = [
+        ("libgcc_s.so.1", "libgcc_s.so"),
+        ("libstdc++.so.6", "libstdc++.so"),
+    ]
+    for target, link_name in runtime_symlinks:
+        link_path = staging_path / "lib32" / link_name
+        if link_path.exists() or link_path.is_symlink():
+            link_path.unlink()
+        link_path.symlink_to(target)
+        console.print(f"  [green]✓[/green] Symlink: {link_name} → {target}")
 
     # Create C++ wrapper as symlink/copy of C wrapper
     cxx_wrapper = staging_path / "bin" / "irix-cxx"
@@ -2137,23 +2495,27 @@ def stage(
         "usr/sgug/bin/irix-cc",
         "usr/sgug/bin/irix-cxx",
         "usr/sgug/bin/irix-ld",
+        "usr/sgug/bin/fix-anon-relocs",
+        "usr/sgug/bin/strip-verneed",
         "usr/sgug/include/dicl-clang-compat",
         "usr/sgug/include/mogrix-compat",
         "usr/sgug/lib32/libsoft_float_stubs.a",
+        "usr/sgug/lib32/libmogrix_compat.so",
+        "usr/sgug/lib32/pkgconfig/pthread-stubs.pc",
         "rpmmacros.irix",
     }
 
     # Pre-existing libraries that came with the staging area (not from our RPMs)
+    # Only runtime libs deployed by setup-cross survive a clean.
+    # All other libs/headers come from mogrix-rebuilt packages via `mogrix stage`.
+    # SGUG-RSE preexisting artifacts (libbz2.a, libncursesw.a, bzlib.h, etc.)
+    # are no longer preserved — we rebuild everything from source.
     PREEXISTING_LIBS = {
-        "libbz2.a", "libformw.a", "libhistory.a", "liblzma.a", "liblzma.la",
-        "libmenuw.a", "libncursesw.a", "libpanelw.a", "libreadline.a",
-        "libtinfow.a", "libz.a",
+        "libstdc++.so", "libstdc++.so.6",
+        "libgcc_s.so", "libgcc_s.so.1",
     }
 
-    PREEXISTING_HEADERS = {
-        "bzlib.h", "gnumake.h", "lzma.h", "zconf.h", "zlib.h",
-        "lzma", "ncursesw", "readline",
-    }
+    PREEXISTING_HEADERS: set[str] = set()
 
     if list_staged:
         _list_staged_packages(staging_path, PREEXISTING_LIBS, PREEXISTING_HEADERS)
@@ -2212,6 +2574,7 @@ def stage(
                 continue
 
             console.print(f"  [green]✓ Installed[/green]")
+            _record_staged_package(staging_path, rpm_file.name)
 
         except Exception as e:
             console.print(f"  [red]✗ Error:[/red] {e}")
@@ -2221,6 +2584,72 @@ def stage(
 
     console.print("\n[bold green]Staging complete![/bold green]")
     console.print("\nStaged libraries are now available for cross-compilation.")
+
+
+MANIFEST_FILE = ".mogrix-staged.json"
+
+
+def _record_staged_package(staging_path: Path, rpm_filename: str) -> None:
+    """Record a staged RPM in the manifest file."""
+    import json
+    from datetime import datetime
+
+    manifest_path = staging_path / MANIFEST_FILE
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            manifest = {}
+
+    if "packages" not in manifest:
+        manifest["packages"] = {}
+
+    # Parse package name from RPM filename (e.g., "ncurses-devel-6.4-3.mips.rpm")
+    import re
+    match = re.match(r"^(.+?)-(\d+[\d.]*(?:[-~]\w[\w.]*)*)\.\w+\.rpm$", rpm_filename)
+    pkg_name = match.group(1) if match else rpm_filename
+
+    manifest["packages"][pkg_name] = {
+        "rpm": rpm_filename,
+        "staged_at": datetime.now().isoformat(),
+    }
+
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def _clear_manifest(staging_path: Path) -> None:
+    """Remove the staging manifest file."""
+    manifest_path = staging_path / MANIFEST_FILE
+    if manifest_path.exists():
+        manifest_path.unlink()
+        console.print("  [dim]Cleared staging manifest[/dim]")
+
+
+def _show_manifest(staging_path: Path) -> None:
+    """Show contents of the staging manifest."""
+    import json
+
+    manifest_path = staging_path / MANIFEST_FILE
+    if not manifest_path.exists():
+        console.print("[dim]No staging manifest found (packages staged before tracking was added)[/dim]")
+        return
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        console.print("[yellow]Manifest file is corrupt[/yellow]")
+        return
+
+    packages = manifest.get("packages", {})
+    if not packages:
+        console.print("[dim]No packages recorded in manifest[/dim]")
+        return
+
+    console.print(f"\n[bold]Manifest ({len(packages)} packages):[/bold]")
+    for name, info in sorted(packages.items()):
+        staged_at = info.get("staged_at", "unknown")
+        console.print(f"  {name}: {info.get('rpm', '?')} (staged {staged_at})")
 
 
 def _fix_multiarch_headers(staging_path: Path) -> None:
@@ -2302,6 +2731,9 @@ def _list_staged_packages(staging_path: Path, preexisting_libs: set, preexisting
     else:
         console.print("  [dim](include directory not found)[/dim]")
 
+    # Show manifest (packages tracked by mogrix stage)
+    _show_manifest(staging_path)
+
 
 def _clean_staged_packages(
     staging_path: Path,
@@ -2321,10 +2753,13 @@ def _clean_staged_packages(
 
     removed_count = 0
 
+    # Libraries to always keep (compat preload, toolchain)
+    preserve_libs = {"libmogrix_compat.so"}
+
     # Clean libraries (keeping pre-existing and soft_float_stubs)
     if lib_dir.exists():
         for lib in lib_dir.glob("*.so*"):
-            if lib.name not in preexisting_libs:
+            if lib.name not in preexisting_libs and lib.name not in preserve_libs:
                 console.print(f"  Removing: {lib.name}")
                 lib.unlink()
                 removed_count += 1
@@ -2346,8 +2781,8 @@ def _clean_staged_packages(
     # Clean pkgconfig files
     if pkgconfig_dir.exists():
         for pc in pkgconfig_dir.glob("*.pc"):
-            # Keep pre-existing ones
-            if pc.name not in {"liblzma.pc", "zlib.pc", "ncursesw.pc"}:
+            # Keep only pthread-stubs.pc (deployed by setup-cross)
+            if pc.name not in {"pthread-stubs.pc"}:
                 console.print(f"  Removing: pkgconfig/{pc.name}")
                 pc.unlink()
                 removed_count += 1
@@ -2359,10 +2794,36 @@ def _clean_staged_packages(
                 console.print(f"  Removing: {header.name}")
                 header.unlink()
                 removed_count += 1
+        # Remove header subdirectories that aren't pre-existing or compat
+        preserve_include_dirs = preexisting_headers | {"dicl-clang-compat", "mogrix-compat", "c++"}
+        for subdir in include_dir.iterdir():
+            if subdir.name in preserve_include_dirs:
+                continue
+            if subdir.is_symlink():
+                console.print(f"  Removing: include/{subdir.name} (symlink)")
+                subdir.unlink()
+                removed_count += 1
+            elif subdir.is_dir():
+                console.print(f"  Removing: include/{subdir.name}/")
+                shutil.rmtree(subdir)
+                removed_count += 1
+
+    # Clean lib32 subdirectories that were installed by RPMs
+    # (skip regular files and file symlinks — handled by *.so*/*.a/*.la globs above)
+    if lib_dir.exists():
+        preserve_lib_dirs = {"pkgconfig"}
+        for subdir in lib_dir.iterdir():
+            if subdir.name in preserve_lib_dirs:
+                continue
+            # Only remove actual directories (not symlinks to files like libgcc_s.so)
+            if subdir.is_dir() and not subdir.is_symlink():
+                console.print(f"  Removing: lib32/{subdir.name}/")
+                shutil.rmtree(subdir)
+                removed_count += 1
 
     # Clean binaries (keeping wrappers)
     if bin_dir.exists():
-        preserve_bins = {"irix-cc", "irix-cxx", "irix-ld"}
+        preserve_bins = {"irix-cc", "irix-cxx", "irix-ld", "fix-anon-relocs", "strip-verneed"}
         for binary in bin_dir.iterdir():
             if binary.is_file() and binary.name not in preserve_bins:
                 console.print(f"  Removing: bin/{binary.name}")
@@ -2376,6 +2837,9 @@ def _clean_staged_packages(
             console.print(f"  Removing: {subdir}/")
             shutil.rmtree(dir_path)
             removed_count += 1
+
+    # Clear the manifest
+    _clear_manifest(staging_path)
 
     if removed_count > 0:
         console.print(f"\n[bold green]Cleaned {removed_count} items[/bold green]")
@@ -2949,6 +3413,16 @@ def create_srpm(packages: tuple[str, ...], output_dir: str | None):
     default="/opt/irix-sysroot",
     help="IRIX sysroot path for native lib detection",
 )
+@click.option(
+    "--test/--no-test",
+    default=True,
+    help="Test bundle on IRIX after creation (default: enabled)",
+)
+@click.option(
+    "--test-host",
+    default="192.168.0.81",
+    help="IRIX host for testing (default: 192.168.0.81)",
+)
 def bundle(
     packages: tuple[str, ...],
     output: str | None,
@@ -2957,6 +3431,8 @@ def bundle(
     include: tuple[str, ...],
     name: str | None,
     sysroot: str,
+    test: bool,
+    test_host: str,
 ):
     """Create a self-contained app bundle for IRIX.
 
@@ -3019,7 +3495,7 @@ def bundle(
             trampoline_exclude.update(pkg_exclude)
 
     builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
-    builder.create_bundle(
+    manifest = builder.create_bundle(
         target_package=target_package,
         output_dir=output_dir,
         extra_packages=extra if extra else None,
@@ -3027,6 +3503,48 @@ def bundle(
         suite_name=suite_name,
         trampoline_exclude=trampoline_exclude if trampoline_exclude else None,
     )
+
+    # Auto-test on IRIX after bundle creation
+    if test and manifest.bundle_dir and manifest.bundle_dir.is_dir():
+        from mogrix.test import (
+            TestDiscovery,
+            ScriptGenerator,
+            IRIXTestRunner,
+            TestReport,
+            print_report,
+        )
+
+        console.print("\n[bold]Testing bundle on IRIX...[/bold]")
+        runner = IRIXTestRunner(host=test_host, user="root")
+        ok, msg = runner.check_connectivity()
+        if not ok:
+            console.print(f"[yellow]IRIX not reachable ({msg}) — skipping test[/yellow]")
+            return
+
+        discovery = TestDiscovery(RULES_DIR)
+        tests = discovery.discover(manifest.bundle_dir)
+        if not tests:
+            console.print("[yellow]No tests discovered — skipping[/yellow]")
+            return
+
+        remote_dir = "/tmp/mogrix-test"
+        remote_bundle = f"{remote_dir}/{manifest.bundle_dir.name}"
+        ok, msg = runner.deploy_bundle(manifest.bundle_dir, remote_dir)
+        if not ok:
+            console.print(f"[red]Deploy failed: {msg}[/red]")
+            return
+
+        generator = ScriptGenerator()
+        script = generator.generate(tests)
+        console.print(f"[dim]Running {len(tests)} tests on {test_host}...[/dim]")
+        rc, stdout, stderr = runner.run_script(script, remote_bundle)
+        runner.cleanup(remote_bundle)
+
+        results = runner.parse_results(stdout)
+        report = TestReport(bundle_name=manifest.bundle_dir.name, results=results)
+        print_report(report, console)
+        if report.failed > 0:
+            console.print(f"\n[red]{report.failed} test(s) failed[/red]")
 
 
 @main.command()

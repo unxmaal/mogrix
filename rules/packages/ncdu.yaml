@@ -1,2 +1,10 @@
 package: ncdu
-rules: {}
+
+build_after:
+  - ncurses
+
+rules:
+  ac_cv_overrides:
+    # IRIX has these but cross-compile can't detect them
+    ac_cv_func_gettimeofday: "yes"
+    ac_cv_func_getpagesize: "yes"

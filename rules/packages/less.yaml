@@ -22,6 +22,8 @@ rules:
   ac_cv_overrides:
     ac_cv_type_sigset_t: "yes"
     ac_cv_func_fsync: "yes"
+    ac_cv_func_sigprocmask: "yes"
+    ac_cv_func_sigsetmask: "no"
 
   # Skip the fsync patch — it replaces AC_CHECK_FUNCS(fsync) with an
   # AC_TRY_RUN test that hard-errors during cross-compilation.

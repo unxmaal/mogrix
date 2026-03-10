@@ -141,6 +141,16 @@ IRIX has no TrueType fonts. Xft/fontconfig-based apps (like `st`) fail with "can
 
 This means any bundle that includes fontconfig and has TTF files in `fonts/` will automatically get working fonts. The compiled-in font name doesn't matter as long as fontconfig can resolve it (e.g., st uses "monospace" which resolves to Iosevka via the alias).
 
+## Runtime Quirks
+
+### rld Deep Dependency Tree Crash
+
+When an app has 10+ transitive shared library dependencies, `dlopen()` can crash rld during bulk loading. **Fix:** Pre-load heavy dependencies individually in the wrapper script before exec'ing the binary. Sequential loading lets rld process each library fully before encountering the next.
+
+### libevent devpoll Backend Crash
+
+libevent's `/dev/poll` backend crashes on IRIX. **Fix:** Set `EVENT_NODEVPOLL=1` in the wrapper to force the `poll()` backend instead.
+
 ## Versioning
 
 Bundle names use a date-serial suffix: `nano-7.2-6-irix-bundle.0217261456` (format: `MMDDYYHHmm`). When rebuilding, previous bundle directories and tarballs for the same package version are automatically cleaned up.

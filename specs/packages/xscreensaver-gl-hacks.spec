@@ -53,7 +53,7 @@ sed -i 's/^exit \$CONF_STATUS$/exit 0/' ../configure
 CC="%{__cc}" \
 LIBS="-L$STUBDIR $LIBS -lgen -lpng -lz" \
 CFLAGS="%{optflags} -I/opt/irix-sysroot/usr/include" \
-LDFLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32" \
+LDFLAGS="-L$STUBDIR -L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32" \
 ../configure \
   --host=mips-sgi-irix6.5 \
   --prefix=%{_prefix} \
@@ -82,6 +82,11 @@ test -f hacks/glx/Makefile || { echo "FATAL: configure failed to generate Makefi
 # Patch Makefile to use our stubs and compat library
 sed -i 's|HACK_POST     =.*|HACK_POST     = $(LIBS) $(X_LIBS) $(X_PRE_LIBS) $(XFT_LIBS) -lXt -lX11 -lXext $(X_EXTRA_LIBS) -lm -lmogrix-compat|' hacks/glx/Makefile
 sed -i "s|-lGLU -lGL|-L$STUBDIR -lGLU -lGL|" hacks/glx/Makefile
+
+# Skip validate_xml — check-configs.pl needs host Perl modules we don't have.
+# Remove it from "all:" prerequisites and replace the recipe with a no-op.
+sed -i 's/^all: validate_xml /all: /' hacks/glx/Makefile
+sed -i 's|@cd .* check-configs.pl.*|@true|' hacks/glx/Makefile
 
 # Build only utils, screenhack support, and GL hacks
 make -C utils %{?_smp_mflags}

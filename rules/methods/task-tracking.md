@@ -44,12 +44,47 @@
 
 When building multiple packages, use background Task agents. These rules prevent context exhaustion (which has killed two sessions in a row).
 
+### Rule 0: Isolated rpmbuild Directories (CRITICAL)
+
+**Every agent MUST use its own rpmbuild directory.** Sharing `~/rpmbuild/` between concurrent agents causes:
+- Stale RPMs from other packages contaminating dep validation
+- Concurrent builds clobbering each other's output in `RPMS/mips/`
+- Noarch RPM pollution from previous builds
+
+**Each build gets a fresh, isolated rpmbuild dir.** The overlayfs isolation (`--no-isolate` is NOT passed) ensures staging is clean too. After the build, the rpmbuild dir is removed.
+
+**Required pattern for agent prompts — include this verbatim:**
+```
+For EVERY package build, you MUST:
+
+1. Create a fresh rpmbuild dir:
+   RPMBUILD_DIR=~/rpmbuild-<package>
+   rm -rf "$RPMBUILD_DIR"
+
+2. Convert (if not already converted):
+   uv run mogrix convert ~/mogrix_inputs/SRPMS/<package>-*.src.rpm
+
+3. Build with isolated rpmbuild dir (overlayfs staging is the default):
+   uv run mogrix build --cross --rpmbuild-dir "$RPMBUILD_DIR" \
+     ~/mogrix_outputs/SRPMS/<package>-*.src.rpm > /tmp/<package>-build.log 2>&1
+
+4. Stage on success:
+   uv run mogrix stage ~/mogrix_outputs/RPMS/<package>-*.mips.rpm
+
+5. Clean up the rpmbuild dir when done (success or failure):
+   rm -rf "$RPMBUILD_DIR"
+
+NEVER use ~/rpmbuild/ directly — it's shared and will be polluted by other agents.
+NEVER pass --no-isolate — let overlayfs provide clean staging.
+ALWAYS clean up rpmbuild dirs after each package.
+```
+
 ### Rule 1: Max 2-3 Concurrent Agents
 
 Never launch more than 3 agents at once. Structure work as waves:
 
 1. Pick 2-3 packages from the queue
-2. Launch agents (one package per agent)
+2. Launch agents (one package per agent, each with isolated rpmbuild dir)
 3. Collect results from disk
 4. Update knowledge DB + rule files (orchestrator only)
 5. Assess context — compact if past 60%

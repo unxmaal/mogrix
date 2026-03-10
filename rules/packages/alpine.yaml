@@ -82,6 +82,10 @@ rules:
 
       sed -i ''1i\#define vfork fork'' pith/osdep/pipe.c
 
+      sed -i ''1i\#define vfork fork'' imap/src/osdep/unix/tcp_unix.c
+
+      sed -i ''/#include <sys\/file.h>/a\#ifndef _ABI_SOURCE\n#define _ABI_SOURCE\n#endif\n#include <grp.h>'' imap/src/osdep/unix/os_slx.h
+
 
       # Replace flocklnx.c with flocksim.c in the slx OS target.
 

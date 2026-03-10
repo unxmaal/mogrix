@@ -18,4 +18,4 @@ rules:
     - --without-included-regex
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch lib/malloc/dynarray_at_failure.c --old '%zu' --new '%u' --count 0 --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --no-backup --quiet"
+  - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --count 0 --no-backup --quiet"

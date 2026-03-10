@@ -231,7 +231,7 @@ class RuleEngine:
 
     def _apply_package_rules(self, result: TransformResult, pkg_rules: dict) -> None:
         """Apply package-specific rules to the result."""
-        rules = pkg_rules.get("rules", pkg_rules)
+        rules = pkg_rules.get("rules") or pkg_rules
 
         # Handle add_patch at top level (outside rules section)
         if "add_patch" in pkg_rules:
@@ -245,6 +245,13 @@ class RuleEngine:
             result.add_sources.extend(pkg_rules["add_source"])
             result.applied_rules.append(
                 f"add_source: {len(pkg_rules['add_source'])} sources"
+            )
+
+        # Handle install_cleanup at top level (outside rules section)
+        if "install_cleanup" in pkg_rules and pkg_rules is not rules:
+            result.install_cleanup.extend(pkg_rules["install_cleanup"])
+            result.applied_rules.append(
+                f"install_cleanup: {len(pkg_rules['install_cleanup'])} commands (top-level)"
             )
 
         # Inject compat functions

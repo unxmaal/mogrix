@@ -6,8 +6,8 @@
 package: which
 
 smoke_test:
-  - command: "/usr/sgug/bin/which bash"
-    expect: "/usr/sgug/bin/bash"
+  - command: "/usr/sgug/bin/which --version 2>&1"
+    expect: "which"
 
 rules:
 

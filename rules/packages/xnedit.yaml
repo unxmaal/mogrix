@@ -1,4 +1,6 @@
 package: xnedit
+blocked: true
+blocked_reason: "needs Motif (Xm/Xm.h) — not in cross-compilation sysroot"
 upstream:
   url: https://github.com/unixwork/xnedit/archive/refs/tags/v1.6.1.tar.gz
   version: "1.6.1"
@@ -55,6 +57,5 @@ rules:
         %{_datadir}/applications/xnedit.desktop
         %{_datadir}/icons/xnedit.png
 smoke_test:
-- command: "/usr/sgug/bin/xnedit"
-  args: "-V"
+- command: "/usr/sgug/bin/xnedit -V 2>&1"
   expect: "XNEdit"

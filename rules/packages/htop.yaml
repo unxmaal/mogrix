@@ -1,2 +1,44 @@
 # htop - interactive process viewer
 package: htop
+
+build_after:
+  - ncurses
+
+rules:
+  drop_buildrequires:
+    - hwloc-devel
+    - lm_sensors-devel
+    - libnl3-devel
+    - platform-python
+    - /usr/bin/pathfix.py
+    - python
+
+  configure_flags:
+    add:
+      - "--disable-hwloc"
+      - "--disable-sensors"
+      - "--disable-unicode"
+      - "--enable-proc=off"
+    remove:
+      - "--enable-hwloc"
+      - "--enable-capabilities"
+      - "--enable-sensors"
+      - "--enable-unicode"
+      - "--enable-delayacct"
+  inject_compat_functions:
+    - strcasestr
+  configure_disable:
+    - linux-affinity
+    - capabilities
+  prep_commands:
+    # IRIX lacks strsignal() — replace call with _sys_siglist[] (available on IRIX)
+    - "$MOGRIX_ROOT/tools/safepatch CRT.c --old 'strsignal(signal)' --new '(signal < NSIG ? _sys_siglist[signal] : \"Unknown signal\")' --no-backup --quiet"
+    # Fix unsupported platform stubs — upstream bugs in htop 3.3.0:
+    # 1. UnsupportedProcess.h needs Process.h for Process type (Machine.h doesn't include it)
+    - "sed -i 's|#include \"Machine.h\"|#include \"Machine.h\"\\n#include \"Process.h\"|' unsupported/UnsupportedProcess.h"
+    # 2. UnsupportedProcessTable.c uses proc->host but host is in Row (super of Process)
+    - "sed -i 's/proc->host->settings/proc->super.host->settings/' unsupported/UnsupportedProcessTable.c"
+  ac_cv_overrides:
+    # IRIX has these functions
+    ac_cv_func_gettimeofday: "yes"
+    ac_cv_func_getpagesize: "yes"

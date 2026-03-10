@@ -10,6 +10,7 @@ rules:
     ac_cv_func_strsep: 'yes'
     ac_cv_func_gettimeofday: 'yes'
     ac_cv_func_strtok_r: 'yes'
+    ac_cv_func_sigaction: 'yes'
   spec_replacements:
   - pattern: "%if ! 0%{?_module_build}\n    --enable-doxygen-doc \\\n%endif\n"
     replacement: ''

@@ -1,5 +1,10 @@
 package: fltk
 
+build_after:
+  - libpng
+  - libjpeg-turbo
+  - zlib-ng
+
 add_patch:
   - fltk.sgiremoveldsetversion.patch
   - fltk.sgiavoidsgiextensions.patch

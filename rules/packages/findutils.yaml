@@ -1,3 +1,4 @@
+# findutils - GNU find, xargs, locate
 package: findutils
 classes:
 - nls-disabled
@@ -9,6 +10,21 @@ smoke_test:
 rules:
   drop_buildrequires:
   - dejagnu
+  inject_compat_functions:
+  - timegm
+  export_vars:
+    # _GNU_SOURCE must be defined before gnulib headers are processed.
+    # See diffutils.yaml for full explanation of the timezone_t issue.
+    CPPFLAGS: "-D_GNU_SOURCE=1 $CPPFLAGS"
+  ac_cv_overrides:
+    ac_cv_func_timegm: "yes"
+    gl_cv_func_strerror_r_works: "yes"
+    ac_cv_func_strerror_r: "yes"
+  prep_commands:
+    # gnulib's perror.c calls strerror_r expecting GNU return type (char*),
+    # but our compat provides POSIX (int). Provide stub that calls real perror.
+    - "printf '#include <stdio.h>\\nvoid rpl_perror(const char *s) { perror(s); }\\n' > gl/lib/perror.c || true"
+    - "printf '#include <stdio.h>\\nvoid rpl_perror(const char *s) { perror(s); }\\n' > lib/perror.c || true"
   spec_replacements:
   - pattern: autoreconf -fiv
     replacement: 'AUTOPOINT=true autoreconf -fiv

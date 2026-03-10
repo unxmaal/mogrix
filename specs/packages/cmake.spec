@@ -183,7 +183,7 @@ perl -pi -e 'if (/Build tree has.*bin.*config.*cmake/) {
   -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
   -DCMAKE_C_FLAGS="%{optflags}" \
   -DCMAKE_CXX_FLAGS="%{optflags}" \
-  -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -lpthread -lm -lmogrix_compat" \
+  -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -L$(pwd)/mogrix-compat -lpthread -lm -lmogrix_compat -lmogrix-compat" \
   -DCMAKE_USE_SYSTEM_LIBRARIES=OFF \
   -DBUILD_CursesDialog=OFF \
   -DBUILD_QtDialog=OFF \

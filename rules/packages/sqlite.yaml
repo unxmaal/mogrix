@@ -12,6 +12,13 @@
 package: sqlite
 
 rules:
+  # lemon is a build-time parser generator — runs on the build host (x86-64),
+  # not on IRIX. Dropping it prevents an x86-64 binary in a .mips.rpm which
+  # would fail dep-check (libc.so.6 unresolvable).
+  drop_subpackages:
+    - lemon
+    - tcl
+    - analyzer
   # Note: bcond_invert is not implemented, using spec_replacements instead
 
   configure_flags:
@@ -62,6 +69,12 @@ rules:
     - pattern: "export CFLAGS=\"$RPM_OPT_FLAGS $RPM_LD_FLAGS \\\n               -DSQLITE_ENABLE_COLUMN_METADATA=1 \\\n               -DSQLITE_DISABLE_DIRSYNC=1 \\\n               -DSQLITE_SECURE_DELETE=1 \\\n               -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1 \\\n               -DSQLITE_ENABLE_FTS3_PARENTHESIS=1 \\\n               -DSQLITE_ENABLE_DBPAGE_VTAB \\\n               -Wall -fno-strict-aliasing\""
       replacement: "export CFLAGS=\"$RPM_OPT_FLAGS $RPM_LD_FLAGS -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_DISABLE_DIRSYNC=1 -DSQLITE_SECURE_DELETE=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS=1 -DSQLITE_ENABLE_DBPAGE_VTAB -Wall -fno-strict-aliasing\""
     # Fix libtool to build shared libraries for IRIX using generic script
+    # Remove lemon install commands (subpackage dropped)
+    - pattern: "install -D -m0755 lemon $RPM_BUILD_ROOT/%{_bindir}/lemon\ninstall -D -m0644 tool/lempar.c $RPM_BUILD_ROOT/%{_datadir}/lemon/lempar.c"
+      replacement: "# lemon install removed for IRIX (subpackage dropped)"
+    # Remove the %if %{with tcl} block entirely (tcl, sqldiff, analyzer subpackages)
+    - pattern: "%if %{with tcl}\n%files tcl\n%{tcl_sitearch}/sqlite3\n\n%if %{with sqldiff}\n%files tools\n%{_bindir}/sqldiff\n%endif\n\n%files analyzer\n%{_bindir}/sqlite3_analyzer\n%endif"
+      replacement: "# tcl/tools/analyzer subpackages removed for IRIX"
     - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
       replacement: |
         sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool

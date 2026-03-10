@@ -74,7 +74,6 @@ class StagingManager:
         "dicl-clang-compat",
         "mogrix-compat",
         "irix-compat.h",
-        "getopt.h",
     ]
 
     # Runtime source files and their output libraries
@@ -259,7 +258,7 @@ class StagingManager:
                 status.errors.append(f"Failed to copy mogrix-compat: {e}")
 
         # Individual header files (from cross/include/)
-        individual_headers = ["irix-compat.h", "getopt.h"]
+        individual_headers = ["irix-compat.h"]
         for header in individual_headers:
             src_path = self.config.cross_include_dir / header
             dst_path = self.config.include_dir / header

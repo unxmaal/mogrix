@@ -1,4 +1,8 @@
 package: openssh
+
+build_after:
+  - openssl
+
 add_source:
 - explicit_bzero.irix.c
 - digest-openssl.irix.c
@@ -52,6 +56,19 @@ rules:
     ac_cv_func_OpenSSL_version: 'yes'
     ac_cv_func_OpenSSL_version_num: 'yes'
     ac_cv_func_RSA_generate_key_ex: 'yes'
+    ac_cv_func_sigaction: 'yes'
+    ac_cv_func_sigprocmask: 'yes'
+    ac_cv_func_sigsuspend: 'yes'
+    ac_cv_func_sigvec: 'yes'
+    ac_cv_func_strerror: 'yes'
+    ac_cv_func_utimes: 'yes'
+    ac_cv_have_decl_strerror: 'yes'
+    ac_cv_func_getline: 'no'
+    ac_cv_func_asprintf: 'no'
+    ac_cv_func_reallocarray: 'no'
+    ac_cv_func_recallocarray: 'no'
+    ac_cv_func_freezero: 'no'
+    ac_cv_func_vasprintf: 'no'
   configure_flags:
     add:
     - --with-sandbox=no
@@ -422,14 +439,15 @@ rules:
   - rm -f %{buildroot}%{_mandir}/man8/ssh-pkcs11-helper.8
   - rm -f %{buildroot}%{_mandir}/man8/ssh-sk-helper.8
   prep_commands:
-  - "$MOGRIX_ROOT/tools/safepatch openbsd-compat/bsd-snprintf.c --old '#include \"includes.h\"' --insert-before \"$(printf '#define vsnprintf _irix_vsnprintf_decl\\n#define snprintf _irix_snprintf_decl')\" --no-backup --quiet"
-  - "$MOGRIX_ROOT/tools/safepatch openbsd-compat/bsd-snprintf.c --old '#include \"includes.h\"' --insert-after \"$(printf '#undef vsnprintf\\n#undef snprintf')\" --no-backup --quiet"
+  - "sed -i '/#include \"includes.h\"/i #define vsnprintf _irix_vsnprintf_decl\\n#define snprintf _irix_snprintf_decl' openbsd-compat/bsd-snprintf.c"
+  - "sed -i '/#include \"includes.h\"/a #undef vsnprintf\\n#undef snprintf' openbsd-compat/bsd-snprintf.c"
   - cp %{_sourcedir}/explicit_bzero.irix.c openbsd-compat/explicit_bzero.c
   - cp %{_sourcedir}/digest-openssl.irix.c digest-openssl.c
   - cp %{_sourcedir}/cipher-evptype-dispatch.c .
   - "perl -0777 -pi -e '\n  s/(int\\ncipher_init\\(struct sshcipher_ctx)/#include \"cipher-evptype-dispatch.c\"\\n\\n$1/;\n  s/type = \\(\\*cipher->evptype\\)\\(\\);/type = ssh_cipher_evptype(cipher->name);/;\n\
     \  s/(CFLAG_CBC,\\s+)EVP_\\w+/${1}NULL/g;\n  s/(0,\\s+)EVP_aes_\\w+/${1}NULL/g;\n' cipher.c\n"
   - cp %{_sourcedir}/charclass.irix.h openbsd-compat/charclass.h
-  - $MOGRIX_ROOT/tools/safepatch openbsd-compat/glob.c --old 'cclasses[idx].isctype(k)' --new 'cclass_isctype(cclasses[idx].name, k)' --count 0 --no-backup --quiet
-  - $MOGRIX_ROOT/tools/safepatch openbsd-compat/fnmatch.c --old 'cc->isctype((unsigned char)test)' --new 'cclass_isctype(cc->name, (unsigned char)test)' --count 0 --no-backup --quiet
-  - '$MOGRIX_ROOT/tools/safepatch auth2.c --old ''ensure_minimum_time_since(tstart,'' --new ''/* IRIX: disabled */ if(0) ensure_minimum_time_since(tstart,'' --no-backup --quiet'
+  - "sed -i 's/cclasses\\[idx\\]\\.isctype(k)/cclass_isctype(cclasses[idx].name, k)/g' openbsd-compat/glob.c"
+  - "sed -i 's/cc->isctype((unsigned char)test)/cclass_isctype(cc->name, (unsigned char)test)/g' openbsd-compat/fnmatch.c"
+  - "sed -i 's/ensure_minimum_time_since(tstart,/\\/* IRIX: disabled *\\/ if(0) ensure_minimum_time_since(tstart,/' auth2.c"
+  - "sed -i 's/^static void select(/static void curve25519_select(/; s/select(x/curve25519_select(x/g' smult_curve25519_ref.c"

@@ -1,7 +1,8 @@
 # openjade package rules for IRIX cross-compilation
 package: openjade
+blocked: true
+blocked_reason: "missing dependency: opensp-devel not staged (no opensp SRPM available)"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - openjade.sgifixes.patch
-

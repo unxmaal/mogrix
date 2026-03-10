@@ -2,6 +2,8 @@
 # Has sgifixes patches, needs compat functions
 
 package: python3
+blocked: true
+blocked_reason: "no SRPM — FC40 package name is python3.12 or similar"
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:

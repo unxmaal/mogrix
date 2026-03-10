@@ -1,7 +1,52 @@
 # libdb package rules for IRIX cross-compilation
 package: libdb
+blocked: true
+blocked_reason: "Multiple build issues: __db_Clocaltime undeclared (clib not compiled), EBADRPC guards needed. Needs deep BDB configure investigation."
 
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - db185.sgifixes.patch
 
+rules:
+  # Replace bash-isms (pushd/popd) with POSIX cd equivalents.
+  # Also fix brace expansion config.{guess,sub} -> two separate args.
+  spec_replacements:
+  - pattern: "pushd db.1.85/PORT/linux\n%patch10 -p0\npopd\npushd db.1.85"
+    replacement: "cd db.1.85/PORT/linux\n%patch10 -p0\ncd ../../..\ncd db.1.85"
+  - pattern: "%patch20 -p1\npopd"
+    replacement: "%patch20 -p1\ncd .."
+  # Fix brace expansion. The /usr/lib path gets mangled to /usr/sgug/lib32 by
+  # generic rewrite_paths — we use prep_commands to pre-stage config files.
+  - pattern: 'cp /usr/lib/rpm/redhat/config.{guess,sub} "$dir"'
+    replacement: 'cp config.guess config.sub "$dir"'
+  - pattern: "pushd dist/dist-tls"
+    replacement: "cd dist/dist-tls"
+  - pattern: "echo \"source ../../test/tcl/test.tcl; r env; r mut; r memp\" | tclsh\npopd"
+    replacement: "# tclsh test skipped (tcl disabled for cross-compilation)\ncd ../.."
+  - pattern: "pushd db_converter-%{_converter_version}"
+    replacement: "cd db_converter-%{_converter_version}"
+  - pattern: "make LDFLAGS=\"-I../dist/dist-tls -L../dist/dist-tls -Wl,-z,now\" CFLAGS=\"-g -fPIC %build_cflags\" static\npopd"
+    replacement: "make LDFLAGS=\"-I../dist/dist-tls -L../dist/dist-tls -Wl,-z,now\" CFLAGS=\"-g -fPIC %build_cflags\" static\ncd .."
+  # Disable Tcl bindings and test — tclConfig.sh path doesn't resolve correctly in cross-compilation
+  - pattern: "--enable-tcl --with-tcl=%{_libdir}"
+    replacement: "--disable-tcl"
+  - pattern: "--enable-test"
+    replacement: "--disable-test"
+  - pattern: "--with-tcl=%{_libdir}/tcl%{__tclversion}"
+    replacement: ""
+  # %{_os} is unset when using --target mips-sgi-irix. Hardcode to linux
+  # since the db.1.85/PORT/linux path is always correct for the source code.
+  - pattern: "%{_os}"
+    replacement: "linux"
+  # Skip db_dump185 build — uses libtool before configure generates it.
+  # db_dump185 is a migration tool from db-1.85 format, not needed on IRIX.
+  - pattern: "/bin/sh libtool --tag=CC --mode=compile\t%{__cc} $RPM_OPT_FLAGS -Idb.1.85/PORT/linux/include -D_REENTRANT -c util/db_dump185.c -o dist/dist-tls/db_dump185.lo\n/bin/sh libtool --tag=LD --mode=link %{__cc} -o dist/dist-tls/db_dump185 dist/dist-tls/db_dump185.lo db.1.85/PORT/linux/libdb.a"
+    replacement: "# db_dump185 skipped — libtool not yet generated at this build phase\ntrue"
+
+  prep_commands:
+    # Copy config.guess/sub from host into source tree — the spec's for loop
+    # copies them from here into subdirs. We pre-stage to avoid the /usr/lib
+    # path being mangled by generic rewrite_paths.
+    - "cp /usr/share/misc/config.guess /usr/share/misc/config.sub ."
+    # Guard BSD/RPC errno values missing on IRIX in strerror.c
+    - "for sym in EBADRPC ERPCMISMATCH EPROGUNAVAIL EPROGMISMATCH EPROCUNAVAIL EFTYPE; do sed -i \"s/\\tERRSTR($sym,/#ifdef $sym\\n\\tERRSTR($sym,/; s/ERRSTR($sym, \\(.*\\));/ERRSTR($sym, \\1);\\n#endif/\" src/clib/strerror.c; done"

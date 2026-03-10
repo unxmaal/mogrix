@@ -9,6 +9,9 @@ rules:
     # make install puts docs in %{_docdir}/%{name} which conflicts with %doc's %{_pkgdocdir}
     - pattern: "%make_install"
       replacement: "%make_install\nrm -rf %{buildroot}%{_docdir}/%{name}"
+    # Doc files removed above — simplify %doc to avoid file-not-found
+    - pattern: "%doc README changes.txt most.txt most-fun.txt lesskeys.rc most.rc"
+      replacement: "%doc README changes.txt"
   prep_commands:
     # chkslang is a cross-compiled binary that can't run on build host.
     # Replace the slangversion target with a no-op (we know slang 2.3.3 >= 2.0)

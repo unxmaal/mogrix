@@ -1,4 +1,10 @@
 package: gtkterm
+
+build_after:
+  - gtk3
+  - vte291
+  - glib2
+
 upstream:
   url: https://github.com/wvdakker/gtkterm/archive/refs/tags/1.3.1.tar.gz
   version: "1.3.1"
@@ -33,7 +39,7 @@ rules:
     - "cp %{_sourcedir}/mogrix_crash_handler.c src/mogrix_crash_handler.c"
     - "cp %{_sourcedir}/mogrix_crash_handler.h src/mogrix_crash_handler.h"
     # Add crash handler to meson sources list
-    - "$MOGRIX_ROOT/tools/safepatch src/meson.build --old \"'device_monitor.h',\" --new $\"'device_monitor.h',\\n\\t'mogrix_crash_handler.c',\\n\\t'mogrix_crash_handler.h',\" --no-backup --quiet"
+    - "perl -pi -e \"s/'device_monitor\\.h',/'device_monitor.h',\\n\\t'mogrix_crash_handler.c',\\n\\t'mogrix_crash_handler.h',/\" src/meson.build"
     # Include compat header in files that need it
     - "$MOGRIX_ROOT/tools/safepatch src/serial.c --insert-top '#include \"irix_serial_compat.h\"' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch src/buffer.c --insert-top '#include \"irix_serial_compat.h\"' --no-backup --quiet"
@@ -49,7 +55,7 @@ rules:
     # Meson doesn't pick up $LIBS, so add to link_args in src/meson.build
     # XGE stubs (XESetWireToEventCookie etc.) are now built into libXi.so.6
     # via xge_compat.c — no separate stub library needed.
-    - "$MOGRIX_ROOT/tools/safepatch src/meson.build --old 'install : true' --new $'install : true,\\n\\tlink_args : [\\'\\'-L\\' + meson.source_root() + \\'/mogrix-compat\\', \\'-lmogrix-compat\\']' --no-backup --quiet"
+    - "perl -pi -e \"s/install : true/install : true,\\n\\tlink_args : ['-L' + meson.source_root() + '\\/mogrix-compat', '-lmogrix-compat']/\" src/meson.build"
     # === Fix IRIX rld crash: remove export_dynamic ===
     # meson.build has export_dynamic:true which puts ALL symbols in .dynsym.
     # This inflates MIPS_SYMTABNO from ~353 to 588, exceeding rld's internal

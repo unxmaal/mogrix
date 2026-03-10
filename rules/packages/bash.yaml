@@ -1,6 +1,10 @@
 # bash package rules for IRIX cross-compilation
 package: bash
 
+build_after:
+  - readline
+  - ncurses
+
 bundle_trampoline_exclude:
   - bashbug-32
 
@@ -86,6 +90,21 @@ rules:
     # hits libcurses first — a GNU ld script (INPUT(-lncurses)) that IRIX rld
     # can't load. libtinfo has the actual symbols and is a real ELF .so.
     bash_cv_termcap_lib: "libtinfo"
+    # strerror exists on both host and IRIX. Cross-compile can't detect it,
+    # causing mksyntax (host tool) to use sys_errlist fallback which fails on modern Linux.
+    ac_cv_func_strerror: "yes"
+    # IRIX has gettimeofday but with variadic signature. Without this,
+    # bash's posixtime.h redeclares it with (void *) causing conflicting types.
+    ac_cv_func_gettimeofday: "yes"
+    # IRIX has strpbrk (with const char* params). Cross-compile can't detect it,
+    # so bash declares its own with (char*, char*) — conflicting types error.
+    ac_cv_func_strpbrk: "yes"
+    # IRIX has memset. Cross-compile can't detect it, bash provides its own
+    # with (char*, int, unsigned int) which conflicts with IRIX's (void*, int, size_t).
+    ac_cv_func_memset: "yes"
+    # IRIX has select(). Without this, posixselect.h isn't included,
+    # leaving USEC_PER_SEC undefined in timers.c (used unconditionally).
+    ac_cv_func_select: "yes"
 
   # Fix bugs where HAVE_PSELECT guards code also needed by HAVE_SELECT.
   # IRIX has select() but not pselect(), exposing these latent bugs.
@@ -96,7 +115,7 @@ rules:
     # support/Makefile.in sets LIBS_FOR_BUILD=${LIBS} — leaks cross-compiled
     # -lmogrix-compat into host-native man2html build. Clear it.
     - '$MOGRIX_ROOT/tools/safepatch support/Makefile.in --old ''LIBS_FOR_BUILD = ${LIBS}'' --new ''LIBS_FOR_BUILD ='' --no-backup --quiet'
-    # bundled readline input.c: only matters if --without-installed-readline (kept for safety)
-    - "$MOGRIX_ROOT/tools/safepatch lib/readline/input.c --old '^#if defined \\(HAVE_PSELECT\\)$' --new '#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)' --regex --no-backup --quiet"
+    # bundled readline input.c: only matters if --without-installed-readline
+    - "$MOGRIX_ROOT/tools/safepatch lib/readline/input.c --old '^#if defined \\(HAVE_PSELECT\\)$' --new '#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)' --regex --no-backup --quiet || true"
     # bash's own input_avail.c: signal.h included under HAVE_PSELECT but sigprocmask used under HAVE_SELECT
-    - "$MOGRIX_ROOT/tools/safepatch lib/sh/input_avail.c --old '^#if defined \\(HAVE_PSELECT\\)$' --new '#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)' --regex --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch lib/sh/input_avail.c --old '^#if defined \\(HAVE_PSELECT\\)$' --new '#if defined (HAVE_PSELECT) || defined (HAVE_SELECT)' --regex --no-backup --quiet || true"

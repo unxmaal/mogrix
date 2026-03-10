@@ -9,6 +9,9 @@ rules:
   - acl
   - attr
   - policycoreutils
+  - libacl-devel
+  - libselinux-devel
+  - texinfo
   drop_requires:
   - info
   configure_flags:
@@ -21,6 +24,17 @@ rules:
     replacement: mv ChangeLog ChangeLog~
   - pattern: autoreconf -v
     replacement: AUTOPOINT=true autoreconf -v
+  export_vars:
+    # _GNU_SOURCE must be defined before gnulib headers are processed.
+    # irix-cc force-includes time.h, which processes gnulib's time.h wrapper
+    # before config.h defines _GNU_SOURCE. Without this, timezone_t typedef
+    # and mktime_z/localtime_rz are not declared. See rules/methods/gnulib-quirks.md.
+    CPPFLAGS: "-D_GNU_SOURCE=1 $CPPFLAGS"
+  ac_cv_overrides:
+    # IRIX lacks timezone_t — gnulib's time_rz module provides it when this is "no".
+    # gnulib generates gnu/time.h with: typedef struct tm_zone *timezone_t
+    # and compiles time_rz.c which implements mktime_z/localtime_rz/tzalloc/tzfree.
+    ac_cv_type_timezone_t: "no"
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch Makefile.in --old 'gnulib-tests' --new '' --no-backup --quiet || true"
   - "$MOGRIX_ROOT/tools/safepatch Makefile.am --old 'gnulib-tests' --new '' --no-backup --quiet || true"

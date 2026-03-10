@@ -88,6 +88,8 @@ VALID_PACKAGE_TOP_KEYS = {
     "smoke_test",
     "upstream",
     "bundle_trampoline_exclude",
+    "build_after",
+    "skip",
 }
 
 # Valid keys inside the upstream: block

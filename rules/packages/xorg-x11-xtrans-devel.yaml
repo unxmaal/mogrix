@@ -1,0 +1,5 @@
+package: xorg-x11-xtrans-devel
+# Noarch package: X transport headers and pkg-config file. No compiled code.
+
+build_after:
+  - xorg-x11-util-macros

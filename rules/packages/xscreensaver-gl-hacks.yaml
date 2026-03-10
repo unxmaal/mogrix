@@ -2,6 +2,11 @@
 # Only builds hacks/glx/ subdirectory (129 GL demos)
 # Uses hand-written spec at specs/packages/xscreensaver-gl-hacks.spec
 package: xscreensaver-gl-hacks
+
+build_after:
+  - libX11
+  - libXext
+
 upstream:
   url: https://www.jwz.org/xscreensaver/xscreensaver-6.08.tar.gz
   version: "6.08"

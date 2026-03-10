@@ -42,3 +42,12 @@ rules:
   # Remove vwebp from files (needs freeglut/GL)
   - pattern: "%{_bindir}/vwebp\n"
     replacement: ""
+smoke_test:
+  - command: /usr/sgug/bin/cwebp -version
+    expect: "1.3.2"
+  - command: /usr/sgug/bin/dwebp -version
+    expect: "1.3.2"
+  - command: /usr/sgug/bin/gif2webp -version
+    expect: "1.3.2"
+  - command: /usr/sgug/bin/img2webp -version
+    expect: "1.3.2"

@@ -1,5 +1,10 @@
 package: ir8
 
+build_after:
+  - gtk3
+  - webkitgtk
+  - glib2
+
 add_source:
   - main.c
   - ir8-window.c
@@ -47,6 +52,9 @@ rules:
     - getline
   explicit_provides:
     - "ir8"
+  prep_commands:
+    # Overwrite tarball sources with mogrix-maintained versions from add_source
+    - "for f in main.c ir8-window.c ir8-window.h ir8-tab.c ir8-tab.h ir8-searchbox.c ir8-searchbox.h ir8-downloads.c ir8-downloads.h ir8-settings.c ir8-settings.h ir8-cellrenderer.c ir8-cellrenderer.h ir8-bookmarks.c ir8-bookmarks.h ir8-marshal.list ir8-marshal.h ir8-marshal.c Makefile glib-n32-fixup.h ir8_test.sh; do cp %{_sourcedir}/$f . 2>/dev/null || true; done"
   spec_replacements:
   - pattern: '%make_build'
     replacement: "export CC=\"%{__cc}\"\nexport LD=\"%{__cc}\"\n%make_build"

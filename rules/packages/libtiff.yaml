@@ -28,3 +28,8 @@ rules:
     # Remove C++ libs from buildroot to avoid unpackaged file errors
     - pattern: "%make_install"
       replacement: "%make_install\nrm -f $RPM_BUILD_ROOT%{_libdir}/libtiffxx*"
+    # Fix multilib header: the spec's multilib hack renames tiffconf.h to tiffconf-64.h
+    # on x86_64 but IRIX n32 (__WORDSIZE==32) needs tiffconf-32.h too.
+    # Append fix after the multilib fi block, before old soname copies.
+    - pattern: "fi\n\n# Copy old soname"
+      replacement: "fi\n# Fix multilib: copy tiffconf-64.h to tiffconf-32.h for IRIX n32\nif [ -f $RPM_BUILD_ROOT%{_includedir}/tiffconf-64.h ] && [ ! -f $RPM_BUILD_ROOT%{_includedir}/tiffconf-32.h ]; then\n  cp $RPM_BUILD_ROOT%{_includedir}/tiffconf-64.h $RPM_BUILD_ROOT%{_includedir}/tiffconf-32.h\nfi\n\n# Copy old soname"

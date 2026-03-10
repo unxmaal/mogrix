@@ -1,7 +1,18 @@
 # joe - Joe's Own Editor
 package: joe
 
+build_after:
+  - ncurses
+
 rules:
+  prep_commands:
+    # joe uses nap() (SVR4 sleep-in-milliseconds). IRIX has sginap() but
+    # cross-compiler can't see nap() declaration. Replace with usleep().
+    - "sed -i 's/nap(usec \\/ 1000)/usleep(usec)/' joe/tty.c || true"
+
+  ac_cv_overrides:
+    ac_cv_func_sigprocmask: "yes"
+
   spec_replacements:
     # pushd/popd are bash builtins, not available in /bin/sh
     # Also the symlinks already exist from make install — force overwrite

@@ -1,2 +1,11 @@
 # cowsay - configurable talking cow (perl script)
 package: cowsay
+
+smoke_test:
+  - command: "/usr/sgug/bin/cowsay 'moo' 2>&1"
+    expect: "moo"
+
+rules:
+  install_cleanup:
+    # Fix shebang: #!/usr/bin/env perl won't find perl in bundle context
+    - "sed -i 's|#!/usr/bin/env perl|#!/usr/sgug/bin/perl|' %{buildroot}%{_bindir}/cowsay %{buildroot}%{_bindir}/cowthink %{buildroot}%{_bindir}/animalsay"

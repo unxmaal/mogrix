@@ -1,0 +1,113 @@
+/* mogrix compat: <compare> polyfill for GCC 9 libstdc++
+ * Provides std::partial_ordering, std::strong_ordering, std::weak_ordering
+ * and comparison category helper functions (is_eq, is_neq, etc.)
+ */
+#ifndef MOGRIX_COMPARE_POLYFILL_H
+#define MOGRIX_COMPARE_POLYFILL_H
+
+namespace std {
+
+class partial_ordering {
+    int _value;
+    bool _is_ordered;
+    constexpr explicit partial_ordering(int v, bool o) noexcept : _value(v), _is_ordered(o) {}
+public:
+    static const partial_ordering less;
+    static const partial_ordering equivalent;
+    static const partial_ordering greater;
+    static const partial_ordering unordered;
+
+    friend constexpr bool operator==(partial_ordering v, int) noexcept { return v._is_ordered && v._value == 0; }
+    friend constexpr bool operator!=(partial_ordering v, int) noexcept { return !v._is_ordered || v._value != 0; }
+    friend constexpr bool operator< (partial_ordering v, int) noexcept { return v._is_ordered && v._value < 0; }
+    friend constexpr bool operator<=(partial_ordering v, int) noexcept { return v._is_ordered && v._value <= 0; }
+    friend constexpr bool operator> (partial_ordering v, int) noexcept { return v._is_ordered && v._value > 0; }
+    friend constexpr bool operator>=(partial_ordering v, int) noexcept { return v._is_ordered && v._value >= 0; }
+
+    friend constexpr bool operator==(int, partial_ordering v) noexcept { return v._is_ordered && v._value == 0; }
+    friend constexpr bool operator!=(int, partial_ordering v) noexcept { return !v._is_ordered || v._value != 0; }
+    friend constexpr bool operator< (int, partial_ordering v) noexcept { return v._is_ordered && v._value > 0; }
+    friend constexpr bool operator<=(int, partial_ordering v) noexcept { return v._is_ordered && v._value >= 0; }
+    friend constexpr bool operator> (int, partial_ordering v) noexcept { return v._is_ordered && v._value < 0; }
+    friend constexpr bool operator>=(int, partial_ordering v) noexcept { return v._is_ordered && v._value <= 0; }
+
+    friend constexpr bool operator==(partial_ordering a, partial_ordering b) noexcept {
+        return a._is_ordered == b._is_ordered && (!a._is_ordered || a._value == b._value);
+    }
+    friend constexpr bool operator!=(partial_ordering a, partial_ordering b) noexcept { return !(a == b); }
+};
+
+inline constexpr partial_ordering partial_ordering::less{-1, true};
+inline constexpr partial_ordering partial_ordering::equivalent{0, true};
+inline constexpr partial_ordering partial_ordering::greater{1, true};
+inline constexpr partial_ordering partial_ordering::unordered{0, false};
+
+class weak_ordering {
+    int _value;
+    constexpr explicit weak_ordering(int v) noexcept : _value(v) {}
+public:
+    static const weak_ordering less;
+    static const weak_ordering equivalent;
+    static const weak_ordering greater;
+
+    constexpr operator partial_ordering() const noexcept {
+        return _value < 0 ? partial_ordering::less :
+               _value > 0 ? partial_ordering::greater :
+                             partial_ordering::equivalent;
+    }
+
+    friend constexpr bool operator==(weak_ordering v, int) noexcept { return v._value == 0; }
+    friend constexpr bool operator!=(weak_ordering v, int) noexcept { return v._value != 0; }
+    friend constexpr bool operator< (weak_ordering v, int) noexcept { return v._value < 0; }
+    friend constexpr bool operator<=(weak_ordering v, int) noexcept { return v._value <= 0; }
+    friend constexpr bool operator> (weak_ordering v, int) noexcept { return v._value > 0; }
+    friend constexpr bool operator>=(weak_ordering v, int) noexcept { return v._value >= 0; }
+};
+
+inline constexpr weak_ordering weak_ordering::less{-1};
+inline constexpr weak_ordering weak_ordering::equivalent{0};
+inline constexpr weak_ordering weak_ordering::greater{1};
+
+class strong_ordering {
+    int _value;
+    constexpr explicit strong_ordering(int v) noexcept : _value(v) {}
+public:
+    static const strong_ordering less;
+    static const strong_ordering equal;
+    static const strong_ordering equivalent;
+    static const strong_ordering greater;
+
+    constexpr operator partial_ordering() const noexcept {
+        return _value < 0 ? partial_ordering::less :
+               _value > 0 ? partial_ordering::greater :
+                             partial_ordering::equivalent;
+    }
+    constexpr operator weak_ordering() const noexcept {
+        return _value < 0 ? weak_ordering::less :
+               _value > 0 ? weak_ordering::greater :
+                             weak_ordering::equivalent;
+    }
+
+    friend constexpr bool operator==(strong_ordering v, int) noexcept { return v._value == 0; }
+    friend constexpr bool operator!=(strong_ordering v, int) noexcept { return v._value != 0; }
+    friend constexpr bool operator< (strong_ordering v, int) noexcept { return v._value < 0; }
+    friend constexpr bool operator<=(strong_ordering v, int) noexcept { return v._value <= 0; }
+    friend constexpr bool operator> (strong_ordering v, int) noexcept { return v._value > 0; }
+    friend constexpr bool operator>=(strong_ordering v, int) noexcept { return v._value >= 0; }
+};
+
+inline constexpr strong_ordering strong_ordering::less{-1};
+inline constexpr strong_ordering strong_ordering::equal{0};
+inline constexpr strong_ordering strong_ordering::equivalent{0};
+inline constexpr strong_ordering strong_ordering::greater{1};
+
+constexpr bool is_eq(partial_ordering v) noexcept { return v == 0; }
+constexpr bool is_neq(partial_ordering v) noexcept { return v != 0; }
+constexpr bool is_lt(partial_ordering v) noexcept { return v < 0; }
+constexpr bool is_lteq(partial_ordering v) noexcept { return v <= 0; }
+constexpr bool is_gt(partial_ordering v) noexcept { return v > 0; }
+constexpr bool is_gteq(partial_ordering v) noexcept { return v >= 0; }
+
+} // namespace std
+
+#endif /* MOGRIX_COMPARE_POLYFILL_H */

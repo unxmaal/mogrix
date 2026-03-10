@@ -1,0 +1,28 @@
+# Decker - HyperCard-like multimedia authoring tool (SDL2)
+# Cross-compile for IRIX 6.5
+# Pure C99, ~10K LOC, single compilation unit
+# Deps: SDL2, SDL2_image
+package: decker
+
+build_after:
+  - SDL2
+  - SDL2_image
+
+upstream:
+  url: https://github.com/JohnEarnest/Decker
+  version: "1.64"
+  ref: "v1.64"
+  type: git
+  build_system: makefile
+  license: MIT
+  summary: "Multimedia platform for interactive documents"
+
+rules:
+  drop_buildrequires:
+    - vim-common
+
+  prep_commands:
+    # bestline.c needs struct winsize and TIOCGWINSZ — on IRIX, struct winsize
+    # is guarded by _NO_POSIX in sys/termios.h, and TIOCGWINSZ uses _IOR which
+    # needs sizeof(struct winsize). Define struct winsize BEFORE sys/ioctl.h.
+    - "perl -pi -e \"s|^(#include <sys/ioctl.h>)|#ifdef __sgi\\nstruct winsize { unsigned short ws_row, ws_col, ws_xpixel, ws_ypixel; };\\n#endif\\n\\$1\\n#ifndef TIOCGWINSZ\\n#define TIOCGWINSZ _IOR('t', 104, struct winsize)\\n#endif|\" c/lib/bestline.c"
