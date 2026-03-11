@@ -113,6 +113,7 @@ If a compat function needs to override a **buggy libc function called from share
    irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
        compat/stdlib/bsearch.c \
        compat/stdlib/posix_memalign.c \
+       compat/stdlib/setenv.c \
        compat/sys/socketpair.c \
        compat/sys/shm_open.c \
        compat/sys/mincore.c \

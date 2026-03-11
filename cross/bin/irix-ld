@@ -175,7 +175,10 @@ if [ "$is_shared" = "1" ]; then
         # libs like libtiff, libglib, libunistring silently omit NEEDED
         # libgcc_s.so.1, causing "unresolvable symbol" at runtime on IRIX.
         # Skip for libgcc_s itself to avoid circular dependency.
-        LIBGCC_S_FLAG="-lgcc_s"
+        # libgcc_s needs pthread_once, pthread_getspecific, pthread_setspecific,
+        # pthread_key_create — IRIX libc.so.1 weak stubs don't include these.
+        # Must link libpthread alongside libgcc_s so rld can resolve them.
+        LIBGCC_S_FLAG="-lgcc_s -lpthread"
         case "$filtered_args" in
             *libgcc_s*) LIBGCC_S_FLAG="" ;;
         esac

@@ -46,6 +46,47 @@ console = Console()
 
 STAGING_LIB_DIR = Path("/opt/sgug-staging/usr/sgug/lib32")
 
+# Libraries that must NEVER be bundled — they must come from the native IRIX
+# system.  IRIX X11 libs use IRIX-specific transport/auth that our cross-compiled
+# versions can't replicate.  The IRIX X server only works with its own libs.
+# Matched by soname prefix: "libX11.so" matches libX11.so.6, libX11.so.1, etc.
+NEVER_BUNDLE_PREFIXES = {
+    "libX11.so",
+    "libXext.so",
+    "libXau.so",
+    "libxcb.so",
+    "libXi.so",
+    "libXinerama.so",
+    "libXrender.so",
+    "libXfixes.so",
+    "libXcursor.so",
+    "libXrandr.so",
+    "libXcomposite.so",
+    "libXdamage.so",
+    "libXft.so",
+    "libXpm.so",
+    "libXt.so",
+    "libXmu.so",
+    "libICE.so",
+    "libSM.so",
+}
+
+# Global registry: dlopen'd plugin directories and their env var overrides.
+# When the bundler detects _lib32/<subdir>/... containing .so files, it checks
+# this map.  If the subdir (or a parent) matches, it sets the env var in the
+# wrapper so the library finds its plugins inside the bundle instead of
+# at the hardcoded /usr/sgug/lib32/... path.
+#
+# Format: { "subdir_path_relative_to_lib32": ("ENV_VAR", "value_template") }
+# value_template uses {lib32} as placeholder for "$dir/_lib32".
+PLUGIN_DIR_ENV_MAP = {
+    "imlib2/loaders": ("IMLIB2_LOADER_PATH", "{lib32}/imlib2/loaders"),
+    "imlib2/filters": ("IMLIB2_FILTER_PATH", "{lib32}/imlib2/filters"),
+    "gdk-pixbuf-2.0": ("GDK_PIXBUF_MODULEDIR", "{lib32}/gdk-pixbuf-2.0/2.10.0/loaders"),
+    "pango": ("PANGO_LIBDIR", "{lib32}"),
+    "qt5/plugins": ("QT_PLUGIN_PATH", "{lib32}/qt5/plugins"),
+}
+
 # Wrapper templates use only Bourne shell syntax (no $(...), no ${var:+...})
 # because IRIX /bin/sh is the original Bourne shell, not POSIX sh.
 #
@@ -547,10 +588,16 @@ class BundleBuilder:
                                             if dep2_path.is_symlink():
                                                 needed.add(os.readlink(str(dep2_path)))
 
-        # Remove .so files not in the needed set
+        # Remove .so files not in the needed set, and always remove
+        # native IRIX system libs that must not be bundled (X11 etc.)
         removed = []
         for f in sorted(lib_dir.iterdir()):
             if ".so" not in f.name:
+                continue
+            # Always remove never-bundle libs (even if in needed set)
+            if any(f.name.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+                f.unlink()
+                removed.append(f.name)
                 continue
             if f.name in needed:
                 continue
@@ -960,6 +1007,12 @@ class BundleBuilder:
                 for soname in needed:
                     if soname in manifest.irix_sonames:
                         continue
+                    # Never bundle native IRIX system libs (X11, etc.).
+                    # These must come from /usr/lib32 — our cross-compiled
+                    # versions can't talk to the IRIX X server.
+                    if any(soname.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+                        manifest.irix_sonames.add(soname)
+                        continue
                     # Mogrix-built RPMs take priority over IRIX sysroot.
                     # IRIX may have ancient ABI-incompatible versions of
                     # libraries we've rebuilt (e.g. libz.so / zlib-ng).
@@ -1206,6 +1259,21 @@ class BundleBuilder:
         # Detect app-specific env vars needed for plugin loading etc.
         extra_env_lines = []
         extra_args_map = {}  # binary name -> extra CLI args string
+
+        # Global plugin directory detection: scan _lib32/ for known plugin
+        # subdirs and set env vars so libraries find their dlopen'd modules
+        # inside the bundle instead of at hardcoded /usr/sgug/lib32/ paths.
+        lib32_dir = bundle_dir / "_lib32"
+        if lib32_dir.is_dir():
+            for subdir_rel, (env_var, val_template) in PLUGIN_DIR_ENV_MAP.items():
+                plugin_path = lib32_dir / subdir_rel
+                if plugin_path.is_dir() and any(
+                    f.name.endswith(".so") for f in plugin_path.iterdir() if f.is_file()
+                ):
+                    val = val_template.replace("{lib32}", "$dir/_lib32")
+                    extra_env_lines.append(f'{env_var}="{val}"')
+                    extra_env_lines.append(f"export {env_var}")
+
         # weechat: WEECHAT_EXTRA_LIBDIR for dlopen-loaded plugins
         weechat_plugins = bundle_dir / "_lib32" / "weechat" / "plugins"
         if weechat_plugins.is_dir():

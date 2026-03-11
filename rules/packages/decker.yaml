@@ -26,3 +26,7 @@ rules:
     # is guarded by _NO_POSIX in sys/termios.h, and TIOCGWINSZ uses _IOR which
     # needs sizeof(struct winsize). Define struct winsize BEFORE sys/ioctl.h.
     - "perl -pi -e \"s|^(#include <sys/ioctl.h>)|#ifdef __sgi\\nstruct winsize { unsigned short ws_row, ws_col, ws_xpixel, ws_ypixel; };\\n#endif\\n\\$1\\n#ifndef TIOCGWINSZ\\n#define TIOCGWINSZ _IOR('t', 104, struct winsize)\\n#endif|\" c/lib/bestline.c"
+    # IRIX has no SDL2 audio backend — SDL_Init fails when SDL_INIT_AUDIO is
+    # requested, and decker doesn't check the return value, causing a crash.
+    # Patch io_init to retry without audio on failure (sets nosound=1).
+    - "perl -pi -e 's/SDL_Init\\(SDL_INIT_VIDEO \\| SDL_INIT_TIMER \\| \\(nosound\\?0:SDL_INIT_AUDIO\\)\\);/if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | (nosound?0:SDL_INIT_AUDIO)) != 0){nosound=1;SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);}/' c/io_sdl2.h"

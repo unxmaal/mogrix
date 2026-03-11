@@ -1857,16 +1857,16 @@ def audit_rules(rules_dir: str | None, verbose: bool):
     default=None,
     help="Path to rules directory",
 )
-@click.option("--keep-old", is_flag=True, help="Don't relocate old outputs")
-@click.option("--resume", is_flag=True, help="Skip packages that already passed gates")
+@click.option("--resume", is_flag=True, help="Resume latest workspace (skip completed packages)")
+@click.option("--workspace", type=click.Path(), default=None, help="Explicit workspace path (overrides auto-detect)")
 @click.option("--dry-run", is_flag=True, help="Compute plan without building")
 @click.option("--skip-gates", is_flag=True, help="Treat gate failures as warnings")
 @click.option("--from-list", type=click.Path(exists=True), help="File with package names to build")
 @click.option("--no-fail-fast", is_flag=True, help="Continue building after failures (default: stop at first failure)")
 def rebuild_all_cmd(
     rules_dir: str | None,
-    keep_old: bool,
     resume: bool,
+    workspace: str | None,
     dry_run: bool,
     skip_gates: bool,
     from_list: str | None,
@@ -1874,7 +1874,10 @@ def rebuild_all_cmd(
 ):
     """Full dependency-ordered rebuild with quality gates.
 
-    Gate 0: Clean slate — relocate old outputs, reset staging, clean rpmbuild.
+    Each full rebuild gets a versioned workspace (~/mogrix_v11, ~/mogrix_v12, etc.).
+    Use --resume to continue building in the latest workspace.
+
+    Gate 0: Reset staging + cross-compilation setup.
     Gate 2: Build validation — ELF ABI, shebangs, hardcoded paths.
 
     Each package is: convert -> build -> gate 2 check -> stage.
@@ -1883,9 +1886,9 @@ def rebuild_all_cmd(
 
     Examples:
       mogrix rebuild-all --dry-run            # Preview build order
-      mogrix rebuild-all                      # Full clean rebuild
-      mogrix rebuild-all --keep-old --resume  # Incremental rebuild
-      mogrix rebuild-all --from-list pkgs.txt # Rebuild specific packages
+      mogrix rebuild-all                      # New workspace (auto-increment)
+      mogrix rebuild-all --resume             # Continue latest workspace
+      mogrix rebuild-all --from-list pkgs.txt # Build specific packages
     """
     from mogrix.rebuild import rebuild_all
 
@@ -1899,9 +1902,11 @@ def rebuild_all_cmd(
             if line.strip() and not line.startswith("#")
         ]
 
+    ws = Path(workspace) if workspace else None
+
     rebuild_all(
         rules_dir=rules_path,
-        keep_old=keep_old,
+        workspace=ws,
         resume=resume,
         dry_run=dry_run,
         skip_gates=skip_gates,

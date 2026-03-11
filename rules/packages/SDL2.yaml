@@ -58,6 +58,12 @@ rules:
     PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
 
   prep_commands:
+    # Create isolated directory with IRIX native X11R6.3 headers for ABI compatibility
+    # SDL2 must compile against these — NOT cross-compiled X11R7+ headers — because
+    # at runtime it dlopen's IRIX native libX11.so.1 (X11R6.3). Struct layouts
+    # (Display, XEvent, etc.) differ between X11R7 and X11R6.3, causing SIGSEGV.
+    - "mkdir -p /tmp/irix-x11-inc"
+    - "ln -sfn /opt/irix-sysroot/usr/include/X11 /tmp/irix-x11-inc/X11"
     # Remove the wayland-prefer patch (we disable wayland entirely)
     - "rm -f SDL2-2.30.1-prefer-wayland.patch || true"
     # Remove fcitx/ibus input method support (needs dbus)
@@ -66,12 +72,8 @@ rules:
     # SDL2 code uses SDL_X11_HAVE_UTF8 without guarding with #ifdef X_HAVE_UTF8_STRING
     # Fix: add fallback #define SDL_X11_HAVE_UTF8 0 at end of SDL_x11dyn.h
     - "perl -pi -e 's|^(#endif .* !defined SDL_x11dyn_h_)|#ifndef X_HAVE_UTF8_STRING\\n#define SDL_X11_HAVE_UTF8 0\\n#endif\\n$1|' src/video/x11/SDL_x11dyn.h"
-    # IRIX XEvent union lacks xcookie member (pre-X11R7.5)
-    # SDL2 accesses xev->xcookie. Include Xge.h and replace &xev->xcookie with cast.
-    - "perl -pi -e 's/&(\\w+)->xcookie\\b/(XGenericEventCookie*)$1/g' src/video/x11/SDL_x11events.c"
-    - "perl -pi -e 's/(\\w+)->xcookie\\./((XGenericEventCookie*)$1)->/g' src/video/x11/SDL_x11events.c"
-    - "perl -pi -e 's/(?<!&)(\\w+)->xcookie\\b/(*((XGenericEventCookie*)$1))/g' src/video/x11/SDL_x11events.c"
-    - "$MOGRIX_ROOT/tools/safepatch src/video/x11/SDL_x11events.c --insert-top '#include <X11/extensions/Xge.h>' --no-backup --quiet"
+    # NOTE: Xge.h/xcookie patches removed — with IRIX native X11R6.3 headers and
+    # SDL_VIDEO_X11_XINPUT=OFF, the XGenericEvent code paths are compiled out.
     # IRIX vfork == fork, and SGUG unistd.h doesn't declare vfork.
     # Simply replace vfork() with fork() in this file.
     - "$MOGRIX_ROOT/tools/safepatch src/misc/unix/SDL_sysurl.c --old 'vfork()' --new 'fork()' --count 0 --no-backup --quiet"
@@ -81,6 +83,17 @@ rules:
     # Add stub Xutf8 function pointer declarations when X_HAVE_UTF8_STRING is not defined
     # SDL2_X11_HAVE_UTF8 is 0 so these never execute, but compiler needs declarations
     - "$MOGRIX_ROOT/tools/safepatch src/video/x11/SDL_x11messagebox.c --old '#include \"SDL_x11video.h\"' --insert-after \"$(printf '#ifndef X_HAVE_UTF8_STRING\\nstatic void (*X11_Xutf8DrawString)(Display*, Drawable, XFontSet, GC, int, int, const char*, int) = NULL;\\nstatic int (*X11_Xutf8TextExtents)(XFontSet, const char*, int, XRectangle*, XRectangle*) = NULL;\\n#endif')\" --no-backup --quiet"
+    # IRIX teardown race fix: SDL_X11_UnloadSymbols() NULLs all X11 function
+    # pointers while sproc timer thread may still reference them. Skip the entire
+    # function body — dlclose handles cleanup, process exit frees everything.
+    - "perl -pi -e 'print \"    return; /* IRIX: skip to avoid sproc teardown race */\\n\" if /actually unload.*more than one/' src/video/x11/SDL_x11dyn.c"
+    # Override X11 dlopen sonames to match IRIX native libraries
+    # Cross-compiled X11 produces libX11.so.6, but IRIX only has libX11.so.1
+    # SDL2's FindLibraryAndSONAME macro derives sonames from cross-compiled libs
+    # Patch sdlchecks.cmake to use IRIX native sonames for dlopen
+    - "perl -pi -e 's/\\$\\{X11_LIB_SONAME\\}/libX11.so.1/g' cmake/sdlchecks.cmake"
+    - "perl -pi -e 's/\\$\\{XEXT_LIB_SONAME\\}/libXext.so/g' cmake/sdlchecks.cmake"
+    # XI soname patch removed — XInput disabled for IRIX X11R6.3
 
   spec_replacements:
     # Remove libdecor BuildRequires (uses RPM macro that drop_buildrequires can't match)
@@ -108,8 +121,8 @@ rules:
         cat > /tmp/sdl2-irix-cache.cmake << 'CACHEEOF'
         set(CMAKE_SYSTEM_NAME "Linux" CACHE STRING "")
         set(CMAKE_SYSTEM_PROCESSOR "mips" CACHE STRING "")
-        set(CMAKE_C_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
-        set(CMAKE_CXX_FLAGS_INIT "-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
+        set(CMAKE_C_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
+        set(CMAKE_CXX_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
         set(CMAKE_EXE_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -lgen" CACHE STRING "")
         set(CMAKE_SHARED_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -lgen" CACHE STRING "")
         set(CMAKE_FIND_ROOT_PATH "/opt/sgug-staging/usr/sgug;/opt/irix-sysroot/usr" CACHE STRING "")
@@ -150,8 +163,12 @@ rules:
         set(HAVE_SETJMP 1 CACHE BOOL "")
         set(HAVE_GCC_ATOMICS 1 CACHE BOOL "")
         set(HAVE_GCC_SYNC_LOCK_TEST_AND_SET 1 CACHE BOOL "")
-        set(HAVE_XGENERICEVENT 1 CACHE BOOL "")
-        set(SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS 1 CACHE BOOL "")
+        # Force FindX11 to use IRIX native X11R6.3 headers (ABI-compatible with runtime libs)
+        set(X11_X11_INCLUDE_PATH "/tmp/irix-x11-inc" CACHE PATH "")
+        set(X11_INCLUDE_DIR "/tmp/irix-x11-inc" CACHE PATH "")
+        # IRIX X11R6.3 has no GenericEvent (X11R7.1+) or XInput2 (X11R7.5+)
+        set(HAVE_XGENERICEVENT 0 CACHE BOOL "")
+        set(SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS 0 CACHE BOOL "")
         set(SDL_VIDEO_DRIVER_X11_HAS_XKBKEYCODETOKEYSYM 1 CACHE BOOL "")
         CACHEEOF
         cmake -B _build -S . \
@@ -180,20 +197,18 @@ rules:
           -DSDL_SNDIO=OFF \
           -DSDL_DISKAUDIO=ON \
           -DSDL_DUMMYAUDIO=ON \
-          -DSDL_VIDEO_X11=ON \
-          -DSDL_X11_SHARED=OFF \
-          -DSDL_VIDEO_X11_XCURSOR=ON \
-          -DSDL_VIDEO_X11_XFIXES=ON \
-          -DSDL_VIDEO_X11_XINPUT=ON \
-          -DSDL_VIDEO_X11_XRANDR=ON \
-          -DSDL_VIDEO_X11_XSCRNSAVER=OFF \
-          -DSDL_VIDEO_OPENGL=ON \
-          -DSDL_VIDEO_OPENGL_GLX=ON \
-          -DSDL_OPENGL_ES_SHARED=OFF \
-          -DSDL_VIDEO_OPENGLES=OFF \
-          -DSDL_VIDEO_WAYLAND=OFF \
-          -DSDL_VIDEO_KMSDRM=OFF \
-          -DSDL_VIDEO_VULKAN=OFF \
+          -DSDL_X11=ON \
+          -DSDL_X11_SHARED=ON \
+          -DSDL_X11_XCURSOR=OFF \
+          -DSDL_X11_XFIXES=OFF \
+          -DSDL_X11_XINPUT=OFF \
+          -DSDL_X11_XRANDR=OFF \
+          -DSDL_X11_XSCRNSAVER=OFF \
+          -DSDL_OPENGL=ON \
+          -DSDL_OPENGLES=OFF \
+          -DSDL_WAYLAND=OFF \
+          -DSDL_KMSDRM=OFF \
+          -DSDL_VULKAN=OFF \
           -DSDL_DBUS=OFF \
           -DSDL_IBUS=OFF \
           -DSDL_HIDAPI_JOYSTICK=OFF \

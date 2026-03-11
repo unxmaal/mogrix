@@ -1,17 +1,28 @@
-"""Rebuild-all orchestration — clean slate + dependency-ordered rebuilds.
+"""Rebuild-all orchestration — versioned workspaces + dependency-ordered rebuilds.
 
-Gate 0: Ensures clean build environment before starting.
+Each full rebuild gets its own workspace (~/mogrix_v10, ~/mogrix_v11, etc.).
+--resume reuses the latest workspace. New rebuilds auto-increment.
+
+Workspace layout:
+    ~/mogrix_v10/
+        gate-results/<pkg>/build-gate.json
+        mogrix_outputs/SRPMS/
+        mogrix_outputs/RPMS/
+        rpmbuild/<pkg>/          (cleaned BEFORE each build, preserved after)
+        rpmbuild/<pkg>/logs/     (build logs)
+
+Gate 0: Ensures clean build environment (staging reset + cross-compilation setup).
 Gate 2: Validates build outputs (shebangs, ELF ABI, paths) after each build.
 """
 
 import json
+import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import sys
 
 from rich.console import Console
 
@@ -26,15 +37,51 @@ def _log(msg: str) -> None:
     console.print(msg)
     sys.stdout.flush()
 
-# Directories
-MOGRIX_OUTPUTS = Path.home() / "mogrix_outputs"
+
+# Fixed directories
 MOGRIX_INPUTS = Path.home() / "mogrix_inputs"
 STAGING_DIR = Path("/opt/sgug-staging")
-RPMBUILD_DIR = Path.home() / "rpmbuild"
+WORKSPACE_PREFIX = "mogrix_v"
 
 # Use venv mogrix binary directly to avoid uv lock contention
 # when rebuild-all is itself invoked via `uv run mogrix`.
 MOGRIX_BIN = Path(__file__).parent.parent / ".venv" / "bin" / "mogrix"
+
+
+def find_latest_workspace() -> Path | None:
+    """Find the highest-numbered ~/mogrix_v* workspace."""
+    home = Path.home()
+    workspaces = []
+    for d in home.iterdir():
+        if d.is_dir() and d.name.startswith(WORKSPACE_PREFIX):
+            try:
+                version = int(d.name[len(WORKSPACE_PREFIX):])
+                workspaces.append((version, d))
+            except ValueError:
+                pass
+    if not workspaces:
+        return None
+    workspaces.sort()
+    return workspaces[-1][1]
+
+
+def create_workspace() -> Path:
+    """Create the next numbered workspace (auto-increment)."""
+    latest = find_latest_workspace()
+    if latest:
+        current_version = int(latest.name[len(WORKSPACE_PREFIX):])
+        next_version = current_version + 1
+    else:
+        next_version = 11  # Start at 11 (v10 is the migration from legacy)
+
+    workspace = Path.home() / f"{WORKSPACE_PREFIX}{next_version}"
+    workspace.mkdir(exist_ok=True)
+    (workspace / "gate-results").mkdir(exist_ok=True)
+    (workspace / "mogrix_outputs" / "SRPMS").mkdir(parents=True, exist_ok=True)
+    (workspace / "mogrix_outputs" / "RPMS").mkdir(parents=True, exist_ok=True)
+    (workspace / "rpmbuild").mkdir(exist_ok=True)
+    _log(f"[bold green]Created workspace: {workspace}[/bold green]")
+    return workspace
 
 
 @dataclass
@@ -61,7 +108,7 @@ class RebuildPlan:
         self.total = len(self.build_order)
 
 
-def compute_build_order(rules_dir: Path) -> RebuildPlan:
+def compute_build_order(rules_dir: Path, rpms_dir: Path) -> RebuildPlan:
     """Compute global dependency-ordered build plan."""
     from mogrix.repometa import RepoMetaCache
     from mogrix.roadmap import RoadmapResolver
@@ -74,39 +121,12 @@ def compute_build_order(rules_dir: Path) -> RebuildPlan:
         db=db,
         rule_loader=loader,
         rules_dir=rules_dir,
-        rpms_dir=MOGRIX_OUTPUTS / "RPMS",
+        rpms_dir=rpms_dir,
         stop_at_rules=True,
     )
     build_order, cycles = resolver.resolve_all()
     db.close()
     return RebuildPlan(build_order=build_order, cycles=cycles)
-
-
-def clean_outputs(outputs_dir: Path, timestamp: str) -> None:
-    """Relocate old outputs to timestamped backup."""
-    if not outputs_dir.exists():
-        return
-
-    old_dir = outputs_dir.parent / f"{outputs_dir.name}_old.{timestamp}"
-    _log(f"[bold]Relocating outputs:[/bold] {outputs_dir} -> {old_dir}")
-    shutil.move(str(outputs_dir), str(old_dir))
-
-    # Create fresh directories
-    for subdir in ["SRPMS", "RPMS", "bundles"]:
-        (outputs_dir / subdir).mkdir(parents=True, exist_ok=True)
-    _log("[green]Fresh output directories created[/green]")
-
-
-def clean_rpmbuild(rpmbuild_dir: Path) -> None:
-    """Remove rpmbuild workspace."""
-    for subdir in ["BUILD", "BUILDROOT", "RPMS", "SRPMS"]:
-        d = rpmbuild_dir / subdir
-        if d.exists():
-            # Use rm -rf instead of shutil.rmtree — more robust against
-            # permission issues and race conditions from parallel builds
-            subprocess.run(["rm", "-rf", str(d)], check=False)
-            d.mkdir(parents=True, exist_ok=True)
-    _log("[green]rpmbuild workspace cleaned[/green]")
 
 
 def reset_staging(staging_dir: Path) -> None:
@@ -138,64 +158,38 @@ def setup_cross() -> None:
 
 
 def gate0_clean_slate(
-    outputs_dir: Path,
     staging_dir: Path,
-    rpmbuild_dir: Path,
-    keep_old: bool = False,
     resume: bool = False,
 ) -> None:
     """Gate 0: Establish clean build environment.
 
-    1. Relocate old outputs (unless --keep-old or --resume)
-    2. Reset staging to pristine base
-    3. Re-deploy cross-compilation tools
-    4. Clean rpmbuild workspace
+    Resets staging and re-deploys cross-compilation tools.
+    Workspace directories are never wiped — they're versioned.
     """
-    timestamp = time.strftime("%m%d%H%M")
-
     _log("\n[bold]=== Gate 0: Clean Slate ===[/bold]\n")
 
     if resume:
-        # --resume: keep SRPMs and RPMs (needed for re-staging passed packages).
-        # Only clean logs and per-package rpmbuild dirs.
-        for subdir in ["logs"]:
-            d = outputs_dir / subdir
-            if d.exists():
-                subprocess.run(["rm", "-rf", str(d)], check=False)
-            d.mkdir(parents=True, exist_ok=True)
-        for subdir in ["SRPMS", "RPMS", "bundles"]:
-            (outputs_dir / subdir).mkdir(parents=True, exist_ok=True)
-        _log("[dim]--resume: preserving SRPMs and RPMs for re-staging[/dim]")
-    elif not keep_old:
-        clean_outputs(outputs_dir, timestamp)
-    else:
-        # --keep-old preserves converted SRPMs (avoids slow re-convert) but
-        # ALWAYS cleans built RPMs, bundles, and logs. Stale RPMs from prior
-        # runs would mask dep-check failures and pollute bundles.
-        for subdir in ["RPMS", "bundles", "logs"]:
-            d = outputs_dir / subdir
-            if d.exists():
-                subprocess.run(["rm", "-rf", str(d)], check=False)
-            d.mkdir(parents=True, exist_ok=True)
-        (outputs_dir / "SRPMS").mkdir(parents=True, exist_ok=True)
-        _log("[dim]--keep-old: preserving SRPMs, cleaning RPMs/bundles/logs[/dim]")
+        _log("[dim]--resume: reusing existing workspace[/dim]")
 
     reset_staging(staging_dir)
     setup_cross()
-    clean_rpmbuild(rpmbuild_dir)
-
-    # Clean per-package rpmbuild dirs from previous runs
-    pkg_rpmbuild_parent = outputs_dir / "rpmbuild"
-    if pkg_rpmbuild_parent.exists():
-        subprocess.run(["rm", "-rf", str(pkg_rpmbuild_parent)], check=False)
-        _log("[green]per-package rpmbuild dirs cleaned[/green]")
 
     _log("\n[bold green]Gate 0 passed: clean slate established[/bold green]\n")
 
 
-def convert_package(package: str, rules_dir: Path) -> Path | None:
-    """Convert a package SRPM. Returns path to converted SRPM or None."""
-    converted_dir = MOGRIX_OUTPUTS / "SRPMS"
+def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | None:
+    """Convert a package SRPM. Returns path to converted SRPM or None.
+
+    mogrix convert writes SRPMs to ~/mogrix_outputs/SRPMS/ (hardcoded).
+    We copy the result into the workspace's SRPMS dir.
+    """
+    ws_srpms_dir = outputs_dir / "SRPMS"
+    ws_srpms_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if already converted in this workspace
+    existing = sorted(ws_srpms_dir.glob(f"{package}-[0-9]*.src.rpm"))
+    if existing:
+        return existing[-1]
 
     # Find the source SRPM
     srpms_dir = MOGRIX_INPUTS / "SRPMS"
@@ -215,39 +209,55 @@ def convert_package(package: str, rules_dir: Path) -> Path | None:
         _log(f"  [red]Convert failed:[/red] {result.stderr[-500:]}")
         return None
 
-    # Find the converted SRPM
-    converted = sorted(converted_dir.glob(f"{package}-[0-9]*.src.rpm"))
+    # mogrix convert writes to ~/mogrix_outputs/SRPMS/ — copy to workspace
+    # (may be the same dir if ~/mogrix_outputs is a symlink to the workspace)
+    legacy_srpms = Path.home() / "mogrix_outputs" / "SRPMS"
+    converted = sorted(legacy_srpms.glob(f"{package}-[0-9]*.src.rpm"))
     if not converted:
         _log(f"  [red]No converted SRPM found after convert[/red]")
         return None
 
-    return converted[-1]
+    src = converted[-1]
+    dst = ws_srpms_dir / src.name
+    if src.resolve() != dst.resolve():
+        shutil.copy2(src, dst)
+    return dst
 
 
-def build_package(package: str, converted_srpm: Path) -> tuple[bool, list[Path], str]:
+def build_package(
+    package: str,
+    converted_srpm: Path,
+    outputs_dir: Path,
+    rpmbuild_dir: Path,
+) -> tuple[bool, list[Path], str]:
     """Build a converted SRPM. Returns (success, rpm_paths, error_msg).
 
-    Each package gets its own rpmbuild directory under mogrix_outputs/rpmbuild/<pkg>
-    to prevent cross-contamination between builds (stale RPMs, leftover sources, etc.).
+    Each package gets its own rpmbuild directory under workspace/rpmbuild/<pkg>.
+    The directory is cleaned BEFORE building (not after) so build artifacts
+    are preserved for post-mortem inspection on failure.
     """
-    logs_dir = MOGRIX_OUTPUTS / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    log_file = logs_dir / f"{package}-build.log"
-
     # Per-package rpmbuild directory — fully isolated from other builds
-    pkg_rpmbuild = MOGRIX_OUTPUTS / "rpmbuild" / package
+    pkg_rpmbuild = rpmbuild_dir / package
+
+    # Clean BEFORE build (preserves artifacts from previous builds for inspection)
+    if pkg_rpmbuild.exists():
+        subprocess.run(["rm", "-rf", str(pkg_rpmbuild)], check=False)
     pkg_rpmbuild.mkdir(parents=True, exist_ok=True)
 
+    # Per-package log directory
+    log_dir = pkg_rpmbuild / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{package}-build.log"
+
     # Snapshot output RPMs before build to detect new ones
-    # Include both .mips.rpm and .noarch.rpm — subpackages may be noarch
-    out_rpms_dir = MOGRIX_OUTPUTS / "RPMS"
-    pre_build_rpms = set()
-    if out_rpms_dir.exists():
-        pre_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
+    out_rpms_dir = outputs_dir / "RPMS"
+    out_rpms_dir.mkdir(parents=True, exist_ok=True)
+    pre_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
 
     result = subprocess.run(
         [str(MOGRIX_BIN), "build", str(converted_srpm), "--cross",
-         "--rpmbuild-dir", str(pkg_rpmbuild)],
+         "--rpmbuild-dir", str(pkg_rpmbuild),
+         "--output-dir", str(out_rpms_dir)],
         capture_output=True,
         text=True,
         errors='replace',
@@ -260,26 +270,18 @@ def build_package(package: str, converted_srpm: Path) -> tuple[bool, list[Path],
         # Extract last 5 lines of error
         lines = (result.stdout + result.stderr).strip().split("\n")
         error = "\n".join(lines[-5:])
-        shutil.rmtree(pkg_rpmbuild, ignore_errors=True)
         return False, [], error
 
-    # The CLI copies built RPMs to MOGRIX_OUTPUTS/RPMS/ — collect from there.
-    # Snapshot comparison finds exactly the RPMs this build produced.
-    post_build_rpms = set()
-    if out_rpms_dir.exists():
-        post_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
+    # The CLI copies built RPMs to outputs/RPMS/ — collect from there.
+    post_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
     new_rpms = sorted(post_build_rpms - pre_build_rpms)
 
     # Fallback to name-based glob if snapshot detection finds nothing
     if not new_rpms:
-        import re as _re
-        m = _re.match(r"^(.+?)-[\d]", converted_srpm.name)
+        m = re.match(r"^(.+?)-[\d]", converted_srpm.name)
         pkg_prefix = m.group(1) if m else package
         new_rpms = sorted(out_rpms_dir.glob(f"{pkg_prefix}*.mips.rpm"))
         new_rpms += sorted(out_rpms_dir.glob(f"{pkg_prefix}*.noarch.rpm"))
-
-    # Clean up the per-package rpmbuild dir
-    shutil.rmtree(pkg_rpmbuild, ignore_errors=True)
 
     return True, new_rpms, ""
 
@@ -339,8 +341,12 @@ def save_gate_result(
     (pkg_dir / "build-gate.json").write_text(json.dumps(data, indent=2))
 
 
-def load_completed(gate_results_dir: Path) -> set[str]:
-    """Load packages that have already passed gates (for --resume)."""
+def load_completed(gate_results_dir: Path, rpms_dir: Path) -> set[str]:
+    """Load packages that have already passed gates (for --resume).
+
+    Only counts a package as completed if its gate-results exist AND
+    at least one of its RPMs is present in the outputs directory.
+    """
     completed = set()
     if not gate_results_dir.exists():
         return completed
@@ -352,8 +358,18 @@ def load_completed(gate_results_dir: Path) -> set[str]:
         if gate_file.exists():
             try:
                 data = json.loads(gate_file.read_text())
-                if data.get("build_success") and data.get("gate2_passed"):
+                if not (data.get("build_success") and data.get("gate2_passed")):
+                    continue
+                # Verify at least one RPM still exists
+                rpms_present = False
+                for rpm_name in data.get("rpms", []):
+                    if (rpms_dir / rpm_name).exists():
+                        rpms_present = True
+                        break
+                if rpms_present:
                     completed.add(pkg_dir.name)
+                else:
+                    _log(f"[yellow]Stale gate-result (no RPMs): {pkg_dir.name} — will rebuild[/yellow]")
             except (json.JSONDecodeError, KeyError):
                 pass
 
@@ -400,7 +416,6 @@ def clean_tainted_artifacts(
 
     # Clean artifacts for all tainted packages
     rpms_dir = outputs_dir / "RPMS"
-    bundles_dir = outputs_dir / "bundles"
     cleaned = 0
 
     for pkg_name in tainted:
@@ -416,14 +431,6 @@ def clean_tainted_artifacts(
             for rpm in rpms_dir.glob(f"{pkg_name}-*-[0-9]*.mips.rpm"):
                 rpm.unlink(missing_ok=True)
 
-        # Remove bundles
-        if bundles_dir.exists():
-            for bundle in bundles_dir.glob(f"{pkg_name}-*.tar.gz"):
-                bundle.unlink(missing_ok=True)
-            bundle_dir = bundles_dir / pkg_name
-            if bundle_dir.exists():
-                shutil.rmtree(bundle_dir, ignore_errors=True)
-
         cleaned += 1
 
     return trustworthy, cleaned
@@ -432,9 +439,7 @@ def clean_tainted_artifacts(
 def rebuild_all(
     rules_dir: Path,
     staging_dir: Path = STAGING_DIR,
-    outputs_dir: Path = MOGRIX_OUTPUTS,
-    rpmbuild_dir: Path = RPMBUILD_DIR,
-    keep_old: bool = False,
+    workspace: Path | None = None,
     resume: bool = False,
     dry_run: bool = False,
     skip_gates: bool = False,
@@ -446,17 +451,39 @@ def rebuild_all(
     Args:
         rules_dir: Path to rules directory
         staging_dir: Staging sysroot path
-        outputs_dir: Output directory for RPMs/bundles
-        rpmbuild_dir: rpmbuild workspace
-        keep_old: Skip output relocation
-        resume: Skip packages that already passed gates
+        workspace: Explicit workspace path (auto-detected if None)
+        resume: Reuse latest workspace and skip completed packages
         dry_run: Just compute plan, don't build
         skip_gates: Run gates but treat failures as warnings
         from_list: Only build these packages (in dependency order)
+        fail_fast: Stop at first failure (default True)
     """
+    # Resolve workspace
+    if workspace:
+        ws = workspace
+    elif resume:
+        ws = find_latest_workspace()
+        if not ws:
+            _log("[red]No existing workspace found for --resume[/red]")
+            raise SystemExit(1)
+        _log(f"[bold]Resuming workspace: {ws}[/bold]")
+    else:
+        ws = create_workspace()
+
+    # Workspace paths
+    outputs_dir = ws / "mogrix_outputs"
+    rpms_dir = outputs_dir / "RPMS"
+    gate_results_dir = ws / "gate-results"
+    rpmbuild_dir = ws / "rpmbuild"
+
+    # Ensure directories exist
+    for d in [outputs_dir / "SRPMS", rpms_dir, gate_results_dir, rpmbuild_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    _log(f"[bold]Workspace:[/bold] {ws}")
     _log("[bold]Computing global build order...[/bold]")
-    plan = compute_build_order(rules_dir)
-    plan.gate_results_dir = Path("gate-results")
+    plan = compute_build_order(rules_dir, rpms_dir)
+    plan.gate_results_dir = gate_results_dir
 
     # Filter to requested packages if --from-list
     if from_list:
@@ -475,11 +502,11 @@ def rebuild_all(
             _log(f"  {i:3d}. {pkg}")
         return plan
 
-    # Gate 0: Clean slate
-    gate0_clean_slate(outputs_dir, staging_dir, rpmbuild_dir, keep_old=keep_old, resume=resume)
+    # Gate 0: Reset staging + cross-compilation
+    gate0_clean_slate(staging_dir, resume=resume)
 
     # Load resume state
-    completed = load_completed(plan.gate_results_dir) if resume else set()
+    completed = load_completed(gate_results_dir, rpms_dir) if resume else set()
     if completed:
         _log(f"[dim]Resuming: {len(completed)} packages previously passed[/dim]")
 
@@ -487,7 +514,7 @@ def rebuild_all(
         # the first failure. Packages after a failure were built in a potentially
         # contaminated environment (missing the failed package's libs).
         completed, cleaned = clean_tainted_artifacts(
-            plan.gate_results_dir, outputs_dir, plan.build_order, completed
+            gate_results_dir, outputs_dir, plan.build_order, completed
         )
         if cleaned:
             _log(f"[dim]Cleaned {cleaned} tainted packages (from first failure onward)[/dim]")
@@ -495,14 +522,11 @@ def rebuild_all(
 
         # Re-stage trustworthy packages so their libs are available for rebuilds.
         # Gate0 reset staging to pristine — we need to restore what passed cleanly.
-        # Use stored gate results for RPM names (handles subpackages like libbrotli).
-        rpms_dir = outputs_dir / "RPMS"
         restaged = 0
         for pkg in plan.build_order:
             if pkg not in completed:
                 continue
-            # Try gate results first — has the exact list of produced RPMs
-            gate_file = plan.gate_results_dir / pkg / "build-gate.json"
+            gate_file = gate_results_dir / pkg / "build-gate.json"
             pkg_rpms = []
             if gate_file.exists():
                 try:
@@ -553,12 +577,12 @@ def rebuild_all(
         result = RebuildResult(package=package, success=False)
 
         # Step 1: Convert
-        converted = convert_package(package, rules_dir)
+        converted = convert_package(package, rules_dir, outputs_dir)
         if not converted:
             result.error = "Convert failed"
             plan.results[package] = result
             failed.append(package)
-            save_gate_result(plan.gate_results_dir, package, result)
+            save_gate_result(gate_results_dir, package, result)
             _log(f"  [red]FAILED: {result.error}[/red]")
             if fail_fast:
                 _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
@@ -566,13 +590,13 @@ def rebuild_all(
             continue
 
         # Step 2: Build (each package gets its own isolated rpmbuild dir)
-        success, rpms, error = build_package(package, converted)
+        success, rpms, error = build_package(package, converted, outputs_dir, rpmbuild_dir)
         if not success:
             result.error = f"Build failed: {error}"
             result.duration_s = time.time() - start
             plan.results[package] = result
             failed.append(package)
-            save_gate_result(plan.gate_results_dir, package, result)
+            save_gate_result(gate_results_dir, package, result)
             _log(f"  [red]FAILED: build error[/red]")
             if fail_fast:
                 _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
@@ -600,7 +624,7 @@ def rebuild_all(
                     result.duration_s = time.time() - start
                     plan.results[package] = result
                     failed.append(package)
-                    save_gate_result(plan.gate_results_dir, package, result, gate2)
+                    save_gate_result(gate_results_dir, package, result, gate2)
                     if fail_fast:
                         _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
                         break
@@ -614,7 +638,7 @@ def rebuild_all(
 
         result.duration_s = time.time() - start
         plan.results[package] = result
-        save_gate_result(plan.gate_results_dir, package, result, gate2)
+        save_gate_result(gate_results_dir, package, result, gate2)
         _log(f"  [green]PASSED[/green] ({result.duration_s:.0f}s)")
 
     # Summary

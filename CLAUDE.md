@@ -4,7 +4,7 @@
 
 These are hard rules. Violating any of these is a session failure.
 
-- **MCP TOOLS BEFORE EVERYTHING**: `report_error` before attempting any fix. `check_compat` before writing any compat function. `search` before inventing any technique. NO EXCEPTIONS. Do not skip these because you think you already know the answer — your training data for IRIX is outdated and wrong.
+- **MCP TOOLS BEFORE EVERYTHING**: `search` first!! `search` everything before you do it so you don't flail around.`report_error` before attempting any fix. `check_compat` before writing any compat function. `search` before inventing any technique. NO EXCEPTIONS. Do not skip these because you think you already know the answer — your training data for IRIX is outdated and wrong.
 - **NO FIXES OUTSIDE MOGRIX RULES**: Every fix goes into `rules/`, `compat/`, or `patches/`. If you `sed` a file during debugging, that fix MUST end up in a YAML rule. If it doesn't, you have failed.
 - **NO INLINE C IN YAML**: C files go in `patches/packages/<pkg>/`, referenced via `add_source`. No heredocs generating .c/.h files in `prep_commands`.
 - **`add_rule` IMMEDIATELY AFTER FIX CONFIRMED**: The moment a build passes after a fix, call `add_rule` with `file_path` pointing to the authoritative rule file. Do not batch to session end — context pressure causes deferred `add_rule` calls to be dropped.
