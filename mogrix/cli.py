@@ -924,6 +924,12 @@ CROSS_BINDIR = Path("/opt/cross/bin")
     is_flag=True,
     help="Skip post-build ELF dependency validation",
 )
+@click.option(
+    "--short-circuit",
+    type=click.Choice(["build", "install", "binary"]),
+    default=None,
+    help="Resume a partial build: 'build' = -bc, 'install' = -bi, 'binary' = -bb (all with --short-circuit, skips %prep)",
+)
 def build(
     srpm: str,
     rpmbuild_dir: str | None,
@@ -933,6 +939,7 @@ def build(
     output_dir: str | None,
     no_isolate: bool,
     skip_dep_check: bool,
+    short_circuit: str | None,
 ):
     """Build a converted SRPM.
 
@@ -1038,14 +1045,57 @@ def build(
     # Add source/spec directories
     cmd.extend(["--define", f"_topdir {rpmbuild_path}"])
 
-    if is_srpm:
+    if short_circuit:
+        # Resume a partial build using existing BUILD dir and spec.
+        # Requires the spec to already be in rpmbuild_path/SPECS/.
+        # rpmbuild --short-circuit only works with -bc (build) and -bi (install).
+        # To get full RPMs we chain: -bc --short-circuit then -bi --short-circuit,
+        # then a final -bb to create the packages.
+        specs_dir = rpmbuild_path / "SPECS"
+        spec_files = list(specs_dir.glob("*.spec")) if specs_dir.exists() else []
+        if not spec_files:
+            console.print(f"[red]Error: No spec file found in {specs_dir}[/red]")
+            console.print("[dim]--short-circuit requires a prior build attempt with spec in SPECS/[/dim]")
+            raise SystemExit(1)
+        if len(spec_files) > 1:
+            console.print(f"[yellow]Warning: Multiple specs found, using {spec_files[0].name}[/yellow]")
+        sc_spec = spec_files[0]
+
+        if short_circuit == "build":
+            cmd.extend(["-bc", "--short-circuit", str(sc_spec)])
+            console.print(f"[bold cyan]Short-circuit:[/bold cyan] -bc --short-circuit (compile only)")
+        elif short_circuit == "install":
+            cmd.extend(["-bi", "--short-circuit", str(sc_spec)])
+            console.print(f"[bold cyan]Short-circuit:[/bold cyan] -bi --short-circuit (install only)")
+        elif short_circuit == "binary":
+            # Full pipeline skipping %prep: compile → install → package.
+            # rpmbuild --short-circuit only supports -bc and -bi, so we chain
+            # three invocations. The base cmd already has all the defines/flags.
+            _sc_base = list(cmd)  # copy before extending
+            _sc_stages = [
+                ("-bc", "--short-circuit", str(sc_spec)),
+                ("-bi", "--short-circuit", str(sc_spec)),
+                ("-bb", "--short-circuit", str(sc_spec)),
+            ]
+            console.print(f"[bold cyan]Short-circuit:[/bold cyan] -bc → -bi → -bb (full pipeline, skip %%prep)")
+            # Stash for the runner below
+            cmd = ("__chained__", _sc_base, _sc_stages)
+        is_srpm = False  # don't fall through to --rebuild
+    elif is_srpm:
         cmd.extend(["--rebuild", str(input_path)])
     else:
         cmd.extend(["-ba", str(spec_path)])
 
+    _is_chained = isinstance(cmd, tuple) and cmd[0] == "__chained__"
+
     if dry_run:
         console.print("[bold]Dry run - would execute:[/bold]")
-        console.print(f"  {' '.join(cmd)}")
+        if _is_chained:
+            _, sc_base, sc_stages = cmd
+            for stage_args in sc_stages:
+                console.print(f"  {' '.join(sc_base + list(stage_args))}")
+        else:
+            console.print(f"  {' '.join(cmd)}")
         console.print(f"\n[bold]rpmbuild directory:[/bold] {rpmbuild_path}")
         if cross:
             console.print("[bold]Mode:[/bold] IRIX cross-compilation")
@@ -1060,7 +1110,7 @@ def build(
         (rpmbuild_path / subdir).mkdir(parents=True, exist_ok=True)
 
     # If building from spec, copy it to SPECS
-    if not is_srpm:
+    if not is_srpm and not _is_chained:
         import shutil
 
         dest_spec = rpmbuild_path / "SPECS" / spec_path.name
@@ -1071,7 +1121,8 @@ def build(
     console.print(f"[bold]Building:[/bold] {input_path.name}")
     if cross:
         console.print("[bold]Mode:[/bold] IRIX cross-compilation")
-    console.print(f"[bold]Command:[/bold] {' '.join(cmd)}\n")
+    if not _is_chained:
+        console.print(f"[bold]Command:[/bold] {' '.join(cmd)}\n")
 
     # Remove old RPMs for this package before building, so stale output
     # can't be mistaken for fresh builds (e.g. by batch build agents).
@@ -1118,7 +1169,21 @@ def build(
     pre_build_rpms = set(rpms_dir.glob("**/*.rpm")) if rpms_dir.exists() else set()
 
     try:
-        if isolated and build_deps:
+        if isinstance(cmd, tuple) and cmd[0] == "__chained__":
+            # Short-circuit binary mode: chain -bc, -bi, -bb sequentially
+            _, sc_base, sc_stages = cmd
+            result = None
+            stage_names = ["%build", "%install", "%package"]
+            for stage_args, stage_name in zip(sc_stages, stage_names):
+                stage_cmd = sc_base + list(stage_args)
+                console.print(f"[bold]  → {stage_name}:[/bold] {' '.join(stage_args[:2])}")
+                if isolated and build_deps:
+                    result = isolated.build_with_fallback(stage_cmd, build_deps)
+                else:
+                    result = subprocess.run(stage_cmd, capture_output=True, text=True, errors='replace')
+                if result.returncode != 0:
+                    break
+        elif isolated and build_deps:
             result = isolated.build_with_fallback(cmd, build_deps)
         else:
             result = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
@@ -1913,6 +1978,55 @@ def rebuild_all_cmd(
         from_list=pkg_list,
         fail_fast=not no_fail_fast,
     )
+
+
+@main.command("rebuild")
+@click.argument("package")
+@click.option(
+    "--workspace",
+    type=click.Path(exists=True),
+    required=True,
+    help="Workspace path (e.g. ~/mogrix_v10)",
+)
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option("--skip-gates", is_flag=True, help="Treat gate failures as warnings")
+def rebuild_cmd(
+    package: str,
+    workspace: str,
+    rules_dir: str | None,
+    skip_gates: bool,
+):
+    """Rebuild a single package within a workspace.
+
+    Automatically detects prior build attempts and uses --short-circuit
+    to skip %prep when possible (reusing cached object files).
+
+    Updates gate-results so rebuild-all --resume sees it correctly.
+    Stages built RPMs into the sysroot on success.
+
+    Examples:
+      mogrix rebuild webkitgtk --workspace ~/mogrix_v10
+      mogrix rebuild curl --workspace ~/mogrix_v10 --skip-gates
+    """
+    from mogrix.rebuild import rebuild_one
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+    ws = Path(workspace)
+
+    result = rebuild_one(
+        package=package,
+        rules_dir=rules_path,
+        workspace=ws,
+        skip_gates=skip_gates,
+    )
+
+    if not result.success or not result.gate2_passed:
+        raise SystemExit(1)
 
 
 @main.command("rebuild-order")

@@ -229,20 +229,28 @@ def build_package(
     converted_srpm: Path,
     outputs_dir: Path,
     rpmbuild_dir: Path,
+    short_circuit: str | None = None,
 ) -> tuple[bool, list[Path], str]:
     """Build a converted SRPM. Returns (success, rpm_paths, error_msg).
 
     Each package gets its own rpmbuild directory under workspace/rpmbuild/<pkg>.
     The directory is cleaned BEFORE building (not after) so build artifacts
     are preserved for post-mortem inspection on failure.
+
+    If short_circuit is set ('build', 'install', or 'binary'), the existing
+    BUILD dir is preserved and rpmbuild runs with --short-circuit to skip %prep.
     """
     # Per-package rpmbuild directory — fully isolated from other builds
     pkg_rpmbuild = rpmbuild_dir / package
 
-    # Clean BEFORE build (preserves artifacts from previous builds for inspection)
-    if pkg_rpmbuild.exists():
-        subprocess.run(["rm", "-rf", str(pkg_rpmbuild)], check=False)
-    pkg_rpmbuild.mkdir(parents=True, exist_ok=True)
+    if short_circuit:
+        # Preserve existing BUILD dir — that's the whole point
+        pkg_rpmbuild.mkdir(parents=True, exist_ok=True)
+    else:
+        # Clean BEFORE build (preserves artifacts from previous builds for inspection)
+        if pkg_rpmbuild.exists():
+            subprocess.run(["rm", "-rf", str(pkg_rpmbuild)], check=False)
+        pkg_rpmbuild.mkdir(parents=True, exist_ok=True)
 
     # Per-package log directory
     log_dir = pkg_rpmbuild / "logs"
@@ -254,10 +262,16 @@ def build_package(
     out_rpms_dir.mkdir(parents=True, exist_ok=True)
     pre_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
 
+    build_cmd = [
+        str(MOGRIX_BIN), "build", str(converted_srpm), "--cross",
+        "--rpmbuild-dir", str(pkg_rpmbuild),
+        "--output-dir", str(out_rpms_dir),
+    ]
+    if short_circuit:
+        build_cmd.extend(["--short-circuit", short_circuit])
+
     result = subprocess.run(
-        [str(MOGRIX_BIN), "build", str(converted_srpm), "--cross",
-         "--rpmbuild-dir", str(pkg_rpmbuild),
-         "--output-dir", str(out_rpms_dir)],
+        build_cmd,
         capture_output=True,
         text=True,
         errors='replace',
@@ -662,3 +676,111 @@ def rebuild_all(
             _log(f"  {pkg}: {err}")
 
     return plan
+
+
+def rebuild_one(
+    package: str,
+    rules_dir: Path,
+    workspace: Path,
+    staging_dir: Path = STAGING_DIR,
+    skip_gates: bool = False,
+) -> RebuildResult:
+    """Rebuild a single package within an existing workspace.
+
+    Detects whether the package has a prior build attempt:
+    - If BUILD dir + spec exist: uses --short-circuit to skip %prep (fast resume)
+    - Otherwise: full convert + build from scratch
+
+    Updates gate-results so rebuild-all --resume sees it correctly.
+    Stages on success so downstream packages can build against it.
+    """
+    outputs_dir = workspace / "mogrix_outputs"
+    rpms_dir = outputs_dir / "RPMS"
+    gate_results_dir = workspace / "gate-results"
+    rpmbuild_dir = workspace / "rpmbuild"
+
+    for d in [outputs_dir / "SRPMS", rpms_dir, gate_results_dir, rpmbuild_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    start = time.time()
+    result = RebuildResult(package=package, success=False)
+
+    # Detect prior build attempt
+    pkg_rpmbuild = rpmbuild_dir / package
+    specs = sorted((pkg_rpmbuild / "SPECS").glob("*.spec")) if (pkg_rpmbuild / "SPECS").exists() else []
+    build_dir_exists = (pkg_rpmbuild / "BUILD").exists() and any((pkg_rpmbuild / "BUILD").iterdir())
+    can_short_circuit = bool(specs and build_dir_exists)
+
+    if can_short_circuit:
+        _log(f"[bold cyan]Found prior build for {package} — using --short-circuit[/bold cyan]")
+        _log(f"[dim]  Spec: {specs[0].name}[/dim]")
+        obj_count = sum(1 for _ in (pkg_rpmbuild / "BUILD").rglob("*.o"))
+        if obj_count:
+            _log(f"[dim]  Cached objects: {obj_count} .o files[/dim]")
+        short_circuit = "binary"  # -bb --short-circuit: build + install + package
+    else:
+        _log(f"[bold]Full build for {package} (no prior build to resume)[/bold]")
+        short_circuit = None
+
+    # Step 1: Convert (always needed — provides the SRPM path even for short-circuit)
+    converted = convert_package(package, rules_dir, outputs_dir)
+    if not converted:
+        result.error = "Convert failed"
+        result.duration_s = time.time() - start
+        save_gate_result(gate_results_dir, package, result)
+        _log(f"[red]FAILED: {result.error}[/red]")
+        return result
+
+    # Step 2: Build
+    _log(f"\n{'='*60}")
+    _log(f"[bold]Building: {package}" + (" (short-circuit)" if short_circuit else "") + "[/bold]")
+    _log(f"{'='*60}")
+
+    success, rpms, error = build_package(
+        package, converted, outputs_dir, rpmbuild_dir,
+        short_circuit=short_circuit,
+    )
+    if not success:
+        result.error = f"Build failed: {error}"
+        result.duration_s = time.time() - start
+        save_gate_result(gate_results_dir, package, result)
+        _log(f"[red]FAILED: build error[/red]")
+        _log(f"[dim]{error}[/dim]")
+        return result
+
+    result.success = True
+    result.rpms = [r.name for r in rpms]
+
+    # Step 3: Gate 2
+    gate2 = None
+    if rpms:
+        gate2 = gate2_check(rpms)
+        if not gate2.passed:
+            result.gate2_passed = False
+            if skip_gates:
+                _log(f"[yellow]Gate 2 WARNINGS (--skip-gates):[/yellow]")
+                for issue in gate2.issues:
+                    _log(f"  [{issue.severity}] {issue.file}: {issue.message}")
+            else:
+                _log(f"[red]Gate 2 FAILED:[/red]")
+                for issue in gate2.issues:
+                    _log(f"  [{issue.severity}] {issue.file}: {issue.message}")
+                result.error = f"Gate 2 failed: {len(gate2.issues)} issues"
+                result.duration_s = time.time() - start
+                save_gate_result(gate_results_dir, package, result, gate2)
+                return result
+
+    # Step 4: Stage
+    if rpms:
+        staged = stage_package(rpms, staging_dir)
+        if not staged:
+            _log(f"[yellow]Warning: staging failed[/yellow]")
+
+    result.duration_s = time.time() - start
+    save_gate_result(gate_results_dir, package, result, gate2)
+    _log(f"[green]PASSED[/green] ({result.duration_s:.0f}s)")
+
+    if short_circuit:
+        _log(f"[bold green]Short-circuit saved time — reused cached build artifacts[/bold green]")
+
+    return result
