@@ -1,5 +1,5 @@
 # SDL2 - Simple DirectMedia Layer 2 (cmake-based)
-# Cross-compile for IRIX 6.5 with X11+OpenGL video, no audio backends
+# Cross-compile for IRIX 6.5 with X11+OpenGL video, dmedia audio
 package: SDL2
 
 build_after:
@@ -14,6 +14,10 @@ build_after:
   - xcb-proto
 
 rules:
+  add_source:
+    - SDL_irixaudio.c
+    - SDL_irixaudio.h
+
   drop_buildrequires:
     - mesa-libGL-devel
     - mesa-libGLU-devel
@@ -66,6 +70,17 @@ rules:
     - "ln -sfn /opt/irix-sysroot/usr/include/X11 /tmp/irix-x11-inc/X11"
     # Remove the wayland-prefer patch (we disable wayland entirely)
     - "rm -f SDL2-2.30.1-prefer-wayland.patch || true"
+    # Install IRIX dmedia audio backend (from sgug-rse SDL2 patch, uses libaudio/AL)
+    - "mkdir -p src/audio/dmedia"
+    - "cp %{_sourcedir}/SDL_irixaudio.c src/audio/dmedia/"
+    - "cp %{_sourcedir}/SDL_irixaudio.h src/audio/dmedia/"
+    # Register DMEDIA audio driver bootstrap in SDL2's audio subsystem
+    - "perl -pi -e 'print \"extern AudioBootStrap DMEDIA_bootstrap;\\n\" if /extern AudioBootStrap DISKAUDIO_bootstrap/' src/audio/SDL_sysaudio.h"
+    - "perl -pi -e 'print \"#if SDL_AUDIO_DRIVER_DMEDIA\\n    \\&DMEDIA_bootstrap,\\n#endif\\n\" if /SDL_AUDIO_DRIVER_DISK/' src/audio/SDL_audio.c"
+    # Add DMEDIA source to cmake build — insert a new block after the DISKAUDIO block
+    - "perl -pi -e 'print \"  # IRIX dmedia audio\\n  set(SDL_AUDIO_DRIVER_DMEDIA 1)\\n  file(GLOB DMEDIA_SOURCES \\${SDL2_SOURCE_DIR}/src/audio/dmedia/*.c)\\n  list(APPEND SOURCE_FILES \\${DMEDIA_SOURCES})\\n  set(HAVE_SDL_AUDIO TRUE)\\n\" if /set\\(HAVE_DISKAUDIO TRUE\\)/' CMakeLists.txt"
+    # Add SDL_AUDIO_DRIVER_DMEDIA config define (before the DUMMY driver define)
+    - "perl -pi -e 'print \"#cmakedefine SDL_AUDIO_DRIVER_DMEDIA \\@SDL_AUDIO_DRIVER_DMEDIA\\@\\n\" if /cmakedefine SDL_AUDIO_DRIVER_DUMMY/' include/SDL_config.h.cmake"
     # Remove fcitx/ibus input method support (needs dbus)
     - "$MOGRIX_ROOT/tools/safepatch include/SDL_config.h.cmake --old '#define SDL_USE_IME 1' --new '/* #undef SDL_USE_IME */' --no-backup --quiet || true"
     # IRIX X11R6.3 has no Xutf8 functions (X_HAVE_UTF8_STRING not defined)
@@ -121,10 +136,10 @@ rules:
         cat > /tmp/sdl2-irix-cache.cmake << 'CACHEEOF'
         set(CMAKE_SYSTEM_NAME "Linux" CACHE STRING "")
         set(CMAKE_SYSTEM_PROCESSOR "mips" CACHE STRING "")
-        set(CMAKE_C_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
-        set(CMAKE_CXX_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
-        set(CMAKE_EXE_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -lgen" CACHE STRING "")
-        set(CMAKE_SHARED_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -lgen" CACHE STRING "")
+        set(CMAKE_C_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/irix-sysroot/usr/include -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
+        set(CMAKE_CXX_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/irix-sysroot/usr/include -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
+        set(CMAKE_EXE_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32 -lgen -laudio" CACHE STRING "")
+        set(CMAKE_SHARED_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32 -lgen -laudio" CACHE STRING "")
         set(CMAKE_FIND_ROOT_PATH "/opt/sgug-staging/usr/sgug;/opt/irix-sysroot/usr" CACHE STRING "")
         set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY "ONLY" CACHE STRING "")
         set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE "ONLY" CACHE STRING "")
