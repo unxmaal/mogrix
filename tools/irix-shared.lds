@@ -17,7 +17,7 @@ ENTRY(__start)
 SECTIONS
 {
   /* Read-only sections, merged into text segment: */
-  . = SEGMENT_START("text-segment", 0x5ffe0000) + SIZEOF_HEADERS;
+  . = SEGMENT_START("text-segment", 0x0f800000) + SIZEOF_HEADERS;
   .MIPS.abiflags        : { *(.MIPS.abiflags) }
   .MIPS.xhash        : { *(.MIPS.xhash) }
   .reginfo        : { *(.reginfo) }
@@ -269,7 +269,7 @@ SECTIONS
   .gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
   /DISCARD/ : { *(.MIPS.content*) *(.MIPS.events*) }
   __dso_displacement = 0;
-  __elf_header = 0x5ffe0000;
+  __elf_header = 0x0f800000;
   __program_header_table = __elf_header + 0x34;
   /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
 }

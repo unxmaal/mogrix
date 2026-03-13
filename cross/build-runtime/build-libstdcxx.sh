@@ -273,7 +273,8 @@ echo "=== Phase 3: Compile C++17 sources ==="
 
 # C++17 sources
 # Skip: floating_from/to_chars (GCC 9.5 doesn't have them)
-# Skip: memory_resource (clang can't handle out-of-line virtual dtor = default)
+# Note: memory_resource.cc is replaced by pmr_shim.cc (Phase 4c) —
+# GCC's version fails with clang (out-of-line virtual dtor = default)
 CXX17_SOURCES=(
     cow-string-inst.cc
     fs_dir.cc
@@ -477,6 +478,22 @@ done
 echo "libsupc++ C++17: $compiledsupc17 compiled, $failedsupc17 failed"
 
 echo ""
+echo "=== Phase 4c: Compile std::pmr shim (C++17) ==="
+
+# GCC 9's memory_resource.cc fails with clang due to out-of-line "= default"
+# virtual dtor and 3-arg operator delete. This shim provides just the symbols
+# Qt5 needs: get_default_resource, _M_new_buffer, _M_release_buffers.
+PMR_SHIM="$SCRIPT_DIR/pmr_shim.cc"
+PMR_OBJ="$BUILD_DIR/c++17/pmr_shim.o"
+if $CLANG $SUPCXX17_FLAGS -I$LIBSTDCXX/include -I$LIBSTDCXX/src -c "$PMR_SHIM" -o "$PMR_OBJ" 2>"$BUILD_DIR/c++17/pmr_shim.err"; then
+    echo "pmr_shim.o: OK"
+else
+    echo "FAILED: pmr_shim.cc"
+    cat "$BUILD_DIR/c++17/pmr_shim.err"
+    # Non-fatal — only Qt5 needs it
+fi
+
+echo ""
 echo "=== Phase 5: Compile I/O backend + locale backend (generic) ==="
 
 # basic_file_stdio.cc — provides std::__basic_file<char> (file I/O for fstream)
@@ -611,6 +628,36 @@ if [ "$total_failed" -gt 0 ]; then
 fi
 
 echo ""
+echo "=== Phase 5c: Compile .eh_frame registration objects ==="
+
+# libstdc++.so needs explicit .eh_frame registration so the DW2 unwinder
+# can find FDEs for functions like __cxa_throw. Without this, exceptions
+# always terminate() because the unwinder can't step through libstdc++ frames.
+# GCC normally provides this via crtbeginS.o; we must do it manually.
+
+FRAME_REG_C="$SCRIPT_DIR/libstdcxx_frame_reg.c"
+FRAME_END_C="$SCRIPT_DIR/libstdcxx_frame_end.c"
+CLANG_C="/opt/cross/bin/clang"
+FRAME_C_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3 -mxgot -O2 -fPIC"
+FRAME_C_FLAGS="$FRAME_C_FLAGS -isystem $STAGING/include -isystem $SYSROOT/usr/include"
+
+if $CLANG_C $FRAME_C_FLAGS -c "$FRAME_REG_C" -o "$BUILD_DIR/frame_reg.o" 2>"$BUILD_DIR/frame_reg.err"; then
+    echo "frame_reg.o: OK"
+else
+    echo "FAILED: libstdcxx_frame_reg.c"
+    cat "$BUILD_DIR/frame_reg.err"
+    exit 1
+fi
+
+if $CLANG_C $FRAME_C_FLAGS -c "$FRAME_END_C" -o "$BUILD_DIR/frame_end.o" 2>"$BUILD_DIR/frame_end.err"; then
+    echo "frame_end.o: OK"
+else
+    echo "FAILED: libstdcxx_frame_end.c"
+    cat "$BUILD_DIR/frame_end.err"
+    exit 1
+fi
+
+echo ""
 echo "=== Phase 6: Link libstdc++.so.6 ==="
 
 # Collect all .o files
@@ -619,26 +666,30 @@ for obj in "$BUILD_DIR"/c++98/*.o "$BUILD_DIR"/c++11/*.o "$BUILD_DIR"/c++17/*.o 
     [ -f "$obj" ] && ALL_OBJECTS+=("$obj")
 done
 
-echo "Linking ${#ALL_OBJECTS[@]} object files..."
+echo "Linking ${#ALL_OBJECTS[@]} object files + frame registration..."
 
-# Use BFD ld (GNU ld) instead of LLD for libstdc++.
-# LLD places .eh_frame in the RE (read-only) LOAD segment and ignores SHF_WRITE
-# during .eh_frame merge. IRIX rld writes R_MIPS_REL32 relocations into
-# .eh_frame → SIGSEGV. BFD ld with our linker script (irix-shared.lds) respects
-# SHF_WRITE and places .eh_frame in the RW data segment via the ONLY_IF_RW path.
-export MOGRIX_USE_BFDLD_SHARED=1
-
-# Set SHF_WRITE on .eh_frame/.gcc_except_table in .o files so BFD ld's
-# ONLY_IF_RW linker script path matches and places them in the data segment.
-# (Clang doesn't set SHF_WRITE on .eh_frame unlike GCC.)
-FIX_EH_FRAME="$(cd "$(dirname "$0")/../../cross/bin" && pwd)/fix-eh-frame"
-echo "Setting SHF_WRITE on .eh_frame in ${#ALL_OBJECTS[@]} object files..."
-python3 "$FIX_EH_FRAME" "${ALL_OBJECTS[@]}"
+# LLD 18 with IRIX patches handles .eh_frame placement natively:
+# - Sets SHF_WRITE on .eh_frame (IRIX rld writes relocations at load time)
+# - Suppresses GNU version sections (VERNEED/VERSYM crash rld)
+# - Uses IRIX target defaults (2-segment layout, no RELRO, etc.)
+# No BFD ld fallback or fix-eh-frame preprocessing needed.
+#
+# irix-ld automatically adds crtbeginS.o FIRST and crtendS.o LAST for
+# shared libraries. crtbeginS.o provides _init → __do_global_ctors_aux
+# which walks .ctors in reverse. crtendS.o provides __CTOR_END__ sentinel.
+#
+# frame_reg.o puts our frame registration function in .ctors so it runs
+# during DSO load. frame_end.o is no longer needed (LLD adds .eh_frame
+# terminator automatically).
+#
+# IRIX rld does NOT process .init_array, so __attribute__((constructor))
+# doesn't work — we must use .ctors.
 
 $IRIX_LD \
     -shared \
     -soname libstdc++.so.6 \
     -o "$OUTPUT" \
+    "$BUILD_DIR/frame_reg.o" \
     "${ALL_OBJECTS[@]}" \
     -L"$SYSROOT/usr/lib32" \
     -L"$STAGING/lib32" \
