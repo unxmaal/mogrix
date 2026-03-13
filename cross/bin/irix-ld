@@ -126,13 +126,15 @@ if [ "$is_shared" = "1" ]; then
 
     if [ "$MOGRIX_USE_BFDLD_SHARED" = "1" ]; then
         # Fallback: GNU ld (BFD) with custom linker script.
-        # WARNING: BFD ld has a multi-GOT bug with -Bsymbolic-functions that
-        # corrupts ~30% of function-call GOT entries in large libraries.
-        # Only use this for small libraries or debugging.
+        # Used for libraries that need .eh_frame in the RW segment (IRIX rld
+        # writes R_MIPS_REL32 relocations into .eh_frame at load time; LLD
+        # places .eh_frame in read-only RE segment → SIGSEGV).
+        # Uses -Bsymbolic (not -Bsymbolic-functions) — the latter has a
+        # multi-GOT bug that corrupts ~30% of function-call GOT entries.
         LDSCRIPT=$STAGING/lib32/irix-shared.lds
         CRT_HIDE="$(dirname "$0")/../crt/crt-hide.ver"
         $GNULD \
-          -Bsymbolic-functions \
+          -Bsymbolic \
           --version-script="$CRT_HIDE" \
           -T "$LDSCRIPT" \
           $CRTBEGIN \
@@ -182,6 +184,15 @@ if [ "$is_shared" = "1" ]; then
         case "$filtered_args" in
             *libgcc_s*) LIBGCC_S_FLAG="" ;;
         esac
+        # irix-eh-frame.lds: Move .eh_frame/.gcc_except_table from RE to RW segment.
+        # LLD places .eh_frame before .text (in RE). IRIX rld writes relocations
+        # into .eh_frame at load time → SIGSEGV if read-only. INSERT BEFORE .ctors
+        # puts them at the RE/RW boundary in the writable data segment.
+        EH_FRAME_LDS="$(dirname "$0")/../irix-eh-frame.lds"
+        EH_FRAME_FLAG=""
+        if [ -f "$EH_FRAME_LDS" ]; then
+            EH_FRAME_FLAG="-T $EH_FRAME_LDS"
+        fi
         $LLD \
           -Bsymbolic \
           --no-rosegment \
@@ -190,6 +201,7 @@ if [ "$is_shared" = "1" ]; then
           --image-base=0x5ffe0000 \
           --allow-shlib-undefined \
           --mips-got-size=1048576 \
+          $EH_FRAME_FLAG \
           $CRTBEGIN \
           $DSOHANDLE \
           $filtered_args \

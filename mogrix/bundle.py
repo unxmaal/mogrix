@@ -46,24 +46,18 @@ console = Console()
 
 STAGING_LIB_DIR = Path("/opt/sgug-staging/usr/sgug/lib32")
 
-# Libraries that must NEVER be bundled — they must come from the native IRIX
-# system.  IRIX X11 libs use IRIX-specific transport/auth that our cross-compiled
-# versions can't replicate.  The IRIX X server only works with its own libs.
+# Libraries that must NEVER be bundled — they exist on native IRIX and apps
+# must use the native versions.  IRIX X11 libs use IRIX-specific transport/auth;
+# the X server only works with its own libs.
 # Matched by soname prefix: "libX11.so" matches libX11.so.6, libX11.so.1, etc.
+#
+# Only libs that actually exist on IRIX 6.5 are listed here.  Libs that DON'T
+# exist natively (libXft, libXrender, libxcb, libXau, libXcursor, libXrandr,
+# libXcomposite, libXdamage, libXfixes, libXinerama) MUST be bundled.
 NEVER_BUNDLE_PREFIXES = {
     "libX11.so",
     "libXext.so",
-    "libXau.so",
-    "libxcb.so",
     "libXi.so",
-    "libXinerama.so",
-    "libXrender.so",
-    "libXfixes.so",
-    "libXcursor.so",
-    "libXrandr.so",
-    "libXcomposite.so",
-    "libXdamage.so",
-    "libXft.so",
     "libXpm.so",
     "libXt.so",
     "libXmu.so",

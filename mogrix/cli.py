@@ -2580,12 +2580,18 @@ def setup_cross(
     default=True,
     help="Automatically include matching -devel packages (default: enabled)",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force staging even if RPM contains protected files",
+)
 def stage(
     rpms: tuple[str, ...],
     staging_dir: str,
     clean: bool,
     list_staged: bool,
     with_devel: bool,
+    force: bool,
 ):
     """Stage cross-compiled RPMs for dependency resolution.
 
@@ -2624,11 +2630,24 @@ def stage(
         "rpmmacros.irix",
     }
 
-    # Pre-existing libraries that came with the staging area (not from our RPMs)
-    # Only runtime libs deployed by setup-cross survive a clean.
-    # All other libs/headers come from mogrix-rebuilt packages via `mogrix stage`.
-    # SGUG-RSE preexisting artifacts (libbz2.a, libncursesw.a, bzlib.h, etc.)
-    # are no longer preserved — we rebuild everything from source.
+    # Protected file patterns — critical runtime/toolchain files that must NOT be
+    # overwritten by `mogrix stage`. Uses fnmatch glob patterns against paths
+    # relative to the staging root.
+    PROTECTED_PATTERNS = {
+        "usr/sgug/lib32/libstdc++*",
+        "usr/sgug/lib32/libgcc_s*",
+        "usr/sgug/lib32/libmogrix_compat.so",
+        "usr/sgug/lib32/dlmalloc.o",
+        "usr/sgug/lib32/crt*.o",
+        "usr/sgug/lib32/dso_handle.o",
+        "usr/sgug/bin/irix-cc",
+        "usr/sgug/bin/irix-cxx",
+        "usr/sgug/bin/irix-ld",
+        "usr/sgug/bin/fix-anon-relocs",
+        "usr/sgug/bin/strip-verneed",
+    }
+
+    # Legacy set for backward compat with _list_staged_packages
     PREEXISTING_LIBS = {
         "libstdc++.so", "libstdc++.so.6",
         "libgcc_s.so", "libgcc_s.so.1",
@@ -2641,7 +2660,7 @@ def stage(
         return
 
     if clean:
-        _clean_staged_packages(staging_path, PRESERVE, PREEXISTING_LIBS, PREEXISTING_HEADERS)
+        _clean_staged_packages(staging_path, PRESERVE, PREEXISTING_LIBS, PREEXISTING_HEADERS, PROTECTED_PATTERNS)
         return
 
     if not rpms:
@@ -2680,6 +2699,20 @@ def stage(
         console.print(f"[bold]Installing:[/bold] {rpm_file.name}")
 
         try:
+            # Pre-stage validation: check for protected file conflicts
+            file_list = _get_rpm_file_list(rpm_file)
+            conflicts = _check_protected_files(rpm_file, file_list, PROTECTED_PATTERNS)
+            if conflicts and not force:
+                console.print(f"  [red]✗ BLOCKED — RPM overwrites protected files:[/red]")
+                for cf in conflicts:
+                    console.print(f"    [red]{cf}[/red]")
+                console.print(f"  [yellow]Skipping {rpm_file.name} (use --force to override)[/yellow]")
+                continue
+            elif conflicts and force:
+                console.print(f"  [yellow]⚠ WARNING — overwriting protected files (--force):[/yellow]")
+                for cf in conflicts:
+                    console.print(f"    [yellow]{cf}[/yellow]")
+
             # Extract RPM to staging directory
             result = subprocess.run(
                 f"cd {staging_path} && rpm2cpio {rpm_file.absolute()} | cpio -idm",
@@ -2693,7 +2726,7 @@ def stage(
                 continue
 
             console.print(f"  [green]✓ Installed[/green]")
-            _record_staged_package(staging_path, rpm_file.name)
+            _record_staged_package(staging_path, rpm_file.name, file_list)
 
         except Exception as e:
             console.print(f"  [red]✗ Error:[/red] {e}")
@@ -2708,7 +2741,37 @@ def stage(
 MANIFEST_FILE = ".mogrix-staged.json"
 
 
-def _record_staged_package(staging_path: Path, rpm_filename: str) -> None:
+def _get_rpm_file_list(rpm_path: Path) -> list[str]:
+    """Get list of files in an RPM without extracting (rpm2cpio | cpio -t)."""
+    import subprocess
+    result = subprocess.run(
+        f"rpm2cpio {rpm_path.absolute()} | cpio -t 2>/dev/null",
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return []
+    # cpio -t outputs paths with leading ./ — strip it
+    return [f.lstrip("./") for f in result.stdout.strip().split("\n") if f.strip()]
+
+
+def _check_protected_files(
+    rpm_path: Path, file_list: list[str], protected_patterns: set[str]
+) -> list[str]:
+    """Check if any files in the RPM match protected patterns. Returns conflicts."""
+    from fnmatch import fnmatch
+
+    conflicts = []
+    for filepath in file_list:
+        for pattern in protected_patterns:
+            if fnmatch(filepath, pattern):
+                conflicts.append(filepath)
+                break
+    return conflicts
+
+
+def _record_staged_package(staging_path: Path, rpm_filename: str, file_list: list[str] | None = None) -> None:
     """Record a staged RPM in the manifest file."""
     import json
     from datetime import datetime
@@ -2729,10 +2792,14 @@ def _record_staged_package(staging_path: Path, rpm_filename: str) -> None:
     match = re.match(r"^(.+?)-(\d+[\d.]*(?:[-~]\w[\w.]*)*)\.\w+\.rpm$", rpm_filename)
     pkg_name = match.group(1) if match else rpm_filename
 
-    manifest["packages"][pkg_name] = {
+    entry = {
         "rpm": rpm_filename,
         "staged_at": datetime.now().isoformat(),
     }
+    if file_list is not None:
+        entry["files"] = file_list
+
+    manifest["packages"][pkg_name] = entry
 
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
@@ -2854,11 +2921,21 @@ def _list_staged_packages(staging_path: Path, preexisting_libs: set, preexisting
     _show_manifest(staging_path)
 
 
+def _is_protected(filepath: str, protected_patterns: set[str]) -> bool:
+    """Check if a file path (relative to staging root) matches any protected pattern."""
+    from fnmatch import fnmatch
+    for pattern in protected_patterns:
+        if fnmatch(filepath, pattern):
+            return True
+    return False
+
+
 def _clean_staged_packages(
     staging_path: Path,
     preserve: set,
     preexisting_libs: set,
     preexisting_headers: set,
+    protected_patterns: set[str] | None = None,
 ):
     """Clean staged packages while preserving base setup."""
     import shutil
@@ -2872,29 +2949,42 @@ def _clean_staged_packages(
 
     removed_count = 0
 
-    # Libraries to always keep (compat preload, toolchain)
-    preserve_libs = {"libmogrix_compat.so"}
+    def is_protected_lib(name: str) -> bool:
+        """Check if a lib32/ file is protected (by pattern or legacy name set)."""
+        if name in preexisting_libs or name == "libmogrix_compat.so":
+            return True
+        if protected_patterns:
+            relpath = f"usr/sgug/lib32/{name}"
+            return _is_protected(relpath, protected_patterns)
+        return False
 
-    # Clean libraries (keeping pre-existing and soft_float_stubs)
+    # Clean libraries (keeping protected and soft_float_stubs)
     if lib_dir.exists():
         for lib in lib_dir.glob("*.so*"):
-            if lib.name not in preexisting_libs and lib.name not in preserve_libs:
+            if not is_protected_lib(lib.name):
                 console.print(f"  Removing: {lib.name}")
                 lib.unlink()
                 removed_count += 1
 
-        # Remove .a files that aren't pre-existing
+        # Remove .a files that aren't protected
         for lib in lib_dir.glob("*.a"):
-            if lib.name not in preexisting_libs and not lib.name.startswith("libsoft_float"):
+            if not is_protected_lib(lib.name) and not lib.name.startswith("libsoft_float"):
                 console.print(f"  Removing: {lib.name}")
                 lib.unlink()
                 removed_count += 1
 
-        # Remove .la files that aren't pre-existing
+        # Remove .la files
         for la in lib_dir.glob("*.la"):
-            if la.name not in preexisting_libs:
+            if not is_protected_lib(la.name):
                 console.print(f"  Removing: {la.name}")
                 la.unlink()
+                removed_count += 1
+
+        # Preserve .o files that are protected (dlmalloc.o, crt*.o, dso_handle.o)
+        for obj in lib_dir.glob("*.o"):
+            if not is_protected_lib(obj.name):
+                console.print(f"  Removing: {obj.name}")
+                obj.unlink()
                 removed_count += 1
 
     # Clean pkgconfig files
@@ -2969,7 +3059,8 @@ def _clean_staged_packages(
     console.print("  - Compiler wrappers (irix-cc, irix-cxx, irix-ld)")
     console.print("  - Compat headers (dicl-clang-compat, mogrix-compat)")
     console.print("  - libsoft_float_stubs.a")
-    console.print("  - Pre-existing libraries (zlib, bz2, lzma, ncurses, readline)")
+    console.print("  - Runtime libraries (libstdc++, libgcc_s, libmogrix_compat)")
+    console.print("  - CRT objects (crt*.o, dlmalloc.o, dso_handle.o)")
 
 
 @main.command("sync-headers")
