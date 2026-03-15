@@ -65,6 +65,32 @@ def find_latest_workspace() -> Path | None:
     return workspaces[-1][1]
 
 
+def _update_outputs_symlink(workspace: Path) -> None:
+    """Ensure ~/mogrix_outputs symlink points to this workspace's outputs.
+
+    Called on both create and resume so the bundler always reads the right RPMs.
+    """
+    outputs_link = Path.home() / "mogrix_outputs"
+    ws_outputs = workspace / "mogrix_outputs"
+
+    try:
+        if outputs_link.is_symlink():
+            current = outputs_link.resolve()
+            if current == ws_outputs.resolve():
+                return  # already correct
+            outputs_link.unlink()
+        elif outputs_link.is_dir():
+            backup = outputs_link.with_name(
+                f"mogrix_outputs_old.{time.strftime('%m%d%H%M')}"
+            )
+            outputs_link.rename(backup)
+            _log(f"[dim]Backed up {outputs_link} → {backup.name}[/dim]")
+        outputs_link.symlink_to(ws_outputs)
+        _log(f"[dim]~/mogrix_outputs → {ws_outputs}[/dim]")
+    except OSError as e:
+        _log(f"[yellow]Warning: could not update ~/mogrix_outputs symlink: {e}[/yellow]")
+
+
 def create_workspace() -> Path:
     """Create the next numbered workspace (auto-increment)."""
     latest = find_latest_workspace()
@@ -81,24 +107,7 @@ def create_workspace() -> Path:
     (workspace / "mogrix_outputs" / "RPMS").mkdir(parents=True, exist_ok=True)
     (workspace / "rpmbuild").mkdir(exist_ok=True)
 
-    # Update ~/mogrix_outputs symlink to point to this workspace's outputs.
-    # The bundler and other tools use ~/mogrix_outputs/RPMS/ to find built RPMs.
-    outputs_link = Path.home() / "mogrix_outputs"
-    ws_outputs = workspace / "mogrix_outputs"
-    try:
-        if outputs_link.is_symlink():
-            outputs_link.unlink()
-        elif outputs_link.is_dir():
-            # Rename existing dir as backup before creating symlink
-            backup = outputs_link.with_name(
-                f"mogrix_outputs_old.{time.strftime('%m%d%H%M')}"
-            )
-            outputs_link.rename(backup)
-            _log(f"[dim]Backed up {outputs_link} → {backup.name}[/dim]")
-        outputs_link.symlink_to(ws_outputs)
-        _log(f"[dim]~/mogrix_outputs → {ws_outputs}[/dim]")
-    except OSError as e:
-        _log(f"[yellow]Warning: could not update ~/mogrix_outputs symlink: {e}[/yellow]")
+    _update_outputs_symlink(workspace)
 
     _log(f"[bold green]Created workspace: {workspace}[/bold green]")
     return workspace
@@ -177,8 +186,37 @@ def setup_cross() -> None:
     _log("[green]Cross-compilation setup deployed[/green]")
 
 
+def _write_staging_owner(staging_dir: Path, workspace: Path) -> None:
+    """Record which workspace owns staging, to prevent cross-workspace pollution."""
+    owner_file = staging_dir / "staging-owner.json"
+    owner_file.write_text(json.dumps({
+        "workspace": str(workspace),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }))
+
+
+def _check_staging_owner(staging_dir: Path, workspace: Path) -> None:
+    """Abort if a different workspace owns staging."""
+    owner_file = staging_dir / "staging-owner.json"
+    if not owner_file.exists():
+        return  # no owner recorded yet
+    try:
+        data = json.loads(owner_file.read_text())
+        recorded = data.get("workspace", "")
+        if recorded and Path(recorded).resolve() != workspace.resolve():
+            _log(
+                f"[red]Staging is owned by {recorded}, not {workspace}.[/red]\n"
+                f"[red]Run a full rebuild (without --resume) to reset, or "
+                f"use --workspace {recorded} to resume that workspace.[/red]"
+            )
+            raise SystemExit(1)
+    except (json.JSONDecodeError, OSError):
+        pass  # corrupt file — ignore and proceed
+
+
 def gate0_clean_slate(
     staging_dir: Path,
+    workspace: Path,
     resume: bool = False,
 ) -> None:
     """Gate 0: Establish clean build environment.
@@ -189,12 +227,144 @@ def gate0_clean_slate(
     _log("\n[bold]=== Gate 0: Clean Slate ===[/bold]\n")
 
     if resume:
-        _log("[dim]--resume: reusing existing workspace[/dim]")
-
-    reset_staging(staging_dir)
-    setup_cross()
+        _log("[dim]--resume: keeping existing staging, re-deploying tools only[/dim]")
+        _check_staging_owner(staging_dir, workspace)
+        setup_cross()  # ensure toolchain is current
+    else:
+        reset_staging(staging_dir)
+        setup_cross()
+        _write_staging_owner(staging_dir, workspace)
 
     _log("\n[bold green]Gate 0 passed: clean slate established[/bold green]\n")
+
+
+def _package_input_files(package: str, rules_dir: Path) -> list[tuple[str, Path]]:
+    """All input files that affect a package's build output.
+
+    Returns (key, path) pairs. If any of these change, the cached
+    conversion and build results are stale.
+    """
+    project_root = Path(__file__).parent.parent
+    inputs = [
+        ("pkg_rule", rules_dir / "packages" / f"{package}.yaml"),
+        ("generic", rules_dir / "generic.yaml"),
+        ("compat_catalog", project_root / "compat" / "catalog.yaml"),
+        # Global inputs: compiler/linker changes affect all packages
+        ("irix_cc", project_root / "cross" / "bin" / "irix-cc"),
+        ("irix_ld", project_root / "cross" / "bin" / "irix-ld"),
+    ]
+    # Package-specific patches directory — use the dir's own mtime
+    # (updated when files are added/removed)
+    patches_dir = project_root / "patches" / "packages" / package
+    if patches_dir.is_dir():
+        inputs.append(("patches_dir", patches_dir))
+        # Also check individual patch files
+        for patch in sorted(patches_dir.iterdir()):
+            if patch.is_file():
+                inputs.append((f"patch_{patch.name}", patch))
+    return inputs
+
+
+def _max_input_mtime(package: str, rules_dir: Path) -> float:
+    """Latest mtime across all input files for a package."""
+    max_mtime = 0.0
+    for _key, path in _package_input_files(package, rules_dir):
+        if path.exists():
+            max_mtime = max(max_mtime, path.stat().st_mtime)
+    return max_mtime
+
+
+def _conversion_is_stale(package: str, ws_srpms_dir: Path, rules_dir: Path) -> bool:
+    """Check if a cached converted SRPM is stale because inputs changed.
+
+    Compares current mtimes of rule/patch/compat files against a stamp
+    written at conversion time. Returns True if any input is newer.
+    """
+    stamp_file = ws_srpms_dir / f".{package}.convert-stamp"
+    if not stamp_file.exists():
+        return True  # no stamp = unknown provenance, reconvert to be safe
+
+    try:
+        stamp = json.loads(stamp_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return True  # corrupt stamp = stale
+
+    for key, path in _package_input_files(package, rules_dir):
+        if path.exists():
+            current_mtime = path.stat().st_mtime
+            if current_mtime > stamp.get(key, 0):
+                return True
+    return False
+
+
+def _write_convert_stamp(package: str, ws_srpms_dir: Path, rules_dir: Path) -> None:
+    """Write a conversion stamp with current input file mtimes."""
+    stamp = {}
+    for key, path in _package_input_files(package, rules_dir):
+        if path.exists():
+            stamp[key] = path.stat().st_mtime
+    stamp["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    stamp_file = ws_srpms_dir / f".{package}.convert-stamp"
+    stamp_file.write_text(json.dumps(stamp))
+
+
+def _extract_spec_from_srpm(srpm_path: Path) -> str | None:
+    """Extract the .spec file content from an SRPM. Returns content or None."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Extract just the spec file
+        subprocess.run(
+            f"cd {tmpdir} && rpm2cpio {srpm_path} | cpio -idm '*.spec' 2>/dev/null",
+            shell=True, capture_output=True,
+        )
+        specs = list(Path(tmpdir).rglob("*.spec"))
+        if specs:
+            return specs[0].read_text(errors="replace")
+    return None
+
+
+def _verify_conversion_applied(
+    package: str,
+    original_srpm: Path,
+    converted_srpm: Path,
+    rules_dir: Path,
+) -> None:
+    """Verify the conversion actually applied the declared rules.
+
+    Two checks:
+    1. Per-rule postconditions: each rule type should have an observable effect.
+    2. Universal invariants: Linux-isms that should never survive conversion.
+    """
+    import yaml as _yaml
+    from mogrix.postconditions import check_postconditions
+
+    converted_spec = _extract_spec_from_srpm(converted_srpm)
+    if not converted_spec:
+        return
+
+    # Load the package rules
+    rule_file = rules_dir / "packages" / f"{package}.yaml"
+    rules = {}
+    if rule_file.exists():
+        try:
+            with open(rule_file) as f:
+                pkg_data = _yaml.safe_load(f) or {}
+            rules = pkg_data.get("rules", {})
+        except Exception:
+            pass
+
+    report = check_postconditions(package, rules, converted_spec)
+
+    errors = [i for i in report.issues if i.severity == "error"]
+    warnings = [i for i in report.issues if i.severity == "warning"]
+
+    if errors:
+        _log(f"  [red]Postcondition ERRORS for {package}:[/red]")
+        for issue in errors:
+            _log(f"    [red]{issue.rule_type}: {issue.message}[/red]")
+    if warnings:
+        for issue in warnings:
+            _log(f"  [yellow]postcondition: {issue.rule_type}: {issue.message}[/yellow]")
 
 
 def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | None:
@@ -209,7 +379,12 @@ def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | 
     # Check if already converted in this workspace
     existing = sorted(ws_srpms_dir.glob(f"{package}-[0-9]*.src.rpm"))
     if existing:
-        return existing[-1]
+        if _conversion_is_stale(package, ws_srpms_dir, rules_dir):
+            _log(f"  [yellow]Rules changed — reconverting {package}[/yellow]")
+            for stale in existing:
+                stale.unlink()
+        else:
+            return existing[-1]
 
     # Find the source SRPM
     srpms_dir = MOGRIX_INPUTS / "SRPMS"
@@ -241,6 +416,11 @@ def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | 
     dst = ws_srpms_dir / src.name
     if src.resolve() != dst.resolve():
         shutil.copy2(src, dst)
+    _write_convert_stamp(package, ws_srpms_dir, rules_dir)
+
+    # Postcondition check: verify rules had effect and no Linux-isms remain.
+    _verify_conversion_applied(package, srpm, dst, rules_dir)
+
     return dst
 
 
@@ -277,10 +457,8 @@ def build_package(
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{package}-build.log"
 
-    # Snapshot output RPMs before build to detect new ones
     out_rpms_dir = outputs_dir / "RPMS"
     out_rpms_dir.mkdir(parents=True, exist_ok=True)
-    pre_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
 
     build_cmd = [
         str(MOGRIX_BIN), "build", str(converted_srpm), "--cross",
@@ -307,39 +485,27 @@ def build_package(
         error = "\n".join(lines[-5:])
         return False, [], error
 
-    # The CLI copies built RPMs to outputs/RPMS/ — collect from there.
-    post_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
-    new_rpms = sorted(post_build_rpms - pre_build_rpms)
+    # Deterministic RPM detection: scan rpmbuild's RPMS/ dir for what was
+    # actually produced, then match to copies in out_rpms_dir.
+    # This handles subpackages (e.g. libcurl-devel from curl) and overwrites.
+    rpmbuild_rpm_names = set()
+    for rpmdir in pkg_rpmbuild.glob("RPMS/*"):
+        for rpm in rpmdir.glob("*.rpm"):
+            rpmbuild_rpm_names.add(rpm.name)
 
-    # Fallback: on --resume, RPMs may already exist (same filename, overwritten).
-    # Diff is empty so we find them by modification time instead.
-    if not new_rpms:
-        build_start = pre_build_rpms  # reuse as timestamp reference
-        # Collect all RPMs modified during this build (within last 2 hours to be safe)
-        import time as _time
-        cutoff = _time.time() - 7200
-        recent = [
-            r for r in (out_rpms_dir.glob("*.mips.rpm"))
-            if r.stat().st_mtime > cutoff
-        ]
-        recent += [
-            r for r in (out_rpms_dir.glob("*.noarch.rpm"))
-            if r.stat().st_mtime > cutoff
-        ]
-        # Filter to RPMs from this package's rpmbuild dir
-        # rpmbuild writes to pkg_rpmbuild/RPMS/ then mogrix copies to out_rpms_dir
-        pkg_rpmbuild_rpms = set()
-        for rpmdir in pkg_rpmbuild.glob("RPMS/*"):
-            for rpm in rpmdir.glob("*.rpm"):
-                pkg_rpmbuild_rpms.add(rpm.name)
-        if pkg_rpmbuild_rpms:
-            new_rpms = sorted(r for r in recent if r.name in pkg_rpmbuild_rpms)
-        else:
-            # Last resort: name-based glob
-            m = re.match(r"^(.+?)-[\d]", converted_srpm.name)
-            pkg_prefix = m.group(1) if m else package
-            new_rpms = sorted(out_rpms_dir.glob(f"{pkg_prefix}*.mips.rpm"))
-            new_rpms += sorted(out_rpms_dir.glob(f"{pkg_prefix}*.noarch.rpm"))
+    if rpmbuild_rpm_names:
+        new_rpms = sorted(
+            out_rpms_dir / name for name in rpmbuild_rpm_names
+            if (out_rpms_dir / name).exists()
+        )
+    else:
+        # Fallback: name-based glob (rpmbuild dir cleaned or missing)
+        m = re.match(r"^(.+?)-[\d]", converted_srpm.name)
+        pkg_prefix = m.group(1) if m else package
+        new_rpms = sorted(set(
+            list(out_rpms_dir.glob(f"{pkg_prefix}-[0-9]*.mips.rpm"))
+            + list(out_rpms_dir.glob(f"{pkg_prefix}-[0-9]*.noarch.rpm"))
+        ))
 
     return True, new_rpms, ""
 
@@ -399,11 +565,17 @@ def save_gate_result(
     (pkg_dir / "build-gate.json").write_text(json.dumps(data, indent=2))
 
 
-def load_completed(gate_results_dir: Path, rpms_dir: Path) -> set[str]:
+def load_completed(
+    gate_results_dir: Path,
+    rpms_dir: Path,
+    rules_dir: Path | None = None,
+) -> set[str]:
     """Load packages that have already passed gates (for --resume).
 
-    Only counts a package as completed if its gate-results exist AND
-    at least one of its RPMs is present in the outputs directory.
+    Only counts a package as completed if:
+    1. Gate-results exist and show success
+    2. At least one RPM is still present
+    3. No input files (rules, patches, compat) changed since the build
     """
     completed = set()
     if not gate_results_dir.exists():
@@ -424,10 +596,19 @@ def load_completed(gate_results_dir: Path, rpms_dir: Path) -> set[str]:
                     if (rpms_dir / rpm_name).exists():
                         rpms_present = True
                         break
-                if rpms_present:
-                    completed.add(pkg_dir.name)
-                else:
+                if not rpms_present:
                     _log(f"[yellow]Stale gate-result (no RPMs): {pkg_dir.name} — will rebuild[/yellow]")
+                    continue
+
+                # Check if inputs changed since this build
+                if rules_dir:
+                    gate_mtime = gate_file.stat().st_mtime
+                    input_mtime = _max_input_mtime(pkg_dir.name, rules_dir)
+                    if input_mtime > gate_mtime:
+                        _log(f"[yellow]Inputs changed: {pkg_dir.name} — will rebuild[/yellow]")
+                        continue
+
+                completed.add(pkg_dir.name)
             except (json.JSONDecodeError, KeyError):
                 pass
 
@@ -442,34 +623,57 @@ def clean_tainted_artifacts(
 ) -> tuple[set[str], int]:
     """Remove artifacts for failed packages AND everything built after them.
 
-    If package B at position 50 failed, packages 51+ were built in a
-    potentially contaminated environment (missing B's libs in staging).
-    Even if they "passed," their builds are suspect. We must clean
-    everything from the first failure onward and rebuild it.
+    Uses timestamps (not build order position) to determine taint.
+    If a package failed at time T, any package that "passed" at time >= T
+    was built in a contaminated environment. This is robust against build
+    order changes between runs.
 
-    Returns (trustworthy_set, cleaned_count) where trustworthy_set is the
-    subset of completed that is safe to keep (built before any failure).
+    Returns (trustworthy_set, cleaned_count).
     """
     if not gate_results_dir.exists():
         return completed, 0
 
-    # Walk build order to find the first failed package
-    first_failure_idx = None
-    for i, pkg in enumerate(build_order):
-        if pkg not in completed:
-            # This package either failed or was never attempted.
-            # Check if it has a gate result (failed) vs missing SRPM (never ran).
-            gate_file = gate_results_dir / pkg / "build-gate.json"
-            if gate_file.exists():
-                first_failure_idx = i
-                break
+    # Find the earliest failure timestamp
+    earliest_failure_time = None
+    for pkg_dir in gate_results_dir.iterdir():
+        if not pkg_dir.is_dir():
+            continue
+        gate_file = pkg_dir / "build-gate.json"
+        if not gate_file.exists():
+            continue
+        try:
+            data = json.loads(gate_file.read_text())
+            if not data.get("build_success") or not data.get("gate2_passed"):
+                failure_mtime = gate_file.stat().st_mtime
+                if earliest_failure_time is None or failure_mtime < earliest_failure_time:
+                    earliest_failure_time = failure_mtime
+        except (json.JSONDecodeError, KeyError):
+            pass
 
-    if first_failure_idx is None:
-        # No failures found in build order — nothing to clean
+    if earliest_failure_time is None:
         return completed, 0
 
-    # Everything from first_failure_idx onward is tainted
-    tainted = set(build_order[first_failure_idx:])
+    # Everything built at or after the earliest failure is tainted
+    tainted = set()
+    for pkg in completed:
+        gate_file = gate_results_dir / pkg / "build-gate.json"
+        if gate_file.exists():
+            if gate_file.stat().st_mtime >= earliest_failure_time:
+                tainted.add(pkg)
+
+    # Also include the failed packages themselves
+    for pkg_dir in gate_results_dir.iterdir():
+        if not pkg_dir.is_dir():
+            continue
+        gate_file = pkg_dir / "build-gate.json"
+        if gate_file.exists():
+            try:
+                data = json.loads(gate_file.read_text())
+                if not data.get("build_success") or not data.get("gate2_passed"):
+                    tainted.add(pkg_dir.name)
+            except (json.JSONDecodeError, KeyError):
+                pass
+
     trustworthy = completed - tainted
 
     # Clean artifacts for all tainted packages
@@ -477,21 +681,234 @@ def clean_tainted_artifacts(
     cleaned = 0
 
     for pkg_name in tainted:
-        # Remove gate results
+        # Remove gate results — but first read them for accurate RPM list
         pkg_gate_dir = gate_results_dir / pkg_name
+        rpms_to_remove = set()
         if pkg_gate_dir.exists():
+            gate_file = pkg_gate_dir / "build-gate.json"
+            if gate_file.exists():
+                try:
+                    data = json.loads(gate_file.read_text())
+                    rpms_to_remove = set(data.get("rpms", []))
+                except (json.JSONDecodeError, KeyError):
+                    pass
             shutil.rmtree(pkg_gate_dir, ignore_errors=True)
 
-        # Remove RPMs
+        # Remove RPMs — use gate-results list (catches subpackages),
+        # fall back to name glob if gate-results didn't have them
         if rpms_dir.exists():
-            for rpm in rpms_dir.glob(f"{pkg_name}-[0-9]*.mips.rpm"):
-                rpm.unlink(missing_ok=True)
-            for rpm in rpms_dir.glob(f"{pkg_name}-*-[0-9]*.mips.rpm"):
-                rpm.unlink(missing_ok=True)
+            if rpms_to_remove:
+                for rpm_name in rpms_to_remove:
+                    (rpms_dir / rpm_name).unlink(missing_ok=True)
+            else:
+                for rpm in rpms_dir.glob(f"{pkg_name}-[0-9]*.mips.rpm"):
+                    rpm.unlink(missing_ok=True)
+                for rpm in rpms_dir.glob(f"{pkg_name}-*-[0-9]*.mips.rpm"):
+                    rpm.unlink(missing_ok=True)
 
         cleaned += 1
 
     return trustworthy, cleaned
+
+
+def unstage_packages(
+    packages: list[str],
+    rpms_dir: Path,
+    gate_results_dir: Path,
+    staging_dir: Path,
+) -> int:
+    """Remove files that invalidated packages previously installed into staging.
+
+    For each package, reads the RPM file list and removes those paths from
+    the staging sysroot. This prevents ghost .so files from persisting after
+    a package's rules change.
+
+    Returns count of packages un-staged.
+    """
+    unstaged = 0
+    staging_root = staging_dir  # RPM paths are absolute, e.g. /usr/sgug/lib32/libfoo.so
+
+    for pkg in packages:
+        # Get the RPM file list from gate-results
+        rpm_names: list[str] = []
+        gate_file = gate_results_dir / pkg / "build-gate.json"
+        if gate_file.exists():
+            try:
+                data = json.loads(gate_file.read_text())
+                rpm_names = data.get("rpms", [])
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        if not rpm_names:
+            continue
+
+        # Query each RPM for its file list and remove from staging
+        files_removed = 0
+        for rpm_name in rpm_names:
+            rpm_path = rpms_dir / rpm_name
+            if not rpm_path.exists():
+                continue
+            result = subprocess.run(
+                ["rpm", "-qpl", str(rpm_path)], capture_output=True, text=True
+            )
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if not line or line.endswith("/"):
+                    continue  # skip directories
+                # RPM paths are absolute (e.g. /usr/sgug/lib32/libfoo.so.1)
+                # Map to staging: /opt/sgug-staging/usr/sgug/lib32/libfoo.so.1
+                staged_file = staging_root / line.lstrip("/")
+                if staged_file.exists() and staged_file.is_file():
+                    staged_file.unlink()
+                    files_removed += 1
+                elif staged_file.is_symlink():
+                    staged_file.unlink()
+                    files_removed += 1
+
+        if files_removed:
+            unstaged += 1
+
+    return unstaged
+
+
+def _find_pkg_rpms(
+    pkg: str,
+    rpms_dir: Path,
+    gate_results_dir: Path,
+    rpmbuild_dir: Path,
+) -> list[Path]:
+    """Find RPM files for a package using gate-results, rpmbuild dir, or name glob."""
+    pkg_rpms: list[Path] = []
+
+    # Primary: gate-results JSON (accurate, includes subpackages)
+    gate_file = gate_results_dir / pkg / "build-gate.json"
+    if gate_file.exists():
+        try:
+            data = json.loads(gate_file.read_text())
+            for rpm_name in data.get("rpms", []):
+                rpm_path = rpms_dir / rpm_name
+                if rpm_path.exists():
+                    pkg_rpms.append(rpm_path)
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    if pkg_rpms:
+        return pkg_rpms
+
+    # Fallback: rpmbuild dir (handles subpackages like libcurl-devel from curl)
+    pkg_rpmbuild = rpmbuild_dir / pkg
+    rpmbuild_rpm_names = set()
+    for rpmdir in pkg_rpmbuild.glob("RPMS/*"):
+        for rpm in rpmdir.glob("*.rpm"):
+            rpmbuild_rpm_names.add(rpm.name)
+    if rpmbuild_rpm_names:
+        return sorted(
+            rpms_dir / name for name in rpmbuild_rpm_names
+            if (rpms_dir / name).exists()
+        )
+
+    # Last resort: name glob
+    for ext in ("mips.rpm", "noarch.rpm"):
+        pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-[0-9]*.{ext}"))
+        pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.{ext}"))
+    return sorted(set(pkg_rpms))
+
+
+def _detect_hub_packages(build_order: list[str], rules_dir: Path, threshold: int = 3) -> set[str]:
+    """Auto-detect hub packages: packages with >= threshold dependents.
+
+    Uses build_after edges from rule files to count how many packages
+    depend on each package.
+    """
+    import yaml as _yaml
+
+    dependent_count: dict[str, int] = {}
+    for pkg in build_order:
+        rule_file = rules_dir / "packages" / f"{pkg}.yaml"
+        if not rule_file.exists():
+            continue
+        try:
+            with open(rule_file) as f:
+                rules = _yaml.safe_load(f) or {}
+            for dep in rules.get("build_after", []):
+                dependent_count[dep] = dependent_count.get(dep, 0) + 1
+        except Exception:
+            pass
+
+    return {pkg for pkg, count in dependent_count.items() if count >= threshold}
+
+
+def _cascade_gate_check(
+    package: str,
+    rpms: list[Path],
+    staging_dir: Path,
+    hub_dependents: int,
+) -> tuple[bool, str]:
+    """Post-build verification for hub packages.
+
+    Extracts RPMs and verifies at least one .so actually landed in staging.
+    Returns (passed, reason).
+    """
+    import tempfile
+
+    lib32 = staging_dir / "usr" / "sgug" / "lib32"
+    if not lib32.exists():
+        return False, f"staging lib32 not found at {lib32}"
+
+    # Extract each RPM, find .so files it ships, verify they exist in staging
+    expected_sos = set()
+    for rpm_path in rpms:
+        if not rpm_path.exists():
+            continue
+        result = subprocess.run(
+            ["rpm", "-qpl", str(rpm_path)], capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            if "/lib32/" in line and ".so" in line:
+                expected_sos.add(Path(line).name)
+
+    if not expected_sos:
+        # Package doesn't ship .so files — not a meaningful hub check, pass
+        return True, ""
+
+    # Verify at least one expected .so exists in staging
+    found = [s for s in expected_sos if (lib32 / s).exists()]
+    if not found:
+        return False, (
+            f"none of {len(expected_sos)} expected .so files found in staging "
+            f"(expected: {', '.join(sorted(expected_sos)[:3])}...)"
+        )
+
+    return True, ""
+
+
+def _fetch_missing_srpms(build_order: list[str]) -> None:
+    """Scan build order for packages without source SRPMs and auto-fetch them."""
+    srpms_dir = MOGRIX_INPUTS / "SRPMS"
+    missing = []
+    for pkg in build_order:
+        if not sorted(srpms_dir.glob(f"{pkg}-[0-9]*.src.rpm")):
+            missing.append(pkg)
+
+    if not missing:
+        return
+
+    _log(f"[yellow]Missing SRPMs for {len(missing)} packages — fetching...[/yellow]")
+    result = subprocess.run(
+        [str(MOGRIX_BIN), "fetch"] + missing + ["-y"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        # Report which ones failed but don't abort — they'll fail at convert time
+        still_missing = [
+            pkg for pkg in missing
+            if not sorted(srpms_dir.glob(f"{pkg}-[0-9]*.src.rpm"))
+        ]
+        if still_missing:
+            _log(f"[yellow]Could not fetch: {', '.join(still_missing)}[/yellow]")
+    else:
+        _log(f"[green]Fetched {len(missing)} SRPMs[/green]")
 
 
 def rebuild_all(
@@ -519,12 +936,14 @@ def rebuild_all(
     # Resolve workspace
     if workspace:
         ws = workspace
+        _update_outputs_symlink(ws)
     elif resume:
         ws = find_latest_workspace()
         if not ws:
             _log("[red]No existing workspace found for --resume[/red]")
             raise SystemExit(1)
         _log(f"[bold]Resuming workspace: {ws}[/bold]")
+        _update_outputs_symlink(ws)
     else:
         ws = create_workspace()
 
@@ -550,6 +969,12 @@ def rebuild_all(
         plan.total = len(plan.build_order)
         _log(f"[dim]Filtered to {plan.total} requested packages[/dim]")
 
+    # Detect hub packages for cascade gating
+    hub_packages = _detect_hub_packages(plan.build_order, rules_dir)
+    if hub_packages:
+        hub_in_order = [p for p in plan.build_order if p in hub_packages]
+        _log(f"[dim]Cascade gates on {len(hub_in_order)} hub packages[/dim]")
+
     _log(f"[bold]Build order:[/bold] {plan.total} packages")
     if plan.cycles:
         _log(f"[yellow]Dependency cycles:[/yellow] {len(plan.cycles)}")
@@ -560,64 +985,71 @@ def rebuild_all(
             _log(f"  {i:3d}. {pkg}")
         return plan
 
+    # Pre-flight: fetch any missing SRPMs
+    _fetch_missing_srpms(plan.build_order)
+
     # Gate 0: Reset staging + cross-compilation
-    gate0_clean_slate(staging_dir, resume=resume)
+    gate0_clean_slate(staging_dir, workspace=ws, resume=resume)
 
     # Load resume state
-    completed = load_completed(gate_results_dir, rpms_dir) if resume else set()
-    if completed:
-        _log(f"[dim]Resuming: {len(completed)} packages previously passed[/dim]")
+    # First load WITHOUT rule-staleness checks to get the "structurally complete" set.
+    # This is needed for clean_tainted_artifacts to distinguish "failed build" from
+    # "invalidated by rule change".
+    all_completed = load_completed(gate_results_dir, rpms_dir) if resume else set()
+    if all_completed:
+        _log(f"[dim]Resuming: {len(all_completed)} packages previously passed[/dim]")
 
-        # Clean tainted artifacts: failed packages AND everything built after
-        # the first failure. Packages after a failure were built in a potentially
-        # contaminated environment (missing the failed package's libs).
-        completed, cleaned = clean_tainted_artifacts(
-            gate_results_dir, outputs_dir, plan.build_order, completed
+        # Clean tainted artifacts: failed packages AND everything built after.
+        # Uses the full completed set (before rule-staleness filtering) so that
+        # rule-invalidated packages don't trigger cascade wipes.
+        all_completed, cleaned = clean_tainted_artifacts(
+            gate_results_dir, outputs_dir, plan.build_order, all_completed
         )
         if cleaned:
             _log(f"[dim]Cleaned {cleaned} tainted packages (from first failure onward)[/dim]")
-            _log(f"[dim]Trustworthy: {len(completed)} packages[/dim]")
+
+        # NOW apply rule-staleness filtering on the surviving set.
+        # Invalidated packages get rebuilt but don't cascade.
+        completed = set()
+        invalidated = []
+        for pkg in all_completed:
+            gate_file = gate_results_dir / pkg / "build-gate.json"
+            if gate_file.exists():
+                gate_mtime = gate_file.stat().st_mtime
+                input_mtime = _max_input_mtime(pkg, rules_dir)
+                if input_mtime > gate_mtime:
+                    invalidated.append(pkg)
+                    continue
+            completed.add(pkg)
+        if invalidated:
+            _log(f"[yellow]Inputs changed: {len(invalidated)} packages will rebuild ({', '.join(invalidated[:5])}{'...' if len(invalidated) > 5 else ''})[/yellow]")
+        _log(f"[dim]Trustworthy: {len(completed)} packages[/dim]")
+
+        # Un-stage invalidated packages: remove their files from staging so
+        # ghost .so files don't persist after soname renames or file removals.
+        if invalidated:
+            unstaged = unstage_packages(
+                invalidated, rpms_dir, gate_results_dir, staging_dir,
+            )
+            if unstaged:
+                _log(f"[dim]Un-staged {unstaged} invalidated packages from staging[/dim]")
 
         # Re-stage trustworthy packages so their libs are available for rebuilds.
-        # Gate0 reset staging to pristine — we need to restore what passed cleanly.
+        # On --resume staging wasn't reset, so this is mostly a no-op — but it
+        # repairs any files that were removed during un-staging of invalidated packages
+        # (e.g. if invalidated package A shipped a file that trustworthy package B also ships).
         restaged = 0
         for pkg in plan.build_order:
             if pkg not in completed:
                 continue
-            gate_file = gate_results_dir / pkg / "build-gate.json"
-            pkg_rpms = []
-            if gate_file.exists():
-                try:
-                    data = json.loads(gate_file.read_text())
-                    for rpm_name in data.get("rpms", []):
-                        rpm_path = rpms_dir / rpm_name
-                        if rpm_path.exists():
-                            pkg_rpms.append(rpm_path)
-                except (json.JSONDecodeError, KeyError):
-                    pass
-            # Fallback: check rpmbuild dir for actual RPM names (handles subpackages
-            # like libcurl-devel from curl), then fall back to name glob
-            if not pkg_rpms:
-                pkg_rpmbuild = rpmbuild_dir / pkg
-                rpmbuild_rpm_names = set()
-                for rpmdir in pkg_rpmbuild.glob("RPMS/*"):
-                    for rpm in rpmdir.glob("*.rpm"):
-                        rpmbuild_rpm_names.add(rpm.name)
-                if rpmbuild_rpm_names:
-                    pkg_rpms = sorted(
-                        rpms_dir / name for name in rpmbuild_rpm_names
-                        if (rpms_dir / name).exists()
-                    )
-                else:
-                    for ext in ("mips.rpm", "noarch.rpm"):
-                        pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-[0-9]*.{ext}"))
-                        pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.{ext}"))
-                    pkg_rpms = sorted(set(pkg_rpms))
+            pkg_rpms = _find_pkg_rpms(pkg, rpms_dir, gate_results_dir, rpmbuild_dir)
             if pkg_rpms:
                 staged = stage_package(pkg_rpms, staging_dir)
                 if staged:
                     restaged += 1
         _log(f"[dim]Re-staged {restaged} trustworthy packages[/dim]")
+    else:
+        completed = set()
 
     # Build each package in order
     failed = []
@@ -711,6 +1143,21 @@ def rebuild_all(
         save_gate_result(gate_results_dir, package, result, gate2)
         _log(f"  [green]PASSED[/green] ({result.duration_s:.0f}s)")
 
+        # Step 5: Cascade gate for hub packages
+        if package in hub_packages and rpms:
+            # Count downstream dependents still to be built
+            remaining = [p for p in plan.build_order[i:] if p not in completed]
+            cascade_ok, cascade_reason = _cascade_gate_check(
+                package, rpms, staging_dir, len(remaining),
+            )
+            if not cascade_ok:
+                _log(
+                    f"[red]Cascade gate FAILED for hub {package}: {cascade_reason}. "
+                    f"Fix before continuing — {len(remaining)} downstream packages depend on this.[/red]"
+                )
+                if fail_fast:
+                    break
+
     # Summary
     _log(f"\n[bold]{'='*60}[/bold]")
     _log(f"[bold]Rebuild Summary[/bold]")
@@ -730,6 +1177,22 @@ def rebuild_all(
             r = plan.results.get(pkg)
             err = r.error if r else "unknown"
             _log(f"  {pkg}: {err}")
+
+    # Gate 3: Defect scan on all built RPMs (always runs — catches stale RPMs from prior builds)
+    if rpms_dir.exists() and any(rpms_dir.glob("*.mips.rpm")):
+        from mogrix.gates import gate3_defect_scan
+        _log(f"\n[bold]=== Gate 3: Defect Scan ===[/bold]")
+        report = gate3_defect_scan(rpms_dir)
+        if report.has_critical:
+            _log(f"[red]CRITICAL defects found ({report.critical_count}):[/red]")
+            for issue in report.issues:
+                if issue.severity == "CRITICAL":
+                    _log(f"  {issue.rpm}: {issue.elf}: {issue.message}")
+            _log(f"[red]Fix these before bundling.[/red]")
+        elif report.error_count:
+            _log(f"[yellow]Errors: {report.error_count} (non-critical)[/yellow]")
+        else:
+            _log(f"[green]No defects in {report.scanned} ELF files across {report.rpms_scanned} RPMs[/green]")
 
     return plan
 

@@ -32,6 +32,57 @@ MOGRIX_OUTPUTS = Path.home() / "mogrix_outputs"
 MOGRIX_CONVERTED = MOGRIX_OUTPUTS / "converted"
 
 
+STAGING_DIR = Path("/opt/sgug-staging")
+
+# Cross-compilation tools that must stay in sync between repo and staging
+# Format: (repo path relative to CROSS_DIR, staging path relative to STAGING_DIR)
+_CROSS_TOOLS = [
+    ("bin/irix-cc", "usr/sgug/bin/irix-cc"),
+    ("bin/irix-ld", "usr/sgug/bin/irix-ld"),
+    ("bin/fix-anon-relocs", "usr/sgug/bin/fix-anon-relocs"),
+    ("bin/strip-verneed", "usr/sgug/bin/strip-verneed"),
+]
+
+
+def _check_tool_checksums(auto_redeploy: bool = True) -> bool:
+    """Verify cross-compilation tools in staging match the repo versions.
+
+    Returns True if all tools match (or were successfully redeployed).
+    """
+    import hashlib
+    import shutil
+
+    staging = STAGING_DIR
+    mismatched = []
+
+    for repo_rel, staging_rel in _CROSS_TOOLS:
+        repo_path = CROSS_DIR / repo_rel
+        staging_path = staging / staging_rel
+        if not repo_path.exists():
+            continue
+        if not staging_path.exists():
+            mismatched.append((repo_path, staging_path, "missing"))
+            continue
+
+        repo_hash = hashlib.sha256(repo_path.read_bytes()).hexdigest()[:12]
+        staging_hash = hashlib.sha256(staging_path.read_bytes()).hexdigest()[:12]
+        if repo_hash != staging_hash:
+            mismatched.append((repo_path, staging_path, f"repo={repo_hash} staging={staging_hash}"))
+
+    if not mismatched:
+        return True
+
+    for repo_path, staging_path, reason in mismatched:
+        console.print(f"[yellow]Tool drift: {repo_path.name} ({reason})[/yellow]")
+        if auto_redeploy:
+            import stat
+            shutil.copy2(repo_path, staging_path)
+            staging_path.chmod(staging_path.stat().st_mode | stat.S_IEXEC)
+            console.print(f"  [green]Auto-redeployed {repo_path.name}[/green]")
+
+    return auto_redeploy  # True if we fixed them, False if just warned
+
+
 @click.group()
 @click.version_option()
 def main():
@@ -957,6 +1008,10 @@ def build(
       - Targets IRIX 6.5 N32 ABI
     """
     import subprocess
+
+    # Verify cross tools are in sync before building
+    if cross and not dry_run:
+        _check_tool_checksums(auto_redeploy=True)
 
     input_path = Path(srpm)
     rpmbuild_path = Path(rpmbuild_dir) if rpmbuild_dir else Path.home() / "rpmbuild"
@@ -1957,6 +2012,10 @@ def rebuild_all_cmd(
     """
     from mogrix.rebuild import rebuild_all
 
+    # Verify cross tools are in sync before rebuilding
+    if not dry_run:
+        _check_tool_checksums(auto_redeploy=True)
+
     rules_path = Path(rules_dir) if rules_dir else RULES_DIR
 
     pkg_list = None
@@ -2208,6 +2267,176 @@ def pre_scan(rpm_dir: str | None):
 
     if total_errors:
         console.print(f"\n[red]Fix these issues in package rules before rebuilding.[/red]")
+        raise SystemExit(1)
+
+
+@main.command("check-conversion")
+@click.argument("packages", nargs=-1)
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to rules directory",
+)
+@click.option(
+    "--srpms-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Directory containing converted SRPMs (default: ~/mogrix_outputs/SRPMS/)",
+)
+@click.option("--all", "check_all", is_flag=True, help="Check all converted SRPMs")
+def check_conversion(
+    packages: tuple[str, ...],
+    rules_dir: str | None,
+    srpms_dir: str | None,
+    check_all: bool,
+):
+    """Verify converted specs pass postcondition checks.
+
+    Checks that declared rules had an observable effect and that no
+    Linux-isms survived conversion (systemd, /usr/lib64, stack protector, etc.).
+
+    Examples:
+      mogrix check-conversion nano curl         # Check specific packages
+      mogrix check-conversion --all             # Check all converted SRPMs
+    """
+    import subprocess
+    import tempfile
+
+    import yaml
+
+    from mogrix.postconditions import check_postconditions
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+    scan_dir = Path(srpms_dir) if srpms_dir else MOGRIX_OUTPUTS / "SRPMS"
+
+    if not scan_dir.exists():
+        console.print(f"[red]SRPMs directory not found: {scan_dir}[/red]")
+        raise SystemExit(1)
+
+    # Determine which SRPMs to check
+    if check_all:
+        srpms = sorted(scan_dir.glob("*.src.rpm"))
+    elif packages:
+        srpms = []
+        for pkg in packages:
+            found = sorted(scan_dir.glob(f"{pkg}-[0-9]*.src.rpm"))
+            if found:
+                srpms.append(found[-1])
+            else:
+                console.print(f"[yellow]No converted SRPM found for {pkg}[/yellow]")
+    else:
+        console.print("[red]Specify packages or use --all[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[bold]Checking {len(srpms)} converted SRPMs[/bold]\n")
+
+    total_errors = 0
+    total_warnings = 0
+    failed_packages = []
+
+    for srpm_path in srpms:
+        # Extract package name from SRPM filename
+        import re as _re
+        m = _re.match(r"^(.+?)-[\d]", srpm_path.name)
+        pkg_name = m.group(1) if m else srpm_path.stem
+
+        # Extract spec from SRPM
+        with tempfile.TemporaryDirectory() as tmpdir:
+            subprocess.run(
+                f"cd {tmpdir} && rpm2cpio {srpm_path} | cpio -idm '*.spec' 2>/dev/null",
+                shell=True, capture_output=True,
+            )
+            specs = list(Path(tmpdir).rglob("*.spec"))
+            if not specs:
+                console.print(f"[yellow]{pkg_name}: no spec found in SRPM[/yellow]")
+                continue
+            spec_content = specs[0].read_text(errors="replace")
+
+        # Load rules
+        rule_file = rules_path / "packages" / f"{pkg_name}.yaml"
+        rules = {}
+        if rule_file.exists():
+            try:
+                with open(rule_file) as f:
+                    pkg_data = yaml.safe_load(f) or {}
+                rules = pkg_data.get("rules", {})
+            except Exception:
+                pass
+
+        report = check_postconditions(pkg_name, rules, spec_content)
+
+        errors = [i for i in report.issues if i.severity == "error"]
+        warnings = [i for i in report.issues if i.severity == "warning"]
+        total_errors += len(errors)
+        total_warnings += len(warnings)
+
+        if errors or warnings:
+            failed_packages.append(pkg_name)
+            console.print(f"[bold]{pkg_name}[/bold]")
+            for issue in report.issues:
+                color = "red" if issue.severity == "error" else "yellow"
+                console.print(f"  [{color}]{issue.rule_type}: {issue.message}[/{color}]")
+
+    console.print(f"\n[bold]Summary:[/bold]")
+    console.print(f"  SRPMs checked: {len(srpms)}")
+    console.print(f"  Packages with issues: [{'red' if failed_packages else 'green'}]{len(failed_packages)}[/{'red' if failed_packages else 'green'}]")
+    console.print(f"  Errors: [{'red' if total_errors else 'green'}]{total_errors}[/{'red' if total_errors else 'green'}]")
+    console.print(f"  Warnings: [{'yellow' if total_warnings else 'green'}]{total_warnings}[/{'yellow' if total_warnings else 'green'}]")
+
+    if total_errors:
+        raise SystemExit(1)
+
+
+@main.command("scan-defects")
+@click.option(
+    "--rpm-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Directory containing built RPMs (default: ~/mogrix_outputs/RPMS/)",
+)
+def scan_defects_cmd(rpm_dir: str | None):
+    """Scan RPMs for ELF-level defects (Gate 3).
+
+    Checks for old image-base, stack protector symbols, GNU version sections.
+    These are CRITICAL defects that will crash on IRIX.
+
+    Examples:
+      mogrix scan-defects
+      mogrix scan-defects --rpm-dir ~/mogrix_v13/mogrix_outputs/RPMS/
+    """
+    from mogrix.gates import gate3_defect_scan
+
+    scan_dir = Path(rpm_dir) if rpm_dir else MOGRIX_OUTPUTS / "RPMS"
+
+    if not scan_dir.exists():
+        console.print(f"[red]RPM directory not found: {scan_dir}[/red]")
+        raise SystemExit(1)
+
+    console.print(f"[bold]Scanning RPMs for ELF defects:[/bold] {scan_dir}\n")
+    report = gate3_defect_scan(scan_dir)
+
+    crits = [i for i in report.issues if i.severity == "CRITICAL"]
+    errors = [i for i in report.issues if i.severity == "ERROR"]
+
+    if crits:
+        console.print(f"[bold red]CRITICAL ({len(crits)})[/bold red]")
+        for issue in sorted(crits, key=lambda i: i.rpm):
+            console.print(f"  {issue.rpm}: {issue.elf}: {issue.message}")
+
+    if errors:
+        console.print(f"\n[bold red]ERRORS ({len(errors)})[/bold red]")
+        for issue in sorted(errors, key=lambda i: i.rpm):
+            console.print(f"  {issue.rpm}: {issue.elf}: {issue.message}")
+
+    if not report.issues:
+        console.print("[bold green]No defects found![/bold green]")
+
+    console.print(f"\n[bold]Scanned:[/bold] {report.scanned} ELF files across {report.rpms_scanned} RPMs")
+    console.print(f"  Critical: [{'red' if crits else 'green'}]{len(crits)}[/{'red' if crits else 'green'}]")
+    console.print(f"  Errors: [{'red' if errors else 'green'}]{len(errors)}[/{'red' if errors else 'green'}]")
+
+    if report.has_critical:
         raise SystemExit(1)
 
 
@@ -3678,6 +3907,15 @@ def bundle(
     if not rpms_dir.is_dir():
         console.print(f"[red]RPMs directory not found: {rpms_dir}[/red]")
         raise SystemExit(1)
+
+    # Verify symlink points to a valid workspace
+    outputs_link = Path.home() / "mogrix_outputs"
+    if outputs_link.is_symlink():
+        target = outputs_link.resolve()
+        if not target.is_dir():
+            console.print(f"[red]~/mogrix_outputs symlink is broken: {outputs_link} → {target}[/red]")
+            raise SystemExit(1)
+        console.print(f"[dim]Using RPMs from: {target / 'RPMS'}[/dim]")
 
     output_dir = Path(output) if output else MOGRIX_OUTPUTS / "bundles"
 

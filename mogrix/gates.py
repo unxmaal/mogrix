@@ -197,3 +197,140 @@ def pre_scan_rpms(rpm_dir: Path) -> dict[str, GateResult]:
         results[rpm_path.name] = scan_rpm(rpm_path)
 
     return results
+
+
+# --- Gate 3: Defect scanning (ELF-level quality checks) ---
+
+READELF = Path("/opt/cross/bin/mips-sgi-irix6.5-readelf")
+NM = Path("/opt/cross/bin/mips-sgi-irix6.5-nm")
+BAD_IMAGE_BASE = 0x5FFE0000
+POISON_SYMBOLS = {"__stack_chk_fail", "__stack_chk_guard"}
+
+
+@dataclass
+class DefectIssue:
+    severity: str  # "CRITICAL", "ERROR", "WARNING"
+    rpm: str
+    elf: str
+    message: str
+
+
+@dataclass
+class DefectReport:
+    issues: list[DefectIssue] = field(default_factory=list)
+    scanned: int = 0
+    rpms_scanned: int = 0
+
+    @property
+    def critical_count(self) -> int:
+        return sum(1 for i in self.issues if i.severity == "CRITICAL")
+
+    @property
+    def error_count(self) -> int:
+        return sum(1 for i in self.issues if i.severity == "ERROR")
+
+    @property
+    def has_critical(self) -> bool:
+        return self.critical_count > 0
+
+
+def _find_elfs(directory: Path) -> list[Path]:
+    """Find ELF files in a directory tree."""
+    elfs = []
+    for fp in directory.rglob("*"):
+        if fp.is_symlink() or not fp.is_file():
+            continue
+        if fp.suffix in (".o", ".a", ".la", ".h", ".pc", ".py", ".pl", ".sh"):
+            continue
+        try:
+            with open(fp, "rb") as fh:
+                if fh.read(4) == ELF_MAGIC:
+                    elfs.append(fp)
+        except OSError:
+            pass
+    return elfs
+
+
+def _check_elf_defects(elf_path: Path, rpm_name: str) -> list[DefectIssue]:
+    """Check a single ELF for defect patterns."""
+    issues = []
+    basename = elf_path.name
+    is_so = ".so" in basename
+
+    if not READELF.exists():
+        return issues
+
+    # Check dynamic section
+    result = subprocess.run(
+        [str(READELF), "-d", str(elf_path)], capture_output=True, text=True
+    )
+
+    if is_so:
+        for line in result.stdout.splitlines():
+            if "MIPS_BASE_ADDRESS" in line:
+                parts = line.strip().split()
+                try:
+                    base = int(parts[-1], 16)
+                    if base == BAD_IMAGE_BASE:
+                        issues.append(DefectIssue(
+                            "CRITICAL", rpm_name, basename,
+                            f"old image-base 0x{base:x} (should be 0x0f800000)",
+                        ))
+                except (ValueError, IndexError):
+                    pass
+
+    # Check for poison symbols (undefined)
+    result = subprocess.run(
+        [str(NM), "-D", str(elf_path)], capture_output=True, text=True
+    )
+    for line in result.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2 and parts[-2] == "U":
+            sym = parts[-1]
+            if sym in POISON_SYMBOLS:
+                issues.append(DefectIssue(
+                    "ERROR", rpm_name, basename,
+                    f"needs {sym} (IRIX has no stack protector)",
+                ))
+
+    # Check for GNU version sections (crash rld)
+    result = subprocess.run(
+        [str(READELF), "-S", str(elf_path)], capture_output=True, text=True
+    )
+    for line in result.stdout.splitlines():
+        if ".gnu.version_r" in line or ".gnu.version_d" in line:
+            issues.append(DefectIssue(
+                "ERROR", rpm_name, basename,
+                "has GNU version section (crashes IRIX rld)",
+            ))
+            break
+
+    return issues
+
+
+def gate3_defect_scan(rpms_dir: Path) -> DefectReport:
+    """Gate 3: Scan all RPMs for ELF-level defects.
+
+    Checks for old image-base, stack protector symbols, GNU version sections.
+    """
+    report = DefectReport()
+    rpms = sorted(rpms_dir.glob("*.mips.rpm"))
+    report.rpms_scanned = len(rpms)
+
+    for rpm_path in rpms:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                subprocess.run(
+                    f"cd {tmpdir} && rpm2cpio {rpm_path} | cpio -idm 2>/dev/null",
+                    shell=True, check=True, capture_output=True,
+                )
+            except subprocess.CalledProcessError:
+                continue
+
+            elfs = _find_elfs(Path(tmpdir))
+            for elf in elfs:
+                report.scanned += 1
+                issues = _check_elf_defects(elf, rpm_path.name)
+                report.issues.extend(issues)
+
+    return report
