@@ -87,6 +87,8 @@ generic:
     - "%{gpgverify}"
     # ldconfig scriptlets don't work for cross-compilation
     - "%ldconfig_scriptlets"
+    - "%ldconfig_post"
+    - "%ldconfig_postun"
     # libdicl setup lines - mogrix injects compat functions directly
     - 'export CPPFLAGS="-I%{_includedir}/libdicl-0.1"'
     - 'export LIBS="-ldicl-0.1"'

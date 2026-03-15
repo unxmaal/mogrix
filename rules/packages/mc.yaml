@@ -20,6 +20,10 @@ rules:
   drop_subpackages:
   - python
   spec_replacements:
+  # Skip autogen.sh — autopoint not available on build host, and the
+  # distributed configure is sufficient for cross-compilation
+  - pattern: "./autogen.sh"
+    replacement: "# autogen.sh skipped — using distributed configure"
   - pattern: contrib/mc.{sh,csh}
     replacement: contrib/mc.sh contrib/mc.csh
   - pattern: /etc/profile.d/*

@@ -21,8 +21,8 @@ upstream:
 
 rules:
   prep_commands:
-    # Git repo doesn't include pre-generated configure — generate it
-    - "sh autogen.sh"
+    # FC40 SRPM includes pre-generated configure — skip autogen.sh
+    - "test -f configure || sh autogen.sh"
     # IRIX libc has __b64_ntop/__b64_pton but marked HIDDEN — rld can't
     # resolve at runtime. Force all b64 checks to fail so tmux uses its
     # own compat/base64.c (OpenBSD implementation).

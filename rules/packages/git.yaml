@@ -17,6 +17,7 @@ rules:
   - "perl(File::Compare)"
   - tcl
   - tk
+  - systemd-rpm-macros
   spec_replacements:
   # Allow unpackaged files (gitweb, gitk completion installed by make but not used on IRIX)
   - pattern: "Name:           git"

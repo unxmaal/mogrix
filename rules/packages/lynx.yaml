@@ -23,7 +23,7 @@ rules:
   configure_flags:
     add:
     - --with-screen=ncurses
-    - --with-ssl
+    - --with-ssl=/opt/sgug-staging/usr/sgug
     - --with-zlib
     - --disable-nls
     - --disable-ipv6

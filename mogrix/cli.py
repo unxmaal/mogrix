@@ -1179,22 +1179,8 @@ def build(
     if not _is_chained:
         console.print(f"[bold]Command:[/bold] {' '.join(cmd)}\n")
 
-    # Remove old RPMs for this package before building, so stale output
-    # can't be mistaken for fresh builds (e.g. by batch build agents).
-    if is_srpm and not dry_run:
-        import re as _re
-        _m = _re.match(r"^(.+?)-[\d]", input_path.name)
-        if _m:
-            _pkg_prefix = _m.group(1)
-            _out_dir = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
-            if _out_dir.exists():
-                _old = set(_out_dir.glob(f"{_pkg_prefix}-[0-9]*.rpm"))
-                _old |= set(_out_dir.glob(f"{_pkg_prefix}-*-[0-9]*.rpm"))
-                for old_rpm in sorted(_old):
-                    console.print(f"[dim]Removing old RPM:[/dim] {old_rpm.name}")
-                    old_rpm.unlink()
-
-    # Build lock: prevent concurrent builds of the same package
+    # Build lock: prevent concurrent builds of the same package.
+    # Acquired BEFORE quarantine so two processes can't both quarantine RPMs.
     import re as _re_lock
     import os as _os_lock
     _lock_pkg = None
@@ -1218,6 +1204,34 @@ def build(
                     # PID is gone or invalid — stale lock, remove it
                     _lock_file.unlink(missing_ok=True)
             _lock_file.write_text(str(_os_lock.getpid()))
+
+    # Quarantine old RPMs before building — restored on failure, cleaned on success.
+    # Never delete RPMs: build failure → old RPMs survive.
+    # Uses version-anchored glob to avoid quarantining RPMs from other source packages
+    # (e.g., building "git" must not quarantine "git-lfs" which is a separate package).
+    _quarantine_dir = None
+    _quarantine_out_dir = None
+    if is_srpm and not dry_run:
+        import re as _re
+        import time as _time
+        # Extract name and version-release from SRPM: git-2.43.0-1.fc40.src.rpm → ("git", "2.43.0-1")
+        _m = _re.match(r"^(.+?)-(\d[^-]*-\d[^.]*)\.", input_path.name)
+        if _m:
+            _pkg_prefix = _m.group(1)
+            _pkg_vr = _m.group(2)  # version-release, e.g. "2.43.0-1"
+            _quarantine_out_dir = Path(output_dir) if output_dir else MOGRIX_OUTPUTS / "RPMS"
+            if _quarantine_out_dir.exists():
+                # Anchor on version-release: "git*-2.43.0-1.*.rpm" matches git + git-core
+                # but NOT git-lfs-3.5.1-1.mips.rpm (different version).
+                _old = set(_quarantine_out_dir.glob(f"{_pkg_prefix}-{_pkg_vr}.*.rpm"))
+                _old |= set(_quarantine_out_dir.glob(f"{_pkg_prefix}-*-{_pkg_vr}.*.rpm"))
+                if _old:
+                    _quarantine_dir = _quarantine_out_dir / ".quarantine" / _time.strftime("%m%d%H%M%S")
+                    _quarantine_dir.mkdir(parents=True, exist_ok=True)
+                    import shutil as _shutil_q
+                    for old_rpm in sorted(_old):
+                        console.print(f"[dim]Quarantining old RPM:[/dim] {old_rpm.name}")
+                        _shutil_q.move(str(old_rpm), str(_quarantine_dir / old_rpm.name))
 
     # Snapshot RPMs before build so we can identify which ones are new
     rpms_dir = rpmbuild_path / "RPMS"
@@ -1302,6 +1316,17 @@ def build(
         console.print("[red]Error: rpmbuild not found. Install rpm-build package.[/red]")
         raise SystemExit(1)
     finally:
+        # Restore quarantined RPMs that weren't replaced by the build.
+        # On success: same-name RPMs already overwritten, restore is a no-op.
+        # On failure: all quarantined RPMs are restored — no RPMs lost.
+        if _quarantine_dir and _quarantine_dir.exists() and _quarantine_out_dir:
+            import shutil as _shutil_r
+            for _qrpm in sorted(_quarantine_dir.iterdir()):
+                _dest = _quarantine_out_dir / _qrpm.name
+                if not _dest.exists():
+                    _shutil_r.move(str(_qrpm), str(_dest))
+                    console.print(f"[dim]Restored RPM:[/dim] {_qrpm.name}")
+            _shutil_r.rmtree(_quarantine_dir, ignore_errors=True)
         # Always clean up the build lock
         if _lock_file and _lock_file.exists():
             _lock_file.unlink(missing_ok=True)

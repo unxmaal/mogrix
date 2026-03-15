@@ -61,6 +61,7 @@ rules:
   # Drop problematic dependencies (systemd-devel and libdicl handled by generic.yaml)
   drop_buildrequires:
     - gpgme-devel
+    - systemd-rpm-macros
 
   drop_requires:
     - systemd
@@ -92,6 +93,9 @@ rules:
 
   # Fix the %check section and cmake macros for cross-compilation
   spec_replacements:
+    # Remove systemd unit dir from mkdir (IRIX has no systemd)
+    - pattern: "         %{buildroot}%{_unitdir} \\\n"
+      replacement: ""
     # Photon OS uses %include for License tag which breaks specfile validation.
     # Replace with inline License tag.
     - pattern: "%include %{SOURCE1}"

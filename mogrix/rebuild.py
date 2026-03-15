@@ -334,17 +334,20 @@ def _verify_conversion_applied(
     converted_srpm: Path,
     rules_dir: Path,
     rebuild_result: RebuildResult | None = None,
-) -> None:
+) -> bool:
     """Verify the conversion actually applied the declared rules.
 
-    Logs issues and optionally stores them in rebuild_result for the manifest.
+    Invariant violations (Linux-isms) are hard errors — return False to fail the build.
+    Rule postcondition mismatches are warnings — logged but don't fail.
+
+    Returns True if OK to proceed, False if invariant violations found.
     """
     import yaml as _yaml
     from mogrix.postconditions import check_postconditions
 
     converted_spec = _extract_spec_from_srpm(converted_srpm)
     if not converted_spec:
-        return [], []
+        return True
 
     # Load the package rules
     rule_file = rules_dir / "packages" / f"{package}.yaml"
@@ -359,20 +362,36 @@ def _verify_conversion_applied(
 
     report = check_postconditions(package, rules, converted_spec)
 
-    errors = [f"{i.rule_type}: {i.message}" for i in report.issues if i.severity == "error"]
+    # Split: invariant violations are hard errors, rule postconditions are warnings
+    invariant_errors = [
+        f"{i.rule_type}: {i.message}" for i in report.issues
+        if i.severity == "error" and i.rule_type == "invariant"
+    ]
+    rule_errors = [
+        f"{i.rule_type}: {i.message}" for i in report.issues
+        if i.severity == "error" and i.rule_type != "invariant"
+    ]
     warnings = [f"{i.rule_type}: {i.message}" for i in report.issues if i.severity == "warning"]
 
-    if errors:
-        _log(f"  [red]Postcondition ERRORS for {package}:[/red]")
-        for msg in errors:
+    if invariant_errors:
+        _log(f"  [red]INVARIANT VIOLATIONS for {package}:[/red]")
+        for msg in invariant_errors:
             _log(f"    [red]{msg}[/red]")
+    if rule_errors:
+        _log(f"  [yellow]Rule postcondition mismatches for {package}:[/yellow]")
+        for msg in rule_errors:
+            _log(f"    [yellow]{msg}[/yellow]")
     if warnings:
-        for msg in warnings:
-            _log(f"  [yellow]postcondition: {msg}[/yellow]")
+        for msg in warnings[:3]:  # cap at 3 to avoid log spam
+            _log(f"  [dim]postcondition: {msg}[/dim]")
+        if len(warnings) > 3:
+            _log(f"  [dim]...and {len(warnings) - 3} more warnings[/dim]")
 
     if rebuild_result:
-        rebuild_result.postcondition_errors = errors
+        rebuild_result.postcondition_errors = invariant_errors + rule_errors
         rebuild_result.postcondition_warnings = warnings
+
+    return len(invariant_errors) == 0
 
 
 def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | None:
@@ -389,8 +408,10 @@ def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | 
     if existing:
         if _conversion_is_stale(package, ws_srpms_dir, rules_dir):
             _log(f"  [yellow]Rules changed — reconverting {package}[/yellow]")
+            quarantine = ws_srpms_dir / ".quarantine" / time.strftime("%m%d%H%M%S")
+            quarantine.mkdir(parents=True, exist_ok=True)
             for stale in existing:
-                stale.unlink()
+                shutil.move(str(stale), str(quarantine / stale.name))
         else:
             return existing[-1]
 
@@ -628,102 +649,6 @@ def load_completed(
     return completed
 
 
-def clean_tainted_artifacts(
-    gate_results_dir: Path,
-    outputs_dir: Path,
-    build_order: list[str],
-    completed: set[str],
-) -> tuple[set[str], int]:
-    """Remove artifacts for failed packages AND everything built after them.
-
-    Uses timestamps (not build order position) to determine taint.
-    If a package failed at time T, any package that "passed" at time >= T
-    was built in a contaminated environment. This is robust against build
-    order changes between runs.
-
-    Returns (trustworthy_set, cleaned_count).
-    """
-    if not gate_results_dir.exists():
-        return completed, 0
-
-    # Find the earliest failure timestamp
-    earliest_failure_time = None
-    for pkg_dir in gate_results_dir.iterdir():
-        if not pkg_dir.is_dir():
-            continue
-        gate_file = pkg_dir / "build-gate.json"
-        if not gate_file.exists():
-            continue
-        try:
-            data = json.loads(gate_file.read_text())
-            if not data.get("build_success") or not data.get("gate2_passed"):
-                failure_mtime = gate_file.stat().st_mtime
-                if earliest_failure_time is None or failure_mtime < earliest_failure_time:
-                    earliest_failure_time = failure_mtime
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-    if earliest_failure_time is None:
-        return completed, 0
-
-    # Everything built at or after the earliest failure is tainted
-    tainted = set()
-    for pkg in completed:
-        gate_file = gate_results_dir / pkg / "build-gate.json"
-        if gate_file.exists():
-            if gate_file.stat().st_mtime >= earliest_failure_time:
-                tainted.add(pkg)
-
-    # Also include the failed packages themselves
-    for pkg_dir in gate_results_dir.iterdir():
-        if not pkg_dir.is_dir():
-            continue
-        gate_file = pkg_dir / "build-gate.json"
-        if gate_file.exists():
-            try:
-                data = json.loads(gate_file.read_text())
-                if not data.get("build_success") or not data.get("gate2_passed"):
-                    tainted.add(pkg_dir.name)
-            except (json.JSONDecodeError, KeyError):
-                pass
-
-    trustworthy = completed - tainted
-
-    # Clean artifacts for all tainted packages
-    rpms_dir = outputs_dir / "RPMS"
-    cleaned = 0
-
-    for pkg_name in tainted:
-        # Remove gate results — but first read them for accurate RPM list
-        pkg_gate_dir = gate_results_dir / pkg_name
-        rpms_to_remove = set()
-        if pkg_gate_dir.exists():
-            gate_file = pkg_gate_dir / "build-gate.json"
-            if gate_file.exists():
-                try:
-                    data = json.loads(gate_file.read_text())
-                    rpms_to_remove = set(data.get("rpms", []))
-                except (json.JSONDecodeError, KeyError):
-                    pass
-            shutil.rmtree(pkg_gate_dir, ignore_errors=True)
-
-        # Remove RPMs — use gate-results list (catches subpackages),
-        # fall back to name glob if gate-results didn't have them
-        if rpms_dir.exists():
-            if rpms_to_remove:
-                for rpm_name in rpms_to_remove:
-                    (rpms_dir / rpm_name).unlink(missing_ok=True)
-            else:
-                for rpm in rpms_dir.glob(f"{pkg_name}-[0-9]*.mips.rpm"):
-                    rpm.unlink(missing_ok=True)
-                for rpm in rpms_dir.glob(f"{pkg_name}-*-[0-9]*.mips.rpm"):
-                    rpm.unlink(missing_ok=True)
-
-        cleaned += 1
-
-    return trustworthy, cleaned
-
-
 def unstage_packages(
     packages: list[str],
     rpms_dir: Path,
@@ -825,6 +750,50 @@ def _find_pkg_rpms(
         pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-[0-9]*.{ext}"))
         pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.{ext}"))
     return sorted(set(pkg_rpms))
+
+
+def _validate_package_rpms(
+    pkg: str,
+    rpms_dir: Path,
+    gate_results_dir: Path,
+    rpmbuild_dir: Path,
+) -> tuple[bool, str]:
+    """Validate RPMs for a completed package using Gate 3 + rld checks.
+
+    Returns (passed, reason). RPMs are NOT deleted on failure — they'll be
+    overwritten when the package is rebuilt.
+    """
+    import tempfile
+
+    from mogrix.gates import gate3_defect_scan, rld_check_rpms
+
+    pkg_rpms = _find_pkg_rpms(pkg, rpms_dir, gate_results_dir, rpmbuild_dir)
+    if not pkg_rpms:
+        return True, ""
+
+    # Gate 3: defect scan on this package's RPMs only
+    mips_rpms = [r for r in pkg_rpms if r.name.endswith(".mips.rpm")]
+    if mips_rpms:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            for rpm in mips_rpms:
+                (tmppath / rpm.name).symlink_to(rpm)
+            report = gate3_defect_scan(tmppath)
+            if report.has_critical:
+                msgs = [
+                    f"{i.elf}: {i.message}"
+                    for i in report.issues
+                    if i.severity == "CRITICAL"
+                ]
+                return False, f"defects: {'; '.join(msgs[:3])}"
+
+    # rld check: verify NEEDED sonames resolve against current staging + IRIX sysroot
+    rld = rld_check_rpms(pkg_rpms)
+    if rld.unresolved:
+        sonames = sorted(set(r.soname for r in rld.unresolved))
+        return False, f"unresolved: {', '.join(sonames[:3])}"
+
+    return True, ""
 
 
 def _detect_hub_packages(build_order: list[str], rules_dir: Path, threshold: int = 3) -> set[str]:
@@ -1004,43 +973,51 @@ def rebuild_all(
     # Gate 0: Reset staging + cross-compilation
     gate0_clean_slate(staging_dir, workspace=ws, resume=resume)
 
-    # Load resume state
-    # First load WITHOUT rule-staleness checks to get the "structurally complete" set.
-    # This is needed for clean_tainted_artifacts to distinguish "failed build" from
-    # "invalidated by rule change".
-    all_completed = load_completed(gate_results_dir, rpms_dir) if resume else set()
-    if all_completed:
-        _log(f"[dim]Resuming: {len(all_completed)} packages previously passed[/dim]")
+    # Load resume state — single pass with all filtering
+    # load_completed checks: build_success, gate2_passed, RPMs on disk, input staleness
+    completed = load_completed(gate_results_dir, rpms_dir, rules_dir) if resume else set()
+    rpm_count_before = len(list(rpms_dir.glob("*.rpm"))) if resume and rpms_dir.exists() else 0
 
-        # Clean tainted artifacts: failed packages AND everything built after.
-        # Uses the full completed set (before rule-staleness filtering) so that
-        # rule-invalidated packages don't trigger cascade wipes.
-        all_completed, cleaned = clean_tainted_artifacts(
-            gate_results_dir, outputs_dir, plan.build_order, all_completed
-        )
-        if cleaned:
-            _log(f"[dim]Cleaned {cleaned} tainted packages (from first failure onward)[/dim]")
+    if completed:
+        _log(f"[dim]Resuming: {len(completed)} packages previously passed[/dim]")
 
-        # NOW apply rule-staleness filtering on the surviving set.
-        # Invalidated packages get rebuilt but don't cascade.
-        completed = set()
-        invalidated = []
-        for pkg in all_completed:
-            gate_file = gate_results_dir / pkg / "build-gate.json"
-            if gate_file.exists():
-                gate_mtime = gate_file.stat().st_mtime
-                input_mtime = _max_input_mtime(pkg, rules_dir)
-                if input_mtime > gate_mtime:
-                    invalidated.append(pkg)
+        # Validate existing RPMs (Gate 3 defect scan + rld check per package).
+        # Catches defective RPMs from prior builds. Failed packages are excluded
+        # from completed (forces rebuild) but RPMs are NOT deleted.
+        validation_failures = []
+        for pkg in sorted(completed):
+            valid, reason = _validate_package_rpms(
+                pkg, rpms_dir, gate_results_dir, rpmbuild_dir,
+            )
+            if not valid:
+                _log(f"[yellow]RPM validation failed: {pkg} — {reason} (will rebuild)[/yellow]")
+                validation_failures.append(pkg)
+        completed -= set(validation_failures)
+        if validation_failures:
+            _log(f"[dim]{len(validation_failures)} packages failed RPM validation[/dim]")
+
+        # Identify invalidated packages: previously passed gates but now excluded
+        # (stale inputs, missing RPMs, failed validation — any reason).
+        # These need un-staging to remove ghost .so files from staging.
+        all_previously_passed = set()
+        if gate_results_dir.exists():
+            for pkg_dir in gate_results_dir.iterdir():
+                if not pkg_dir.is_dir():
                     continue
-            completed.add(pkg)
-        if invalidated:
-            _log(f"[yellow]Inputs changed: {len(invalidated)} packages will rebuild ({', '.join(invalidated[:5])}{'...' if len(invalidated) > 5 else ''})[/yellow]")
-        _log(f"[dim]Trustworthy: {len(completed)} packages[/dim]")
+                gate_file = pkg_dir / "build-gate.json"
+                if gate_file.exists():
+                    try:
+                        data = json.loads(gate_file.read_text())
+                        if data.get("build_success") and data.get("gate2_passed"):
+                            all_previously_passed.add(pkg_dir.name)
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+        invalidated = sorted(all_previously_passed - completed)
 
-        # Un-stage invalidated packages: remove their files from staging so
-        # ghost .so files don't persist after soname renames or file removals.
         if invalidated:
+            _log(f"[yellow]{len(invalidated)} packages invalidated ({', '.join(invalidated[:5])}{'...' if len(invalidated) > 5 else ''})[/yellow]")
+            # Un-stage invalidated packages: remove their files from staging so
+            # ghost .so files don't persist after soname renames or file removals.
             unstaged = unstage_packages(
                 invalidated, rpms_dir, gate_results_dir, staging_dir,
             )
@@ -1049,8 +1026,7 @@ def rebuild_all(
 
         # Re-stage trustworthy packages so their libs are available for rebuilds.
         # On --resume staging wasn't reset, so this is mostly a no-op — but it
-        # repairs any files that were removed during un-staging of invalidated packages
-        # (e.g. if invalidated package A shipped a file that trustworthy package B also ships).
+        # repairs any files removed during un-staging of invalidated packages.
         restaged = 0
         for pkg in plan.build_order:
             if pkg not in completed:
@@ -1061,8 +1037,7 @@ def rebuild_all(
                 if staged:
                     restaged += 1
         _log(f"[dim]Re-staged {restaged} trustworthy packages[/dim]")
-    else:
-        completed = set()
+        _log(f"[dim]Trustworthy: {len(completed)} packages[/dim]")
 
     # Build each package in order
     failed = []
@@ -1105,13 +1080,25 @@ def rebuild_all(
             continue
 
         # Postcondition check on converted spec (stores results in manifest)
+        # Invariant violations (Linux-isms) are hard failures.
         srpms_dir_input = MOGRIX_INPUTS / "SRPMS"
         original_srpms = sorted(srpms_dir_input.glob(f"{package}-[0-9]*.src.rpm"))
         if original_srpms:
-            _verify_conversion_applied(
+            postconditions_ok = _verify_conversion_applied(
                 package, original_srpms[-1], converted, rules_dir,
                 rebuild_result=result,
             )
+            if not postconditions_ok and not skip_gates:
+                result.error = "Invariant violations in converted spec (Linux-isms remain)"
+                result.duration_s = time.time() - start
+                plan.results[package] = result
+                failed.append(package)
+                save_gate_result(gate_results_dir, package, result)
+                _log(f"  [red]FAILED: fix rules to remove Linux-isms, then rebuild[/red]")
+                if fail_fast:
+                    _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
+                    break
+                continue
 
         # Step 2: Build (each package gets its own isolated rpmbuild dir)
         success, rpms, error = build_package(package, converted, outputs_dir, rpmbuild_dir)
@@ -1160,14 +1147,28 @@ def rebuild_all(
             if not staged:
                 _log(f"  [yellow]Warning: staging failed[/yellow]")
 
+        # Step 4.5: Static rld check — verify all NEEDED sonames resolve
+        if rpms:
+            from mogrix.gates import rld_check_rpms
+            rld = rld_check_rpms(rpms)
+            if rld.unresolved:
+                unresolved_sonames = sorted(set(r.soname for r in rld.unresolved))
+                _log(f"  [yellow]rld: {len(unresolved_sonames)} unresolved sonames:[/yellow]")
+                for soname in unresolved_sonames[:5]:
+                    _log(f"    [yellow]{soname}[/yellow]")
+                if len(unresolved_sonames) > 5:
+                    _log(f"    [yellow]...and {len(unresolved_sonames) - 5} more[/yellow]")
+                result.smoke_test = f"rld_fail:{','.join(unresolved_sonames)}"
+            else:
+                result.smoke_test = f"rld_pass:{rld.elfs_checked}_elfs"
+
         result.duration_s = time.time() - start
         plan.results[package] = result
         save_gate_result(gate_results_dir, package, result, gate2)
         _log(f"  [green]PASSED[/green] ({result.duration_s:.0f}s)")
 
-        # Step 5: Cascade gate + rld check for hub packages
+        # Step 5: Cascade gate for hub packages
         if package in hub_packages and rpms:
-            # Count downstream dependents still to be built
             remaining = [p for p in plan.build_order[i:] if p not in completed]
             cascade_ok, cascade_reason = _cascade_gate_check(
                 package, rpms, staging_dir, len(remaining),
@@ -1180,20 +1181,13 @@ def rebuild_all(
                 if fail_fast:
                     break
 
-            # Static rld check: verify all NEEDED sonames resolve
-            from mogrix.gates import rld_check_rpms
-            rld = rld_check_rpms(rpms)
-            if rld.unresolved:
-                unresolved_sonames = sorted(set(r.soname for r in rld.unresolved))
-                _log(f"  [red]rld check: {len(unresolved_sonames)} unresolved sonames:[/red]")
-                for soname in unresolved_sonames[:5]:
-                    _log(f"    [red]{soname}[/red]")
-                result.smoke_test = f"rld_fail:{','.join(unresolved_sonames)}"
-                # Re-save gate result with rld findings
-                save_gate_result(gate_results_dir, package, result, gate2)
-            else:
-                result.smoke_test = f"rld_pass:{rld.elfs_checked}_elfs"
-                save_gate_result(gate_results_dir, package, result, gate2)
+    # Safety invariant: RPM count must never decrease during a resume
+    if resume and rpms_dir.exists():
+        rpm_count_after = len(list(rpms_dir.glob("*.rpm")))
+        if rpm_count_after < rpm_count_before:
+            _log(f"[red]INVARIANT VIOLATION: RPM count decreased {rpm_count_before} → {rpm_count_after}[/red]")
+        else:
+            _log(f"\n[dim]RPMs: {rpm_count_before} → {rpm_count_after}[/dim]")
 
     # Summary
     _log(f"\n[bold]{'='*60}[/bold]")
