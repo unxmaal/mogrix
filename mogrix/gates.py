@@ -308,6 +308,105 @@ def _check_elf_defects(elf_path: Path, rpm_name: str) -> list[DefectIssue]:
     return issues
 
 
+IRIX_SYSROOT = Path("/opt/irix-sysroot")
+STAGING_LIB32 = Path("/opt/sgug-staging/usr/sgug/lib32")
+IRIX_LIB32 = IRIX_SYSROOT / "usr" / "lib32"
+
+
+def _build_soname_index(*lib_dirs: Path) -> set[str]:
+    """Build an index of available sonames from library directories."""
+    sonames = set()
+    for lib_dir in lib_dirs:
+        if not lib_dir.exists():
+            continue
+        for f in lib_dir.iterdir():
+            if ".so" in f.name:
+                sonames.add(f.name)
+    return sonames
+
+
+def _get_needed(elf_path: Path) -> list[str]:
+    """Extract NEEDED sonames from an ELF file."""
+    if not READELF.exists():
+        return []
+    result = subprocess.run(
+        [str(READELF), "-d", str(elf_path)], capture_output=True, text=True
+    )
+    needed = []
+    for line in result.stdout.splitlines():
+        if "(NEEDED)" in line and "[" in line:
+            soname = line.split("[")[1].split("]")[0]
+            if soname:
+                needed.append(soname)
+    return needed
+
+
+@dataclass
+class NeedResolution:
+    elf: str
+    rpm: str
+    soname: str
+    resolved: bool
+    location: str = ""  # "staging", "irix", or ""
+
+
+@dataclass
+class RldReport:
+    """Static rld simulation results."""
+    resolutions: list[NeedResolution] = field(default_factory=list)
+    elfs_checked: int = 0
+
+    @property
+    def unresolved(self) -> list[NeedResolution]:
+        return [r for r in self.resolutions if not r.resolved]
+
+    @property
+    def passed(self) -> bool:
+        return len(self.unresolved) == 0
+
+
+def rld_check_rpms(rpms: list[Path]) -> RldReport:
+    """Static rld simulation: verify every NEEDED soname resolves.
+
+    Checks against staging lib32 and IRIX sysroot lib32.
+    This catches the same failures that IRIX rld would catch at runtime,
+    without needing the IRIX box.
+    """
+    report = RldReport()
+    available = _build_soname_index(STAGING_LIB32, IRIX_LIB32)
+
+    for rpm_path in rpms:
+        if not rpm_path.exists():
+            continue
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                subprocess.run(
+                    f"cd {tmpdir} && rpm2cpio {rpm_path} | cpio -idm 2>/dev/null",
+                    shell=True, check=True, capture_output=True,
+                )
+            except subprocess.CalledProcessError:
+                continue
+
+            elfs = _find_elfs(Path(tmpdir))
+            for elf in elfs:
+                report.elfs_checked += 1
+                needed = _get_needed(elf)
+                for soname in needed:
+                    if soname in available:
+                        location = "staging" if (STAGING_LIB32 / soname).exists() else "irix"
+                        report.resolutions.append(NeedResolution(
+                            elf=elf.name, rpm=rpm_path.name,
+                            soname=soname, resolved=True, location=location,
+                        ))
+                    else:
+                        report.resolutions.append(NeedResolution(
+                            elf=elf.name, rpm=rpm_path.name,
+                            soname=soname, resolved=False,
+                        ))
+
+    return report
+
+
 def gate3_defect_scan(rpms_dir: Path) -> DefectReport:
     """Gate 3: Scan all RPMs for ELF-level defects.
 

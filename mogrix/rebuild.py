@@ -122,6 +122,11 @@ class RebuildResult:
     error: str = ""
     rpms: list[str] = field(default_factory=list)
     duration_s: float = 0.0
+    # Postcondition check results
+    postcondition_errors: list[str] = field(default_factory=list)
+    postcondition_warnings: list[str] = field(default_factory=list)
+    # IRIX smoke test results
+    smoke_test: str = ""  # "pass", "fail", "skipped", "unreachable", or ""
 
 
 @dataclass
@@ -328,19 +333,18 @@ def _verify_conversion_applied(
     original_srpm: Path,
     converted_srpm: Path,
     rules_dir: Path,
+    rebuild_result: RebuildResult | None = None,
 ) -> None:
     """Verify the conversion actually applied the declared rules.
 
-    Two checks:
-    1. Per-rule postconditions: each rule type should have an observable effect.
-    2. Universal invariants: Linux-isms that should never survive conversion.
+    Logs issues and optionally stores them in rebuild_result for the manifest.
     """
     import yaml as _yaml
     from mogrix.postconditions import check_postconditions
 
     converted_spec = _extract_spec_from_srpm(converted_srpm)
     if not converted_spec:
-        return
+        return [], []
 
     # Load the package rules
     rule_file = rules_dir / "packages" / f"{package}.yaml"
@@ -355,16 +359,20 @@ def _verify_conversion_applied(
 
     report = check_postconditions(package, rules, converted_spec)
 
-    errors = [i for i in report.issues if i.severity == "error"]
-    warnings = [i for i in report.issues if i.severity == "warning"]
+    errors = [f"{i.rule_type}: {i.message}" for i in report.issues if i.severity == "error"]
+    warnings = [f"{i.rule_type}: {i.message}" for i in report.issues if i.severity == "warning"]
 
     if errors:
         _log(f"  [red]Postcondition ERRORS for {package}:[/red]")
-        for issue in errors:
-            _log(f"    [red]{issue.rule_type}: {issue.message}[/red]")
+        for msg in errors:
+            _log(f"    [red]{msg}[/red]")
     if warnings:
-        for issue in warnings:
-            _log(f"  [yellow]postcondition: {issue.rule_type}: {issue.message}[/yellow]")
+        for msg in warnings:
+            _log(f"  [yellow]postcondition: {msg}[/yellow]")
+
+    if rebuild_result:
+        rebuild_result.postcondition_errors = errors
+        rebuild_result.postcondition_warnings = warnings
 
 
 def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | None:
@@ -417,10 +425,6 @@ def convert_package(package: str, rules_dir: Path, outputs_dir: Path) -> Path | 
     if src.resolve() != dst.resolve():
         shutil.copy2(src, dst)
     _write_convert_stamp(package, ws_srpms_dir, rules_dir)
-
-    # Postcondition check: verify rules had effect and no Linux-isms remain.
-    _verify_conversion_applied(package, srpm, dst, rules_dir)
-
     return dst
 
 
@@ -555,6 +559,15 @@ def save_gate_result(
         "rpms": rebuild_result.rpms,
         "error": rebuild_result.error,
     }
+
+    if rebuild_result.postcondition_errors or rebuild_result.postcondition_warnings:
+        data["postconditions"] = {
+            "errors": rebuild_result.postcondition_errors,
+            "warnings": rebuild_result.postcondition_warnings,
+        }
+
+    if rebuild_result.smoke_test:
+        data["smoke_test"] = rebuild_result.smoke_test
 
     if gate2_result:
         data["gate2_issues"] = [
@@ -1078,7 +1091,7 @@ def rebuild_all(
         start = time.time()
         result = RebuildResult(package=package, success=False)
 
-        # Step 1: Convert
+        # Step 1: Convert + postcondition check
         converted = convert_package(package, rules_dir, outputs_dir)
         if not converted:
             result.error = "Convert failed"
@@ -1090,6 +1103,15 @@ def rebuild_all(
                 _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
                 break
             continue
+
+        # Postcondition check on converted spec (stores results in manifest)
+        srpms_dir_input = MOGRIX_INPUTS / "SRPMS"
+        original_srpms = sorted(srpms_dir_input.glob(f"{package}-[0-9]*.src.rpm"))
+        if original_srpms:
+            _verify_conversion_applied(
+                package, original_srpms[-1], converted, rules_dir,
+                rebuild_result=result,
+            )
 
         # Step 2: Build (each package gets its own isolated rpmbuild dir)
         success, rpms, error = build_package(package, converted, outputs_dir, rpmbuild_dir)
@@ -1143,7 +1165,7 @@ def rebuild_all(
         save_gate_result(gate_results_dir, package, result, gate2)
         _log(f"  [green]PASSED[/green] ({result.duration_s:.0f}s)")
 
-        # Step 5: Cascade gate for hub packages
+        # Step 5: Cascade gate + rld check for hub packages
         if package in hub_packages and rpms:
             # Count downstream dependents still to be built
             remaining = [p for p in plan.build_order[i:] if p not in completed]
@@ -1157,6 +1179,21 @@ def rebuild_all(
                 )
                 if fail_fast:
                     break
+
+            # Static rld check: verify all NEEDED sonames resolve
+            from mogrix.gates import rld_check_rpms
+            rld = rld_check_rpms(rpms)
+            if rld.unresolved:
+                unresolved_sonames = sorted(set(r.soname for r in rld.unresolved))
+                _log(f"  [red]rld check: {len(unresolved_sonames)} unresolved sonames:[/red]")
+                for soname in unresolved_sonames[:5]:
+                    _log(f"    [red]{soname}[/red]")
+                result.smoke_test = f"rld_fail:{','.join(unresolved_sonames)}"
+                # Re-save gate result with rld findings
+                save_gate_result(gate_results_dir, package, result, gate2)
+            else:
+                result.smoke_test = f"rld_pass:{rld.elfs_checked}_elfs"
+                save_gate_result(gate_results_dir, package, result, gate2)
 
     # Summary
     _log(f"\n[bold]{'='*60}[/bold]")
@@ -1194,7 +1231,86 @@ def rebuild_all(
         else:
             _log(f"[green]No defects in {report.scanned} ELF files across {report.rpms_scanned} RPMs[/green]")
 
+    # Write workspace manifest — comprehensive record of this rebuild
+    _write_workspace_manifest(ws, plan, completed, skipped_blocked, hub_packages)
+
     return plan
+
+
+def _write_workspace_manifest(
+    workspace: Path,
+    plan: RebuildPlan,
+    completed: set[str],
+    blocked: list[str],
+    hubs: set[str],
+) -> None:
+    """Write a workspace-level manifest with all findings per package."""
+    manifest = {
+        "workspace": str(workspace),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "total_packages": plan.total,
+        "hub_packages": sorted(hubs),
+        "blocked_packages": blocked,
+        "resumed_packages": sorted(completed),
+        "packages": {},
+    }
+
+    # Compile per-package data from gate-results + plan results
+    gate_results_dir = workspace / "gate-results"
+    for pkg in plan.build_order:
+        pkg_data: dict = {"status": "unknown"}
+
+        if pkg in completed:
+            pkg_data["status"] = "resumed"
+        elif pkg in blocked:
+            pkg_data["status"] = "blocked"
+
+        # Load gate-result if it exists
+        gate_file = gate_results_dir / pkg / "build-gate.json"
+        if gate_file.exists():
+            try:
+                gate_data = json.loads(gate_file.read_text())
+                pkg_data.update({
+                    "status": "passed" if gate_data.get("build_success") and gate_data.get("gate2_passed") else "failed",
+                    "rpms": gate_data.get("rpms", []),
+                    "duration_s": gate_data.get("duration_s", 0),
+                    "error": gate_data.get("error", ""),
+                    "timestamp": gate_data.get("timestamp", ""),
+                })
+                if "postconditions" in gate_data:
+                    pkg_data["postconditions"] = gate_data["postconditions"]
+                if "smoke_test" in gate_data:
+                    pkg_data["smoke_test"] = gate_data["smoke_test"]
+                if "gate2_issues" in gate_data:
+                    pkg_data["gate2_issues"] = gate_data["gate2_issues"]
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        if pkg in hubs:
+            pkg_data["is_hub"] = True
+
+        manifest["packages"][pkg] = pkg_data
+
+    # Summary counts
+    statuses = [d.get("status") for d in manifest["packages"].values()]
+    manifest["summary"] = {
+        "passed": statuses.count("passed"),
+        "failed": statuses.count("failed"),
+        "resumed": statuses.count("resumed"),
+        "blocked": statuses.count("blocked"),
+        "postcondition_errors": sum(
+            len(d.get("postconditions", {}).get("errors", []))
+            for d in manifest["packages"].values()
+        ),
+        "rld_failures": sum(
+            1 for d in manifest["packages"].values()
+            if str(d.get("smoke_test", "")).startswith("rld_fail")
+        ),
+    }
+
+    manifest_path = workspace / "build-manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+    _log(f"\n[dim]Manifest written: {manifest_path}[/dim]")
 
 
 def rebuild_one(
