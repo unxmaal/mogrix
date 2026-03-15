@@ -60,8 +60,10 @@ CLANG_FLAGS="$CLANG_FLAGS -D_SGI_SOURCE -D_SGI_MP_SOURCE -D_SGI_REENTRANT_FUNCTI
 CLANG_FLAGS="$CLANG_FLAGS -Dsgi=1 -D__sgi=1 -D_COMPILER_VERSION=730 -D_LANGUAGE_C=1 -D_LONGLONG=1"
 # IRIX is Unix — many packages (slang, mc, etc.) check __unix__ for Unix-specific code
 CLANG_FLAGS="$CLANG_FLAGS -Dunix=1 -D__unix__=1 -D__unix=1"
-# Define __mips for multiarch headers (OpenSSL configuration.h needs this)
-CLANG_FLAGS="$CLANG_FLAGS -D__mips=1"
+# __mips is predefined by clang (=64 for mips64). Do NOT redefine it —
+# -D__mips=1 causes -Werror,-Wmacro-redefined failures (libffi in glib2).
+# IRIX has no stack protector (__stack_chk_fail/__stack_chk_guard not in libc)
+CLANG_FLAGS="$CLANG_FLAGS -fno-stack-protector"
 # Override _MIPS_ISA - clang sets _MIPS_ISA_MIPS64 which IRIX headers don't recognize
 # IRIX 6.5 N32 uses MIPS3 ISA (R4000 and later)
 CLANG_FLAGS="$CLANG_FLAGS -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS3"

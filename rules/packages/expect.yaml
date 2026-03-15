@@ -1,5 +1,7 @@
 # expect package rules for IRIX cross-compilation
 package: expect
+skip: true
+skip_reason: "K&R C codebase with undeclared functions (expDiagLogPtrStrStr, fcntl, open). Needs extensive source patching. Low priority."
 blocked: true
 blocked_reason: "K&R C codebase with undeclared functions (expDiagLogPtrStrStr, fcntl, open). Needs extensive source patching. Low priority."
 

@@ -1010,8 +1010,17 @@ class BundleBuilder:
                     # Mogrix-built RPMs take priority over IRIX sysroot.
                     # IRIX may have ancient ABI-incompatible versions of
                     # libraries we've rebuilt (e.g. libz.so / zlib-ng).
-                    if soname in self._soname_to_rpm:
-                        dep_rpm = self._soname_to_rpm[soname]
+                    # Try exact soname first, then versioned variants
+                    # (libz.so → libz.so.1) since -devel symlinks aren't
+                    # in runtime RPMs but the versioned lib is.
+                    dep_rpm = self._soname_to_rpm.get(soname)
+                    if not dep_rpm and ".so" in soname and not soname[-1].isdigit():
+                        # Unversioned soname (libz.so) — look for libz.so.1, .2, etc.
+                        for candidate_soname, candidate_rpm in self._soname_to_rpm.items():
+                            if candidate_soname.startswith(soname + "."):
+                                dep_rpm = candidate_rpm
+                                break
+                    if dep_rpm:
                         if dep_rpm not in visited_rpms:
                             # Add this RPM and its siblings
                             for sibling in self._get_sibling_rpms(dep_rpm):

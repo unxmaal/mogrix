@@ -80,6 +80,26 @@ def create_workspace() -> Path:
     (workspace / "mogrix_outputs" / "SRPMS").mkdir(parents=True, exist_ok=True)
     (workspace / "mogrix_outputs" / "RPMS").mkdir(parents=True, exist_ok=True)
     (workspace / "rpmbuild").mkdir(exist_ok=True)
+
+    # Update ~/mogrix_outputs symlink to point to this workspace's outputs.
+    # The bundler and other tools use ~/mogrix_outputs/RPMS/ to find built RPMs.
+    outputs_link = Path.home() / "mogrix_outputs"
+    ws_outputs = workspace / "mogrix_outputs"
+    try:
+        if outputs_link.is_symlink():
+            outputs_link.unlink()
+        elif outputs_link.is_dir():
+            # Rename existing dir as backup before creating symlink
+            backup = outputs_link.with_name(
+                f"mogrix_outputs_old.{time.strftime('%m%d%H%M')}"
+            )
+            outputs_link.rename(backup)
+            _log(f"[dim]Backed up {outputs_link} → {backup.name}[/dim]")
+        outputs_link.symlink_to(ws_outputs)
+        _log(f"[dim]~/mogrix_outputs → {ws_outputs}[/dim]")
+    except OSError as e:
+        _log(f"[yellow]Warning: could not update ~/mogrix_outputs symlink: {e}[/yellow]")
+
     _log(f"[bold green]Created workspace: {workspace}[/bold green]")
     return workspace
 
@@ -266,6 +286,7 @@ def build_package(
         str(MOGRIX_BIN), "build", str(converted_srpm), "--cross",
         "--rpmbuild-dir", str(pkg_rpmbuild),
         "--output-dir", str(out_rpms_dir),
+        "--skip-dep-check",
     ]
     if short_circuit:
         build_cmd.extend(["--short-circuit", short_circuit])
@@ -290,12 +311,35 @@ def build_package(
     post_build_rpms = set(out_rpms_dir.glob("*.mips.rpm")) | set(out_rpms_dir.glob("*.noarch.rpm"))
     new_rpms = sorted(post_build_rpms - pre_build_rpms)
 
-    # Fallback to name-based glob if snapshot detection finds nothing
+    # Fallback: on --resume, RPMs may already exist (same filename, overwritten).
+    # Diff is empty so we find them by modification time instead.
     if not new_rpms:
-        m = re.match(r"^(.+?)-[\d]", converted_srpm.name)
-        pkg_prefix = m.group(1) if m else package
-        new_rpms = sorted(out_rpms_dir.glob(f"{pkg_prefix}*.mips.rpm"))
-        new_rpms += sorted(out_rpms_dir.glob(f"{pkg_prefix}*.noarch.rpm"))
+        build_start = pre_build_rpms  # reuse as timestamp reference
+        # Collect all RPMs modified during this build (within last 2 hours to be safe)
+        import time as _time
+        cutoff = _time.time() - 7200
+        recent = [
+            r for r in (out_rpms_dir.glob("*.mips.rpm"))
+            if r.stat().st_mtime > cutoff
+        ]
+        recent += [
+            r for r in (out_rpms_dir.glob("*.noarch.rpm"))
+            if r.stat().st_mtime > cutoff
+        ]
+        # Filter to RPMs from this package's rpmbuild dir
+        # rpmbuild writes to pkg_rpmbuild/RPMS/ then mogrix copies to out_rpms_dir
+        pkg_rpmbuild_rpms = set()
+        for rpmdir in pkg_rpmbuild.glob("RPMS/*"):
+            for rpm in rpmdir.glob("*.rpm"):
+                pkg_rpmbuild_rpms.add(rpm.name)
+        if pkg_rpmbuild_rpms:
+            new_rpms = sorted(r for r in recent if r.name in pkg_rpmbuild_rpms)
+        else:
+            # Last resort: name-based glob
+            m = re.match(r"^(.+?)-[\d]", converted_srpm.name)
+            pkg_prefix = m.group(1) if m else package
+            new_rpms = sorted(out_rpms_dir.glob(f"{pkg_prefix}*.mips.rpm"))
+            new_rpms += sorted(out_rpms_dir.glob(f"{pkg_prefix}*.noarch.rpm"))
 
     return True, new_rpms, ""
 
@@ -551,12 +595,24 @@ def rebuild_all(
                             pkg_rpms.append(rpm_path)
                 except (json.JSONDecodeError, KeyError):
                     pass
-            # Fallback to name-based glob if gate results unavailable
+            # Fallback: check rpmbuild dir for actual RPM names (handles subpackages
+            # like libcurl-devel from curl), then fall back to name glob
             if not pkg_rpms:
-                for ext in ("mips.rpm", "noarch.rpm"):
-                    pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-[0-9]*.{ext}"))
-                    pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.{ext}"))
-                pkg_rpms = sorted(set(pkg_rpms))
+                pkg_rpmbuild = rpmbuild_dir / pkg
+                rpmbuild_rpm_names = set()
+                for rpmdir in pkg_rpmbuild.glob("RPMS/*"):
+                    for rpm in rpmdir.glob("*.rpm"):
+                        rpmbuild_rpm_names.add(rpm.name)
+                if rpmbuild_rpm_names:
+                    pkg_rpms = sorted(
+                        rpms_dir / name for name in rpmbuild_rpm_names
+                        if (rpms_dir / name).exists()
+                    )
+                else:
+                    for ext in ("mips.rpm", "noarch.rpm"):
+                        pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-[0-9]*.{ext}"))
+                        pkg_rpms += sorted(rpms_dir.glob(f"{pkg}-*-[0-9]*.{ext}"))
+                    pkg_rpms = sorted(set(pkg_rpms))
             if pkg_rpms:
                 staged = stage_package(pkg_rpms, staging_dir)
                 if staged:

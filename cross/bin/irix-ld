@@ -121,6 +121,27 @@ if [ "$is_shared" = "1" ]; then
         *libgcc_s*) LIBGCC_S_FLAG="" ; EH_FRAME_REG="" ;;
     esac
 
+    # BFD ld fallback for packages with GNU as objects that LLD rejects
+    # (e.g., libffi: LOCAL NOTYPE labels after GLOBAL symbols → "invalid binding: 0")
+    GNULD="${IRIX_GNULD:-/opt/cross/bin/mips-sgi-irix6.5-ld.bfd}"
+    if [ "$MOGRIX_USE_BFDLD_SHARED" = "1" ]; then
+        LDSCRIPT=$STAGING/lib32/irix-shared.lds
+        $GNULD \
+          -shared \
+          -Bsymbolic \
+          --allow-shlib-undefined \
+          -T "$LDSCRIPT" \
+          $CRTBEGIN \
+          $EH_FRAME_REG \
+          $DSOHANDLE \
+          $filtered_args \
+          -L$STAGING/lib32 \
+          -L$SYSROOT/lib32 \
+          -L$SYSROOT/usr/lib32 \
+          $LIBGCC_S_FLAG \
+          $CRTEND
+        rc=$?
+    else
     # -m elf32btsmipn32_irix: Activate IRIX target defaults in LLD
     #   (2-segment layout, no RELRO, writable .eh_frame, no version sections, etc.)
     # --image-base=0x0f800000: Avoid 0x5ffe0000 (libgcc_s preferred base).
@@ -145,6 +166,7 @@ if [ "$is_shared" = "1" ]; then
       $LIBGCC_S_FLAG \
       $CRTEND
     rc=$?
+    fi
 
     # Fix anonymous R_MIPS_REL32 relocations for IRIX rld compatibility.
     # LLD emits these with sym_idx=0 (anonymous), but IRIX rld's

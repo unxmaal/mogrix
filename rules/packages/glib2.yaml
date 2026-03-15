@@ -106,10 +106,11 @@ rules:
     replacement: '# File triggers removed for cross-compilation (cannot run MIPS binaries on build host)'
   - pattern: '%files -f glib20.lang'
     replacement: '%files'
-  # proxy-libintl: on first build glib2 builds it, but on rebuilds it finds the
-  # already-staged libintl.so.8 and skips building it.  Don't list in %files.
+  # proxy-libintl: glib2 builds it on clean rebuilds. Must be in %files.
   - pattern: '%{_libdir}/libglib-2.0.so.0*'
-    replacement: "%{_libdir}/libglib-2.0.so.0*"
+    replacement: |-
+      %{_libdir}/libintl.so.8
+      %{_libdir}/libglib-2.0.so.0*
   - pattern: '%{_libdir}/libgirepository-2.0.so.0*
 
       %dir %{_libdir}/girepository-1.0

@@ -1,5 +1,7 @@
 # libdb package rules for IRIX cross-compilation
 package: libdb
+skip: true
+skip_reason: "Multiple build issues: __db_Clocaltime undeclared (clib not compiled), EBADRPC guards needed. Needs deep BDB configure investigation."
 blocked: true
 blocked_reason: "Multiple build issues: __db_Clocaltime undeclared (clib not compiled), EBADRPC guards needed. Needs deep BDB configure investigation."
 

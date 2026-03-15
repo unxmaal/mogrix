@@ -21,3 +21,4 @@ rules:
   - snownews
   export_vars:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    CFLAGS: "-DPATH_MAX=1024 $CFLAGS"
