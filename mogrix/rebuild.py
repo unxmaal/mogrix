@@ -274,20 +274,59 @@ def _package_input_files(package: str, rules_dir: Path) -> list[tuple[str, Path]
     return inputs
 
 
-def _max_input_mtime(package: str, rules_dir: Path) -> float:
-    """Latest mtime across all input files for a package."""
-    max_mtime = 0.0
-    for _key, path in _package_input_files(package, rules_dir):
-        if path.exists():
-            max_mtime = max(max_mtime, path.stat().st_mtime)
-    return max_mtime
+def _input_content_hash(path: Path) -> str:
+    """SHA256 hex digest of file content, or empty string if missing.
+
+    For directories, hashes the sorted list of filenames (detects adds/removes).
+    """
+    import hashlib
+    if not path.exists():
+        return ""
+    if path.is_dir():
+        # Hash the sorted directory listing — detects file adds/removes
+        entries = sorted(f.name for f in path.iterdir() if f.is_file())
+        return hashlib.sha256("\n".join(entries).encode()).hexdigest()
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _package_input_hashes(package: str, rules_dir: Path) -> dict[str, str]:
+    """Content hashes for all inputs that affect a package's build."""
+    return {
+        key: _input_content_hash(path)
+        for key, path in _package_input_files(package, rules_dir)
+    }
+
+
+def _inputs_changed(current_hashes: dict[str, str], stored: dict) -> bool:
+    """Check if inputs changed. Handles both hash-based and legacy mtime stamps.
+
+    If the stored stamp has 'input_hashes', compare content hashes.
+    Otherwise fall back to mtime comparison for backward compatibility.
+    """
+    stored_hashes = stored.get("input_hashes")
+    if stored_hashes:
+        # Hash-based comparison: any hash mismatch = stale
+        for key, current_hash in current_hashes.items():
+            if current_hash != stored_hashes.get(key, ""):
+                return True
+        # Also check for removed inputs (key in stored but not in current)
+        for key in stored_hashes:
+            if key not in current_hashes and stored_hashes[key]:
+                return True
+        return False
+
+    # Legacy fallback: no hashes stored, use mtime comparison
+    # This handles gate-results/stamps written before the hash migration.
+    # The stamp file's own mtime serves as the "build time" reference.
+    return False  # trust legacy stamps — they'll get hash-upgraded on next build
 
 
 def _conversion_is_stale(package: str, ws_srpms_dir: Path, rules_dir: Path) -> bool:
     """Check if a cached converted SRPM is stale because inputs changed.
 
-    Compares current mtimes of rule/patch/compat files against a stamp
-    written at conversion time. Returns True if any input is newer.
+    Uses content hashes (SHA256) to detect real changes. A cosmetic touch
+    or git checkout that doesn't change file content won't trigger reconversion.
+    Falls back to trusting legacy mtime stamps until they're upgraded.
     """
     stamp_file = ws_srpms_dir / f".{package}.convert-stamp"
     if not stamp_file.exists():
@@ -298,21 +337,16 @@ def _conversion_is_stale(package: str, ws_srpms_dir: Path, rules_dir: Path) -> b
     except (json.JSONDecodeError, OSError):
         return True  # corrupt stamp = stale
 
-    for key, path in _package_input_files(package, rules_dir):
-        if path.exists():
-            current_mtime = path.stat().st_mtime
-            if current_mtime > stamp.get(key, 0):
-                return True
-    return False
+    current_hashes = _package_input_hashes(package, rules_dir)
+    return _inputs_changed(current_hashes, stamp)
 
 
 def _write_convert_stamp(package: str, ws_srpms_dir: Path, rules_dir: Path) -> None:
-    """Write a conversion stamp with current input file mtimes."""
-    stamp = {}
-    for key, path in _package_input_files(package, rules_dir):
-        if path.exists():
-            stamp[key] = path.stat().st_mtime
-    stamp["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    """Write a conversion stamp with content hashes of all input files."""
+    stamp = {
+        "input_hashes": _package_input_hashes(package, rules_dir),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
     stamp_file = ws_srpms_dir / f".{package}.convert-stamp"
     tmp = ws_srpms_dir / f".{package}.convert-stamp.tmp"
     tmp.write_text(json.dumps(stamp))
@@ -572,6 +606,7 @@ def save_gate_result(
     package: str,
     rebuild_result: RebuildResult,
     gate2_result: GateResult | None = None,
+    input_hashes: dict[str, str] | None = None,
 ) -> None:
     """Save gate results for a package."""
     pkg_dir = gate_results_dir / package
@@ -586,6 +621,9 @@ def save_gate_result(
         "rpms": rebuild_result.rpms,
         "error": rebuild_result.error,
     }
+
+    if input_hashes:
+        data["input_hashes"] = input_hashes
 
     if rebuild_result.postcondition_errors or rebuild_result.postcondition_warnings:
         data["postconditions"] = {
@@ -643,11 +681,10 @@ def load_completed(
                     _log(f"[yellow]Stale gate-result (no RPMs): {pkg_dir.name} — will rebuild[/yellow]")
                     continue
 
-                # Check if inputs changed since this build
+                # Check if inputs changed since this build (content hashes)
                 if rules_dir:
-                    gate_mtime = gate_file.stat().st_mtime
-                    input_mtime = _max_input_mtime(pkg_dir.name, rules_dir)
-                    if input_mtime > gate_mtime:
+                    current_hashes = _package_input_hashes(pkg_dir.name, rules_dir)
+                    if _inputs_changed(current_hashes, data):
                         _log(f"[yellow]Inputs changed: {pkg_dir.name} — will rebuild[/yellow]")
                         continue
 
@@ -1172,6 +1209,7 @@ def rebuild_all(
 
         start = time.time()
         result = RebuildResult(package=package, success=False)
+        pkg_hashes = _package_input_hashes(package, rules_dir)
 
         # Step 1: Convert + postcondition check
         converted = convert_package(package, rules_dir, outputs_dir)
@@ -1184,7 +1222,7 @@ def rebuild_all(
             for _other in plan.build_order:
                 if _dep_graph.get(_other, set()) & (failed_set | runtime_blocked):
                     runtime_blocked.add(_other)
-            save_gate_result(gate_results_dir, package, result)
+            save_gate_result(gate_results_dir, package, result, input_hashes=pkg_hashes)
             _log(f"  [red]FAILED: {result.error}[/red]")
             if fail_fast:
                 _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
@@ -1209,7 +1247,7 @@ def rebuild_all(
                 for _other in plan.build_order:
                     if _dep_graph.get(_other, set()) & (failed_set | runtime_blocked):
                         runtime_blocked.add(_other)
-                save_gate_result(gate_results_dir, package, result)
+                save_gate_result(gate_results_dir, package, result, input_hashes=pkg_hashes)
                 _log(f"  [red]FAILED: fix rules to remove Linux-isms, then rebuild[/red]")
                 if fail_fast:
                     _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
@@ -1223,7 +1261,7 @@ def rebuild_all(
             result.duration_s = time.time() - start
             plan.results[package] = result
             failed.append(package)
-            save_gate_result(gate_results_dir, package, result)
+            save_gate_result(gate_results_dir, package, result, input_hashes=pkg_hashes)
             _log(f"  [red]FAILED: build error[/red]")
             if fail_fast:
                 _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
@@ -1255,7 +1293,7 @@ def rebuild_all(
                     for _other in plan.build_order:
                         if _dep_graph.get(_other, set()) & (failed_set | runtime_blocked):
                             runtime_blocked.add(_other)
-                    save_gate_result(gate_results_dir, package, result, gate2)
+                    save_gate_result(gate_results_dir, package, result, gate2, input_hashes=pkg_hashes)
                     if fail_fast:
                         _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
                         break
@@ -1284,7 +1322,7 @@ def rebuild_all(
 
         result.duration_s = time.time() - start
         plan.results[package] = result
-        save_gate_result(gate_results_dir, package, result, gate2)
+        save_gate_result(gate_results_dir, package, result, gate2, input_hashes=pkg_hashes)
         packages_built += 1
         elapsed = time.time() - loop_start
         remaining_pkgs = sum(
@@ -1481,6 +1519,7 @@ def rebuild_one(
 
     start = time.time()
     result = RebuildResult(package=package, success=False)
+    pkg_hashes = _package_input_hashes(package, rules_dir)
 
     # Detect prior build attempt
     pkg_rpmbuild = rpmbuild_dir / package
@@ -1504,7 +1543,7 @@ def rebuild_one(
     if not converted:
         result.error = "Convert failed"
         result.duration_s = time.time() - start
-        save_gate_result(gate_results_dir, package, result)
+        save_gate_result(gate_results_dir, package, result, input_hashes=pkg_hashes)
         _log(f"[red]FAILED: {result.error}[/red]")
         return result
 
@@ -1520,7 +1559,7 @@ def rebuild_one(
     if not success:
         result.error = f"Build failed: {error}"
         result.duration_s = time.time() - start
-        save_gate_result(gate_results_dir, package, result)
+        save_gate_result(gate_results_dir, package, result, input_hashes=pkg_hashes)
         _log(f"[red]FAILED: build error[/red]")
         _log(f"[dim]{error}[/dim]")
         return result
@@ -1544,7 +1583,7 @@ def rebuild_one(
                     _log(f"  [{issue.severity}] {issue.file}: {issue.message}")
                 result.error = f"Gate 2 failed: {len(gate2.issues)} issues"
                 result.duration_s = time.time() - start
-                save_gate_result(gate_results_dir, package, result, gate2)
+                save_gate_result(gate_results_dir, package, result, gate2, input_hashes=pkg_hashes)
                 return result
 
     # Step 4: Stage
@@ -1554,7 +1593,7 @@ def rebuild_one(
             _log(f"[yellow]Warning: staging failed[/yellow]")
 
     result.duration_s = time.time() - start
-    save_gate_result(gate_results_dir, package, result, gate2)
+    save_gate_result(gate_results_dir, package, result, gate2, input_hashes=pkg_hashes)
     _log(f"[green]PASSED[/green] ({result.duration_s:.0f}s)")
 
     if short_circuit:
