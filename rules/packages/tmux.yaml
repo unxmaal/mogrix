@@ -1,7 +1,12 @@
 # tmux - terminal multiplexer (upstream: 3.5a)
 # Autoconf build. Deps: libevent, ncurses (both staged).
 # No FC40 SRPM — uses create-srpm from GitHub.
+# NOTE: FC40 SRPM (3.4) has --enable-utempter/--enable-systemd baked in.
+# The configure_flags remove: entries fix this but the mtime staleness bug
+# keeps reconverting from the stale cached SRPM. Fix the mtime bug first.
 package: tmux
+# blocked: true
+# blocked_reason: "mtime staleness bug causes repeated stale cache — fix staleness first"
 
 build_after:
   - libevent
@@ -20,6 +25,11 @@ upstream:
   summary: "Terminal multiplexer"
 
 rules:
+  configure_flags:
+    add:
+      - --disable-utempter
+  drop_buildrequires:
+    - libutempter-devel
   prep_commands:
     # FC40 SRPM includes pre-generated configure — skip autogen.sh
     - "test -f configure || sh autogen.sh"
@@ -56,9 +66,16 @@ rules:
     LIBS: "-lgen"
 
   spec_replacements:
-    # Add man page to %files (template only has bindir)
-    - pattern: "%{_bindir}/*"
-      replacement: "%{_bindir}/*\n%{_mandir}/man1/tmux.1*"
+    # Man page installed without compression — fix glob
+    - pattern: "%{_mandir}/man1/tmux.1.*"
+      replacement: "%{_mandir}/man1/tmux.1"
+    # Remove Linux-only configure flags that the FC40 spec enables
+    - pattern: " --enable-utempter"
+      replacement: ""
+    - pattern: " --enable-systemd"
+      replacement: ""
+    - pattern: " --enable-sixel"
+      replacement: ""
 
   # IRIX libc has no setenv/unsetenv. tmux has its own compat/setenv.c but
   # configure's AC_CHECK_FUNCS finds setenv in libmogrix-compat.a (from

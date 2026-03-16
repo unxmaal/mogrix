@@ -16,7 +16,9 @@ Gate 2: Validates build outputs (shebangs, ELF ABI, paths) after each build.
 """
 
 import json
+import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -194,10 +196,12 @@ def setup_cross() -> None:
 def _write_staging_owner(staging_dir: Path, workspace: Path) -> None:
     """Record which workspace owns staging, to prevent cross-workspace pollution."""
     owner_file = staging_dir / "staging-owner.json"
-    owner_file.write_text(json.dumps({
+    tmp = staging_dir / ".staging-owner.json.tmp"
+    tmp.write_text(json.dumps({
         "workspace": str(workspace),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }))
+    os.rename(str(tmp), str(owner_file))
 
 
 def _check_staging_owner(staging_dir: Path, workspace: Path) -> None:
@@ -310,7 +314,9 @@ def _write_convert_stamp(package: str, ws_srpms_dir: Path, rules_dir: Path) -> N
             stamp[key] = path.stat().st_mtime
     stamp["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     stamp_file = ws_srpms_dir / f".{package}.convert-stamp"
-    stamp_file.write_text(json.dumps(stamp))
+    tmp = ws_srpms_dir / f".{package}.convert-stamp.tmp"
+    tmp.write_text(json.dumps(stamp))
+    os.rename(str(tmp), str(stamp_file))
 
 
 def _extract_spec_from_srpm(srpm_path: Path) -> str | None:
@@ -596,7 +602,10 @@ def save_gate_result(
             for i in gate2_result.issues
         ]
 
-    (pkg_dir / "build-gate.json").write_text(json.dumps(data, indent=2))
+    # Atomic write: tmp + rename prevents truncated JSON on crash/Ctrl-C
+    tmp = pkg_dir / ".build-gate.json.tmp"
+    tmp.write_text(json.dumps(data, indent=2))
+    os.rename(str(tmp), str(pkg_dir / "build-gate.json"))
 
 
 def load_completed(
@@ -864,33 +873,74 @@ def _cascade_gate_check(
     return True, ""
 
 
-def _fetch_missing_srpms(build_order: list[str]) -> None:
-    """Scan build order for packages without source SRPMs and auto-fetch them."""
-    srpms_dir = MOGRIX_INPUTS / "SRPMS"
-    missing = []
-    for pkg in build_order:
-        if not sorted(srpms_dir.glob(f"{pkg}-[0-9]*.src.rpm")):
-            missing.append(pkg)
+def _fetch_missing_srpms(build_order: list[str], rules_dir: Path) -> None:
+    """Scan build order for packages without source SRPMs and auto-fetch them.
 
-    if not missing:
+    Tries two strategies:
+    1. mogrix fetch (Fedora repos) for packages without upstream: definitions
+    2. mogrix create-srpm (upstream tarballs/git) for packages with upstream:
+    """
+    import yaml as _yaml_fetch
+
+    srpms_dir = MOGRIX_INPUTS / "SRPMS"
+    missing_fedora = []
+    missing_upstream = []
+    for pkg in build_order:
+        if sorted(srpms_dir.glob(f"{pkg}-[0-9]*.src.rpm")):
+            continue
+        # Check if package has upstream: definition
+        rule_file = rules_dir / "packages" / f"{pkg}.yaml"
+        has_upstream = False
+        if rule_file.exists():
+            try:
+                with open(rule_file) as f:
+                    rules = _yaml_fetch.safe_load(f) or {}
+                has_upstream = bool(rules.get("upstream"))
+            except Exception:
+                pass
+        if has_upstream:
+            missing_upstream.append(pkg)
+        else:
+            missing_fedora.append(pkg)
+
+    if not missing_fedora and not missing_upstream:
         return
 
-    _log(f"[yellow]Missing SRPMs for {len(missing)} packages — fetching...[/yellow]")
-    result = subprocess.run(
-        [str(MOGRIX_BIN), "fetch"] + missing + ["-y"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        # Report which ones failed but don't abort — they'll fail at convert time
+    # Fetch from Fedora repos
+    if missing_fedora:
+        _log(f"[yellow]Missing SRPMs for {len(missing_fedora)} Fedora packages — fetching...[/yellow]")
+        result = subprocess.run(
+            [str(MOGRIX_BIN), "fetch"] + missing_fedora + ["-y"],
+            capture_output=True,
+            text=True,
+        )
         still_missing = [
-            pkg for pkg in missing
+            pkg for pkg in missing_fedora
             if not sorted(srpms_dir.glob(f"{pkg}-[0-9]*.src.rpm"))
         ]
         if still_missing:
-            _log(f"[yellow]Could not fetch: {', '.join(still_missing)}[/yellow]")
-    else:
-        _log(f"[green]Fetched {len(missing)} SRPMs[/green]")
+            _log(f"[red]No SRPM and no upstream: definition for: {', '.join(still_missing)}[/red]")
+            _log(f"[red]Add upstream: to their rule files or fetch SRPMs manually[/red]")
+        fetched = len(missing_fedora) - len(still_missing)
+        if fetched:
+            _log(f"[green]Fetched {fetched} SRPMs from Fedora[/green]")
+
+    # Create SRPMs from upstream definitions
+    if missing_upstream:
+        _log(f"[yellow]Creating SRPMs for {len(missing_upstream)} upstream packages...[/yellow]")
+        created = 0
+        for pkg in missing_upstream:
+            result = subprocess.run(
+                [str(MOGRIX_BIN), "create-srpm", pkg],
+                capture_output=True,
+                text=True,
+            )
+            if sorted(srpms_dir.glob(f"{pkg}-[0-9]*.src.rpm")):
+                created += 1
+            else:
+                _log(f"[yellow]  create-srpm failed for {pkg}: {result.stderr[-200:]}[/yellow]")
+        if created:
+            _log(f"[green]Created {created}/{len(missing_upstream)} upstream SRPMs[/green]")
 
 
 def rebuild_all(
@@ -915,6 +965,19 @@ def rebuild_all(
         from_list: Only build these packages (in dependency order)
         fail_fast: Stop at first failure (default True)
     """
+    # Graceful shutdown on Ctrl-C: finish current package, then stop
+    _shutdown_requested = False
+
+    def _handle_sigint(signum, frame):
+        nonlocal _shutdown_requested
+        if _shutdown_requested:
+            _log("[red]Second interrupt — aborting immediately[/red]")
+            raise SystemExit(1)
+        _shutdown_requested = True
+        _log("\n[yellow]Interrupt received — will stop after current package[/yellow]")
+
+    prev_handler = signal.signal(signal.SIGINT, _handle_sigint)
+
     # Resolve workspace
     if workspace:
         ws = workspace
@@ -939,6 +1002,13 @@ def rebuild_all(
     for d in [outputs_dir / "SRPMS", rpms_dir, gate_results_dir, rpmbuild_dir]:
         d.mkdir(parents=True, exist_ok=True)
 
+    # Check for compromised workspace sentinel
+    sentinel = ws / "REBUILD_COMPROMISED"
+    if resume and sentinel.exists():
+        _log(f"[red]Workspace is marked compromised: {sentinel}[/red]")
+        _log(f"[red]{sentinel.read_text().strip()}[/red]")
+        raise SystemExit(1)
+
     _log(f"[bold]Workspace:[/bold] {ws}")
     _log("[bold]Computing global build order...[/bold]")
     plan = compute_build_order(rules_dir, rpms_dir)
@@ -962,13 +1032,25 @@ def rebuild_all(
         _log(f"[yellow]Dependency cycles:[/yellow] {len(plan.cycles)}")
 
     if dry_run:
-        _log("\n[bold]Dry run — build order:[/bold]")
-        for i, pkg in enumerate(plan.build_order, 1):
-            _log(f"  {i:3d}. {pkg}")
+        if resume:
+            # Preview what resume would do
+            _preview = load_completed(gate_results_dir, rpms_dir, rules_dir)
+            _to_build = [p for p in plan.build_order if p not in _preview]
+            _log(f"\n[bold]Dry run (resume preview):[/bold]")
+            _log(f"  [green]Completed:[/green] {len(_preview)}")
+            _log(f"  [yellow]To build:[/yellow] {len(_to_build)}")
+            if _to_build:
+                _log(f"\n[bold]Packages to rebuild:[/bold]")
+                for j, pkg in enumerate(_to_build, 1):
+                    _log(f"  {j:3d}. {pkg}")
+        else:
+            _log("\n[bold]Dry run — build order:[/bold]")
+            for j, pkg in enumerate(plan.build_order, 1):
+                _log(f"  {j:3d}. {pkg}")
         return plan
 
     # Pre-flight: fetch any missing SRPMs
-    _fetch_missing_srpms(plan.build_order)
+    _fetch_missing_srpms(plan.build_order, rules_dir)
 
     # Gate 0: Reset staging + cross-compilation
     gate0_clean_slate(staging_dir, workspace=ws, resume=resume)
@@ -1039,12 +1121,37 @@ def rebuild_all(
         _log(f"[dim]Re-staged {restaged} trustworthy packages[/dim]")
         _log(f"[dim]Trustworthy: {len(completed)} packages[/dim]")
 
+    # Build reverse dependency map for failure propagation (--no-fail-fast safety)
+    import yaml as _yaml_deps
+    _dep_graph: dict[str, set[str]] = {}  # pkg -> set of packages it depends on
+    for _bo_pkg in plan.build_order:
+        _rf = rules_dir / "packages" / f"{_bo_pkg}.yaml"
+        if _rf.exists():
+            try:
+                with open(_rf) as _f_dep:
+                    _dep_rules = _yaml_deps.safe_load(_f_dep) or {}
+                for _dep in _dep_rules.get("build_after", []):
+                    _dep_graph.setdefault(_bo_pkg, set()).add(_dep)
+            except Exception:
+                pass
+
     # Build each package in order
     failed = []
+    failed_set: set[str] = set()
+    runtime_blocked: set[str] = set()
     skipped_blocked = []
+    loop_start = time.time()
+    packages_built = 0
     for i, package in enumerate(plan.build_order, 1):
         if package in completed:
             _log(f"[dim]{i:3d}/{plan.total} {package} — already passed, skipping[/dim]")
+            continue
+
+        # Skip packages whose dependencies failed (--no-fail-fast safety)
+        if package in runtime_blocked:
+            blocking_deps = _dep_graph.get(package, set()) & (failed_set | runtime_blocked)
+            _log(f"[dim]{i:3d}/{plan.total} {package} — skipped: dependency failed ({', '.join(sorted(blocking_deps)[:3])})[/dim]")
+            skipped_blocked.append(package)
             continue
 
         # Check for blocked packages (blocked: true in rule YAML)
@@ -1072,6 +1179,11 @@ def rebuild_all(
             result.error = "Convert failed"
             plan.results[package] = result
             failed.append(package)
+            failed_set.add(package)
+            # Propagate failure to transitive dependents
+            for _other in plan.build_order:
+                if _dep_graph.get(_other, set()) & (failed_set | runtime_blocked):
+                    runtime_blocked.add(_other)
             save_gate_result(gate_results_dir, package, result)
             _log(f"  [red]FAILED: {result.error}[/red]")
             if fail_fast:
@@ -1093,6 +1205,10 @@ def rebuild_all(
                 result.duration_s = time.time() - start
                 plan.results[package] = result
                 failed.append(package)
+                failed_set.add(package)
+                for _other in plan.build_order:
+                    if _dep_graph.get(_other, set()) & (failed_set | runtime_blocked):
+                        runtime_blocked.add(_other)
                 save_gate_result(gate_results_dir, package, result)
                 _log(f"  [red]FAILED: fix rules to remove Linux-isms, then rebuild[/red]")
                 if fail_fast:
@@ -1135,6 +1251,10 @@ def rebuild_all(
                     result.duration_s = time.time() - start
                     plan.results[package] = result
                     failed.append(package)
+                    failed_set.add(package)
+                    for _other in plan.build_order:
+                        if _dep_graph.get(_other, set()) & (failed_set | runtime_blocked):
+                            runtime_blocked.add(_other)
                     save_gate_result(gate_results_dir, package, result, gate2)
                     if fail_fast:
                         _log(f"[red]Stopping at first failure (--fail-fast). Fix and --resume.[/red]")
@@ -1165,7 +1285,23 @@ def rebuild_all(
         result.duration_s = time.time() - start
         plan.results[package] = result
         save_gate_result(gate_results_dir, package, result, gate2)
-        _log(f"  [green]PASSED[/green] ({result.duration_s:.0f}s)")
+        packages_built += 1
+        elapsed = time.time() - loop_start
+        remaining_pkgs = sum(
+            1 for p in plan.build_order[i:]
+            if p not in completed and p not in runtime_blocked
+        )
+        if packages_built >= 3 and remaining_pkgs > 0:
+            avg = elapsed / packages_built
+            eta_min = (remaining_pkgs * avg) / 60
+            _log(f"  [green]PASSED[/green] ({result.duration_s:.0f}s) [dim]~{remaining_pkgs} left, ~{eta_min:.0f}m remaining[/dim]")
+        else:
+            _log(f"  [green]PASSED[/green] ({result.duration_s:.0f}s)")
+
+        # Graceful shutdown check
+        if _shutdown_requested:
+            _log("[yellow]Stopping after completed package (interrupt)[/yellow]")
+            break
 
         # Step 5: Cascade gate for hub packages
         if package in hub_packages and rpms:
@@ -1181,11 +1317,21 @@ def rebuild_all(
                 if fail_fast:
                     break
 
+    # Restore original signal handler
+    signal.signal(signal.SIGINT, prev_handler)
+
     # Safety invariant: RPM count must never decrease during a resume
     if resume and rpms_dir.exists():
         rpm_count_after = len(list(rpms_dir.glob("*.rpm")))
         if rpm_count_after < rpm_count_before:
             _log(f"[red]INVARIANT VIOLATION: RPM count decreased {rpm_count_before} → {rpm_count_after}[/red]")
+            sentinel = ws / "REBUILD_COMPROMISED"
+            sentinel.write_text(
+                f"RPM count decreased from {rpm_count_before} to {rpm_count_after}\n"
+                f"Timestamp: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
+                f"Delete this file to acknowledge and allow --resume.\n"
+            )
+            _log(f"[red]Wrote {sentinel} — delete to acknowledge before resuming[/red]")
         else:
             _log(f"\n[dim]RPMs: {rpm_count_before} → {rpm_count_after}[/dim]")
 
@@ -1200,7 +1346,9 @@ def rebuild_all(
     if completed:
         _log(f"  [dim]Skipped (resume):[/dim] {len(completed)}")
     if skipped_blocked:
-        _log(f"  [yellow]Blocked:[/yellow] {len(skipped_blocked)} ({', '.join(skipped_blocked)})")
+        _log(f"  [yellow]Blocked:[/yellow] {len(skipped_blocked)} ({', '.join(skipped_blocked[:5])}{'...' if len(skipped_blocked) > 5 else ''})")
+    if runtime_blocked:
+        _log(f"  [yellow]Dep-blocked:[/yellow] {len(runtime_blocked)} (dependency failed)")
 
     if failed:
         _log(f"\n[red]Failed packages:[/red]")

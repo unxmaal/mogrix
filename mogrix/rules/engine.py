@@ -254,11 +254,15 @@ class RuleEngine:
                 f"install_cleanup: {len(pkg_rules['install_cleanup'])} commands (top-level)"
             )
 
-        # Inject compat functions
+        # Inject compat functions — empty list overrides generic injection
         if "inject_compat_functions" in rules:
             funcs = rules["inject_compat_functions"]
-            result.compat_functions.extend(funcs)
-            result.applied_rules.append(f"inject_compat_functions: {funcs}")
+            if funcs == [] and result.compat_functions:
+                result.compat_functions.clear()
+                result.applied_rules.append("inject_compat_functions: [] (override generic)")
+            elif funcs:
+                result.compat_functions.extend(funcs)
+                result.applied_rules.append(f"inject_compat_functions: {funcs}")
 
         # dlmalloc is NO LONGER auto-injected into compat archives.
         # It's linked by irix-ld for executables only (dlmalloc.o in staging).

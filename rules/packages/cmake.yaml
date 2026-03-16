@@ -1,4 +1,6 @@
 package: cmake
+blocked: true
+blocked_reason: "compat injection %{SOURCE100} not expanding in prep — needs investigation"
 
 build_after:
   - zlib-ng

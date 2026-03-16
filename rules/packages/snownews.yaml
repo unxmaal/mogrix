@@ -17,9 +17,20 @@ rules:
   inject_compat_functions:
   - strsep
   - timegm
+  configure_flags:
+    add:
+      - --without-nls
   explicit_provides:
   - snownews
   export_vars:
     PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
     CFLAGS: "-DPATH_MAX=1024 $CFLAGS"
-    LDFLAGS: "-L$(pwd)/mogrix-compat $LDFLAGS"
+  spec_replacements:
+    # snownews's configure bakes LDFLAGS into Config.mk. The mogrix-compat
+    # library path doesn't survive into the generated ldflags. Patch Config.mk
+    # between %configure and the first make invocation (which is in %install).
+    - pattern: "%install"
+      replacement: "sed -i '/^ldflags.*+=/s|$| -L%{_builddir}/%{name}-%{version}/mogrix-compat|' Config.mk\n\n%install"
+    # NLS disabled — remove translated man page glob (only English exists)
+    - pattern: "%{_mandir}/*/man1/*"
+      replacement: ""
