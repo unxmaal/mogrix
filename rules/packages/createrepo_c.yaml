@@ -1,6 +1,8 @@
 # createrepo_c - Repository metadata generator
 # cmake-based build, needs glib2, curl, libxml2, bzip2, openssl, zlib, sqlite, rpm, zstd, drpm
 package: createrepo_c
+skip: true
+skip_reason: "missing dependencies: curl-devel (no pkgconfig/headers), libzstd (not staged), drpm (not staged), libmodulemd (not staged)"
 blocked: true
 blocked_reason: "missing dependencies: curl-devel (no pkgconfig/headers), libzstd (not staged), drpm (not staged), libmodulemd (not staged)"
 

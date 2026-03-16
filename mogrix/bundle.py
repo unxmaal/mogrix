@@ -46,6 +46,41 @@ console = Console()
 
 STAGING_LIB_DIR = Path("/opt/sgug-staging/usr/sgug/lib32")
 
+# Libraries that must NEVER be bundled — they exist on native IRIX and apps
+# must use the native versions.  IRIX X11 libs use IRIX-specific transport/auth;
+# the X server only works with its own libs.
+# Matched by soname prefix: "libX11.so" matches libX11.so.6, libX11.so.1, etc.
+#
+# Only libs that actually exist on IRIX 6.5 are listed here.  Libs that DON'T
+# exist natively (libXft, libXrender, libxcb, libXau, libXcursor, libXrandr,
+# libXcomposite, libXdamage, libXfixes, libXinerama) MUST be bundled.
+NEVER_BUNDLE_PREFIXES = {
+    "libX11.so",
+    "libXext.so",
+    "libXi.so",
+    "libXpm.so",
+    "libXt.so",
+    "libXmu.so",
+    "libICE.so",
+    "libSM.so",
+}
+
+# Global registry: dlopen'd plugin directories and their env var overrides.
+# When the bundler detects _lib32/<subdir>/... containing .so files, it checks
+# this map.  If the subdir (or a parent) matches, it sets the env var in the
+# wrapper so the library finds its plugins inside the bundle instead of
+# at the hardcoded /usr/sgug/lib32/... path.
+#
+# Format: { "subdir_path_relative_to_lib32": ("ENV_VAR", "value_template") }
+# value_template uses {lib32} as placeholder for "$dir/_lib32".
+PLUGIN_DIR_ENV_MAP = {
+    "imlib2/loaders": ("IMLIB2_LOADER_PATH", "{lib32}/imlib2/loaders"),
+    "imlib2/filters": ("IMLIB2_FILTER_PATH", "{lib32}/imlib2/filters"),
+    "gdk-pixbuf-2.0": ("GDK_PIXBUF_MODULEDIR", "{lib32}/gdk-pixbuf-2.0/2.10.0/loaders"),
+    "pango": ("PANGO_LIBDIR", "{lib32}"),
+    "qt5/plugins": ("QT_PLUGIN_PATH", "{lib32}/qt5/plugins"),
+}
+
 # Wrapper templates use only Bourne shell syntax (no $(...), no ${var:+...})
 # because IRIX /bin/sh is the original Bourne shell, not POSIX sh.
 #
@@ -478,9 +513,8 @@ class BundleBuilder:
             return
 
         # Collect all NEEDED sonames from binaries.
-        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps)
-        # and libgcc_s (quad-float builtins needed by many libs but not declared).
-        needed = {"libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"}
+        # Always keep _RLDN32_LIST libraries (preloaded, not NEEDED deps).
+        needed = {"libmogrix_compat.so", "irix_rld_stubs.so"}
         for bin_subdir in ("_bin", "_sbin"):
             d = bundle_dir / bin_subdir
             if not d.is_dir():
@@ -548,10 +582,16 @@ class BundleBuilder:
                                             if dep2_path.is_symlink():
                                                 needed.add(os.readlink(str(dep2_path)))
 
-        # Remove .so files not in the needed set
+        # Remove .so files not in the needed set, and always remove
+        # native IRIX system libs that must not be bundled (X11 etc.)
         removed = []
         for f in sorted(lib_dir.iterdir()):
             if ".so" not in f.name:
+                continue
+            # Always remove never-bundle libs (even if in needed set)
+            if any(f.name.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+                f.unlink()
+                removed.append(f.name)
                 continue
             if f.name in needed:
                 continue
@@ -961,11 +1001,26 @@ class BundleBuilder:
                 for soname in needed:
                     if soname in manifest.irix_sonames:
                         continue
+                    # Never bundle native IRIX system libs (X11, etc.).
+                    # These must come from /usr/lib32 — our cross-compiled
+                    # versions can't talk to the IRIX X server.
+                    if any(soname.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+                        manifest.irix_sonames.add(soname)
+                        continue
                     # Mogrix-built RPMs take priority over IRIX sysroot.
                     # IRIX may have ancient ABI-incompatible versions of
                     # libraries we've rebuilt (e.g. libz.so / zlib-ng).
-                    if soname in self._soname_to_rpm:
-                        dep_rpm = self._soname_to_rpm[soname]
+                    # Try exact soname first, then versioned variants
+                    # (libz.so → libz.so.1) since -devel symlinks aren't
+                    # in runtime RPMs but the versioned lib is.
+                    dep_rpm = self._soname_to_rpm.get(soname)
+                    if not dep_rpm and ".so" in soname and not soname[-1].isdigit():
+                        # Unversioned soname (libz.so) — look for libz.so.1, .2, etc.
+                        for candidate_soname, candidate_rpm in self._soname_to_rpm.items():
+                            if candidate_soname.startswith(soname + "."):
+                                dep_rpm = candidate_rpm
+                                break
+                    if dep_rpm:
                         if dep_rpm not in visited_rpms:
                             # Add this RPM and its siblings
                             for sibling in self._get_sibling_rpms(dep_rpm):
@@ -1132,17 +1187,12 @@ class BundleBuilder:
             lib_dir.mkdir(exist_ok=True)
             shutil.copy2(str(rld_stubs_src), str(lib_dir / "irix_rld_stubs.so"))
 
-        # Always include libgcc_s.so.1 — many mogrix-built shared libs use
-        # 128-bit long double (quad-float) operations that need __getf2,
-        # __multf3, etc. from libgcc. These libs don't declare DT_NEEDED
-        # libgcc_s.so.1, so the dep resolver misses it.
-        libgcc_src = STAGING_LIB_DIR / "libgcc_s.so.1"
-        if libgcc_src.exists():
-            lib_dir = bundle_dir / "_lib32"
-            lib_dir.mkdir(exist_ok=True)
-            dest = lib_dir / "libgcc_s.so.1"
-            if not dest.exists():
-                shutil.copy2(str(libgcc_src), str(dest))
+        # NOTE: Do NOT force-include libgcc_s.so.1 here. It has non-weak
+        # pthread symbol refs that cause either "unresolvable symbol" (if
+        # libpthread isn't loaded) or "_RLD_PTHREADS_START invoked twice"
+        # (if libpthread is preloaded via _RLDN32_LIST). Packages that need
+        # libgcc_s quad-float builtins (__getf2, __multf3) should add -lgcc_s
+        # to their link flags so it appears as a proper DT_NEEDED entry.
 
         # Create missing soname symlinks.  -devel RPMs (excluded from bundles)
         # often contain unversioned .so symlinks (e.g. libz.so → libz.so.1)
@@ -1212,6 +1262,21 @@ class BundleBuilder:
         # Detect app-specific env vars needed for plugin loading etc.
         extra_env_lines = []
         extra_args_map = {}  # binary name -> extra CLI args string
+
+        # Global plugin directory detection: scan _lib32/ for known plugin
+        # subdirs and set env vars so libraries find their dlopen'd modules
+        # inside the bundle instead of at hardcoded /usr/sgug/lib32/ paths.
+        lib32_dir = bundle_dir / "_lib32"
+        if lib32_dir.is_dir():
+            for subdir_rel, (env_var, val_template) in PLUGIN_DIR_ENV_MAP.items():
+                plugin_path = lib32_dir / subdir_rel
+                if plugin_path.is_dir() and any(
+                    f.name.endswith(".so") for f in plugin_path.iterdir() if f.is_file()
+                ):
+                    val = val_template.replace("{lib32}", "$dir/_lib32")
+                    extra_env_lines.append(f'{env_var}="{val}"')
+                    extra_env_lines.append(f"export {env_var}")
+
         # weechat: WEECHAT_EXTRA_LIBDIR for dlopen-loaded plugins
         weechat_plugins = bundle_dir / "_lib32" / "weechat" / "plugins"
         if weechat_plugins.is_dir():
@@ -1265,7 +1330,7 @@ class BundleBuilder:
                 '#!/bin/sh\n'
                 'LD_LIBRARYN32_PATH="$dir/_lib32:/usr/lib32"\n'
                 'export LD_LIBRARYN32_PATH\n'
-                '_RLDN32_LIST="$dir/_lib32/libmogrix_compat.so:$dir/_lib32/libgcc_s.so.1:DEFAULT"\n'
+                '_RLDN32_LIST="$dir/_lib32/libmogrix_compat.so:DEFAULT"\n'
                 'export _RLDN32_LIST\n'
                 'exec "$dir/_bin/dpid" "\\$@"\n'
                 'DPID_EOF\n'
@@ -1391,11 +1456,12 @@ class BundleBuilder:
         # Use absolute paths ($dir/_lib32/...) so child processes (e.g. user's
         # shell spawned by tmux) can find them even outside the bundle's
         # LD_LIBRARYN32_PATH.
-        # libgcc_s.so.1 must be preloaded because libunistring/libintl use
-        # 128-bit quad-float builtins (__getf2, __multf3, etc.) but don't
-        # declare DT_NEEDED libgcc_s.so.1. IRIX rld won't find it otherwise.
+        # NOTE: Do NOT preload libgcc_s.so.1 — it has non-weak pthread
+        # refs that cause rld errors. Do NOT preload libpthread.so — it
+        # causes "_RLD_PTHREADS_START invoked twice". Only preload compat
+        # libs that have no problematic dependencies.
         rld_list_libs = []
-        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so", "libgcc_s.so.1"):
+        for preload_name in ("libmogrix_compat.so", "irix_rld_stubs.so"):
             if (bundle_dir / "_lib32" / preload_name).exists():
                 rld_list_libs.append(f"$dir/_lib32/{preload_name}")
         if rld_list_libs:

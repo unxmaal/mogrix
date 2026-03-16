@@ -1,5 +1,8 @@
 package: aterm
 rules:
+  # IRIX has no /bin/bash — aterm hardcodes DEFAULT_SHELL in rxvt.h
+  prep_commands:
+  - sed -i 's|#define DEFAULT_SHELL "/bin/bash"|#define DEFAULT_SHELL "/usr/bin/ksh"|' src/rxvt.h
   drop_buildrequires:
   - libAfterImage-devel
   - mesa-libGL-devel

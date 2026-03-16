@@ -11,9 +11,14 @@ upstream:
   summary: "Pty/tty library with utmp/wtmp/lastlog handling"
 
 rules:
+  drop_buildrequires:
+    - signify
   spec_replacements:
+    # Skip signify signature verification (signify not available on build host)
+    - pattern: "signify -V -p '%{SOURCE2}' -m '%{SOURCE0}'"
+      replacement: "echo 'Skipping signify verification for cross-build'"
     # Replace %cmake + %cmake_build with raw cmake cross-compilation
-    - pattern: "%cmake\n%cmake_build"
+    - pattern: "%cmake -G Ninja\n%cmake_build"
       replacement: |
         export COMPAT_DIR=$(pwd)/mogrix-compat
         cmake -B _build -S . \
@@ -43,6 +48,8 @@ rules:
     # Replace cmake install macro
     - pattern: "%cmake_install"
       replacement: "cd _build && make install DESTDIR=%{buildroot}"
-    # Library goes to lib32, not just bindir
-    - pattern: "%{_bindir}/*"
-      replacement: "%{_libdir}/libptytty*\n%{_includedir}/libptytty.h\n%{_libdir}/pkgconfig/libptytty.pc\n%{_mandir}/man3/libptytty.3*"
+    # Fix %files globs for unversioned .so (libptytty doesn't use soversion)
+    - pattern: "%{_libdir}/*.so.*"
+      replacement: "%{_libdir}/libptytty.so"
+    - pattern: "%{_libdir}/*.so\n%{_libdir}/pkgconfig/*.pc"
+      replacement: "%{_libdir}/pkgconfig/libptytty.pc"

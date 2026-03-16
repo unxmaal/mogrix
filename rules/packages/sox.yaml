@@ -1,4 +1,6 @@
 package: sox
+skip: true
+skip_reason: "configure adds -fstack-protector which IRIX lacks __stack_chk_fail — needs deeper fix"
 rules:
   drop_buildrequires:
   - pulseaudio-libs-devel
@@ -12,6 +14,10 @@ rules:
   - libsamplerate-devel
   export_vars:
     LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
+  # sox configure detects -fstack-protector as supported (clang says yes)
+  # but IRIX libc has no __stack_chk_fail. Patch configure to not test it.
+  prep_commands:
+    - "sed -i 's/-fstack-protector/-fno-stack-protector/g' configure"
   spec_replacements:
   - pattern: "%configure --without-lpc10 \\\n           --with-gsm \\\n           --includedir=%{_includedir}/sox \\\n           --disable-static \\\n           --with-distro=Fedora \\\n           --with-dyn-default\n"
     replacement: "%configure --without-lpc10 \\\n           --without-gsm \\\n           --without-ladspa \\\n           --without-mad \\\n           --without-id3tag \\\n           --without-twolame \\\

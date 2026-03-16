@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Set SHF_WRITE on .eh_frame and .gcc_except_table sections in ELF files.
+
+IRIX rld applies R_MIPS_REL32 relocations by writing into .eh_frame at load
+time. Clang doesn't set SHF_WRITE on .eh_frame (unlike GCC), so linkers place
+it in the read-only text segment. Setting SHF_WRITE makes BFD ld's ONLY_IF_RW
+linker script path match, placing .eh_frame in the writable data segment.
+
+Works on both .o (ET_REL) and .so (ET_DYN) files.
+
+Usage: fix-eh-frame <elf-file> [<elf-file> ...]
+"""
+import struct
+import sys
+
+SHF_WRITE = 0x1
+TARGET_SECTIONS = {b'.eh_frame', b'.gcc_except_table'}
+
+
+def fix_eh_frame(path):
+    with open(path, 'r+b') as f:
+        data = bytearray(f.read())
+
+    if len(data) < 52 or data[:4] != b'\x7fELF':
+        return False
+
+    ei_class = data[4]
+    if ei_class != 1:  # 32-bit only
+        return False
+
+    endian = '>' if data[5] == 2 else '<'
+
+    e_shoff = struct.unpack_from(endian + 'I', data, 32)[0]
+    e_shentsize = struct.unpack_from(endian + 'H', data, 46)[0]
+    e_shnum = struct.unpack_from(endian + 'H', data, 48)[0]
+    e_shstrndx = struct.unpack_from(endian + 'H', data, 50)[0]
+
+    if e_shnum == 0 or e_shoff == 0:
+        return False
+
+    shstrtab_hdr = e_shoff + e_shstrndx * e_shentsize
+    shstrtab_offset = struct.unpack_from(endian + 'I', data, shstrtab_hdr + 16)[0]
+
+    modified = False
+    for i in range(e_shnum):
+        off = e_shoff + i * e_shentsize
+        sh_name_idx = struct.unpack_from(endian + 'I', data, off)[0]
+        sh_flags = struct.unpack_from(endian + 'I', data, off + 8)[0]
+
+        name_start = shstrtab_offset + sh_name_idx
+        name_end = data.index(b'\x00', name_start)
+        name = bytes(data[name_start:name_end])
+
+        if name in TARGET_SECTIONS and not (sh_flags & SHF_WRITE):
+            struct.pack_into(endian + 'I', data, off + 8, sh_flags | SHF_WRITE)
+            modified = True
+
+    if modified:
+        with open(path, 'wb') as f:
+            f.write(data)
+    return modified
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <elf-file> [...]", file=sys.stderr)
+        sys.exit(1)
+
+    for path in sys.argv[1:]:
+        fix_eh_frame(path)

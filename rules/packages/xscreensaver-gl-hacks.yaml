@@ -2,29 +2,29 @@
 # Only builds hacks/glx/ subdirectory (129 GL demos)
 # Uses hand-written spec at specs/packages/xscreensaver-gl-hacks.spec
 package: xscreensaver-gl-hacks
+blocked: true
+blocked_reason: "IRIX GLX headers need compat work for old OpenGL 1.2"
+# TODO: Don't block the whole package — modify the spec to skip GLX-dependent
+# code (glx.h triggers undeclared identifier errors from IRIX's GL 1.2 headers).
+# Build the non-GL hacks, or add a compat glx.h shim that stubs out the
+# missing declarations. The goal is a package that builds, shipping whatever
+# hacks work without modern GL. The conversion pipeline is fixed (Source100
+# collision resolved via inject_compat_functions: [] override in engine.py).
 
 build_after:
   - libX11
   - libXext
 
-upstream:
-  url: https://www.jwz.org/xscreensaver/xscreensaver-6.08.tar.gz
-  version: "6.08"
-  type: tarball
-  build_system: autoconf
-  license: MIT
-  summary: "OpenGL screensaver demos from XScreenSaver for IRIX"
-  source_dir: xscreensaver-6.08
+# SRPM built locally — jwz.org tarball URL is dead (410 Gone)
 ## add_source is NOT used here — the hand-written spec already has Source1/Source2
 ## Using add_source would inject duplicates as Source200/201.
 ## add_patch is NOT used here — the hand-written spec already has Patch0:
 ## Using add_patch would inject a duplicate Patch500 causing double-apply.
 ## The patch file is still stored in patches/packages/xscreensaver-gl-hacks/
 rules:
-  # Most generic rules don't apply — we use a hand-written spec
-  # But we do want compat function injection for strcasestr
-  inject_compat_functions:
-  - strcasestr
+  # Hand-written spec already has compat sources baked in.
+  # Empty list disables generic compat injection (prevents duplicate Source100+).
+  inject_compat_functions: []
   drop_buildrequires:
   - libpng-devel
   # Neutralize generic rewrite_paths — this hand-written spec already has

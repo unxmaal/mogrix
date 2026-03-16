@@ -1,0 +1,32 @@
+--- a/src/xcb_conn.c	2026-03-10 20:56:10.677374327 +0000
++++ b/src/xcb_conn.c	2026-03-10 20:56:29.461652173 +0000
+@@ -377,16 +377,19 @@
+ 
+     c->fd = fd;
+ 
+-    if(!(
+-        set_fd_flags(fd) &&
+-        pthread_mutex_init(&c->iolock, 0) == 0 &&
+-        _xcb_in_init(&c->in) &&
+-        _xcb_out_init(&c->out) &&
+-        write_setup(c, auth_info) &&
+-        read_setup(c) &&
+-        _xcb_ext_init(c) &&
+-        _xcb_xid_init(c)
+-        ))
++    fprintf(stderr, "XCB_DBG: fd=%d sizeof(conn)=%d\n", fd, (int)sizeof(xcb_connection_t));
++
++    int step_ok = 1;
++    if(step_ok) { step_ok = set_fd_flags(fd); fprintf(stderr, "XCB_DBG: set_fd_flags=%d\n", step_ok); }
++    if(step_ok) { int r = pthread_mutex_init(&c->iolock, 0); fprintf(stderr, "XCB_DBG: mutex_init=%d\n", r); step_ok = (r == 0); }
++    if(step_ok) { step_ok = _xcb_in_init(&c->in); fprintf(stderr, "XCB_DBG: in_init=%d\n", step_ok); }
++    if(step_ok) { step_ok = _xcb_out_init(&c->out); fprintf(stderr, "XCB_DBG: out_init=%d\n", step_ok); }
++    if(step_ok) { step_ok = write_setup(c, auth_info); fprintf(stderr, "XCB_DBG: write_setup=%d\n", step_ok); }
++    if(step_ok) { step_ok = read_setup(c); fprintf(stderr, "XCB_DBG: read_setup=%d\n", step_ok); }
++    if(step_ok) { step_ok = _xcb_ext_init(c); fprintf(stderr, "XCB_DBG: ext_init=%d\n", step_ok); }
++    if(step_ok) { step_ok = _xcb_xid_init(c); fprintf(stderr, "XCB_DBG: xid_init=%d\n", step_ok); }
++
++    if(!(step_ok))
+     {
+         xcb_disconnect(c);
+         return _xcb_conn_ret_error(XCB_CONN_ERROR);

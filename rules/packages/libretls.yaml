@@ -55,3 +55,6 @@ rules:
     # 6. Fix MAP_ANON: IRIX has no MAP_ANON or MAP_ANONYMOUS
     # Define MAP_ANON as 0 (our arc4random_irix.h uses /dev/zero instead)
     - "$MOGRIX_ROOT/tools/safepatch include/compat/sys/mman.h --old '#error \"System does not support mapping anonymous pages?\"' --new '#define MAP_ANON 0' --no-backup --quiet"
+
+    # 7. Regenerate build system after Makefile.am changes
+    - "autoreconf -fi"

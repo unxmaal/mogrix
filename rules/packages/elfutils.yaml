@@ -4,6 +4,8 @@
 # tdestroy stubs, posix_madvise->madvise, stdio_ext.h guards.
 
 package: elfutils
+skip: true
+skip_reason: "Missing glibc-specific dependencies: argp (argp_parse), fts (fts_close), obstack. These are not available on IRIX and need to be provided as compat libraries or standalone packages before elfutils can build."
 blocked: true
 blocked_reason: "Missing glibc-specific dependencies: argp (argp_parse), fts (fts_close), obstack. These are not available on IRIX and need to be provided as compat libraries or standalone packages before elfutils can build."
 

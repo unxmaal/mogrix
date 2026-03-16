@@ -28,13 +28,7 @@ add_source:
   - glib-n32-fixup.h
   - ir8_test.sh
 
-upstream:
-  url: https://github.com/unxmaal/mogrix
-  version: "1.0"
-  build_system: makefile
-  license: BSD-2-Clause
-  summary: "Web browser for IRIX"
-  source_dir: ir8-1.0
+# SRPM built locally — no upstream (source lives in patches/packages/ir8/)
 
 smoke_test:
   - command: "ir8"

@@ -1,4 +1,6 @@
 package: lynx
+blocked: true
+blocked_reason: "configure can't find SSL even with --with-ssl=/opt/sgug-staging/usr/sgug — needs investigation"
 
 build_after:
   - ncurses
@@ -23,7 +25,7 @@ rules:
   configure_flags:
     add:
     - --with-screen=ncurses
-    - --with-ssl
+    - --with-ssl=/opt/sgug-staging/usr/sgug
     - --with-zlib
     - --disable-nls
     - --disable-ipv6

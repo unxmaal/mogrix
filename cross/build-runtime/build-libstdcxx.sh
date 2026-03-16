@@ -70,6 +70,10 @@ CXX_FLAGS="$CXX_FLAGS -I$LIBSTDCXX/config/os/irix"
 CXX_FLAGS="$CXX_FLAGS -I$LIBSTDCXX/config/locale/generic"
 CXX_FLAGS="$CXX_FLAGS -I$LIBSTDCXX/config"
 
+# Backward-compat headers (strstream etc.)
+CXX_FLAGS="$CXX_FLAGS -I$LIBSTDCXX/include/backward"
+# gcc-config directory (bits/largefile-config.h for filesystem)
+CXX_FLAGS="$CXX_FLAGS -I$GCC_CFG"
 # Suppress noisy warnings
 CXX_FLAGS="$CXX_FLAGS -Wno-deprecated -Wno-attributes -Wno-unused-function"
 CXX_FLAGS="$CXX_FLAGS -Wno-missing-exception-spec"
@@ -84,7 +88,7 @@ if [ "${1:-}" = "--clean" ]; then
     exit 0
 fi
 
-mkdir -p "$BUILD_DIR/c++98" "$BUILD_DIR/c++11" "$BUILD_DIR/c++17" "$BUILD_DIR/supc++" "$BUILD_DIR/locale"
+mkdir -p "$BUILD_DIR/c++98" "$BUILD_DIR/c++11" "$BUILD_DIR/c++17" "$BUILD_DIR/filesystem" "$BUILD_DIR/supc++" "$BUILD_DIR/locale"
 
 # Check GCC source
 if [ ! -d "$LIBSTDCXX/src" ]; then
@@ -98,8 +102,7 @@ fi
 echo "=== Phase 1: Compile C++98 sources ==="
 
 # C++98 sources (compiled with -std=gnu++98)
-# Omit: strstream (needs <strstream> header which isn't installed),
-#        snprintf_lite/streambuf-inst/wlocale-inst/wstring-inst (in c++11, not c++98)
+# snprintf_lite/streambuf-inst/wlocale-inst/wstring-inst are in c++11, not c++98
 # locale_init.cc and localename.cc use char16_t/char32_t — compile as C++11 (see below)
 CXX98_SOURCES=(
     allocator-inst.cc
@@ -128,9 +131,11 @@ CXX98_SOURCES=(
     math_stubs_long_double.cc
     misc-inst.cc
     mt_allocator.cc
+    parallel_settings.cc
     pool_allocator.cc
     stdexcept.cc
     streambuf.cc
+    strstream.cc
     tree.cc
     valarray.cc
 )
@@ -184,8 +189,10 @@ CXX11_SOURCES=(
     chrono.cc
     codecvt.cc
     condition_variable.cc
+    cow-fstream-inst.cc
     cow-locale_init.cc
     cow-shim_facets.cc
+    cow-sstream-inst.cc
     cow-stdexcept.cc
     cow-string-inst.cc
     cow-string-io-inst.cc
@@ -205,11 +212,13 @@ CXX11_SOURCES=(
     functional.cc
     futex.cc
     future.cc
+    hash_c++0x.cc
     hashtable_c++0x.cc
     ios.cc
     ios-inst.cc
     iostream-inst.cc
     istream-inst.cc
+    limits.cc
     locale-inst.cc
     mutex.cc
     ostream-inst.cc
@@ -227,6 +236,7 @@ CXX11_SOURCES=(
     thread.cc
     wlocale-inst.cc
     wstring-inst.cc
+    wstring-io-inst.cc
 )
 
 # Compatibility sources
@@ -261,15 +271,24 @@ echo "C++11: $compiled11 compiled, $failed11 failed"
 echo ""
 echo "=== Phase 3: Compile C++17 sources ==="
 
-# C++17 sources (skip filesystem — needs largefile-config.h,
-# skip floating_from/to_chars — GCC 9.5 doesn't have them,
-# skip memory_resource — uses C++17 sized/aligned delete that conflicts with clang)
+# C++17 sources
+# Skip: floating_from/to_chars (GCC 9.5 doesn't have them)
+# Note: memory_resource.cc is replaced by pmr_shim.cc (Phase 4c) —
+# GCC's version fails with clang (out-of-line virtual dtor = default)
 CXX17_SOURCES=(
+    cow-string-inst.cc
+    fs_dir.cc
+    fs_ops.cc
+    fs_path.cc
+    cow-fs_dir.cc
+    cow-fs_ops.cc
+    cow-fs_path.cc
     ostream-inst.cc
     string-inst.cc
 )
 
-CXX17_FLAGS="${CXX_FLAGS/-std=gnu++11/-std=gnu++17}"
+# -fsized-deallocation: clang 16 disables it by default; needed for operator delete(void*, size_t)
+CXX17_FLAGS="${CXX_FLAGS/-std=gnu++11/-std=gnu++17} -fsized-deallocation"
 
 compiled17=0
 failed17=0
@@ -281,7 +300,23 @@ for src in "${CXX17_SOURCES[@]}"; do
         failed17=$((failed17 + 1))
         continue
     fi
-    if $CLANG $CXX17_FLAGS -c "$srcpath" -o "$obj" 2>"$BUILD_DIR/c++17/${src%.cc}.err"; then
+    # fs_path.cc and cow-fs_path.cc: patch noexcept mismatch between GCC 9.5.0 source
+    # and staging headers (SGUG-RSE GCC 9.2.0). Source adds noexcept to _List::begin/end
+    # but staging header doesn't have it — clang rejects the mismatch.
+    compile_src="$srcpath"
+    extra_flags=""
+    if [[ "$src" == "fs_path.cc" ]]; then
+        # Patch fs_path.cc and put it where cow-fs_path.cc can also find it
+        patched="$BUILD_DIR/c++17/fs_path.cc"
+        sed 's/::begin() noexcept/::begin()/g; s/::end() noexcept/::end()/g; s/::begin() const noexcept/::begin() const/g; s/::end() const noexcept/::end() const/g' "$srcpath" > "$patched"
+        compile_src="$patched"
+    elif [[ "$src" == "cow-fs_path.cc" ]]; then
+        # cow-fs_path.cc is just: #define _GLIBCXX_USE_CXX11_ABI 0 + #include "fs_path.cc"
+        # Compile patched fs_path.cc with cow ABI flag instead
+        compile_src="$BUILD_DIR/c++17/fs_path.cc"
+        extra_flags="-D_GLIBCXX_USE_CXX11_ABI=0"
+    fi
+    if $CLANG $CXX17_FLAGS $extra_flags -c "$compile_src" -o "$obj" 2>"$BUILD_DIR/c++17/${src%.cc}.err"; then
         compiled17=$((compiled17 + 1))
     else
         echo "FAILED: c++17/$src"
@@ -291,6 +326,12 @@ for src in "${CXX17_SOURCES[@]}"; do
 done
 echo "C++17: $compiled17 compiled, $failed17 failed"
 
+# Skip Phase 3b: Filesystem TS v1 (experimental::filesystem)
+# GCC 9 headers have noexcept mismatch that clang rejects as hard error.
+# These provide deprecated std::experimental::filesystem — deferring until needed.
+compiledfs=0
+failedfs=0
+
 echo ""
 echo "=== Phase 4: Compile libsupc++ ==="
 
@@ -299,6 +340,7 @@ echo "=== Phase 4: Compile libsupc++ ==="
 SUPCXX_SOURCES=(
     array_type_info.cc
     atexit_arm.cc
+    atexit_thread.cc
     bad_alloc.cc
     bad_array_length.cc
     bad_array_new.cc
@@ -349,6 +391,7 @@ SUPCXX_SOURCES=(
     vec.cc
     vmi_class_type_info.cc
     vterminate.cc
+    vtv_stubs.cc
 )
 
 compiledsupc=0
@@ -394,6 +437,61 @@ else
     failedsupc=$((failedsupc + 1))
 fi
 echo "libsupc++: $compiledsupc compiled, $failedsupc failed"
+
+echo ""
+echo "=== Phase 4b: Compile C++17 aligned new/delete (libsupc++, needs -std=gnu++17) ==="
+
+# Aligned new/delete operators use std::align_val_t (C++17)
+SUPCXX17_SOURCES=(
+    del_opa.cc
+    del_opant.cc
+    del_opsa.cc
+    del_opva.cc
+    del_opvant.cc
+    del_opvsa.cc
+    new_opa.cc
+    new_opant.cc
+    new_opva.cc
+    new_opvant.cc
+)
+
+SUPCXX17_FLAGS="${CXX_FLAGS/-std=gnu++11/-std=gnu++17}"
+
+compiledsupc17=0
+failedsupc17=0
+for src in "${SUPCXX17_SOURCES[@]}"; do
+    obj="$BUILD_DIR/supc++/${src%.cc}.o"
+    srcpath="$LIBSTDCXX/libsupc++/$src"
+    if [ ! -f "$srcpath" ]; then
+        echo "MISSING: libsupc++/$src"
+        failedsupc17=$((failedsupc17 + 1))
+        continue
+    fi
+    if $CLANG $SUPCXX17_FLAGS -I$LIBSTDCXX/libsupc++ -c "$srcpath" -o "$obj" 2>"$BUILD_DIR/supc++/${src%.cc}.err"; then
+        compiledsupc17=$((compiledsupc17 + 1))
+    else
+        echo "FAILED: libsupc++/$src (C++17)"
+        head -5 "$BUILD_DIR/supc++/${src%.cc}.err"
+        failedsupc17=$((failedsupc17 + 1))
+    fi
+done
+echo "libsupc++ C++17: $compiledsupc17 compiled, $failedsupc17 failed"
+
+echo ""
+echo "=== Phase 4c: Compile std::pmr shim (C++17) ==="
+
+# GCC 9's memory_resource.cc fails with clang due to out-of-line "= default"
+# virtual dtor and 3-arg operator delete. This shim provides just the symbols
+# Qt5 needs: get_default_resource, _M_new_buffer, _M_release_buffers.
+PMR_SHIM="$SCRIPT_DIR/pmr_shim.cc"
+PMR_OBJ="$BUILD_DIR/c++17/pmr_shim.o"
+if $CLANG $SUPCXX17_FLAGS -I$LIBSTDCXX/include -I$LIBSTDCXX/src -c "$PMR_SHIM" -o "$PMR_OBJ" 2>"$BUILD_DIR/c++17/pmr_shim.err"; then
+    echo "pmr_shim.o: OK"
+else
+    echo "FAILED: pmr_shim.cc"
+    cat "$BUILD_DIR/c++17/pmr_shim.err"
+    # Non-fatal — only Qt5 needs it
+fi
 
 echo ""
 echo "=== Phase 5: Compile I/O backend + locale backend (generic) ==="
@@ -518,8 +616,8 @@ echo "Cow locale: $compiledcow compiled, $failedcow failed"
 
 echo ""
 echo "=== Summary ==="
-total_compiled=$((compiled + compiled11 + compiled17 + compiledsupc + compiledloc))
-total_failed=$((failed + failed11 + failed17 + failedsupc + failedloc))
+total_compiled=$((compiled + compiled11 + compiled17 + compiledfs + compiledsupc + compiledsupc17 + compiledloc + compiledcow))
+total_failed=$((failed + failed11 + failed17 + failedfs + failedsupc + failedsupc17 + failedloc + failedcow))
 echo "Total: $total_compiled compiled, $total_failed failed"
 
 if [ "$total_failed" -gt 0 ]; then
@@ -530,20 +628,68 @@ if [ "$total_failed" -gt 0 ]; then
 fi
 
 echo ""
+echo "=== Phase 5c: Compile .eh_frame registration objects ==="
+
+# libstdc++.so needs explicit .eh_frame registration so the DW2 unwinder
+# can find FDEs for functions like __cxa_throw. Without this, exceptions
+# always terminate() because the unwinder can't step through libstdc++ frames.
+# GCC normally provides this via crtbeginS.o; we must do it manually.
+
+FRAME_REG_C="$SCRIPT_DIR/libstdcxx_frame_reg.c"
+FRAME_END_C="$SCRIPT_DIR/libstdcxx_frame_end.c"
+CLANG_C="/opt/cross/bin/clang"
+FRAME_C_FLAGS="--target=mips-sgi-irix6.5 --sysroot=$SYSROOT -mabi=n32 -march=mips3 -mxgot -O2 -fPIC"
+FRAME_C_FLAGS="$FRAME_C_FLAGS -isystem $STAGING/include -isystem $SYSROOT/usr/include"
+
+if $CLANG_C $FRAME_C_FLAGS -c "$FRAME_REG_C" -o "$BUILD_DIR/frame_reg.o" 2>"$BUILD_DIR/frame_reg.err"; then
+    echo "frame_reg.o: OK"
+else
+    echo "FAILED: libstdcxx_frame_reg.c"
+    cat "$BUILD_DIR/frame_reg.err"
+    exit 1
+fi
+
+if $CLANG_C $FRAME_C_FLAGS -c "$FRAME_END_C" -o "$BUILD_DIR/frame_end.o" 2>"$BUILD_DIR/frame_end.err"; then
+    echo "frame_end.o: OK"
+else
+    echo "FAILED: libstdcxx_frame_end.c"
+    cat "$BUILD_DIR/frame_end.err"
+    exit 1
+fi
+
+echo ""
 echo "=== Phase 6: Link libstdc++.so.6 ==="
 
 # Collect all .o files
 ALL_OBJECTS=()
-for obj in "$BUILD_DIR"/c++98/*.o "$BUILD_DIR"/c++11/*.o "$BUILD_DIR"/c++17/*.o "$BUILD_DIR"/supc++/*.o "$BUILD_DIR"/locale/*.o; do
+for obj in "$BUILD_DIR"/c++98/*.o "$BUILD_DIR"/c++11/*.o "$BUILD_DIR"/c++17/*.o "$BUILD_DIR"/filesystem/*.o "$BUILD_DIR"/supc++/*.o "$BUILD_DIR"/locale/*.o; do
     [ -f "$obj" ] && ALL_OBJECTS+=("$obj")
 done
 
-echo "Linking ${#ALL_OBJECTS[@]} object files..."
+echo "Linking ${#ALL_OBJECTS[@]} object files + frame registration..."
+
+# LLD 18 with IRIX patches handles .eh_frame placement natively:
+# - Sets SHF_WRITE on .eh_frame (IRIX rld writes relocations at load time)
+# - Suppresses GNU version sections (VERNEED/VERSYM crash rld)
+# - Uses IRIX target defaults (2-segment layout, no RELRO, etc.)
+# No BFD ld fallback or fix-eh-frame preprocessing needed.
+#
+# irix-ld automatically adds crtbeginS.o FIRST and crtendS.o LAST for
+# shared libraries. crtbeginS.o provides _init → __do_global_ctors_aux
+# which walks .ctors in reverse. crtendS.o provides __CTOR_END__ sentinel.
+#
+# frame_reg.o puts our frame registration function in .ctors so it runs
+# during DSO load. frame_end.o is no longer needed (LLD adds .eh_frame
+# terminator automatically).
+#
+# IRIX rld does NOT process .init_array, so __attribute__((constructor))
+# doesn't work — we must use .ctors.
 
 $IRIX_LD \
     -shared \
     -soname libstdc++.so.6 \
     -o "$OUTPUT" \
+    "$BUILD_DIR/frame_reg.o" \
     "${ALL_OBJECTS[@]}" \
     -L"$SYSROOT/usr/lib32" \
     -L"$STAGING/lib32" \

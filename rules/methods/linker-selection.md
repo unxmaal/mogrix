@@ -6,7 +6,7 @@ The `cross/bin/irix-ld` wrapper selects linkers based on output type:
 
 | Output Type | Linker | Why |
 |-------------|--------|-----|
-| Shared libraries (`-shared`) | LLD 18 + `--no-rosegment -z norelro --image-base=0x5ffe0000` | Clean multi-GOT, 2-segment RE+RW layout |
+| Shared libraries (`-shared`) | LLD 18 + `--no-rosegment -z norelro --image-base=0x0f800000` | Clean multi-GOT, 2-segment RE+RW layout |
 | Executables | LLD 18 with patches + `dlmalloc.o` | Correct relocations, mmap-based malloc |
 
 **BFD ld fallback**: Set `MOGRIX_USE_BFDLD_SHARED=1` for BFD ld (known buggy for large libs).
@@ -18,7 +18,7 @@ IRIX rld expects shared libraries with exactly 2 LOAD segments: RE (text) + RW (
 **LLD flags for correct layout**:
 - `--no-rosegment`: Merge R and RE into single RE segment (otherwise LLD produces R+RE+RW)
 - `-z norelro`: Prevent GNU_RELRO from creating extra LOAD segment
-- `--image-base=0x5ffe0000`: IRIX rld requires non-zero DT_MIPS_BASE_ADDRESS
+- `--image-base=0x0f800000`: IRIX rld requires non-zero DT_MIPS_BASE_ADDRESS. MUST NOT use 0x5ffe0000 — it collides with libgcc_s preferred base, causing rld displacement that corrupts the DWARF unwinder → SIGSEGV on any C++ throw in shared libraries.
 
 **CRT objects must have PIC/CPIC flags**: crtbeginS.o and crtendS.o need `.abicalls` directive
 in their .S source files. Without PIC flags, LLD drops EF_MIPS_PIC from the output and

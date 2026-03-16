@@ -8,6 +8,9 @@ build_after:
   - libXext
   - xorg-x11-proto-devel
 
+add_source:
+  - xgetrequest-inline.h
+
 rules:
   drop_buildrequires:
     - xorg-x11-util-macros
@@ -44,9 +47,12 @@ rules:
 
   # IRIX libX11 lacks _XEatDataWords (added in libX11 1.6 for security hardening)
   # Provide as a macro wrapping the older _XEatData function.
-  # Inject into Xrenderint.h (included by all source files).
+  # IRIX native libX11.so.1 lacks _XGetRequest() — modern Xlibint.h GetReq
+  # calls it as a function. Include inline macro redefinitions after Xlibint.h.
   prep_commands:
+    - "cp %{_sourcedir}/xgetrequest-inline.h src/"
     - "$MOGRIX_ROOT/tools/safepatch src/Xrenderint.h --old '#include.*Xlibint' --insert-after \"$(printf '#ifndef _XEatDataWords\\n#define _XEatDataWords(dpy, n) _XEatData((dpy), (unsigned long)(n) << 2)\\n#endif')\" --regex --no-backup --quiet"
+    - "sed -i '/#include.*Xlibint/a #include \"xgetrequest-inline.h\"' src/Xrenderint.h"
 
   install_cleanup:
     - "rm -rf %{buildroot}%{_docdir}"

@@ -358,6 +358,16 @@ functions:
     header: rld_interface.h
     description: IRIX rld interface stub for cross-compilation
 
+  # X11 compat functions (IRIX native libX11.so.1 is X11R6.4)
+  _XGetRequest:
+    file: x11/_XGetRequest.c
+    header: X11/Xlibint.h
+    description: Xlib request helper (modern GetReq macro calls this function, IRIX native uses inline macro)
+    notes: |
+      IRIX native libX11 uses GetReq as an inline macro. Modern Xlib (X11R7+)
+      replaced it with a function call to _XGetRequest(). Must be in
+      libmogrix_compat.so for shared library callers (libXrender, libXft).
+
   # mmap-based malloc (bypasses IRIX brk heap ceiling)
   # NOTE: dlmalloc is NO LONGER injected into compat archives.
   # It is linked by irix-ld into executables only (dlmalloc.o in staging).

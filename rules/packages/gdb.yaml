@@ -3,6 +3,8 @@
 # The Fedora spec is too complex: 46 patches, %include mechanism, PGO builds,
 # RPM integration, multiple subpackages. For IRIX we just need core debugging.
 package: gdb
+blocked: true
+blocked_reason: "Fedora spec uses %include directives — needs hand-written spec"
 
 add_source:
   - mogrix-to-string-compat.h

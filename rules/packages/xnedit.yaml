@@ -1,4 +1,6 @@
 package: xnedit
+skip: true
+skip_reason: "needs Motif (Xm/Xm.h) — not in cross-compilation sysroot"
 blocked: true
 blocked_reason: "needs Motif (Xm/Xm.h) — not in cross-compilation sysroot"
 upstream:

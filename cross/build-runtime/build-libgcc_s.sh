@@ -183,7 +183,11 @@ fi
 UNWIND_SOURCES=(
     unwind-dw2.c        # Core DWARF2 unwinder (_Unwind_RaiseException, etc.)
     unwind-dw2-fde.c    # Frame Description Entry registration (__register_frame, etc.)
-    unwind-c.c          # C language personality routine (__gcc_personality_v0 from GCC side)
+)
+
+# unwind-c.c needs VISIBLE __gcc_personality_v0, so compile WITHOUT -fvisibility=hidden
+UNWIND_VISIBLE_SOURCES=(
+    unwind-c.c          # C language personality routine (__gcc_personality_v0)
 )
 
 unwind_compiled=0
@@ -200,11 +204,50 @@ for src in "${UNWIND_SOURCES[@]}"; do
     fi
 done
 
+# Compile sources that need default visibility (exported symbols)
+UNWIND_VISIBLE_FLAGS="${UNWIND_CFLAGS/-fvisibility=hidden/}"
+for src in "${UNWIND_VISIBLE_SOURCES[@]}"; do
+    obj="$BUILD_DIR/unwind/${src%.c}.o"
+    if $CLANG $UNWIND_VISIBLE_FLAGS -c "$GCC_SRC/libgcc/$src" -o "$obj" 2>"$BUILD_DIR/unwind/${src%.c}.err"; then
+        echo "  OK: $src (visible)"
+        unwind_compiled=$((unwind_compiled + 1))
+    else
+        echo "  FAILED: $src (visible)"
+        cat "$BUILD_DIR/unwind/${src%.c}.err"
+        unwind_failed=$((unwind_failed + 1))
+    fi
+done
+
 echo "Unwind: $unwind_compiled compiled, $unwind_failed failed"
 if [ "$unwind_failed" -gt 0 ]; then
     echo "ERROR: Some unwind sources failed to compile."
     exit 1
 fi
+
+echo ""
+echo "=== Phase 2b: Compile standalone builtins ==="
+
+# These are standalone implementations of functions that normally come from
+# libgcc2.c, which can't be compiled with clang (uses GCC-specific machine modes).
+STANDALONE_BUILTINS=(
+    clrsbdi2.c    # __clrsbdi2 — count leading redundant sign bits (64-bit)
+    clrsbti2.c    # __clrsbti2 — count leading redundant sign bits (128-bit)
+)
+
+standalone_compiled=0
+standalone_failed=0
+for src in "${STANDALONE_BUILTINS[@]}"; do
+    obj="$BUILD_DIR/unwind/${src%.c}.o"
+    if $CLANG $RT_CFLAGS -c "$SCRIPT_DIR/$src" -o "$obj" 2>"$BUILD_DIR/unwind/${src%.c}.err"; then
+        echo "  OK: $src"
+        standalone_compiled=$((standalone_compiled + 1))
+    else
+        echo "  FAILED: $src"
+        cat "$BUILD_DIR/unwind/${src%.c}.err"
+        standalone_failed=$((standalone_failed + 1))
+    fi
+done
+echo "Standalone builtins: $standalone_compiled compiled, $standalone_failed failed"
 
 echo ""
 echo "=== Phase 3: Link libgcc_s.so.1 ==="

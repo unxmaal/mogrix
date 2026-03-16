@@ -39,6 +39,7 @@ rules:
           -DCMAKE_C_COMPILER=$CC \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_CROSSCOMPILING=TRUE \
+          -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-soname,libz-ng.so.2" \
           -DWITH_SANITIZER=OFF \
           -DBUILD_SHARED_LIBS=ON \
           -DZLIB_ENABLE_TESTS=OFF \
@@ -63,6 +64,7 @@ rules:
           -DCMAKE_C_COMPILER=$CC \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_CROSSCOMPILING=TRUE \
+          -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-soname,libz.so.1" \
           -DWITH_SANITIZER=OFF \
           -DZLIB_COMPAT=ON \
           -DWITH_NEW_STRATEGIES=OFF \

@@ -17,6 +17,11 @@ upstream:
 rules:
   explicit_provides:
   - tinc
+  configure_disable:
+  - systemd
+  spec_replacements:
+    - pattern: "%{_unitdir}/%{name}*.service"
+      replacement: "# systemd units removed"
   ac_cv_overrides:
     ac_cv_func_pselect: 'no'
   export_vars:
