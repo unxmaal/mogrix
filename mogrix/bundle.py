@@ -49,13 +49,18 @@ STAGING_LIB_DIR = Path("/opt/sgug-staging/usr/sgug/lib32")
 # Libraries that must NEVER be bundled — they exist on native IRIX and apps
 # must use the native versions.  IRIX X11 libs use IRIX-specific transport/auth;
 # the X server only works with its own libs.
-# Matched by soname prefix: "libX11.so" matches libX11.so.6, libX11.so.1, etc.
+#
+# Matched by EXACT soname — IRIX native libs are .so.1 or unversioned .so.
+# Our sgug-built versions (.so.6) are NOT excluded and WILL be bundled.
+# This lets apps like rxvt-unicode bundle our libX11.so.6 while decker
+# (which dlopens IRIX native X11) correctly skips them.
 #
 # Only libs that actually exist on IRIX 6.5 are listed here.  Libs that DON'T
 # exist natively (libXft, libXrender, libxcb, libXau, libXcursor, libXrandr,
 # libXcomposite, libXdamage, libXfixes, libXinerama) MUST be bundled.
-NEVER_BUNDLE_PREFIXES = {
-    "libX11.so",
+IRIX_NATIVE_SONAMES = {
+    # IRIX native X11 — exact sonames from /opt/irix-sysroot/usr/lib32/
+    "libX11.so.1",
     "libXext.so",
     "libXi.so",
     "libXpm.so",
@@ -589,7 +594,7 @@ class BundleBuilder:
             if ".so" not in f.name:
                 continue
             # Always remove never-bundle libs (even if in needed set)
-            if any(f.name.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+            if f.name in IRIX_NATIVE_SONAMES:
                 f.unlink()
                 removed.append(f.name)
                 continue
@@ -1004,7 +1009,7 @@ class BundleBuilder:
                     # Never bundle native IRIX system libs (X11, etc.).
                     # These must come from /usr/lib32 — our cross-compiled
                     # versions can't talk to the IRIX X server.
-                    if any(soname.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+                    if soname in IRIX_NATIVE_SONAMES:
                         manifest.irix_sonames.add(soname)
                         continue
                     # Mogrix-built RPMs take priority over IRIX sysroot.

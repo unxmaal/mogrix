@@ -1,0 +1,28 @@
+package: worker
+
+build_after:
+  - libX11
+  - libXext
+  - libXft
+  - libXinerama
+  - openssl
+  - lua
+  - file
+
+rules:
+  # IRIX X11R6.3 compat — same fixes as rxvt-unicode
+  prep_commands:
+    # XICCallback doesn't exist in IRIX X11R6.3 — use XIMCallback
+    - "for f in $(find src -name '*.cc' -o -name '*.h' -o -name '*.h.in'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'XICCallback' --new 'XIMCallback' --count 0 --no-backup --quiet || :; done"
+    # Xutf8TextListToTextProperty not in IRIX X11 — use XmbTextListToTextProperty
+    - "for f in $(find src -name '*.cc' -o -name '*.h'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'Xutf8TextListToTextProperty' --new 'XmbTextListToTextProperty' --count 0 --no-backup --quiet || :; done"
+    # XUTF8StringStyle not in IRIX X11 — use XCompoundTextStyle
+    - "for f in $(find src -name '*.cc' -o -name '*.h'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'XUTF8StringStyle' --new 'XCompoundTextStyle' --count 0 --no-backup --quiet || :; done"
+    # XSetIMValues XNDestroyCallback not available in IRIX X11R6.3
+    # Replace the entire if block with a no-op
+    - "$MOGRIX_ROOT/tools/safepatch src/aguix/aguix.cc --old 'if ( XSetIMValues( inputmethod, XNDestroyCallback, &destCB, (void*)NULL ) != NULL ) {' --new 'if ( 0 ) {' --no-backup --quiet || true"
+    # Remove _XOPEN_SOURCE that conflicts with IRIX headers
+    - "for f in configure configure.ac; do $MOGRIX_ROOT/tools/safepatch $f --old '-D_XOPEN_SOURCE[^ ]*' --new '' --regex --count 0 --no-backup --quiet || :; done"
+  configure_flags:
+    add:
+      - --disable-inotify
