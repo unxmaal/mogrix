@@ -71,6 +71,14 @@ VALID_PACKAGE_RULE_KEYS = {
     "files_no_lang",
     "patches",
     "notes",
+    # Phase 2 primitives
+    "comment_matching",
+    "remove_matching",
+    "drop_patches",
+    "flip_globals",
+    "disable_features",
+    # Phase 3 primitives
+    "section_replace",
 }
 
 # Valid top-level keys for package rule files

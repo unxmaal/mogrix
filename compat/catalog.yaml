@@ -53,6 +53,27 @@ functions:
     header: string.h
     description: Find byte sequence in memory (GNU extension)
 
+  pthread_setconcurrency:
+    file: runtime/pthread_setconcurrency.c
+    header: none
+    force_link: true
+    description: Pre-allocate IRIX pthread sproc pool via constructor
+    notes: |
+      IRIX pthread library defaults to a sproc pool of 3. Applications creating
+      more threads crash with SIGSEGV when the pool expands dynamically. This
+      constructor calls pthread_setconcurrency(16) before main() to pre-allocate
+      enough execution vehicles. Must be force-linked (not in archive) because
+      nothing references it — it's a __attribute__((constructor)).
+
+  realpath:
+    file: stdlib/realpath.c
+    header: stdlib.h
+    description: POSIX.1-2008 realpath with NULL resolved_path support
+    notes: |
+      IRIX realpath() does not support NULL as second argument. This replacement
+      implements full path resolution and allocates the result via strdup when
+      resolved_path is NULL.
+
   __muloti4:
     file: runtime/muloti4.c
     header: none

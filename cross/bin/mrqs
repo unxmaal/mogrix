@@ -1,0 +1,670 @@
+#!/usr/bin/env python3
+"""mrqs — Mogrix RQS (Library Rebasing Tool)
+
+Assigns unique base addresses to shared libraries in a bundle's _lib32/
+directory and rebases them in-place. This ensures IRIX rld loads each
+library at its preferred address (no displacement), making pre-resolved
+R_MIPS_REL32 relocations in executables correct.
+
+Equivalent to IRIX's native rqs(1) quickstart tool, but for mogrix bundles.
+
+Usage:
+    mrqs <lib_dir>              Rebase all .so files in lib_dir
+    mrqs --dry-run <lib_dir>    Show address assignments without modifying files
+    mrqs --verbose <lib_dir>    Show detailed patching information
+"""
+
+import os
+import stat
+import struct
+import sys
+from pathlib import Path
+
+# Add cross/lib to path for elf_utils
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib'))
+
+from elf_utils import (
+    read_u8, read_u16, read_u32, read_s32,
+    write_u8, write_u16, write_u32,
+    is_mips_n32_elf, find_sections, find_dynstr, find_dynamic_tags,
+    find_dynamic_section, build_load_segments, build_all_program_headers,
+    vaddr_to_foff,
+    DT_MIPS_SYMTABNO,
+)
+
+# --- Address space layout ---
+# IRIX N32 process address space (2GB total: 0x00000000 - 0x80000000)
+#
+# We define allocatable regions that avoid IRIX native libraries and
+# other fixed mappings. Libraries are placed largest-first using
+# first-fit descending (top of each region first) for better packing.
+
+PAGE_SIZE = 0x4000  # IRIX page size (16KB)
+
+# Fixed regions to EXCLUDE (IRIX native libraries and special mappings)
+FIXED_REGIONS = [
+    (0x00000000, 0x01000000, "null page + low memory"),
+    (0x01000000, 0x0C080000, "program text + heap"),
+    (0x0C080000, 0x0C0C0000, "libpthread.so (IRIX native)"),
+    (0x0F900000, 0x0FC40000, "libc.so.1 (IRIX native)"),
+    (0x5FFE0000, 0x60080000, "rld + libgcc_s"),
+    (0x7BFC0000, 0x80000000, "stack (64MB)"),
+]
+
+# Allocatable free regions (gaps between fixed regions)
+# Computed from FIXED_REGIONS above:
+FREE_REGIONS = [
+    (0x0C0C0000, 0x0F900000),  # 47MB between libpthread and libc
+    (0x0FC40000, 0x5FFE0000),  # 1,283MB primary region
+    (0x60080000, 0x7BFC0000),  # 447MB above rld
+]
+
+# Dynamic tags that contain addresses and need delta adjustment
+DT_ADDRESS_TAGS = {
+    0x70000006,  # DT_MIPS_BASE_ADDRESS
+    12,          # DT_INIT
+    13,          # DT_FINI
+    4,           # DT_HASH
+    6,           # DT_SYMTAB
+    5,           # DT_STRTAB
+    17,          # DT_REL
+    23,          # DT_JMPREL
+    3,           # DT_PLTGOT
+    0x70000015,  # DT_MIPS_MSYM
+    0x70000010,  # DT_MIPS_RLD_MAP
+    0x70000029,  # DT_MIPS_OPTIONS
+    0x7000000b,  # DT_MIPS_CONFLICT — address of .conflict table
+    0x7000000c,  # DT_MIPS_LIBLIST  — address of .liblist table
+}
+
+
+def align_up(val, alignment):
+    """Round val up to the next multiple of alignment."""
+    return (val + alignment - 1) & ~(alignment - 1)
+
+
+def align_down(val, alignment):
+    """Round val down to the previous multiple of alignment."""
+    return val & ~(alignment - 1)
+
+
+class FreeSpaceAllocator:
+    """Manages free address space regions for library placement.
+
+    Uses a sorted list of (start, end) tuples representing free regions.
+    Allocation uses first-fit descending (from top of each region) for
+    better packing of large libraries into contiguous space.
+    """
+
+    def __init__(self):
+        # Initialize with the free regions from the address map
+        self.regions = []
+        for start, end in FREE_REGIONS:
+            self.regions.append((start, end))
+        # Sort by start address descending — prefer high addresses first
+        # (matches rqs behavior: allocate from top down)
+        self.regions.sort(key=lambda r: r[0], reverse=True)
+
+    def allocate(self, size):
+        """Allocate a contiguous region of `size` bytes (page-aligned).
+
+        Returns the base address, or None if no region is large enough.
+        Places the library at the TOP of the chosen free region (descending).
+        """
+        size = align_up(size, PAGE_SIZE)
+
+        for i, (start, end) in enumerate(self.regions):
+            avail = end - start
+            if avail >= size:
+                # Place at top of this region
+                alloc_base = align_down(end - size, PAGE_SIZE)
+                if alloc_base < start:
+                    continue
+
+                # Split the region: keep [start, alloc_base) as free
+                del self.regions[i]
+                if alloc_base > start:
+                    self.regions.insert(i, (start, alloc_base))
+
+                return alloc_base
+
+        return None
+
+
+def compute_library_span(data):
+    """Compute total virtual address span of a shared library.
+
+    Returns (base_vaddr, total_size) where base_vaddr is the lowest
+    p_vaddr of any PT_LOAD segment and total_size covers all segments
+    up to the highest p_vaddr + p_memsz, page-aligned.
+    """
+    headers = build_all_program_headers(data)
+    load_headers = [h for h in headers if h['type'] == 1]  # PT_LOAD
+
+    if not load_headers:
+        return None, None
+
+    lo = min(h['vaddr'] for h in load_headers)
+    hi = max(h['vaddr'] + h['memsz'] for h in load_headers)
+
+    base = align_down(lo, PAGE_SIZE)
+    total = align_up(hi - base, PAGE_SIZE)
+
+    return base, total
+
+
+def rebase_library(data, new_base, verbose=False):
+    """Rebase a shared library in-place by moving all segments by a uniform delta.
+
+    Patches: ELF header, program headers, section headers, .dynamic tags,
+    .dynsym st_value, .got entries, .rel.dyn r_offset.
+
+    Args:
+        data: bytearray of the ELF file (modified in-place)
+        new_base: new base virtual address
+        verbose: print detailed patching info
+
+    Returns:
+        delta (signed int) = new_base - old_base, or None on error
+    """
+    old_base, total_size = compute_library_span(data)
+    if old_base is None:
+        return None
+
+    delta = new_base - old_base
+    if delta == 0:
+        return 0
+
+    old_hi = old_base + total_size
+
+    def adjust(val):
+        return (val + delta) & 0xFFFFFFFF
+
+    def in_range(val):
+        """Check if a value falls within the old virtual address range."""
+        return old_base <= val < old_hi
+
+    # --- ELF header ---
+    e_entry = read_u32(data, 24)
+    if e_entry != 0:
+        write_u32(data, 24, adjust(e_entry))
+
+    # --- Program headers ---
+    e_phoff = read_u32(data, 28)
+    e_phentsize = read_u16(data, 42)
+    e_phnum = read_u16(data, 44)
+
+    for i in range(e_phnum):
+        ph_off = e_phoff + i * e_phentsize
+        p_vaddr = read_u32(data, ph_off + 8)
+        p_paddr = read_u32(data, ph_off + 12)
+
+        # Adjust vaddr and paddr for all program header types
+        write_u32(data, ph_off + 8, adjust(p_vaddr))
+        write_u32(data, ph_off + 12, adjust(p_paddr))
+
+    # --- Section headers ---
+    e_shoff = read_u32(data, 32)
+    e_shentsize = read_u16(data, 46)
+    e_shnum = read_u16(data, 48)
+
+    for i in range(e_shnum):
+        sh_off = e_shoff + i * e_shentsize
+        sh_addr = read_u32(data, sh_off + 12)
+        if sh_addr != 0:
+            write_u32(data, sh_off + 12, adjust(sh_addr))
+
+    # Rebuild load segments with NEW addresses for vaddr_to_foff
+    # (file offsets don't change, only vaddrs do — but we need the
+    # mapping from new vaddr to file offset for .got/.rel patching)
+    # Actually, file offsets are unchanged by rebasing. We need the
+    # OLD load segments for vaddr->foff mapping since file layout is fixed.
+    load_segments = build_load_segments_raw(data, e_phoff, e_phentsize, e_phnum, delta)
+
+    # --- .dynamic section ---
+    dyn_offset, dyn_size = find_dynamic_section(data)
+    patched_tags = 0
+    if dyn_offset is not None:
+        off = dyn_offset
+        while off < dyn_offset + dyn_size:
+            tag = read_s32(data, off)
+            val = read_u32(data, off + 4)
+            if tag == 0:
+                break
+            if tag in DT_ADDRESS_TAGS and val != 0:
+                write_u32(data, off + 4, adjust(val))
+                patched_tags += 1
+            off += 8
+
+    # --- .dynsym: adjust st_value for defined symbols ---
+    sections = find_sections_raw(data, e_shoff, e_shentsize, e_shnum)
+    patched_syms = 0
+    if 'dynsym' in sections:
+        dynsym = sections['dynsym']
+        tags = find_dynamic_tags(data)
+        symtabno = tags.get(DT_MIPS_SYMTABNO, dynsym['size'] // 16)
+
+        for idx in range(1, symtabno):
+            sym_off = dynsym['offset'] + idx * 16
+            if sym_off + 16 > len(data):
+                break
+            st_value = read_u32(data, sym_off + 4)
+            st_shndx = read_u16(data, sym_off + 14)
+            # Only adjust defined symbols
+            if st_shndx != 0 and st_shndx < 0xFF00 and st_value != 0:
+                write_u32(data, sym_off + 4, adjust(st_value))
+                patched_syms += 1
+
+    # --- .got: adjust LOCAL entries + global DEFINED entries ---
+    #
+    # MIPS GOT layout:
+    #   [0 .. local_gotno-1]  LOCAL entries: page addresses for local code/data
+    #   [local_gotno .. end]  GLOBAL entries: one per .dynsym[gotsym..symtabno]
+    #
+    # Local entries always point within this library — adjust all by delta.
+    #
+    # Global entries map 1:1 to .dynsym starting at DT_MIPS_GOTSYM:
+    #   GOT[local_gotno + i] ↔ .dynsym[gotsym + i]
+    #
+    # For DEFINED symbols: GOT entry = st_value (old address) — must adjust.
+    # For UND symbols: GOT entry will be resolved by rld — leave as-is.
+    #
+    # Without adjusting global DEFINED entries, rld computes:
+    #   GOT[i] = resolved_addr + (GOT[i] - st_value)
+    # where GOT[i] has old_addr and st_value is new_addr → wrong result.
+    patched_got = 0
+    got_section = find_section_by_name(data, e_shoff, e_shentsize, e_shnum, '.got')
+    if got_section:
+        tags_for_got = find_dynamic_tags(data)
+        local_gotno = tags_for_got.get(0x7000000a, 0)  # DT_MIPS_LOCAL_GOTNO
+        gotsym = tags_for_got.get(0x70000013, 0)        # DT_MIPS_GOTSYM
+        symtabno = tags_for_got.get(DT_MIPS_SYMTABNO, 0)
+        dynsym_off = sections['dynsym']['offset'] if 'dynsym' in sections else None
+
+        got_off = got_section['offset']
+        got_size = got_section['size']
+        total_got_entries = got_size // 4
+
+        # Patch LOCAL entries (indices 0..local_gotno-1)
+        local_count = min(local_gotno, total_got_entries) if local_gotno > 0 else 0
+        for i in range(local_count):
+            entry = read_u32(data, got_off + i * 4)
+            if in_range(entry):
+                write_u32(data, got_off + i * 4, adjust(entry))
+                patched_got += 1
+
+        # Patch GLOBAL entries for DEFINED symbols (indices local_gotno..)
+        if gotsym > 0 and dynsym_off is not None:
+            for sym_i in range(gotsym, symtabno):
+                got_idx = local_gotno + (sym_i - gotsym)
+                if got_idx >= total_got_entries:
+                    break
+                # Check if symbol is DEFINED
+                sym_file_off = dynsym_off + sym_i * 16
+                if sym_file_off + 16 > len(data):
+                    break
+                st_shndx = read_u16(data, sym_file_off + 14)
+                if st_shndx != 0 and st_shndx < 0xFF00:
+                    # Defined symbol — adjust GOT entry
+                    entry = read_u32(data, got_off + got_idx * 4)
+                    if in_range(entry):
+                        write_u32(data, got_off + got_idx * 4, adjust(entry))
+                        patched_got += 1
+
+    # --- .rel.dyn: adjust r_offset AND target data for internal relocs ---
+    #
+    # CRITICAL: When rld loads a library at its preferred address (displacement=0),
+    # relocation result = resolved_addr + (*target - sym_value) = *target.
+    # So *target must already contain the correct (rebased) address. Without
+    # patching the data at r_offset, *target holds old pre-rebase addresses → crash.
+    #
+    # For DEFINED symbol relocs (and anonymous sym_idx=0): the target value is an
+    # internal address — adjust it by delta.
+    # For UND symbol relocs: the target value points to another library — leave it.
+    patched_rel = 0
+    patched_rel_data = 0
+    if 'rel' in sections:
+        rel = sections['rel']
+        dynsym_off = sections['dynsym']['offset'] if 'dynsym' in sections else None
+
+        # Build OLD load segments for vaddr→file offset mapping
+        # (program headers already have new vaddrs, subtract delta to get old)
+        old_load_segs = build_load_segments_raw(data, e_phoff, e_phentsize, e_phnum, delta)
+
+        rel_off = rel['offset']
+        rel_end = rel_off + rel['size']
+        while rel_off < rel_end:
+            r_offset = read_u32(data, rel_off)
+            r_info = read_u32(data, rel_off + 4)
+            sym_idx = r_info >> 8
+
+            if r_offset != 0:
+                # Determine if this reloc references a DEFINED or UND symbol
+                is_internal = False
+                if sym_idx == 0:
+                    # Anonymous reloc — target is an internal address
+                    is_internal = True
+                elif dynsym_off is not None:
+                    sym_off_in_file = dynsym_off + sym_idx * 16
+                    if sym_off_in_file + 16 <= len(data):
+                        st_shndx = read_u16(data, sym_off_in_file + 14)
+                        # Defined if shndx != 0 and < 0xFF00
+                        is_internal = (st_shndx != 0 and st_shndx < 0xFF00)
+
+                # Adjust the data at the target address for internal relocs.
+                #
+                # For DEFINED symbols: UNCONDITIONALLY add delta to *target.
+                # rld formula: result = sym_value + (*target - sym_value)
+                # Since we adjusted sym_value by delta, adding delta to *target
+                # preserves the difference (*target - sym_value), giving the
+                # correct result = new_sym_value + addend.
+                #
+                # For anonymous (sym_idx=0): only adjust if value looks internal
+                # (in_range check). Anonymous relocs have no sym_value reference.
+                if is_internal:
+                    target_foff = vaddr_to_foff(r_offset, old_load_segs)
+                    if target_foff is not None and target_foff + 4 <= len(data):
+                        target_val = read_u32(data, target_foff)
+                        if sym_idx == 0:
+                            # Anonymous: use in_range guard (no sym_value to cancel)
+                            if in_range(target_val):
+                                write_u32(data, target_foff, adjust(target_val))
+                                patched_rel_data += 1
+                        else:
+                            # Defined symbol: unconditional add (rld formula cancels)
+                            new_val = (target_val + delta) & 0xFFFFFFFF
+                            write_u32(data, target_foff, new_val)
+                            patched_rel_data += 1
+
+                # Adjust r_offset itself
+                write_u32(data, rel_off, adjust(r_offset))
+                patched_rel += 1
+            rel_off += 8
+
+    # --- Data segment scan: adjust all remaining internal pointers ---
+    #
+    # With -Bsymbolic, the linker pre-resolves internal function pointers
+    # (e.g., .ctors/.dtors entries, vtable pointers, static initializers)
+    # at link time WITHOUT creating relocation entries. These addresses
+    # are baked into the data segment and not covered by .rel.dyn.
+    #
+    # Scan all writable (PF_W) LOAD segments for 4-byte values in
+    # [old_base, old_hi) and adjust them. Skip the .got section (already
+    # handled above) to avoid double-patching.
+    #
+    # This is the same approach as IRIX native rqs: sweep the data segment.
+    patched_data = 0
+    got_file_start = got_section['offset'] if got_section else -1
+    got_file_end = (got_section['offset'] + got_section['size']) if got_section else -1
+
+    for i in range(e_phnum):
+        ph_off = e_phoff + i * e_phentsize
+        p_type = read_u32(data, ph_off)
+        p_flags = read_u32(data, ph_off + 24)
+        if p_type != 1:  # PT_LOAD only
+            continue
+        if not (p_flags & 2):  # PF_W (writable) only
+            continue
+        p_offset = read_u32(data, ph_off + 4)
+        p_filesz = read_u32(data, ph_off + 16)
+
+        # Scan every 4-byte aligned word in the writable segment
+        seg_end = p_offset + p_filesz
+        off = p_offset
+        while off + 4 <= seg_end:
+            # Skip .got range (already handled)
+            if got_file_start <= off < got_file_end:
+                off += 4
+                continue
+            val = read_u32(data, off)
+            if in_range(val):
+                write_u32(data, off, adjust(val))
+                patched_data += 1
+            off += 4
+
+    if verbose:
+        print(f"    delta=0x{delta & 0xFFFFFFFF:08x} ({delta:+d})")
+        print(f"    patched: {patched_tags} dynamic tags, {patched_syms} symbols, "
+              f"{patched_got} GOT entries, {patched_rel} rel entries, "
+              f"{patched_rel_data} rel target values, {patched_data} data segment words")
+
+    return delta
+
+
+def build_load_segments_raw(data, e_phoff, e_phentsize, e_phnum, delta):
+    """Build load segments using ORIGINAL vaddrs (before program header patching).
+
+    Since program headers were already adjusted, subtract delta to get originals.
+    File offsets are unchanged.
+    """
+    segments = []
+    for i in range(e_phnum):
+        ph_off = e_phoff + i * e_phentsize
+        p_type = read_u32(data, ph_off)
+        if p_type == 1:  # PT_LOAD
+            p_offset = read_u32(data, ph_off + 4)
+            # Current vaddr has delta applied; subtract to get original
+            p_vaddr = read_u32(data, ph_off + 8) - delta
+            p_filesz = read_u32(data, ph_off + 16)
+            segments.append((p_vaddr, p_offset, p_filesz))
+    return segments
+
+
+def find_sections_raw(data, e_shoff, e_shentsize, e_shnum):
+    """Parse sections without re-reading ELF header (avoids stale offsets)."""
+    sections = {}
+    for i in range(e_shnum):
+        sh_off = e_shoff + i * e_shentsize
+        sh_type = read_u32(data, sh_off + 4)
+        sh_offset = read_u32(data, sh_off + 16)
+        sh_size = read_u32(data, sh_off + 20)
+        sh_entsize = read_u32(data, sh_off + 36)
+
+        if sh_type == 11:  # SHT_DYNSYM
+            sections['dynsym'] = {
+                'offset': sh_offset, 'size': sh_size,
+                'entsize': sh_entsize
+            }
+        elif sh_type == 9:  # SHT_REL
+            sections['rel'] = {
+                'offset': sh_offset, 'size': sh_size,
+                'entsize': sh_entsize
+            }
+    return sections
+
+
+def find_section_by_name(data, e_shoff, e_shentsize, e_shnum, target_name):
+    """Find a section by name. Returns dict with offset/size or None."""
+    e_shstrndx = read_u16(data, 50)
+    if e_shstrndx == 0 or e_shstrndx >= e_shnum:
+        return None
+
+    # Get section header string table
+    shstr_off = e_shoff + e_shstrndx * e_shentsize
+    shstr_offset = read_u32(data, shstr_off + 16)
+    shstr_size = read_u32(data, shstr_off + 20)
+
+    for i in range(e_shnum):
+        sh_off = e_shoff + i * e_shentsize
+        sh_name_idx = read_u32(data, sh_off)
+        sh_offset = read_u32(data, sh_off + 16)
+        sh_size = read_u32(data, sh_off + 20)
+
+        if sh_name_idx < shstr_size:
+            try:
+                name_start = shstr_offset + sh_name_idx
+                name_end = data.index(b'\x00', name_start)
+                name = data[name_start:name_end].decode('ascii', errors='replace')
+                if name == target_name:
+                    return {'offset': sh_offset, 'size': sh_size}
+            except (ValueError, IndexError):
+                continue
+
+    return None
+
+
+def scan_libraries(lib_dir):
+    """Scan a directory for shared libraries suitable for rebasing.
+
+    Returns list of (path, base_vaddr, total_size) sorted largest-first.
+    Skips non-ELF files, symlinks, and non-shared-library ELFs.
+    """
+    libs = []
+    lib_path = Path(lib_dir)
+
+    for f in sorted(lib_path.iterdir()):
+        # Skip symlinks — only process real files
+        if f.is_symlink():
+            continue
+        if not f.is_file():
+            continue
+        if '.so' not in f.name:
+            continue
+
+        try:
+            data = f.read_bytes()
+        except OSError:
+            continue
+
+        if not is_mips_n32_elf(data):
+            continue
+
+        # Must be ET_DYN (shared library)
+        e_type = read_u16(data, 16)
+        if e_type != 3:
+            continue
+
+        base, total = compute_library_span(data)
+        if base is None:
+            continue
+
+        libs.append((f, base, total))
+
+    # Sort largest-first for better bin-packing
+    libs.sort(key=lambda x: x[2], reverse=True)
+    return libs
+
+
+def rebase_bundle(lib_dir, dry_run=False, verbose=False):
+    """Rebase all shared libraries in a bundle's library directory.
+
+    Assigns unique non-overlapping base addresses and patches each
+    library in-place.
+
+    Args:
+        lib_dir: Path to the _lib32/ directory
+        dry_run: if True, show assignments without modifying files
+        verbose: if True, show detailed patching info
+
+    Returns:
+        list of (lib_name, old_base, new_base, size) tuples
+    """
+    libs = scan_libraries(lib_dir)
+    if not libs:
+        print("mrqs: no shared libraries found to rebase", file=sys.stderr)
+        return []
+
+    allocator = FreeSpaceAllocator()
+    assignments = []
+    failures = []
+
+    for lib_path, old_base, total_size in libs:
+        new_base = allocator.allocate(total_size)
+        if new_base is None:
+            print(f"mrqs: ERROR: no free space for {lib_path.name} "
+                  f"({total_size:#x} bytes)", file=sys.stderr)
+            failures.append(lib_path.name)
+            continue
+
+        assignments.append((lib_path, old_base, new_base, total_size))
+
+    if failures:
+        print(f"mrqs: FATAL: could not allocate {len(failures)} libraries",
+              file=sys.stderr)
+        sys.exit(1)
+
+    # Print address map
+    print(f"mrqs: rebasing {len(assignments)} libraries in {lib_dir}")
+    for lib_path, old_base, new_base, total_size in assignments:
+        delta = new_base - old_base
+        flag = "" if delta == 0 else f" (delta {delta:+#x})"
+        print(f"  {lib_path.name:40s} {old_base:#010x} -> {new_base:#010x} "
+              f"[{total_size:#x}]{flag}")
+
+    if dry_run:
+        print("mrqs: dry run — no files modified")
+        return [(p.name, ob, nb, s) for p, ob, nb, s in assignments]
+
+    # Verify no overlaps
+    sorted_assigns = sorted(assignments, key=lambda x: x[2])
+    for i in range(len(sorted_assigns) - 1):
+        _, _, base_a, size_a = sorted_assigns[i]
+        _, _, base_b, _ = sorted_assigns[i + 1]
+        if base_a + size_a > base_b:
+            name_a = sorted_assigns[i][0].name
+            name_b = sorted_assigns[i + 1][0].name
+            print(f"mrqs: FATAL: overlap detected: {name_a} "
+                  f"[{base_a:#010x}-{base_a+size_a:#010x}] overlaps "
+                  f"{name_b} [{base_b:#010x}]", file=sys.stderr)
+            sys.exit(1)
+
+    # Rebase each library
+    rebased = 0
+    for lib_path, old_base, new_base, total_size in assignments:
+        if new_base == old_base:
+            if verbose:
+                print(f"  {lib_path.name}: no rebase needed (already at {old_base:#010x})")
+            rebased += 1
+            continue
+
+        data = bytearray(lib_path.read_bytes())
+        delta = rebase_library(data, new_base, verbose=verbose)
+        if delta is None:
+            print(f"mrqs: ERROR: failed to rebase {lib_path.name}", file=sys.stderr)
+            sys.exit(1)
+
+        # Ensure writable
+        lib_path.chmod(lib_path.stat().st_mode | stat.S_IWUSR)
+        lib_path.write_bytes(data)
+        rebased += 1
+
+    print(f"mrqs: rebased {rebased}/{len(assignments)} libraries")
+
+    # Update symlinks — symlinks point to real files which were rebased
+    # in-place, so no symlink updates needed. But verify.
+    lib_path = Path(lib_dir)
+    for f in lib_path.iterdir():
+        if f.is_symlink() and '.so' in f.name:
+            target = f.resolve()
+            if not target.exists():
+                print(f"mrqs: WARNING: dangling symlink {f.name} -> {target}",
+                      file=sys.stderr)
+
+    return [(p.name, ob, nb, s) for p, ob, nb, s in assignments]
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='mrqs — Mogrix RQS (Library Rebasing Tool)',
+        epilog='Assigns unique base addresses to shared libraries for IRIX rld.'
+    )
+    parser.add_argument('lib_dir', help='Directory containing shared libraries (_lib32/)')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Show address assignments without modifying files')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='Show detailed patching information')
+    args = parser.parse_args()
+
+    if not os.path.isdir(args.lib_dir):
+        print(f"mrqs: ERROR: {args.lib_dir} is not a directory", file=sys.stderr)
+        sys.exit(1)
+
+    results = rebase_bundle(args.lib_dir, dry_run=args.dry_run, verbose=args.verbose)
+    if not results:
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

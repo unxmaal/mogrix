@@ -76,7 +76,7 @@ def test_drop_subpackage(spec_with_subpackages):
     result.drop_subpackages = ["debuginfo"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    content = writer.write(result).content
 
     # debuginfo subpackage should be commented out
     assert "#%package debuginfo" in content or "# %package debuginfo" in content
@@ -89,7 +89,7 @@ def test_drop_subpackage_wildcard(spec_with_subpackages):
     result.drop_subpackages = ["langpack-*"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    content = writer.write(result).content
 
     # langpack subpackages should be commented
     assert "#%package langpack-en" in content or "# %package langpack-en" in content
@@ -102,7 +102,7 @@ def test_drop_multiple_subpackages(spec_with_subpackages):
     result.drop_subpackages = ["debuginfo", "langpack-*"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    content = writer.write(result).content
 
     # Both should be commented
     assert "#%package debuginfo" in content or "# %package debuginfo" in content
@@ -117,7 +117,7 @@ def test_keep_subpackage(spec_with_subpackages):
     result.drop_subpackages = ["nonexistent"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    content = writer.write(result).content
 
     # All subpackages should remain
     assert "%package devel" in content

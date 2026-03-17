@@ -12,11 +12,23 @@ class RuleLoader:
     def __init__(self, rules_dir: Path):
         """Initialize with path to rules directory."""
         self.rules_dir = Path(rules_dir)
+        self._features_cache: dict[str, Any] | None = None
 
     def load_generic(self) -> dict[str, Any]:
         """Load generic.yaml rules."""
         path = self.rules_dir / "generic.yaml"
         return self._load_yaml(path)
+
+    def load_features(self) -> dict[str, Any]:
+        """Load features.yaml definitions."""
+        if self._features_cache is not None:
+            return self._features_cache
+        path = self.rules_dir / "features.yaml"
+        if path.exists():
+            self._features_cache = self._load_yaml(path) or {}
+        else:
+            self._features_cache = {}
+        return self._features_cache
 
     def load_class(self, class_name: str) -> dict[str, Any] | None:
         """Load a class rule file."""

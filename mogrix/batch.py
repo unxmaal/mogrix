@@ -180,7 +180,7 @@ class BatchConverter:
                 extra_sources = "\n".join(source_entries)
 
             # Generate converted spec content
-            content = self.writer.write(
+            write_result = self.writer.write(
                 transform,
                 drops=drops,
                 adds=adds,
@@ -202,6 +202,13 @@ class BatchConverter:
                 install_cleanup=transform.install_cleanup or None,
                 spec_replacements=transform.spec_replacements or None,
             )
+            content = write_result.content
+
+            # Track unmatched spec_replacements in result
+            if write_result.unmatched_required:
+                result["unmatched_replacements"] = [
+                    m.pattern for m in write_result.unmatched_required
+                ]
 
             # Write converted spec (overwriting the original)
             converted_spec_path = pkg_output_dir / spec_path.name

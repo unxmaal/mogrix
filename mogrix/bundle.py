@@ -711,6 +711,106 @@ class BundleBuilder:
                 f"  [dim]Stripped RPATH from {stripped_count} libs in _lib32/[/dim]"
             )
 
+    def _rebase_libraries(self, bundle_dir: Path) -> None:
+        """Rebase shared libraries in _lib32/ to unique base addresses.
+
+        Uses mrqs to assign non-overlapping addresses to each library,
+        preventing IRIX rld displacement that breaks pre-resolved relocations.
+        """
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        # Check if there are any .so files to rebase
+        so_files = [f for f in lib_dir.iterdir()
+                    if f.is_file() and not f.is_symlink() and '.so' in f.name]
+        if not so_files:
+            return
+
+        mrqs = Path(__file__).parent.parent / "cross" / "bin" / "mrqs"
+        if not mrqs.exists():
+            console.print("[yellow]WARNING: mrqs not found, skipping library rebasing[/yellow]")
+            return
+
+        result = subprocess.run(
+            ["python3", str(mrqs), str(lib_dir)],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            console.print(f"[red]mrqs failed:[/red]\n{result.stderr}")
+            return
+
+        # Count rebased libraries from output
+        lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        for line in lines:
+            if line.startswith("mrqs: rebased"):
+                console.print(f"  [dim]{line.strip()}[/dim]")
+                break
+        else:
+            if lines:
+                console.print(f"  [dim]{lines[-1].strip()}[/dim]")
+
+    def _pre_resolve_executables(self, bundle_dir: Path) -> None:
+        """Pre-resolve UND symbol relocations in executables using rebased libraries.
+
+        After mrqs rebases _lib32/, the library symbol addresses are final.
+        This runs fix-anon-relocs --pre-resolve-only on each executable to
+        resolve R_MIPS_REL32 entries for UND symbols (e.g. C++ typeinfo).
+        """
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        fix_anon = Path(__file__).parent.parent / "cross" / "bin" / "fix-anon-relocs"
+        if not fix_anon.exists():
+            return
+
+        exe_dirs = []
+        for subdir in ("_bin", "_sbin"):
+            d = bundle_dir / subdir
+            if d.is_dir():
+                exe_dirs.append(d)
+        # Also check libexec/ for executables (WebKitWebProcess etc.)
+        libexec_dir = bundle_dir / "libexec"
+        if libexec_dir.is_dir():
+            exe_dirs.append(libexec_dir)
+
+        resolved_total = 0
+        exe_count = 0
+
+        for d in exe_dirs:
+            for f in (d.rglob("*") if d.name == "libexec" else d.iterdir()):
+                if not f.is_file() or f.is_symlink():
+                    continue
+                if not self._is_elf(f):
+                    continue
+
+                result = subprocess.run(
+                    [
+                        "python3", str(fix_anon),
+                        "--pre-resolve-only",
+                        "--lib-path", str(lib_dir),
+                        str(f), str(f),
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    # Check if any relocations were resolved
+                    for line in result.stdout.split('\n'):
+                        if "Pre-resolved" in line and "0 R_MIPS_REL32" not in line:
+                            resolved_total += 1
+                            break
+                    exe_count += 1
+
+        if resolved_total > 0:
+            console.print(
+                f"  [dim]Pre-resolved UND relocations in {resolved_total}/{exe_count} "
+                f"executables[/dim]"
+            )
+
     # Common terminal types to keep in trimmed terminfo.
     # Covers: SGI IRIX terminals, xterm variants, VT series, screen/tmux,
     # Linux console, and common remote terminals.
@@ -1215,6 +1315,23 @@ class BundleBuilder:
 
         # Strip build-time RPATHs that break IRIX rld library search.
         self._strip_rpaths(bundle_dir)
+
+        # Rebase shared libraries to unique non-overlapping base addresses.
+        # Set MOGRIX_NO_MRQS=1 to skip rebasing (debugging).
+        # IRIX rld loads libraries at their preferred address if possible.
+        # Without rebasing, all mogrix-built libs share 0x0f800000 and rld
+        # displaces all but one — breaking pre-resolved R_MIPS_REL32 relocs.
+        # mrqs assigns unique addresses and patches each library in-place.
+        if not os.environ.get("MOGRIX_NO_MRQS"):
+            self._rebase_libraries(bundle_dir)
+
+            # Pre-resolve UND symbol R_MIPS_REL32 relocations in executables.
+            # After mrqs rebases libraries, their symbol addresses are final.
+            # fix-anon-relocs --pre-resolve-only reads the rebased .dynsym
+            # tables and writes correct runtime addresses into the executable,
+            # zeroing the relocation entries so rld doesn't try to process them.
+            # This fixes C++ dynamic_cast crashes (typeinfo vtable pointers).
+            self._pre_resolve_executables(bundle_dir)
 
         # Strip runtime-unnecessary data directories
         for strip_dir in ("doc", "man", "info", "licenses"):

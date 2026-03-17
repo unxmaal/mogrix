@@ -142,18 +142,23 @@ if [ "$is_shared" = "1" ]; then
           $CRTEND
         rc=$?
     else
+    # All shared libraries use the same default base address (0x0f800000).
+    # mrqs rebases them to unique non-overlapping addresses at bundle time.
+    # This is more reliable than link-time hash-based assignment because:
+    #   1. No hash collisions — mrqs uses a proper allocator
+    #   2. Addresses are consistent within each bundle
+    #   3. Pre-resolve (fix-anon-relocs --pre-resolve-only) uses correct addresses
+    IMAGE_BASE="0x0f800000"
+
     # -m elf32btsmipn32_irix: Activate IRIX target defaults in LLD
     #   (2-segment layout, no RELRO, writable .eh_frame, no version sections, etc.)
-    # --image-base=0x0f800000: Avoid 0x5ffe0000 (libgcc_s preferred base).
-    #   Collision with libgcc_s causes rld to displace it, corrupting the
-    #   DWARF unwinder → SIGSEGV on any C++ throw in shared libraries.
     # -Bsymbolic: Keep global GOT under rld's ~4370 entry limit.
     #   Binds ALL defined symbols locally (functions AND data objects).
     #   Safe on IRIX: rld doesn't do copy relocations.
     # --allow-shlib-undefined: IRIX libc TLS refs can't resolve at link time.
     $LLD \
       -m elf32btsmipn32_irix \
-      --image-base=0x0f800000 \
+      --image-base=$IMAGE_BASE \
       -Bsymbolic \
       --allow-shlib-undefined \
       $CRTBEGIN \
@@ -203,11 +208,22 @@ else
     # versions use word-aligned reads that overread past buffer end → SIGSEGV.
     SAFEMEM=$STAGING/lib32/safe_mem.o
 
+    # Find output file name for post-link fix-anon-relocs
+    output_file=""
+    next_is_output=0
+    for a in $filtered_args; do
+        if [ "$next_is_output" = "1" ]; then
+            output_file="$a"
+            next_is_output=0
+        fi
+        case "$a" in -o) next_is_output=1 ;; esac
+    done
+
     # -m elf32btsmipn32_irix: Activate IRIX target defaults in LLD.
     # --export-dynamic-symbol=__rld_obj_head: IRIX rld symbol from crt1.o.
     # LLD doesn't export COMMON symbols to .dynsym by default.
     # libC.so.2 and libGLcore.so reference it.
-    exec $LLD \
+    $LLD \
       -m elf32btsmipn32_irix \
       --allow-shlib-undefined \
       --export-dynamic-symbol=__rld_obj_head \
@@ -226,4 +242,22 @@ else
       -lc \
       $CRTEND \
       $CRTN
+    rc=$?
+
+    # Fix anonymous R_MIPS_REL32 relocations for IRIX rld compatibility.
+    # IRIX rld does NOT apply R_MIPS_REL32 relocations in executables for
+    # typeinfo/RTTI pointers. LLD emits these with sym_idx=0 (anonymous).
+    # rld's fix_all_defineds() skips index 0 entirely, leaving C++ typeinfo
+    # vtable pointers un-relocated → SIGSEGV on first dynamic_cast.
+    # The same fix-anon-relocs tool used for shared libraries works here:
+    # repoints anonymous relocs to a defined symbol so rld processes them.
+    # See: docs/rld/rld_key_functions.c, docs/rld/rld_reloc_callers.c
+    FIX_ANON_RELOCS="${FIX_ANON_RELOCS:-$(dirname "$0")/fix-anon-relocs}"
+    if [ "$rc" = "0" ] && [ -n "$output_file" ] && [ -f "$output_file" ]; then
+        if ! python3 "$FIX_ANON_RELOCS" "$output_file" "$output_file" >/dev/null 2>&1; then
+            echo "irix-ld: WARNING: fix-anon-relocs failed for $output_file" >&2
+        fi
+    fi
+
+    exit $rc
 fi

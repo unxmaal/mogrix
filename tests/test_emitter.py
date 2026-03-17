@@ -2,7 +2,7 @@
 
 import pytest
 
-from mogrix.emitter.spec import SpecWriter
+from mogrix.emitter.spec import SpecWriter, WriteResult
 from mogrix.parser.spec import SpecFile
 from mogrix.rules.engine import TransformResult
 
@@ -40,16 +40,27 @@ make install DESTDIR=%{buildroot}
     )
 
 
+def test_write_returns_write_result(basic_spec):
+    """Test that write() returns WriteResult with .content."""
+    result = TransformResult(spec=basic_spec)
+    writer = SpecWriter()
+    wr = writer.write(result)
+
+    assert isinstance(wr, WriteResult)
+    assert isinstance(wr.content, str)
+    assert "Name: testpkg" in wr.content
+
+
 def test_configure_disable(basic_spec):
     """Test adding --disable flags to %configure."""
     result = TransformResult(spec=basic_spec)
     result.configure_disable = ["selinux", "systemd"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    wr = writer.write(result)
 
-    assert "--disable-selinux" in content
-    assert "--disable-systemd" in content
+    assert "--disable-selinux" in wr.content
+    assert "--disable-systemd" in wr.content
 
 
 def test_configure_flags_add(basic_spec):
@@ -58,10 +69,10 @@ def test_configure_flags_add(basic_spec):
     result.configure_flags_add = ["--without-dbus", "--disable-nls"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    wr = writer.write(result)
 
-    assert "--without-dbus" in content
-    assert "--disable-nls" in content
+    assert "--without-dbus" in wr.content
+    assert "--disable-nls" in wr.content
 
 
 def test_configure_flags_remove(basic_spec):
@@ -70,9 +81,9 @@ def test_configure_flags_remove(basic_spec):
     result.configure_flags_remove = ["--with-ssl"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    wr = writer.write(result)
 
-    assert "--with-ssl" not in content
+    assert "--with-ssl" not in wr.content
 
 
 def test_configure_flags_combined(basic_spec):
@@ -83,11 +94,11 @@ def test_configure_flags_combined(basic_spec):
     result.configure_disable = ["nls"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    wr = writer.write(result)
 
-    assert "--without-dbus" in content
-    assert "--with-ssl" not in content
-    assert "--disable-nls" in content
+    assert "--without-dbus" in wr.content
+    assert "--with-ssl" not in wr.content
+    assert "--disable-nls" in wr.content
 
 
 def test_drop_buildrequires(basic_spec):
@@ -95,10 +106,10 @@ def test_drop_buildrequires(basic_spec):
     result = TransformResult(spec=basic_spec)
 
     writer = SpecWriter()
-    content = writer.write(result, drops=["make"])
+    wr = writer.write(result, drops=["make"])
 
-    assert "BuildRequires: make" not in content
-    assert "BuildRequires: gcc" in content
+    assert "BuildRequires: make" not in wr.content
+    assert "BuildRequires: gcc" in wr.content
 
 
 def test_add_buildrequires(basic_spec):
@@ -106,9 +117,9 @@ def test_add_buildrequires(basic_spec):
     result = TransformResult(spec=basic_spec)
 
     writer = SpecWriter()
-    content = writer.write(result, adds=["zlib-devel"])
+    wr = writer.write(result, adds=["zlib-devel"])
 
-    assert "BuildRequires: zlib-devel" in content
+    assert "BuildRequires: zlib-devel" in wr.content
 
 
 def test_ac_cv_overrides(basic_spec):
@@ -116,9 +127,9 @@ def test_ac_cv_overrides(basic_spec):
     result = TransformResult(spec=basic_spec)
 
     writer = SpecWriter()
-    content = writer.write(
+    wr = writer.write(
         result, ac_cv_overrides={"ac_cv_func_malloc_0_nonnull": "yes"}
     )
 
-    assert 'export ac_cv_func_malloc_0_nonnull="yes"' in content
-    assert "Autoconf cache overrides" in content
+    assert 'export ac_cv_func_malloc_0_nonnull="yes"' in wr.content
+    assert "Autoconf cache overrides" in wr.content

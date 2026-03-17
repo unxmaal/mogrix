@@ -190,6 +190,30 @@ def _check_drop_subpackages(rules: dict, spec_content: str, report: Postconditio
             report.error("drop_subpackages", f"subpackage '{sub_name}' still has %package section")
 
 
+def _check_flip_globals(rules: dict, spec_content: str, report: PostconditionReport) -> None:
+    """Verify flip_globals targets exist in the spec."""
+    for name in rules.get("flip_globals", []):
+        pattern = re.compile(rf"^%global\s+{re.escape(name)}\s+[01]\s*$", re.MULTILINE)
+        if not pattern.search(spec_content):
+            report.warning("flip_globals", f"%%global {name} not found in converted spec")
+
+
+def _check_drop_patches(rules: dict, spec_content: str, report: PostconditionReport) -> None:
+    """Verify drop_patches actually removed patches."""
+    config = rules.get("drop_patches")
+    if not config:
+        return
+
+    if config == "all":
+        # No uncommented %patch lines should remain
+        for line in spec_content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if re.match(r"^%patch\s+-P\s*\d+", stripped) or re.match(r"^%patch\d+\b", stripped):
+                report.error("drop_patches", f"Patch application still active: {stripped[:60]}")
+
+
 def check_postconditions(
     package: str,
     rules: dict,
@@ -215,5 +239,7 @@ def check_postconditions(
         _check_configure_flags(rules, spec_content, report)
         _check_bcond_flip(rules, spec_content, report)
         _check_drop_subpackages(rules, spec_content, report)
+        _check_flip_globals(rules, spec_content, report)
+        _check_drop_patches(rules, spec_content, report)
 
     return report
