@@ -11,7 +11,67 @@ build_after:
 
 rules:
   # IRIX X11R6.3 compat — same fixes as rxvt-unicode
+  add_source:
+    # Thread-safe MagicDB singleton — original has unguarded getInstance()
+    # which races between main thread and filetype worker thread, creating
+    # two magic_t cookies and crashing when the leaked one is used.
+    - magic_db_threadsafe.cc
+    # IRIX/MIPS weak-memory fix: eliminate std::mutex layer from MutEx/CondVar.
+    # On IRIX 6.5 (weakly-ordered MIPS) there is no fence between releasing
+    # m_owner_data_mutex and pthread_cond_wait in CondVar::wait().  A libpthread
+    # timer signal (signal 48) arriving in that gap sees stale _owner/_owncount,
+    # triggers the reentrant fast-path incorrectly, and causes SIGSEGV.
+    # Fix: _owner/_owncount are now guarded exclusively by _mutex itself.
+    - mutex.h
+    - mutex.cc
+    - condvar.cc
+    # IRIX pthread default stack is 256KB (vs Linux 2-8MB).  Worker's filetype
+    # thread overflows during libmagic/C++ call chain + signal-48 delivery.
+    # Fix: explicit 8MB stack via pthread_attr_setstacksize.
+    # Also wraps Thread::thread_run() in try/catch as safety net for DWARF
+    # unwinder crashes (uw_update_context_1 NULL deref on unsaved CFA reg).
+    - thread.cc
+    # IRIX DWARF unwinder crash fix: bookmarkdb.cc — eliminate all throw/catch(int)
+    # from bookmark parsing.  Uses goto-based error flow instead of exceptions.
+    # match() returns -1 on error instead of throw 1.
+    - bookmarkdb.cc
+    # IRIX DWARF unwinder fix: convert dynamic_cast<Ref&> to pointer casts.
+    # Reference casts throw std::bad_cast on failure, which crashes the DWARF
+    # unwinder on IRIX libpthread frames.  Pointer casts return NULL instead.
+    - searchthread.cc
+    - nwc_virtualdir.cc
+    - searchopbg.cc
+    # IRIX DWARF unwinder fix: eliminate throw/catch(int) from key-value store.
+    # Return default values instead of throwing on missing keys.
+    - kvpstore.cc
+    # IRIX DWARF unwinder fix: eliminate throw from filter check, expression
+    # evaluator, copy operation handler, and bookmark UI.
+    - dirfiltersettings.cc
+    - exprfilter_eval.cc
+    - copyopwin.cc
+    - dirbookmarkui.cc
   prep_commands:
+    # Fix MagicDB singleton data race (replace original with thread-safe version)
+    - "cp %{_sourcedir}/magic_db_threadsafe.cc src/magic_db.cc"
+    # IRIX/MIPS weak-memory fix: replace dual-lock MutEx/CondVar with single-lock version
+    - "cp %{_sourcedir}/mutex.h src/aguix/mutex.h"
+    - "cp %{_sourcedir}/mutex.cc src/aguix/mutex.cc"
+    - "cp %{_sourcedir}/condvar.cc src/aguix/condvar.cc"
+    # IRIX pthread stack fix: 8MB instead of 256KB default + try/catch safety net
+    - "cp %{_sourcedir}/thread.cc src/aguix/thread.cc"
+    # IRIX DWARF unwinder crash fix: eliminate all throw/catch from bookmarkdb
+    - "cp %{_sourcedir}/bookmarkdb.cc src/bookmarkdb.cc"
+    # IRIX DWARF unwinder fix: dynamic_cast ref→ptr conversions
+    - "cp %{_sourcedir}/searchthread.cc src/searchthread.cc"
+    - "cp %{_sourcedir}/nwc_virtualdir.cc src/nwc_virtualdir.cc"
+    - "cp %{_sourcedir}/searchopbg.cc src/searchopbg.cc"
+    # IRIX DWARF unwinder fix: eliminate throw from kvpstore, dirfiltersettings,
+    # exprfilter_eval, copyopwin, dirbookmarkui
+    - "cp %{_sourcedir}/kvpstore.cc src/kvpstore.cc"
+    - "cp %{_sourcedir}/dirfiltersettings.cc src/dirfiltersettings.cc"
+    - "cp %{_sourcedir}/exprfilter_eval.cc src/exprfilter_eval.cc"
+    - "cp %{_sourcedir}/copyopwin.cc src/copyopwin.cc"
+    - "cp %{_sourcedir}/dirbookmarkui.cc src/dirbookmarkui.cc"
     # XICCallback doesn't exist in IRIX X11R6.3 — use XIMCallback
     - "for f in $(find src -name '*.cc' -o -name '*.h' -o -name '*.h.in'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'XICCallback' --new 'XIMCallback' --count 0 --no-backup --quiet || :; done"
     # Xutf8TextListToTextProperty not in IRIX X11 — use XmbTextListToTextProperty
