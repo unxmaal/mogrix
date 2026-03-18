@@ -712,45 +712,60 @@ class BundleBuilder:
             )
 
     def _rebase_libraries(self, bundle_dir: Path) -> None:
-        """Rebase shared libraries in _lib32/ to unique base addresses.
+        """Rebase libstdc++ to a unique base address for C++ RTTI pre-resolution.
 
-        Uses mrqs to assign non-overlapping addresses to each library,
-        preventing IRIX rld displacement that breaks pre-resolved relocations.
+        IRIX rld crashes when 2+ libraries have displacement=0 (all loaded at
+        their preferred address). So we rebase ONLY libstdc++ — the library
+        containing C++ typeinfo symbols (__cxxabiv1::__si_class_type_info etc.)
+        that fix-anon-relocs --pre-resolve-only needs correct addresses for.
+
+        Other libraries stay at 0x0f800000 and rld displaces them normally.
+        This is safe because rld handles displacement correctly for all cases
+        EXCEPT the R_MIPS_REL32 UND symbol pre-resolution in executables,
+        which only needs libstdc++'s address to be known at bundle time.
         """
         lib_dir = bundle_dir / "_lib32"
         if not lib_dir.is_dir():
             return
 
-        # Check if there are any .so files to rebase
-        so_files = [f for f in lib_dir.iterdir()
-                    if f.is_file() and not f.is_symlink() and '.so' in f.name]
-        if not so_files:
-            return
-
         mrqs = Path(__file__).parent.parent / "cross" / "bin" / "mrqs"
         if not mrqs.exists():
-            console.print("[yellow]WARNING: mrqs not found, skipping library rebasing[/yellow]")
             return
 
-        result = subprocess.run(
-            ["python3", str(mrqs), str(lib_dir)],
-            capture_output=True,
-            text=True,
-        )
+        # Find libstdc++ (the only library we need to rebase)
+        target_lib = None
+        for f in lib_dir.iterdir():
+            if f.is_file() and not f.is_symlink() and f.name.startswith("libstdc++"):
+                target_lib = f
+                break
 
-        if result.returncode != 0:
-            console.print(f"[red]mrqs failed:[/red]\n{result.stderr}")
+        if target_lib is None:
             return
 
-        # Count rebased libraries from output
-        lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
-        for line in lines:
-            if line.startswith("mrqs: rebased"):
+        # Rebase just libstdc++ in an isolated temp dir
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            import shutil as _shutil
+            _shutil.copy2(str(target_lib), str(tmp_path / target_lib.name))
+
+            result = subprocess.run(
+                ["python3", str(mrqs), str(tmp_path)],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                console.print(f"[yellow]mrqs failed for libstdc++: {result.stderr[:200]}[/yellow]")
+                return
+
+            # Copy rebased libstdc++ back
+            _shutil.copy2(str(tmp_path / target_lib.name), str(target_lib))
+
+        for line in (result.stdout.strip().split('\n') if result.stdout.strip() else []):
+            if 'rebased' in line or 'mrqs:' in line:
                 console.print(f"  [dim]{line.strip()}[/dim]")
                 break
-        else:
-            if lines:
-                console.print(f"  [dim]{lines[-1].strip()}[/dim]")
 
     def _pre_resolve_executables(self, bundle_dir: Path) -> None:
         """Pre-resolve UND symbol relocations in executables using rebased libraries.

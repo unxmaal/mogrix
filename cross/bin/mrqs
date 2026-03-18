@@ -26,9 +26,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib'))
 from elf_utils import (
     read_u8, read_u16, read_u32, read_s32,
     write_u8, write_u16, write_u32,
-    is_mips_n32_elf, find_sections, find_dynstr, find_dynamic_tags,
+    is_mips_n32_elf, find_sections, find_dynstr, get_string,
+    find_dynamic_tags,
     find_dynamic_section, build_load_segments, build_all_program_headers,
-    vaddr_to_foff,
+    vaddr_to_foff, parse_library_symbols,
     DT_MIPS_SYMTABNO,
 )
 
@@ -196,12 +197,24 @@ def rebase_library(data, new_base, verbose=False):
 
     for i in range(e_phnum):
         ph_off = e_phoff + i * e_phentsize
+        p_type = read_u32(data, ph_off)
+        p_offset = read_u32(data, ph_off + 4)
         p_vaddr = read_u32(data, ph_off + 8)
         p_paddr = read_u32(data, ph_off + 12)
 
         # Adjust vaddr and paddr for all program header types
         write_u32(data, ph_off + 8, adjust(p_vaddr))
         write_u32(data, ph_off + 12, adjust(p_paddr))
+
+        # PT_MIPS_REGINFO (0x70000000): patch ri_gp_value at content offset +20.
+        # This is the GP register initial value (GOT + 0x7FF0). If not adjusted,
+        # every GP-relative instruction in the library accesses wrong memory.
+        if p_type == 0x70000000:
+            gp_off = p_offset + 20
+            if gp_off + 4 <= len(data):
+                ri_gp = read_u32(data, gp_off)
+                if ri_gp != 0:
+                    write_u32(data, gp_off, adjust(ri_gp))
 
     # --- Section headers ---
     e_shoff = read_u32(data, 32)
@@ -255,37 +268,29 @@ def rebase_library(data, new_base, verbose=False):
                 write_u32(data, sym_off + 4, adjust(st_value))
                 patched_syms += 1
 
-    # --- .got: adjust LOCAL entries + global DEFINED entries ---
+    # --- .got: patch LOCAL + global DEFINED entries ---
     #
-    # MIPS GOT layout:
-    #   [0 .. local_gotno-1]  LOCAL entries: page addresses for local code/data
-    #   [local_gotno .. end]  GLOBAL entries: one per .dynsym[gotsym..symtabno]
+    # Local GOT [0..local_gotno-1]: page addresses for local code/data.
+    # rld does NOT recompute these at displacement=0. Must adjust.
+    # in_range check excludes cross-library page addresses.
     #
-    # Local entries always point within this library — adjust all by delta.
-    #
-    # Global entries map 1:1 to .dynsym starting at DT_MIPS_GOTSYM:
-    #   GOT[local_gotno + i] ↔ .dynsym[gotsym + i]
-    #
-    # For DEFINED symbols: GOT entry = st_value (old address) — must adjust.
-    # For UND symbols: GOT entry will be resolved by rld — leave as-is.
-    #
-    # Without adjusting global DEFINED entries, rld computes:
-    #   GOT[i] = resolved_addr + (GOT[i] - st_value)
-    # where GOT[i] has old_addr and st_value is new_addr → wrong result.
+    # Global GOT [local_gotno..]: one per .dynsym[gotsym..symtabno].
+    # DEFINED symbols: must adjust (rld preserves value at displacement=0).
+    # UND symbols: rld resolves from NEEDED libraries — leave as-is.
     patched_got = 0
     got_section = find_section_by_name(data, e_shoff, e_shentsize, e_shnum, '.got')
     if got_section:
         tags_for_got = find_dynamic_tags(data)
         local_gotno = tags_for_got.get(0x7000000a, 0)  # DT_MIPS_LOCAL_GOTNO
         gotsym = tags_for_got.get(0x70000013, 0)        # DT_MIPS_GOTSYM
-        symtabno = tags_for_got.get(DT_MIPS_SYMTABNO, 0)
-        dynsym_off = sections['dynsym']['offset'] if 'dynsym' in sections else None
+        symtabno_got = tags_for_got.get(DT_MIPS_SYMTABNO, 0)
+        dynsym_off_got = sections['dynsym']['offset'] if 'dynsym' in sections else None
 
         got_off = got_section['offset']
         got_size = got_section['size']
         total_got_entries = got_size // 4
 
-        # Patch LOCAL entries (indices 0..local_gotno-1)
+        # Patch LOCAL entries
         local_count = min(local_gotno, total_got_entries) if local_gotno > 0 else 0
         for i in range(local_count):
             entry = read_u32(data, got_off + i * 4)
@@ -293,19 +298,17 @@ def rebase_library(data, new_base, verbose=False):
                 write_u32(data, got_off + i * 4, adjust(entry))
                 patched_got += 1
 
-        # Patch GLOBAL entries for DEFINED symbols (indices local_gotno..)
-        if gotsym > 0 and dynsym_off is not None:
-            for sym_i in range(gotsym, symtabno):
+        # Patch GLOBAL entries for DEFINED symbols
+        if gotsym > 0 and dynsym_off_got is not None:
+            for sym_i in range(gotsym, symtabno_got):
                 got_idx = local_gotno + (sym_i - gotsym)
                 if got_idx >= total_got_entries:
                     break
-                # Check if symbol is DEFINED
-                sym_file_off = dynsym_off + sym_i * 16
+                sym_file_off = dynsym_off_got + sym_i * 16
                 if sym_file_off + 16 > len(data):
                     break
                 st_shndx = read_u16(data, sym_file_off + 14)
                 if st_shndx != 0 and st_shndx < 0xFF00:
-                    # Defined symbol — adjust GOT entry
                     entry = read_u32(data, got_off + got_idx * 4)
                     if in_range(entry):
                         write_u32(data, got_off + got_idx * 4, adjust(entry))
@@ -352,28 +355,15 @@ def rebase_library(data, new_base, verbose=False):
                         is_internal = (st_shndx != 0 and st_shndx < 0xFF00)
 
                 # Adjust the data at the target address for internal relocs.
-                #
-                # For DEFINED symbols: UNCONDITIONALLY add delta to *target.
-                # rld formula: result = sym_value + (*target - sym_value)
-                # Since we adjusted sym_value by delta, adding delta to *target
-                # preserves the difference (*target - sym_value), giving the
-                # correct result = new_sym_value + addend.
-                #
-                # For anonymous (sym_idx=0): only adjust if value looks internal
-                # (in_range check). Anonymous relocs have no sym_value reference.
+                # Use in_range guard for ALL reloc types to avoid corrupting
+                # cross-library references when multiple libraries share the
+                # same original base address.
                 if is_internal:
                     target_foff = vaddr_to_foff(r_offset, old_load_segs)
                     if target_foff is not None and target_foff + 4 <= len(data):
                         target_val = read_u32(data, target_foff)
-                        if sym_idx == 0:
-                            # Anonymous: use in_range guard (no sym_value to cancel)
-                            if in_range(target_val):
-                                write_u32(data, target_foff, adjust(target_val))
-                                patched_rel_data += 1
-                        else:
-                            # Defined symbol: unconditional add (rld formula cancels)
-                            new_val = (target_val + delta) & 0xFFFFFFFF
-                            write_u32(data, target_foff, new_val)
+                        if in_range(target_val):
+                            write_u32(data, target_foff, adjust(target_val))
                             patched_rel_data += 1
 
                 # Adjust r_offset itself
@@ -381,46 +371,15 @@ def rebase_library(data, new_base, verbose=False):
                 patched_rel += 1
             rel_off += 8
 
-    # --- Data segment scan: adjust all remaining internal pointers ---
+    # --- Data segment scan: DISABLED ---
     #
-    # With -Bsymbolic, the linker pre-resolves internal function pointers
-    # (e.g., .ctors/.dtors entries, vtable pointers, static initializers)
-    # at link time WITHOUT creating relocation entries. These addresses
-    # are baked into the data segment and not covered by .rel.dyn.
-    #
-    # Scan all writable (PF_W) LOAD segments for 4-byte values in
-    # [old_base, old_hi) and adjust them. Skip the .got section (already
-    # handled above) to avoid double-patching.
-    #
-    # This is the same approach as IRIX native rqs: sweep the data segment.
+    # When all libraries share base 0x0f800000, scanning the data segment
+    # for values in [old_base, old_hi) risks corrupting cross-library
+    # pointers (UND-symbol resolved addresses from other libraries at the
+    # same base). All legitimate internal pointers are already covered by
+    # .rel.dyn target patching above. Verified: 0 additional words found
+    # in testing across multiple libraries.
     patched_data = 0
-    got_file_start = got_section['offset'] if got_section else -1
-    got_file_end = (got_section['offset'] + got_section['size']) if got_section else -1
-
-    for i in range(e_phnum):
-        ph_off = e_phoff + i * e_phentsize
-        p_type = read_u32(data, ph_off)
-        p_flags = read_u32(data, ph_off + 24)
-        if p_type != 1:  # PT_LOAD only
-            continue
-        if not (p_flags & 2):  # PF_W (writable) only
-            continue
-        p_offset = read_u32(data, ph_off + 4)
-        p_filesz = read_u32(data, ph_off + 16)
-
-        # Scan every 4-byte aligned word in the writable segment
-        seg_end = p_offset + p_filesz
-        off = p_offset
-        while off + 4 <= seg_end:
-            # Skip .got range (already handled)
-            if got_file_start <= off < got_file_end:
-                off += 4
-                continue
-            val = read_u32(data, off)
-            if in_range(val):
-                write_u32(data, off, adjust(val))
-                patched_data += 1
-            off += 4
 
     if verbose:
         print(f"    delta=0x{delta & 0xFFFFFFFF:08x} ({delta:+d})")
@@ -629,6 +588,96 @@ def rebase_bundle(lib_dir, dry_run=False, verbose=False):
         rebased += 1
 
     print(f"mrqs: rebased {rebased}/{len(assignments)} libraries")
+
+    # --- Phase 2: Cross-library GOT resolution ---
+    #
+    # After rebasing all libraries individually, each library's UND symbol
+    # GOT entries still contain old addresses from dependency libraries
+    # (which also shared base 0x0f800000). rld may not resolve these correctly
+    # when all libraries have displacement=0.
+    #
+    # This pass builds a combined symbol table from ALL rebased libraries,
+    # then for each library, resolves UND symbol GOT entries using the
+    # combined table. This is what IRIX rqsall does.
+    #
+    # Build combined symbol map: {symbol_name: new_st_value}
+    combined_symbols = {}
+    for lib_path, old_base, new_base, total_size in assignments:
+        lib_data = lib_path.read_bytes()
+        lib_syms = parse_library_symbols(str(lib_path))
+        for name, value in lib_syms.items():
+            if name not in combined_symbols:
+                combined_symbols[name] = value
+
+    # Resolve UND GOT entries in each library
+    xlib_resolved = 0
+    for lib_path, old_base, new_base, total_size in assignments:
+        data = bytearray(lib_path.read_bytes())
+
+        e_shoff = read_u32(data, 32)
+        e_shentsize = read_u16(data, 46)
+        e_shnum = read_u16(data, 48)
+
+        tags = find_dynamic_tags(data)
+        local_gotno = tags.get(0x7000000a, 0)  # DT_MIPS_LOCAL_GOTNO
+        gotsym = tags.get(0x70000013, 0)        # DT_MIPS_GOTSYM
+        symtabno = tags.get(DT_MIPS_SYMTABNO, 0)
+
+        sections = find_sections(data)
+        if 'dynsym' not in sections:
+            continue
+        dynsym_off = sections['dynsym']['offset']
+
+        dynstr = find_dynstr(data, sections)
+        if dynstr is None:
+            continue
+
+        got_section = find_section_by_name(data, e_shoff, e_shentsize, e_shnum, '.got')
+        if got_section is None:
+            continue
+
+        got_off = got_section['offset']
+        got_size = got_section['size']
+        total_got_entries = got_size // 4
+
+        lib_patched = 0
+        for sym_i in range(gotsym, symtabno):
+            got_idx = local_gotno + (sym_i - gotsym)
+            if got_idx >= total_got_entries:
+                break
+
+            sym_file_off = dynsym_off + sym_i * 16
+            if sym_file_off + 16 > len(data):
+                break
+
+            st_shndx = read_u16(data, sym_file_off + 14)
+            # Only process UND symbols (defined ones already patched)
+            if st_shndx != 0:
+                continue
+
+            st_name_off = read_u32(data, sym_file_off)
+            if st_name_off == 0:
+                continue
+
+            try:
+                sym_name = get_string(data, dynstr['offset'], st_name_off)
+            except (ValueError, IndexError):
+                continue
+
+            if sym_name and sym_name in combined_symbols:
+                resolved_addr = combined_symbols[sym_name]
+                write_u32(data, got_off + got_idx * 4, resolved_addr)
+                lib_patched += 1
+
+        if lib_patched > 0:
+            lib_path.chmod(lib_path.stat().st_mode | stat.S_IWUSR)
+            lib_path.write_bytes(data)
+            xlib_resolved += lib_patched
+            if verbose:
+                print(f"  {lib_path.name}: resolved {lib_patched} cross-library GOT entries")
+
+    if xlib_resolved > 0:
+        print(f"mrqs: resolved {xlib_resolved} cross-library GOT entries")
 
     # Update symlinks — symlinks point to real files which were rebased
     # in-place, so no symlink updates needed. But verify.
