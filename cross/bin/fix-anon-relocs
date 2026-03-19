@@ -23,104 +23,183 @@ This tool uses a TWO-SYMBOL approach to handle both issues:
 4. Both symbols processed by fix_all_defineds (STV_PROTECTED triggers it).
 
 Result: ALL entries processed, no sacrifice needed.
+
+Modes:
+  Default:  Phase 0 (STV_PROTECTED) + Phase 1/2 (repoint anonymous relocs).
+            Run at link time by irix-ld.
+  --pre-resolve-only:  Phase 0b only (pre-resolve UND symbol relocs using
+            rebased library symbol tables from --lib-path). Run at bundle
+            time after mrqs rebases libraries.
 """
 
+import os
 import struct
 import sys
 import shutil
 from pathlib import Path
 
-def read_u8(data, off): return struct.unpack_from('>B', data, off)[0]
-def read_u16(data, off): return struct.unpack_from('>H', data, off)[0]
-def read_u32(data, off): return struct.unpack_from('>I', data, off)[0]
-def read_s32(data, off): return struct.unpack_from('>i', data, off)[0]
-def write_u8(data, off, val): struct.pack_into('>B', data, off, val)
-def write_u16(data, off, val): struct.pack_into('>H', data, off, val)
-def write_u32(data, off, val): struct.pack_into('>I', data, off, val)
+# Import shared ELF utilities from cross/lib/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib'))
 
-# ELF constants
-SHT_REL = 9
-SHT_DYNSYM = 11
-SHT_MIPS_MSYM = 0x70000001
-DT_MIPS_GOTSYM = 0x70000013
-DT_MIPS_SYMTABNO = 0x70000011
-DT_MIPS_LOCAL_GOTNO = 0x7000000a
-DT_REL = 17
-DT_RELSZ = 18
-DT_RELENT = 19
-DT_MIPS_MSYM = 0x70000015
+from elf_utils import (
+    read_u8, read_u16, read_u32, read_s32,
+    write_u8, write_u16, write_u32,
+    is_mips_n32_elf, find_sections, find_dynstr, get_string,
+    find_dynamic_tags, build_load_segments, vaddr_to_foff,
+    get_needed_libraries, get_rpath, find_library_file,
+    parse_library_symbols, build_library_symbol_map,
+    R_MIPS_REL32, STB_LOCAL, STV_PROTECTED,
+    DT_MIPS_GOTSYM, DT_MIPS_SYMTABNO,
+)
 
-R_MIPS_REL32 = 3
-STB_LOCAL = 0
-STT_NOTYPE = 0
-SHN_ABS = 0xFFF1
-STV_PROTECTED = 3
+# Default library search paths for cross-compiled IRIX n32 binaries.
+# Overridable via IRIX_LIB_PATH environment variable (colon-separated).
+DEFAULT_LIB_PATHS = [
+    '/opt/sgug-staging/usr/sgug/lib32',
+]
 
-def find_sections(data):
-    """Parse ELF headers and find relevant sections."""
-    e_shoff = read_u32(data, 32)
-    e_shentsize = read_u16(data, 46)
-    e_shnum = read_u16(data, 48)
 
-    sections = {}
-    for i in range(e_shnum):
-        sh_off = e_shoff + i * e_shentsize
-        sh_type = read_u32(data, sh_off + 4)
-        sh_offset = read_u32(data, sh_off + 16)
-        sh_size = read_u32(data, sh_off + 20)
-        sh_info = read_u32(data, sh_off + 28)
-        sh_entsize = read_u32(data, sh_off + 36)
+def pre_resolve_rel32(data, sections, tags, load_segments, lib_paths=None):
+    """Pre-resolve R_MIPS_REL32 relocations for UND (undefined) symbols.
 
-        if sh_type == SHT_DYNSYM:
-            sections['dynsym'] = {
-                'offset': sh_offset, 'size': sh_size,
-                'entsize': sh_entsize, 'info': sh_info,
-                'shdr_off': sh_off
-            }
-        elif sh_type == SHT_REL:
-            sections['rel'] = {
-                'offset': sh_offset, 'size': sh_size,
-                'entsize': sh_entsize
-            }
-        elif sh_type == SHT_MIPS_MSYM:
-            sections['msym'] = {
-                'offset': sh_offset, 'size': sh_size,
-                'entsize': sh_entsize
-            }
+    For each R_MIPS_REL32 entry referencing an UND symbol:
+    1. Look up the symbol name from .dynstr
+    2. Find the symbol's runtime address from NEEDED shared libraries
+    3. Apply the relocation: *target = addend + symbol_runtime_addr
+    4. Zero out the relocation entry (so rld doesn't try to process it)
 
-    return sections
+    This is necessary because IRIX rld does not process R_MIPS_REL32
+    relocations for UND symbols in executables. With mrqs rebasing,
+    the library addresses from --lib-path are the actual runtime addresses.
 
-def find_dynamic_tags(data):
-    """Find .dynamic section and extract key tags."""
-    e_phoff = read_u32(data, 28)
-    e_phentsize = read_u16(data, 42)
-    e_phnum = read_u16(data, 44)
+    Returns count of resolved relocations.
+    """
+    dynsym = sections['dynsym']
+    rel = sections['rel']
+    dynstr = find_dynstr(data, sections)
 
-    dyn_offset = None
-    dyn_size = None
+    if dynstr is None:
+        print("  Phase 0b: Cannot find .dynstr — skipping pre-resolve", file=sys.stderr)
+        return 0
 
-    for i in range(e_phnum):
-        ph_off = e_phoff + i * e_phentsize
-        p_type = read_u32(data, ph_off)
-        if p_type == 2:  # PT_DYNAMIC
-            dyn_offset = read_u32(data, ph_off + 4)
-            dyn_size = read_u32(data, ph_off + 16)
-            break
+    rel_off = rel['offset']
+    rel_end = rel_off + rel['size']
 
-    if dyn_offset is None:
-        return {}
+    # First pass: collect all UND symbols referenced by R_MIPS_REL32
+    und_sym_indices = set()
+    while rel_off < rel_end:
+        r_info = read_u32(data, rel_off + 4)
+        sym_idx = r_info >> 8
+        rtype = r_info & 0xFF
+        if rtype == R_MIPS_REL32 and sym_idx > 0:
+            sym_off = dynsym['offset'] + sym_idx * 16
+            st_shndx = read_u16(data, sym_off + 14)
+            if st_shndx == 0:  # SHN_UNDEF
+                und_sym_indices.add(sym_idx)
+        rel_off += 8
 
-    tags = {}
-    off = dyn_offset
-    while off < dyn_offset + dyn_size:
-        tag = read_s32(data, off)
-        val = read_u32(data, off + 4)
-        if tag == 0:
-            break
-        tags[tag] = val
-        off += 8
+    if not und_sym_indices:
+        return 0
 
-    return tags
+    # Map UND symbol indices to their names
+    und_sym_names = {}
+    for idx in und_sym_indices:
+        sym_off = dynsym['offset'] + idx * 16
+        st_name_off = read_u32(data, sym_off)
+        if st_name_off:
+            try:
+                name = get_string(data, dynstr['offset'], st_name_off)
+                und_sym_names[idx] = name
+            except (ValueError, IndexError):
+                und_sym_names[idx] = None
+        else:
+            und_sym_names[idx] = None
+
+    print(f"  Phase 0b: Pre-resolving R_MIPS_REL32 for {len(und_sym_indices)} UND symbols")
+    for idx in sorted(und_sym_indices):
+        name = und_sym_names.get(idx, '<unknown>')
+        print(f"    UND sym[{idx}]: {name}")
+
+    # Build symbol map from NEEDED libraries
+    symbol_map, lib_stats = build_library_symbol_map(
+        data, sections, tags, extra_lib_paths=lib_paths
+    )
+
+    for lib_name, lib_path in lib_stats['libs_found']:
+        print(f"    Loaded: {lib_name} ({lib_path})")
+    for lib_name in lib_stats['libs_missing']:
+        print(f"    WARNING: Library not found: {lib_name}")
+    print(f"    Symbol map: {lib_stats['total_symbols']} symbols from "
+          f"{len(lib_stats['libs_found'])} libraries")
+
+    # Resolve: map each UND sym_idx to its runtime address from the library
+    resolved_addrs = {}  # sym_idx -> runtime_addr
+    unresolved = []
+    for idx in sorted(und_sym_indices):
+        name = und_sym_names.get(idx)
+        if name and name in symbol_map:
+            resolved_addrs[idx] = symbol_map[name]
+            print(f"    Resolved: {name} -> 0x{symbol_map[name]:08x}")
+        else:
+            unresolved.append((idx, name))
+
+    if unresolved:
+        for idx, name in unresolved:
+            print(f"    WARNING: Cannot resolve UND sym[{idx}] '{name}' — "
+                  f"not found in any NEEDED library")
+
+    if not resolved_addrs:
+        print(f"  Phase 0b: No UND symbols could be resolved — skipping")
+        return 0
+
+    # Second pass: apply relocations and zero out entries
+    resolved_count = 0
+    skipped_count = 0
+    oob_count = 0
+
+    rel_off = rel['offset']
+    while rel_off < rel_end:
+        r_offset = read_u32(data, rel_off)
+        r_info = read_u32(data, rel_off + 4)
+        sym_idx = r_info >> 8
+        rtype = r_info & 0xFF
+
+        if rtype == R_MIPS_REL32 and sym_idx in resolved_addrs:
+            runtime_addr = resolved_addrs[sym_idx]
+            target_file_off = vaddr_to_foff(r_offset, load_segments)
+
+            if target_file_off is not None:
+                # Read current value (the addend)
+                addend = read_u32(data, target_file_off)
+                # Apply relocation: *target = addend + symbol_runtime_addr
+                new_val = (addend + runtime_addr) & 0xFFFFFFFF
+                write_u32(data, target_file_off, new_val)
+                # Zero out the relocation entry so rld ignores it
+                write_u32(data, rel_off, 0)
+                write_u32(data, rel_off + 4, 0)
+                resolved_count += 1
+            else:
+                # Target address not in any LOAD segment — zero out
+                write_u32(data, rel_off, 0)
+                write_u32(data, rel_off + 4, 0)
+                oob_count += 1
+        elif rtype == R_MIPS_REL32 and sym_idx > 0:
+            # Named reloc for UND symbol we couldn't resolve — leave it
+            sym_off = dynsym['offset'] + sym_idx * 16
+            st_shndx = read_u16(data, sym_off + 14)
+            if st_shndx == 0 and sym_idx not in resolved_addrs:
+                skipped_count += 1
+
+        rel_off += 8
+
+    print(f"  Phase 0b: Pre-resolved {resolved_count} R_MIPS_REL32 relocations")
+    if skipped_count:
+        print(f"  Phase 0b: Skipped {skipped_count} unresolvable UND relocations")
+    if oob_count:
+        print(f"  Phase 0b: Zeroed {oob_count} out-of-bounds UND relocations")
+
+    return resolved_count
+
 
 def find_target_dynsym_indices(data, sections):
     """Find TWO defined .dynsym entries for the two-symbol approach.
@@ -154,8 +233,28 @@ def find_target_dynsym_indices(data, sections):
 
     return (targets[0], targets[1])
 
-def fix_library(input_path, output_path=None):
-    """Apply the anonymous R_MIPS_REL32 fix to a shared library."""
+
+def fix_library(input_path, output_path=None, lib_paths=None, pre_resolve_only=False):
+    """Apply the anonymous R_MIPS_REL32 fix to an ELF binary.
+
+    Works for both shared libraries and executables.
+
+    Modes:
+      pre_resolve_only=False (default, link-time):
+        Phase 0: STV_PROTECTED on defined symbols with R_MIPS_REL32 relocs
+        Phase 1: Pre-add st_value to named R_MIPS_REL32 targets
+        Phase 2: Repoint anonymous R_MIPS_REL32 to defined symbols
+
+      pre_resolve_only=True (bundle-time, after mrqs):
+        Phase 0b: Pre-resolve UND symbol R_MIPS_REL32 using rebased library
+                  symbol tables from lib_paths
+
+    Args:
+        input_path: Path to input ELF binary
+        output_path: Path for output (defaults to input_path + '.fixed')
+        lib_paths: Additional library search paths for pre-resolve
+        pre_resolve_only: If True, only run Phase 0b pre-resolution
+    """
 
     if output_path is None:
         output_path = str(input_path) + '.fixed'
@@ -172,6 +271,26 @@ def fix_library(input_path, output_path=None):
     rel = sections['rel']
     gotsym = tags.get(DT_MIPS_GOTSYM, 0)
     symtabno = tags.get(DT_MIPS_SYMTABNO, 0)
+
+    load_segments = build_load_segments(data)
+
+    # --- Pre-resolve-only mode (bundle-time, after mrqs) ---
+    if pre_resolve_only:
+        print(f"Library: {input_path}")
+        print(f"  .dynsym: {symtabno} entries, GOTSYM={gotsym}")
+        resolved = pre_resolve_rel32(data, sections, tags, load_segments,
+                                      lib_paths=lib_paths)
+        if resolved > 0:
+            Path(output_path).write_bytes(data)
+            print(f"  Output written to: {output_path}")
+        else:
+            # Still copy even if nothing resolved (may need the file at output_path)
+            if str(input_path) != str(output_path):
+                shutil.copy2(input_path, output_path)
+            print(f"  No UND relocations to pre-resolve")
+        return
+
+    # --- Full mode (link-time) ---
 
     # Count anonymous R_MIPS_REL32
     anon_count = 0
@@ -195,9 +314,45 @@ def fix_library(input_path, output_path=None):
     print(f"  .rel.dyn: {total_relocs} entries total")
     print(f"  R_MIPS_REL32: {anon_count} anonymous, {named_count} named")
 
-    if anon_count == 0:
-        print("  No anonymous R_MIPS_REL32 found - nothing to fix")
+    if anon_count == 0 and named_count == 0:
+        print("  No R_MIPS_REL32 found - nothing to fix")
         shutil.copy2(input_path, output_path)
+        return
+
+    # Phase 0: Ensure DEFINED symbols referenced by R_MIPS_REL32 have
+    # st_other = STV_PROTECTED. IRIX rld's fix_all_defineds() only
+    # calls resolve_relocations() for symbols where:
+    #   (st_other != 0 && st_other != 4) || binding == STB_LOCAL
+    # LLD emits GLOBAL symbols with st_other=0 (STV_DEFAULT), which
+    # causes rld to skip them entirely — leaving typeinfo pointers
+    # un-relocated and crashing any dynamic_cast.
+    #
+    # UND symbols are NOT marked here — they are handled at bundle time
+    # by Phase 0b (--pre-resolve-only) after mrqs rebases libraries.
+    protected_count = 0
+    rel_off = rel['offset']
+    seen_syms = set()
+    while rel_off < rel_end:
+        r_info = read_u32(data, rel_off + 4)
+        sym_idx = r_info >> 8
+        rtype = r_info & 0xFF
+        if rtype == R_MIPS_REL32 and sym_idx > 0 and sym_idx not in seen_syms:
+            seen_syms.add(sym_idx)
+            sym_off = dynsym['offset'] + sym_idx * 16
+            st_other = read_u8(data, sym_off + 13)
+            st_shndx = read_u16(data, sym_off + 14)
+            if st_other == 0 and st_shndx != 0 and st_shndx < 0xFF00:
+                # Defined symbol: use STV_PROTECTED (3).
+                write_u8(data, sym_off + 13, STV_PROTECTED)
+                protected_count += 1
+        rel_off += 8
+    if protected_count > 0:
+        print(f"  Phase 0: Set STV_PROTECTED on {protected_count} defined symbols "
+              f"with R_MIPS_REL32 relocs")
+
+    if anon_count == 0 and named_count > 0:
+        print("  No anonymous R_MIPS_REL32 - skipping repoint/sort (named relocs already fixed)")
+        Path(output_path).write_bytes(data)
         return
 
     # Find two defined symbols for the two-symbol approach
@@ -227,25 +382,11 @@ def fix_library(input_path, output_path=None):
               f"st_other={st_other} st_shndx=0x{st_shndx:04x}")
 
     # Build LOAD segment table for proper vaddr->file offset conversion.
-    e_phoff = read_u32(data, 28)
-    e_phentsize = read_u16(data, 42)
-    e_phnum = read_u16(data, 44)
-    load_segments = []
-    for i in range(e_phnum):
-        ph_off = e_phoff + i * e_phentsize
-        p_type = read_u32(data, ph_off)
-        if p_type == 1:  # PT_LOAD
-            p_offset = read_u32(data, ph_off + 4)
-            p_vaddr = read_u32(data, ph_off + 8)
-            p_filesz = read_u32(data, ph_off + 16)
-            load_segments.append((p_vaddr, p_offset, p_filesz))
-            print(f"\n  LOAD segment: vaddr=0x{p_vaddr:08x} offset=0x{p_offset:x} filesz=0x{p_filesz:x}")
+    for seg_vaddr, seg_offset, seg_filesz in load_segments:
+        print(f"\n  LOAD segment: vaddr=0x{seg_vaddr:08x} offset=0x{seg_offset:x} filesz=0x{seg_filesz:x}")
 
-    def vaddr_to_foff(va):
-        for seg_vaddr, seg_offset, seg_filesz in load_segments:
-            if seg_vaddr <= va < seg_vaddr + seg_filesz:
-                return seg_offset + (va - seg_vaddr)
-        return None
+    def vaddr_to_foff_local(va):
+        return vaddr_to_foff(va, load_segments)
 
     # Phase 1: Pre-add st_value to named R_MIPS_REL32 targets.
     #
@@ -284,7 +425,7 @@ def fix_library(input_path, output_path=None):
             # Only adjust defined symbols (non-UND, non-ABS) with non-zero st_value
             if st_shndx != 0 and st_shndx < 0xFF00 and st_value != 0:
                 r_offset = read_u32(data, rel_off)
-                target_file_off = vaddr_to_foff(r_offset)
+                target_file_off = vaddr_to_foff_local(r_offset)
                 if target_file_off is not None:
                     target_val = read_u32(data, target_file_off)
                     # Skip if *target is already an absolute address in the library's VA range.
@@ -312,7 +453,7 @@ def fix_library(input_path, output_path=None):
         sym_idx = r_info >> 8
         rtype = r_info & 0xFF
         if rtype == R_MIPS_REL32 and sym_idx == 0:
-            target_file_off = vaddr_to_foff(r_offset)
+            target_file_off = vaddr_to_foff_local(r_offset)
             if target_file_off is not None:
                 target_val = read_u32(data, target_file_off)
                 if target_val == 0:
@@ -358,7 +499,7 @@ def fix_library(input_path, output_path=None):
                 break
 
         if first_bulk is not None:
-            # Reassign this entry to solo_idx (lower sym_idx → sorts to [0])
+            # Reassign this entry to solo_idx (lower sym_idx -> sorts to [0])
             old_r_off, old_r_inf = relocs[first_bulk]
             new_r_inf = (solo_idx << 8) | (old_r_inf & 0xFF)
             relocs[first_bulk] = (old_r_off, new_r_inf)
@@ -423,14 +564,53 @@ def fix_library(input_path, output_path=None):
     print(f"\n  Output written to: {output_path}")
     print(f"  Size: {len(data)} bytes")
 
+
 def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <input.so> [output.so]")
+    # Parse arguments: support both legacy positional and new flag-based usage
+    pre_resolve_only = False
+    lib_paths = None
+    positional = []
+
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == '--pre-resolve-only':
+            pre_resolve_only = True
+        elif arg == '--lib-path':
+            i += 1
+            if i < len(sys.argv):
+                lib_paths = sys.argv[i].split(':') if sys.argv[i] else None
+            else:
+                print(f"ERROR: --lib-path requires an argument", file=sys.stderr)
+                sys.exit(1)
+        elif arg.startswith('--lib-path='):
+            val = arg[len('--lib-path='):]
+            lib_paths = val.split(':') if val else None
+        elif arg == '--help' or arg == '-h':
+            print(f"Usage: {sys.argv[0]} [options] <input.so> [output.so]")
+            print(f"")
+            print(f"Options:")
+            print(f"  --pre-resolve-only  Only run Phase 0b (UND symbol pre-resolution)")
+            print(f"  --lib-path PATH     Colon-separated library search paths")
+            print(f"")
+            print(f"Environment variables:")
+            print(f"  IRIX_LIB_PATH  Colon-separated library search paths for pre-resolve")
+            print(f"                 (default: /opt/sgug-staging/usr/sgug/lib32)")
+            sys.exit(0)
+        else:
+            positional.append(arg)
+        i += 1
+
+    if len(positional) < 1:
+        print(f"Usage: {sys.argv[0]} [--pre-resolve-only] [--lib-path PATH] <input.so> [output.so]")
         sys.exit(1)
 
-    input_path = sys.argv[1]
-    output_path = sys.argv[2] if len(sys.argv) > 2 else None
-    fix_library(input_path, output_path)
+    input_path = positional[0]
+    output_path = positional[1] if len(positional) > 1 else None
+
+    fix_library(input_path, output_path, lib_paths=lib_paths,
+                pre_resolve_only=pre_resolve_only)
+
 
 if __name__ == '__main__':
     main()

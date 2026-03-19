@@ -25,7 +25,7 @@ BuildRequires: zlib
     )
     writer = SpecWriter()
 
-    output = writer.write(result, drops=["systemd"])
+    output = writer.write(result, drops=["systemd"]).content
 
     assert "BuildRequires: gcc" in output
     assert "BuildRequires: zlib" in output
@@ -53,7 +53,7 @@ Test package.
     )
     writer = SpecWriter()
 
-    output = writer.write(result, adds=["sgug-rpm-config"])
+    output = writer.write(result, adds=["sgug-rpm-config"]).content
 
     assert "BuildRequires: sgug-rpm-config" in output
 
@@ -78,7 +78,7 @@ make
     )
     writer = SpecWriter()
 
-    output = writer.write(result)
+    output = writer.write(result).content
 
     assert "--disable-selinux" in output
     assert "--disable-systemd" in output
@@ -103,7 +103,7 @@ install -d %{buildroot}/usr/lib64
     )
     writer = SpecWriter()
 
-    output = writer.write(result)
+    output = writer.write(result).content
 
     assert "/usr/sgug/lib32" in output
     assert "/usr/lib64" not in output
@@ -129,7 +129,7 @@ make
     )
     writer = SpecWriter()
 
-    output = writer.write(result, cppflags="-I/usr/sgug/include/mogrix-compat/generic")
+    output = writer.write(result, cppflags="-I/usr/sgug/include/mogrix-compat/generic").content
 
     assert "CPPFLAGS" in output
     assert "-I/usr/sgug/include/mogrix-compat/generic" in output
@@ -171,7 +171,7 @@ make
         compat_sources=compat_sources,
         compat_prep=compat_prep,
         compat_build=compat_build,
-    )
+    ).content
 
     assert "Source100: strdup.c" in output
     assert "mogrix-compat" in output
@@ -205,7 +205,7 @@ make
     output = writer.write(
         result,
         compat_prep=compat_prep,
-    )
+    ).content
 
     # Prep commands should appear after %autosetup
     assert "mogrix-compat" in output

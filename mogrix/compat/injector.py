@@ -177,6 +177,11 @@ class CompatInjector:
         Creates a static archive to avoid glob expansion issues with libtool.
         The archive is linked via -L and -l flags which work reliably.
 
+        Files with force_link: true in the catalog are compiled but NOT put
+        in the archive. Instead they're linked directly via LDFLAGS as .o
+        files, ensuring constructors and other unreferenced symbols are
+        always included.
+
         Returns:
             String with commands for %build section
         """
@@ -184,15 +189,48 @@ class CompatInjector:
         if not files:
             return ""
 
+        # Identify force-link files from catalog
+        functions = self.catalog.get("functions", {})
+        force_link_files: set[str] = set()
+        for func in function_names:
+            entry = functions.get(func, {})
+            if entry.get("force_link"):
+                source = entry.get("file", "")
+                if source:
+                    # Just the basename for matching in mogrix-compat/
+                    force_link_files.add(source.rsplit("/", 1)[-1])
+
         lines = [
             "# Compile mogrix compat sources into static archive",
             "COMPAT_DIR=$(pwd)/mogrix-compat",
             "for f in mogrix-compat/*.c; do",
             '  %{__cc} %{optflags} -c "$f" -o "${f%.c}.o"',
             "done",
+        ]
+
+        if force_link_files:
+            # Move force-link .o files out before archiving
+            force_basenames = " ".join(
+                f.replace(".c", ".o") for f in sorted(force_link_files)
+            )
+            lines.extend([
+                f"# Force-link objects (constructors, unreferenced symbols)",
+                f'FORCE_LINK=""',
+                f'for obj in {force_basenames}; do',
+                f'  if [ -f "$COMPAT_DIR/$obj" ]; then',
+                f'    mv "$COMPAT_DIR/$obj" "$COMPAT_DIR/_force_$obj"',
+                f'    FORCE_LINK="$FORCE_LINK $COMPAT_DIR/_force_$obj"',
+                f'  fi',
+                f'done',
+            ])
+
+        lines.extend([
             '%{__ar} rcs "$COMPAT_DIR/libmogrix-compat.a" "$COMPAT_DIR"/*.o',
             'export LIBS="-L$COMPAT_DIR -lmogrix-compat $LIBS"',
-        ]
+        ])
+
+        if force_link_files:
+            lines.append('export LDFLAGS="$FORCE_LINK $LDFLAGS"')
 
         return "\n".join(lines)
 

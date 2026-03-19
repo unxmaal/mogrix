@@ -53,6 +53,27 @@ functions:
     header: string.h
     description: Find byte sequence in memory (GNU extension)
 
+  pthread_setconcurrency:
+    file: runtime/pthread_setconcurrency.c
+    header: none
+    force_link: true
+    description: Pre-allocate IRIX pthread sproc pool via constructor
+    notes: |
+      IRIX pthread library defaults to a sproc pool of 3. Applications creating
+      more threads crash with SIGSEGV when the pool expands dynamically. This
+      constructor calls pthread_setconcurrency(16) before main() to pre-allocate
+      enough execution vehicles. Must be force-linked (not in archive) because
+      nothing references it — it's a __attribute__((constructor)).
+
+  realpath:
+    file: stdlib/realpath.c
+    header: stdlib.h
+    description: POSIX.1-2008 realpath with NULL resolved_path support
+    notes: |
+      IRIX realpath() does not support NULL as second argument. This replacement
+      implements full path resolution and allocates the result via strdup when
+      resolved_path is NULL.
+
   __muloti4:
     file: runtime/muloti4.c
     header: none
@@ -447,51 +468,109 @@ functions:
     file: dicl/openat-compat.c
     header: sys/stat.h
     description: Get file status relative to directory fd
+    provides:
+      - fstatat
+      - stpcpy
+      - stpncpy
 
   faccessat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Check permissions relative to directory fd
+    provides:
+      - faccessat
+      - stpcpy
+      - stpncpy
 
   mkdirat:
     file: dicl/openat-compat.c
     header: sys/stat.h
     description: Create directory relative to directory fd
+    provides:
+      - mkdirat
+      - stpcpy
+      - stpncpy
 
   unlinkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Remove file/directory relative to directory fd
+    provides:
+      - unlinkat
+      - stpcpy
+      - stpncpy
 
   renameat:
     file: dicl/openat-compat.c
     header: stdio.h
     description: Rename file relative to directory fds
+    provides:
+      - renameat
+      - stpcpy
+      - stpncpy
 
   readlinkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Read symbolic link relative to directory fd
+    provides:
+      - readlinkat
+      - stpcpy
+      - stpncpy
 
   symlinkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Create symbolic link relative to directory fd
+    provides:
+      - symlinkat
+      - stpcpy
+      - stpncpy
 
   linkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Create hard link relative to directory fds
+    provides:
+      - linkat
+      - stpcpy
+      - stpncpy
 
   fchmodat:
     file: dicl/openat-compat.c
     header: sys/stat.h
     description: Change file mode relative to directory fd
+    provides:
+      - fchmodat
+      - stpcpy
+      - stpncpy
 
   fchownat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Change file owner relative to directory fd
+    provides:
+      - fchownat
+      - stpcpy
+      - stpncpy
+
+  utimensat:
+    file: dicl/openat-compat.c
+    header: sys/stat.h
+    description: Change file timestamps relative to directory fd
+    provides:
+      - utimensat
+      - stpcpy
+      - stpncpy
+
+  futimens:
+    file: dicl/openat-compat.c
+    header: sys/stat.h
+    description: Change file timestamps (POSIX.1-2008)
+    provides:
+      - futimens
+      - stpcpy
+      - stpncpy
 
 # Common function sets for package classes
 sets:

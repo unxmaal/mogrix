@@ -49,13 +49,18 @@ STAGING_LIB_DIR = Path("/opt/sgug-staging/usr/sgug/lib32")
 # Libraries that must NEVER be bundled — they exist on native IRIX and apps
 # must use the native versions.  IRIX X11 libs use IRIX-specific transport/auth;
 # the X server only works with its own libs.
-# Matched by soname prefix: "libX11.so" matches libX11.so.6, libX11.so.1, etc.
+#
+# Matched by EXACT soname — IRIX native libs are .so.1 or unversioned .so.
+# Our sgug-built versions (.so.6) are NOT excluded and WILL be bundled.
+# This lets apps like rxvt-unicode bundle our libX11.so.6 while decker
+# (which dlopens IRIX native X11) correctly skips them.
 #
 # Only libs that actually exist on IRIX 6.5 are listed here.  Libs that DON'T
 # exist natively (libXft, libXrender, libxcb, libXau, libXcursor, libXrandr,
 # libXcomposite, libXdamage, libXfixes, libXinerama) MUST be bundled.
-NEVER_BUNDLE_PREFIXES = {
-    "libX11.so",
+IRIX_NATIVE_SONAMES = {
+    # IRIX native X11 — exact sonames from /opt/irix-sysroot/usr/lib32/
+    "libX11.so.1",
     "libXext.so",
     "libXi.so",
     "libXpm.so",
@@ -589,7 +594,7 @@ class BundleBuilder:
             if ".so" not in f.name:
                 continue
             # Always remove never-bundle libs (even if in needed set)
-            if any(f.name.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+            if f.name in IRIX_NATIVE_SONAMES:
                 f.unlink()
                 removed.append(f.name)
                 continue
@@ -704,6 +709,121 @@ class BundleBuilder:
         if stripped_count:
             console.print(
                 f"  [dim]Stripped RPATH from {stripped_count} libs in _lib32/[/dim]"
+            )
+
+    def _rebase_libraries(self, bundle_dir: Path) -> None:
+        """Rebase libstdc++ to a unique base address for C++ RTTI pre-resolution.
+
+        IRIX rld crashes when 2+ libraries have displacement=0 (all loaded at
+        their preferred address). So we rebase ONLY libstdc++ — the library
+        containing C++ typeinfo symbols (__cxxabiv1::__si_class_type_info etc.)
+        that fix-anon-relocs --pre-resolve-only needs correct addresses for.
+
+        Other libraries stay at 0x0f800000 and rld displaces them normally.
+        This is safe because rld handles displacement correctly for all cases
+        EXCEPT the R_MIPS_REL32 UND symbol pre-resolution in executables,
+        which only needs libstdc++'s address to be known at bundle time.
+        """
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        mrqs = Path(__file__).parent.parent / "cross" / "bin" / "mrqs"
+        if not mrqs.exists():
+            return
+
+        # Find libstdc++ (the only library we need to rebase)
+        target_lib = None
+        for f in lib_dir.iterdir():
+            if f.is_file() and not f.is_symlink() and f.name.startswith("libstdc++"):
+                target_lib = f
+                break
+
+        if target_lib is None:
+            return
+
+        # Rebase just libstdc++ in an isolated temp dir
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            import shutil as _shutil
+            _shutil.copy2(str(target_lib), str(tmp_path / target_lib.name))
+
+            result = subprocess.run(
+                ["python3", str(mrqs), str(tmp_path)],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                console.print(f"[yellow]mrqs failed for libstdc++: {result.stderr[:200]}[/yellow]")
+                return
+
+            # Copy rebased libstdc++ back
+            _shutil.copy2(str(tmp_path / target_lib.name), str(target_lib))
+
+        for line in (result.stdout.strip().split('\n') if result.stdout.strip() else []):
+            if 'rebased' in line or 'mrqs:' in line:
+                console.print(f"  [dim]{line.strip()}[/dim]")
+                break
+
+    def _pre_resolve_executables(self, bundle_dir: Path) -> None:
+        """Pre-resolve UND symbol relocations in executables using rebased libraries.
+
+        After mrqs rebases _lib32/, the library symbol addresses are final.
+        This runs fix-anon-relocs --pre-resolve-only on each executable to
+        resolve R_MIPS_REL32 entries for UND symbols (e.g. C++ typeinfo).
+        """
+        lib_dir = bundle_dir / "_lib32"
+        if not lib_dir.is_dir():
+            return
+
+        fix_anon = Path(__file__).parent.parent / "cross" / "bin" / "fix-anon-relocs"
+        if not fix_anon.exists():
+            return
+
+        exe_dirs = []
+        for subdir in ("_bin", "_sbin"):
+            d = bundle_dir / subdir
+            if d.is_dir():
+                exe_dirs.append(d)
+        # Also check libexec/ for executables (WebKitWebProcess etc.)
+        libexec_dir = bundle_dir / "libexec"
+        if libexec_dir.is_dir():
+            exe_dirs.append(libexec_dir)
+
+        resolved_total = 0
+        exe_count = 0
+
+        for d in exe_dirs:
+            for f in (d.rglob("*") if d.name == "libexec" else d.iterdir()):
+                if not f.is_file() or f.is_symlink():
+                    continue
+                if not self._is_elf(f):
+                    continue
+
+                result = subprocess.run(
+                    [
+                        "python3", str(fix_anon),
+                        "--pre-resolve-only",
+                        "--lib-path", str(lib_dir),
+                        str(f), str(f),
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    # Check if any relocations were resolved
+                    for line in result.stdout.split('\n'):
+                        if "Pre-resolved" in line and "0 R_MIPS_REL32" not in line:
+                            resolved_total += 1
+                            break
+                    exe_count += 1
+
+        if resolved_total > 0:
+            console.print(
+                f"  [dim]Pre-resolved UND relocations in {resolved_total}/{exe_count} "
+                f"executables[/dim]"
             )
 
     # Common terminal types to keep in trimmed terminfo.
@@ -1004,7 +1124,7 @@ class BundleBuilder:
                     # Never bundle native IRIX system libs (X11, etc.).
                     # These must come from /usr/lib32 — our cross-compiled
                     # versions can't talk to the IRIX X server.
-                    if any(soname.startswith(p) for p in NEVER_BUNDLE_PREFIXES):
+                    if soname in IRIX_NATIVE_SONAMES:
                         manifest.irix_sonames.add(soname)
                         continue
                     # Mogrix-built RPMs take priority over IRIX sysroot.
@@ -1210,6 +1330,23 @@ class BundleBuilder:
 
         # Strip build-time RPATHs that break IRIX rld library search.
         self._strip_rpaths(bundle_dir)
+
+        # Rebase shared libraries to unique non-overlapping base addresses.
+        # Set MOGRIX_NO_MRQS=1 to skip rebasing (debugging).
+        # IRIX rld loads libraries at their preferred address if possible.
+        # Without rebasing, all mogrix-built libs share 0x0f800000 and rld
+        # displaces all but one — breaking pre-resolved R_MIPS_REL32 relocs.
+        # mrqs assigns unique addresses and patches each library in-place.
+        if not os.environ.get("MOGRIX_NO_MRQS"):
+            self._rebase_libraries(bundle_dir)
+
+            # Pre-resolve UND symbol R_MIPS_REL32 relocations in executables.
+            # After mrqs rebases libraries, their symbol addresses are final.
+            # fix-anon-relocs --pre-resolve-only reads the rebased .dynsym
+            # tables and writes correct runtime addresses into the executable,
+            # zeroing the relocation entries so rld doesn't try to process them.
+            # This fixes C++ dynamic_cast crashes (typeinfo vtable pointers).
+            self._pre_resolve_executables(bundle_dir)
 
         # Strip runtime-unnecessary data directories
         for strip_dir in ("doc", "man", "info", "licenses"):
@@ -1618,6 +1755,11 @@ class BundleBuilder:
                 manifest.run_path = run_path
             else:
                 manifest.tarball_path = tarball_path
+
+            # Clean up the working directory — output_dir is for produced
+            # bundles (.run / .tar.gz), not temp assembly directories.
+            shutil.rmtree(bundle_dir)
+            manifest.bundle_dir = None
 
         # Print summary
         self._print_summary(manifest)

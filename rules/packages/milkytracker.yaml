@@ -1,0 +1,63 @@
+package: milkytracker
+build_after:
+  - SDL2
+rules:
+  drop_buildrequires:
+  - desktop-file-utils
+  - libappstream-glib
+  - rtmidi-devel
+  - zziplib-devel
+  - jack-audio-connection-kit-devel
+  prep_commands:
+  # IRIX has no GLX that SDL2 can use — remove SDL_WINDOW_OPENGL flag
+  # MilkyTracker uses SDL2 software renderer (PPDisplayDeviceFB), not GL directly
+  - "sed -i 's/SDL_WINDOW_OPENGL | //g' src/ppui/sdl/DisplayDevice_SDL.cpp"
+  spec_replacements:
+  # Replace cmake macro with cross-compilation setup
+  # Force SDL audio (no ALSA/JACK on IRIX), disable MIDI/zziplib
+  - pattern: "%{cmake} -DBUILD_SHARED_LIBS:BOOL=OFF"
+    replacement: |
+      cmake -B _build -S . \
+        -DCMAKE_TOOLCHAIN_FILE=$MOGRIX_ROOT/cross/cmake-irix-toolchain.cmake \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/sgug \
+        -DCMAKE_INSTALL_LIBDIR=lib32 \
+        -DSDL2_DIR=/opt/sgug-staging/usr/sgug/lib32/cmake/SDL2 \
+        -DCMAKE_EXE_LINKER_FLAGS="-lm" \
+        -DBUILD_SHARED_LIBS:BOOL=OFF
+  - pattern: "%cmake_build"
+    replacement: "cmake --build _build -j$(nproc)"
+  - pattern: "cd %{_vpath_builddir}\nmake install DESTDIR=%{buildroot}\ncd .."
+    replacement: "DESTDIR=%{buildroot} cmake --install _build"
+  # Remove desktop/appdata/icon install steps (no desktop on IRIX)
+  - pattern: "mv -v %{buildroot}%{_docdir}/MilkyTracker %{buildroot}%{_pkgdocdir}"
+    replacement: "# Skip doc dir rename for cross-build"
+  - pattern: |
+      # copy the icon
+      mkdir -p %{buildroot}%{_datadir}/pixmaps
+      cp -p resources/pictures/carton.png %{buildroot}%{_datadir}/pixmaps/milkytracker.png
+    replacement: "# Icon install skipped for cross-build"
+  - pattern: |
+      # copy the desktop file
+      desktop-file-install \
+        --dir=%{buildroot}%{_datadir}/applications/ resources/milkytracker.desktop
+    replacement: "# Desktop file skipped for cross-build"
+  - pattern: |
+      # copy the appdata file
+      install -v -D -m 644 resources/milkytracker.appdata %{buildroot}%{_datadir}/metainfo/%{name}.appdata.xml
+      appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/*.appdata.xml
+    replacement: "# Appdata skipped for cross-build"
+  # Fix %files — remove desktop/appdata/icon entries
+  - pattern: "%{_datadir}/applications/%{name}.desktop"
+    replacement: "# desktop file removed for cross-build"
+  - pattern: "%{_datadir}/metainfo/%{name}.appdata.xml"
+    replacement: "# appdata removed for cross-build"
+  - pattern: "%{_datadir}/pixmaps/milkytracker.png"
+    replacement: "# icon removed for cross-build"
+  - pattern: "%{_pkgdocdir}"
+    replacement: "%{_docdir}/MilkyTracker"
+  - pattern: "%{_datadir}/%{name}"
+    replacement: "%{_datadir}/milkytracker"
+smoke_test:
+  - command: "/usr/sgug/bin/milkytracker --help 2>&1"
+    expect: ""

@@ -53,7 +53,7 @@ def test_comment_out_conditional(spec_with_conditionals):
     result.comment_conditionals = ["with_systemd"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    content = writer.write(result).content
 
     # The systemd conditional should be commented
     assert "#%if 0%{?with_systemd}" in content or "# %if 0%{?with_systemd}" in content
@@ -67,7 +67,7 @@ def test_remove_conditional_block(spec_with_conditionals):
     result.remove_conditionals = ["with_tests"]
 
     writer = SpecWriter()
-    content = writer.write(result)
+    content = writer.write(result).content
 
     # The tests conditional should be removed
     assert "with_tests" not in content
@@ -80,7 +80,7 @@ def test_force_conditional_true(spec_with_conditionals):
     result.force_conditionals = {"fedora": True}
 
     writer = SpecWriter()
-    content = writer.write(result)
+    content = writer.write(result).content
 
     # The conditional content should remain but %if/%endif removed
     assert "BuildRequires: fedora-specific" in content

@@ -1,0 +1,101 @@
+# Feature flag definitions for mogrix.
+#
+# Each feature flag expands into a bundle of transforms when used as:
+#   rules:
+#     disable_features:
+#       - systemd
+#       - pam
+#
+# This eliminates dozens of per-package spec_replacements that express
+# the same high-level intent (e.g. "this package doesn't use systemd").
+
+systemd:
+  drop_buildrequires:
+    - systemd
+    - systemd-devel
+    - systemd-rpm-macros
+    - systemd-units
+  drop_requires:
+    - systemd
+    - systemd-units
+  comment_matching:
+    - regex: "^install.*%\\{_unitdir\\}"
+      section: "%install"
+    - regex: "^install.*%\\{_sysusersdir\\}"
+      section: "%install"
+    - regex: "^install.*%\\{_tmpfilesdir\\}"
+      section: "%install"
+    - regex: "^install.*%\\{_presetdir\\}"
+      section: "%install"
+    - regex: "^%attr.*%\\{_unitdir\\}"
+      section: "%files"
+    - regex: "^%attr.*%\\{_sysusersdir\\}"
+      section: "%files"
+    - regex: "^%attr.*%\\{_tmpfilesdir\\}"
+      section: "%files"
+    - regex: "^%\\{_unitdir\\}"
+      section: "%files"
+    - regex: "^%\\{_sysusersdir\\}"
+      section: "%files"
+    - regex: "^%\\{_tmpfilesdir\\}"
+      section: "%files"
+    - regex: "^%\\{_presetdir\\}"
+      section: "%files"
+    - regex: "^%sysusers_create_compat"
+    - regex: "^%systemd_"
+  configure_flags_remove:
+    - "--with-systemd"
+    - "--enable-systemd"
+
+pam:
+  drop_buildrequires:
+    - pam-devel
+  drop_requires:
+    - pam
+  comment_matching:
+    - regex: "^install.*pam\\.d"
+      section: "%install"
+    - regex: "/etc/pam\\.d/"
+      section: "%files"
+  configure_flags_remove:
+    - "--with-pam"
+    - "--enable-pam"
+
+selinux:
+  drop_buildrequires:
+    - libselinux-devel
+    - libsepol-devel
+    - checkpolicy
+    - policycoreutils
+    - selinux-policy-devel
+  drop_requires:
+    - libselinux
+  comment_matching:
+    - regex: "^install.*selinux"
+      section: "%install"
+      comment: "disabled for IRIX (no SELinux)"
+    - regex: "selinux"
+      section: "%files"
+      comment: "disabled for IRIX (no SELinux)"
+  configure_flags_remove:
+    - "--with-selinux"
+    - "--enable-selinux"
+
+fido2:
+  drop_buildrequires:
+    - libfido2-devel
+  comment_matching:
+    - regex: "sk-helper"
+      section: "%files"
+    - regex: "security-key"
+      section: "%files"
+  configure_flags_remove:
+    - "--with-security-key-builtin"
+
+x11r6.3-compat:
+  # Patches for IRIX X11R6.3 Xlib compatibility.
+  # XICCallback, Xutf8 functions, XSetIMValues are missing or different
+  # in IRIX's X11R6.3 headers compared to modern X11R6.
+  prep_commands:
+    - '$MOGRIX_ROOT/tools/safepatch XICCallback "typedef int (*XICProc)(XIC, XPointer, XPointer);" "typedef void (*XICProc)(XIC, XPointer, XPointer);" || true'
+    - '$MOGRIX_ROOT/tools/safepatch Xutf8 "Xutf8" "Xmb" || true'

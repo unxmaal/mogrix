@@ -1,10 +1,43 @@
 """Spec file writer for mogrix."""
 
+import logging
 import re
+from dataclasses import dataclass, field
 from fnmatch import fnmatch, translate as fnmatch_translate
 from pathlib import Path
 
+from mogrix.parser.sections import split_spec_sections, reassemble_spec, find_sections
 from mogrix.rules.engine import TransformResult
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ReplacementMatch:
+    """Tracking info for a single spec_replacement application."""
+
+    pattern: str  # first 80 chars of the pattern
+    matched: bool
+    optional: bool = False
+    is_regex: bool = False
+
+
+@dataclass
+class WriteResult:
+    """Result of writing a spec file, with match tracking."""
+
+    content: str
+    unmatched: list[ReplacementMatch] = field(default_factory=list)
+    all_matches: list[ReplacementMatch] = field(default_factory=list)
+
+    @property
+    def unmatched_required(self) -> list[ReplacementMatch]:
+        """Non-optional replacements that didn't match."""
+        return [m for m in self.unmatched if not m.optional]
+
+class SpecReplacementError(Exception):
+    """Raised in strict mode when required spec_replacements don't match."""
+
 
 # Calculate MOGRIX_ROOT from this file's location
 # This allows $MOGRIX_ROOT/tools/... to work in specs
@@ -36,11 +69,17 @@ class SpecWriter:
         skip_check: bool = False,
         install_cleanup: list[str] | None = None,
         spec_replacements: list[dict[str, str]] | None = None,
-    ) -> str:
-        """Generate modified spec content from transform result."""
+        strict: bool = False,
+    ) -> WriteResult:
+        """Generate modified spec content from transform result.
+
+        Returns a WriteResult containing the content and match tracking info.
+        Callers that only need the string can use write_result.content.
+        """
         content = result.spec.raw_content
         drops = drops or []
         adds = adds or []
+        write_result = WriteResult(content="")
 
         # Inject RPM macros at the top (replaces sgug-rpm-config)
         if rpm_macros:
@@ -56,13 +95,73 @@ class SpecWriter:
             macro_lines.append("")
             content = "\n".join(macro_lines) + content
 
-        # Apply spec file text replacements (for fixing macros, etc.)
+        # Apply spec file text replacements (Phase 1: match confirmation, Phase 4: regex)
         if spec_replacements:
             for replacement in spec_replacements:
                 pattern = replacement.get("pattern", "")
+                pattern_regex = replacement.get("pattern_regex", "")
                 repl = replacement.get("replacement", "")
-                if pattern:
-                    content = content.replace(pattern, repl)
+                optional = replacement.get("optional", False)
+                section = replacement.get("section", "")
+                is_regex = bool(pattern_regex)
+                search_key = pattern_regex or pattern
+
+                if not search_key:
+                    continue
+
+                display = search_key[:80]
+                old_content = content
+
+                if is_regex:
+                    if section:
+                        content = self._apply_regex_replacement_in_section(
+                            content, pattern_regex, repl, section
+                        )
+                    else:
+                        content = re.sub(pattern_regex, repl, content, flags=re.MULTILINE)
+                else:
+                    if section:
+                        content = self._apply_literal_replacement_in_section(
+                            content, pattern, repl, section
+                        )
+                    else:
+                        content = content.replace(pattern, repl)
+
+                matched = content != old_content
+                match_info = ReplacementMatch(
+                    pattern=display, matched=matched, optional=optional, is_regex=is_regex
+                )
+                write_result.all_matches.append(match_info)
+                if not matched:
+                    write_result.unmatched.append(match_info)
+                    if optional:
+                        logger.debug(
+                            "spec_replacement%s (optional) did not match: %s",
+                            " regex" if is_regex else "",
+                            display,
+                        )
+                    else:
+                        logger.warning(
+                            "spec_replacement%s did not match: %s",
+                            " regex" if is_regex else "",
+                            display,
+                        )
+
+        # Apply comment_matching (Phase 2a)
+        if result.comment_matching:
+            content = self._apply_comment_matching(content, result.comment_matching)
+
+        # Apply remove_matching (Phase 2a)
+        if result.remove_matching:
+            content = self._apply_remove_matching(content, result.remove_matching)
+
+        # Apply flip_globals (Phase 2c)
+        if result.flip_globals:
+            content = self._apply_flip_globals(content, result.flip_globals)
+
+        # Apply drop_patches (Phase 2b)
+        if result.drop_patches:
+            content = self._apply_drop_patches(content, result.drop_patches)
 
         # Handle conditionals early — MUST run before compat/extra/patch Source
         # injection. remove_conditionals deletes %if...%endif blocks that may
@@ -563,10 +662,23 @@ _mogrix_origdir=$(pwd)
                     flags=re.MULTILINE | re.DOTALL,
                 )
 
+        # Apply section_replace (Phase 3a)
+        if result.section_replace:
+            content = self._apply_section_replace(content, result.section_replace)
+
         # Clean up empty lines from removals
         content = re.sub(r"\n{3,}", "\n\n", content)
 
-        return content
+        write_result.content = content
+
+        # Phase 5a: strict mode — unmatched required replacements are errors
+        if strict and write_result.unmatched_required:
+            patterns = [m.pattern for m in write_result.unmatched_required]
+            raise SpecReplacementError(
+                f"{len(patterns)} spec_replacement(s) did not match: {patterns}"
+            )
+
+        return write_result
 
     def _handle_conditionals(self, content: str, result: TransformResult) -> str:
         """Process conditional blocks in the spec file."""
@@ -633,88 +745,53 @@ _mogrix_origdir=$(pwd)
 
         return content
 
+    # Section markers that delimit subpackage-specific sections
+    _SUBPKG_SECTION_RE = re.compile(
+        r"^%(package|description|files|pre|post|preun|postun|pretrans|posttrans)\s+"
+    )
+    _ALL_SECTION_MARKERS = re.compile(
+        r"^%(files|package|description|prep|build|install|"
+        r"check|pre|post|preun|postun|pretrans|posttrans|"
+        r"changelog|clean|verifyscript)\b"
+    )
+
     def _comment_subpackage(self, content: str, subpkg_pattern: str) -> str:
-        """Comment out a subpackage and its related sections."""
-        import fnmatch
+        """Comment out a subpackage and ALL its related sections.
+
+        Phase 2d enhancement: handles %package, %description, %files,
+        %pre, %post, %preun, %postun, %pretrans, %posttrans for the
+        dropped subpackage.
+        """
+        import fnmatch as fnmatch_mod
 
         lines = content.splitlines()
         result_lines = []
-        current_subpackage = None
 
         i = 0
         while i < len(lines):
             line = lines[i]
             stripped = line.strip()
 
-            # Check for %package directive
-            # Handle both "%package foo" (suffix) and "%package -n foo" (full name)
-            pkg_match = re.match(r"^%package\s+(?:-n\s+)?(\S+)", stripped)
-            if pkg_match:
-                subpkg_name = pkg_match.group(1)
-                # Check if this subpackage matches the pattern
-                if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
-                    # Comment out %package line and its metadata
-                    # (Summary, Requires, Provides, etc. until next section)
+            # Check for any subpackage-targeted section directive
+            # Matches: %package foo, %description -n foo, %files foo,
+            #          %pre foo, %post -n foo, %preun foo, etc.
+            section_match = self._SUBPKG_SECTION_RE.match(stripped)
+            if section_match:
+                # Extract subpackage name (handle -n prefix)
+                rest = stripped[section_match.end():].strip()
+                if rest.startswith("-n ") or rest.startswith("-n\t"):
+                    subpkg_name = rest[3:].strip().split()[0] if len(rest) > 3 else ""
+                else:
+                    subpkg_name = rest.split()[0] if rest else ""
+
+                if subpkg_name and fnmatch_mod.fnmatch(subpkg_name, subpkg_pattern):
+                    # Comment out this section header and all content until next section
                     result_lines.append("#" + line)
-                    current_subpackage = subpkg_name
                     i += 1
-                    _pkg_section_markers = re.compile(
-                        r"^%(package|description|files|prep|build|install|"
-                        r"check|pre|post|preun|postun|pretrans|posttrans|"
-                        r"changelog|clean|verifyscript)\b"
-                    )
                     while i < len(lines):
                         next_line = lines[i]
                         next_stripped = next_line.strip()
-                        if _pkg_section_markers.match(next_stripped):
-                            break
-                        result_lines.append(
-                            "#" + next_line if next_line.strip() else next_line
-                        )
-                        i += 1
-                    continue
-
-            # Check for %description of a dropped subpackage
-            desc_match = re.match(r"^%description\s+(?:-n\s+)?(\S+)", stripped)
-            if desc_match and current_subpackage:
-                subpkg_name = desc_match.group(1)
-                if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
-                    # Comment out %description and its content
-                    result_lines.append("#" + line)
-                    i += 1
-                    # Comment lines until next section
-                    while i < len(lines):
-                        next_line = lines[i]
-                        if next_line.strip().startswith("%"):
-                            break
-                        result_lines.append(
-                            "#" + next_line if next_line.strip() else next_line
-                        )
-                        i += 1
-                    continue
-
-            # Check for %files of a dropped subpackage
-            files_match = re.match(r"^%files\s+(?:-n\s+)?(\S+)", stripped)
-            if files_match:
-                subpkg_name = files_match.group(1)
-                if fnmatch.fnmatch(subpkg_name, subpkg_pattern):
-                    # Comment out %files and its content
-                    result_lines.append("#" + line)
-                    i += 1
-                    # Comment lines until next RPM section or end.
-                    # Only actual RPM section markers should stop commenting.
-                    # %files directives (%dir, %doc, %license, etc.) and
-                    # conditionals (%if, %endif, etc.) are part of %files
-                    # content and should be commented too.
-                    _section_markers = re.compile(
-                        r"^%(files|package|description|prep|build|install|"
-                        r"check|pre|post|preun|postun|pretrans|posttrans|"
-                        r"changelog|clean|verifyscript)\b"
-                    )
-                    while i < len(lines):
-                        next_line = lines[i]
-                        next_stripped = next_line.strip()
-                        if _section_markers.match(next_stripped):
+                        if self._ALL_SECTION_MARKERS.match(next_stripped):
                             break
                         result_lines.append(
                             "#" + next_line if next_line.strip() else next_line
@@ -726,6 +803,208 @@ _mogrix_origdir=$(pwd)
             i += 1
 
         return "\n".join(result_lines)
+
+    # --- Phase 2a: comment_matching / remove_matching ---
+
+    def _apply_comment_matching(
+        self, content: str, entries: list[dict[str, str]]
+    ) -> str:
+        """Comment out lines matching regex patterns, optionally scoped to a section."""
+        for entry in entries:
+            regex = entry.get("regex", "")
+            section = entry.get("section", "")
+            comment = entry.get("comment", "")
+            if not regex:
+                continue
+
+            compiled = re.compile(regex)
+
+            if section:
+                sections = split_spec_sections(content)
+                for sec in sections:
+                    if sec.name == section or sec.marker_line.startswith(section):
+                        new_lines = []
+                        for line in sec.content.split("\n"):
+                            if compiled.search(line):
+                                prefix = f"# {comment} " if comment else "# "
+                                new_lines.append(f"{prefix}{line}")
+                            else:
+                                new_lines.append(line)
+                        sec.content = "\n".join(new_lines)
+                content = reassemble_spec(sections)
+            else:
+                lines = content.split("\n")
+                new_lines = []
+                for line in lines:
+                    if compiled.search(line):
+                        prefix = f"# {comment} " if comment else "# "
+                        new_lines.append(f"{prefix}{line}")
+                    else:
+                        new_lines.append(line)
+                content = "\n".join(new_lines)
+
+        return content
+
+    def _apply_remove_matching(
+        self, content: str, entries: list[dict[str, str]]
+    ) -> str:
+        """Remove lines matching regex patterns, optionally scoped to a section."""
+        for entry in entries:
+            regex = entry.get("regex", "")
+            section = entry.get("section", "")
+            if not regex:
+                continue
+
+            compiled = re.compile(regex)
+
+            if section:
+                sections = split_spec_sections(content)
+                for sec in sections:
+                    if sec.name == section or sec.marker_line.startswith(section):
+                        new_lines = [
+                            line
+                            for line in sec.content.split("\n")
+                            if not compiled.search(line)
+                        ]
+                        sec.content = "\n".join(new_lines)
+                content = reassemble_spec(sections)
+            else:
+                lines = content.split("\n")
+                content = "\n".join(
+                    line for line in lines if not compiled.search(line)
+                )
+
+        return content
+
+    # --- Phase 2b: drop_patches ---
+
+    def _apply_drop_patches(self, content: str, config: dict | str) -> str:
+        """Drop patches based on configuration.
+
+        Config can be:
+          - "all": drop all patches
+          - {"except": [100, 200]}: drop all except listed numbers
+          - {"only": [400, 502]}: drop only listed numbers
+        """
+        if config == "all":
+            mode = "all"
+            nums: set[int] = set()
+        elif isinstance(config, dict):
+            if "except" in config:
+                mode = "except"
+                nums = set(config["except"])
+            elif "only" in config:
+                mode = "only"
+                nums = set(config["only"])
+            else:
+                return content
+        else:
+            return content
+
+        def should_drop(patch_num: int) -> bool:
+            if mode == "all":
+                return True
+            elif mode == "except":
+                return patch_num not in nums
+            elif mode == "only":
+                return patch_num in nums
+            return False
+
+        lines = content.split("\n")
+        result_lines = []
+        for line in lines:
+            stripped = line.strip()
+            # Match Patch<N>: header lines
+            patch_header = re.match(r"^Patch(\d+)\s*:", stripped)
+            if patch_header and should_drop(int(patch_header.group(1))):
+                result_lines.append(f"# {line}")
+                continue
+
+            # Match %patch -P <N> application lines
+            patch_apply = re.match(r"^%patch\s+-P\s*(\d+)", stripped)
+            if patch_apply and should_drop(int(patch_apply.group(1))):
+                result_lines.append(f"# {line}")
+                continue
+
+            # Match legacy %patch<N> application lines
+            patch_legacy = re.match(r"^%patch(\d+)\b", stripped)
+            if patch_legacy and should_drop(int(patch_legacy.group(1))):
+                result_lines.append(f"# {line}")
+                continue
+
+            result_lines.append(line)
+
+        return "\n".join(result_lines)
+
+    # --- Phase 2c: flip_globals ---
+
+    def _apply_flip_globals(self, content: str, globals_list: list[str]) -> str:
+        """Flip %global values between 0 and 1."""
+        for name in globals_list:
+            escaped = re.escape(name)
+            # Match %global <name> 0 or 1
+            pattern = rf"^(%global\s+{escaped}\s+)([01])(\s*)$"
+            match = re.search(pattern, content, re.MULTILINE)
+            if match:
+                old_val = match.group(2)
+                new_val = "0" if old_val == "1" else "1"
+                content = re.sub(
+                    pattern,
+                    rf"\g<1>{new_val}\3",
+                    content,
+                    flags=re.MULTILINE,
+                )
+            else:
+                logger.warning("flip_globals: %%global %s not found", name)
+        return content
+
+    # --- Phase 3a: section_replace ---
+
+    def _apply_section_replace(
+        self, content: str, replacements: list[dict[str, str]]
+    ) -> str:
+        """Replace entire section contents."""
+        sections = split_spec_sections(content)
+        for repl in replacements:
+            target_section = repl.get("section", "")
+            new_content = repl.get("content", "")
+            if not target_section:
+                continue
+
+            matched = False
+            for sec in sections:
+                if sec.name == target_section and not sec.subpackage:
+                    sec.content = new_content
+                    matched = True
+                    break
+            if not matched:
+                logger.warning("section_replace: section %s not found", target_section)
+
+        return reassemble_spec(sections)
+
+    # --- Phase 4: section-scoped replacements ---
+
+    def _apply_literal_replacement_in_section(
+        self, content: str, pattern: str, replacement: str, section: str
+    ) -> str:
+        """Apply a literal string replacement only within a specific section."""
+        sections = split_spec_sections(content)
+        for sec in sections:
+            if sec.name == section or sec.marker_line.startswith(section):
+                sec.content = sec.content.replace(pattern, replacement)
+        return reassemble_spec(sections)
+
+    def _apply_regex_replacement_in_section(
+        self, content: str, pattern_regex: str, replacement: str, section: str
+    ) -> str:
+        """Apply a regex replacement only within a specific section."""
+        sections = split_spec_sections(content)
+        for sec in sections:
+            if sec.name == section or sec.marker_line.startswith(section):
+                sec.content = re.sub(
+                    pattern_regex, replacement, sec.content, flags=re.MULTILINE
+                )
+        return reassemble_spec(sections)
 
     def _comment_orphaned_conditionals(self, content: str) -> str:
         """Comment out %if/%endif blocks whose content is all commented or empty.

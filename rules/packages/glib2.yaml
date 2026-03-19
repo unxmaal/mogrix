@@ -2,6 +2,8 @@ package: glib2
 add_patch:
 - glib2.sgifixes.patch
 rules:
+  inject_compat_functions:
+  - fstatat
   drop_buildrequires:
   - libmount-devel
   - pkgconfig(mount)
@@ -26,7 +28,7 @@ rules:
     replacement: "MOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --prefix=%{_prefix}\
       \ \\\n  --libdir=%{_libdir} \\\n  -Dman=false \\\n  -Ddtrace=false \\\n  -Dsystemtap=false \\\n  -Dsysprof=disabled \\\n  -Dglib_debug=disabled \\\n  -Dgtk_doc=false \\\n  -Dinstalled_tests=false\
       \ \\\n  -Dgnutls=true \\\n  -Dlibmount=disabled \\\n  -Dselinux=disabled \\\n  -Dlibelf=disabled \\\n  -Dintrospection=disabled \\\n  -Dnls=disabled \\\n  -Dxattr=false \\\n  -Dtests=false \\\n  --default-library=shared\
-      \ \\\n  --force-fallback-for=intl \\\n  -Dc_link_args=\"-L$COMPAT_DIR -lmogrix-compat\"\n/home/edodd/.local/bin/meson compile -C _build\n"
+      \ \\\n  -Dc_link_args=\"-L$COMPAT_DIR -lmogrix-compat\"\n/home/edodd/.local/bin/meson compile -C _build\n"
   - pattern: '%meson_install
 
 
@@ -106,10 +108,8 @@ rules:
     replacement: '# File triggers removed for cross-compilation (cannot run MIPS binaries on build host)'
   - pattern: '%files -f glib20.lang'
     replacement: '%files'
-  # proxy-libintl: glib2 builds it on clean rebuilds. Must be in %files.
   - pattern: '%{_libdir}/libglib-2.0.so.0*'
     replacement: |-
-      %{_libdir}/libintl.so.8
       %{_libdir}/libglib-2.0.so.0*
   - pattern: '%{_libdir}/libgirepository-2.0.so.0*
 
@@ -279,6 +279,5 @@ install_cleanup:
   - rm -f %{buildroot}%{_bindir}/gi-inspect-typelib
   - rm -f %{buildroot}%{_libexecdir}/gio-launch-desktop
   - rm -rf %{buildroot}%{_datadir}/systemtap
-  # libintl.so.8 is glib2's proxy-libintl — needed at runtime even with nls=disabled
-  # - rm -f %{buildroot}%{_libdir}/libintl.so*
+  - rm -f %{buildroot}%{_libdir}/libintl.so*
   - rm -rf %{buildroot}%{_datadir}/gettext

@@ -312,9 +312,16 @@ def _convert_spec_only(
     result = engine.apply(spec)
 
     # Generate converted content
-    content = _generate_converted_spec(
+    write_result = _generate_converted_spec(
         spec, result, headers_path, compat_path
     )
+    content = write_result.content
+
+    # Report unmatched spec_replacements
+    if write_result.unmatched_required:
+        console.print(f"[yellow]Warning: {len(write_result.unmatched_required)} spec_replacement(s) did not match[/yellow]")
+        for m in write_result.unmatched_required:
+            console.print(f"  [yellow]![/yellow] {m.pattern}")
 
     # Validate converted spec
     if validate:
@@ -369,9 +376,10 @@ def _convert_srpm_full(
         result = engine.apply(spec)
 
         # Generate converted spec content
-        content = _generate_converted_spec(
+        write_result = _generate_converted_spec(
             spec, result, headers_path, compat_path
         )
+        content = write_result.content
 
         # Copy all files from extracted SRPM to output directory
         for src_file in extracted_dir.iterdir():
@@ -427,9 +435,10 @@ def _convert_srpm_full(
 
         # Regenerate spec content with patches/sources if any were added
         if patch_files or source_files:
-            content = _generate_converted_spec(
+            write_result = _generate_converted_spec(
                 spec, result, headers_path, compat_path, patch_files, source_files
             )
+            content = write_result.content
 
         # Validate converted spec
         if validate:
@@ -504,8 +513,12 @@ def _generate_converted_spec(
     compat_path: Path,
     patch_files: list[str] | None = None,
     source_files: list[str] | None = None,
-) -> str:
-    """Generate the converted spec content."""
+) -> "WriteResult":
+    """Generate the converted spec content.
+
+    Returns a WriteResult with .content (str) and match tracking info.
+    """
+    from mogrix.emitter.spec import WriteResult  # noqa: F811
     # Determine what was dropped/added
     original_br = set(spec.buildrequires)
     final_br = set(result.spec.buildrequires)

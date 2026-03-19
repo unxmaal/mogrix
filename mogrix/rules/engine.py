@@ -51,6 +51,17 @@ class TransformResult:
     add_patches: list[str] = field(default_factory=list)  # Patch filenames to add
     add_sources: list[str] = field(default_factory=list)  # Extra source files to add
     add_requires: list[str] = field(default_factory=list)  # Runtime deps to add (cross-compiled pkgs)
+    # Phase 2a: line-level matching
+    comment_matching: list[dict[str, str]] = field(default_factory=list)
+    remove_matching: list[dict[str, str]] = field(default_factory=list)
+    # Phase 2b: drop patches
+    drop_patches: dict | str | None = None
+    # Phase 2c: flip globals
+    flip_globals: list[str] = field(default_factory=list)
+    # Phase 2e: feature flags
+    disable_features: list[str] = field(default_factory=list)
+    # Phase 3a: section replacement
+    section_replace: list[dict[str, str]] = field(default_factory=list)
 
 
 class RuleEngine:
@@ -98,7 +109,60 @@ class RuleEngine:
         if pkg_rules:
             self._apply_package_rules(result, pkg_rules)
 
+        # Expand feature flags into constituent transforms (Phase 2e)
+        if result.disable_features:
+            self._expand_features(result)
+
         return result
+
+    def _expand_features(self, result: TransformResult) -> None:
+        """Expand disable_features into constituent rule transforms."""
+        features = self.loader.load_features()
+        if not features:
+            return
+
+        for feature_name in result.disable_features:
+            feature = features.get(feature_name)
+            if not feature:
+                result.warnings.append(f"Unknown feature: {feature_name}")
+                continue
+
+            result.applied_rules.append(f"feature:{feature_name}")
+
+            if "drop_buildrequires" in feature:
+                drops = set(feature["drop_buildrequires"])
+                original = result.spec.buildrequires[:]
+                result.spec.buildrequires = [
+                    br
+                    for br in result.spec.buildrequires
+                    if not _matches_any_drop(br, drops)
+                ]
+                for br in original:
+                    if _matches_any_drop(br, drops):
+                        result.applied_rules.append(
+                            f"feature:{feature_name} drop_buildrequires: {br}"
+                        )
+
+            if "comment_matching" in feature:
+                result.comment_matching.extend(feature["comment_matching"])
+
+            if "remove_matching" in feature:
+                result.remove_matching.extend(feature["remove_matching"])
+
+            if "configure_flags_remove" in feature:
+                result.configure_flags_remove.extend(feature["configure_flags_remove"])
+
+            if "configure_flags_add" in feature:
+                result.configure_flags_add.extend(feature["configure_flags_add"])
+
+            if "drop_requires" in feature:
+                result.drop_requires.extend(feature["drop_requires"])
+
+            if "flip_globals" in feature:
+                result.flip_globals.extend(feature["flip_globals"])
+
+            if "prep_commands" in feature:
+                result.prep_commands.extend(feature["prep_commands"])
 
     def _apply_generic_rules(self, result: TransformResult, rules: dict) -> None:
         """Apply generic rules to the result."""
@@ -416,6 +480,44 @@ class RuleEngine:
             result.spec_replacements.extend(rules["spec_replacements"])
             result.applied_rules.append(
                 f"spec_replacements: {len(rules['spec_replacements'])} patterns"
+            )
+
+        # Phase 2a: comment_matching
+        if "comment_matching" in rules:
+            result.comment_matching.extend(rules["comment_matching"])
+            result.applied_rules.append(
+                f"comment_matching: {len(rules['comment_matching'])} patterns"
+            )
+
+        # Phase 2a: remove_matching
+        if "remove_matching" in rules:
+            result.remove_matching.extend(rules["remove_matching"])
+            result.applied_rules.append(
+                f"remove_matching: {len(rules['remove_matching'])} patterns"
+            )
+
+        # Phase 2b: drop_patches
+        if "drop_patches" in rules:
+            result.drop_patches = rules["drop_patches"]
+            result.applied_rules.append(f"drop_patches: {rules['drop_patches']}")
+
+        # Phase 2c: flip_globals
+        if "flip_globals" in rules:
+            result.flip_globals.extend(rules["flip_globals"])
+            result.applied_rules.append(f"flip_globals: {rules['flip_globals']}")
+
+        # Phase 2e: disable_features
+        if "disable_features" in rules:
+            result.disable_features.extend(rules["disable_features"])
+            result.applied_rules.append(
+                f"disable_features: {rules['disable_features']}"
+            )
+
+        # Phase 3a: section_replace
+        if "section_replace" in rules:
+            result.section_replace.extend(rules["section_replace"])
+            result.applied_rules.append(
+                f"section_replace: {len(rules['section_replace'])} sections"
             )
 
         # Patches to add from mogrix patches directory

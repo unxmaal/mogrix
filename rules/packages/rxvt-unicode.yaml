@@ -19,6 +19,13 @@ rules:
   - "for f in $(find src -name '*.C' -o -name '*.h'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'XUTF8StringStyle' --new 'XCompoundTextStyle' --count 0 --no-backup --quiet || :; done"
   - "sed -i 's/XSetIMValues (xim, XNDestroyCallback, &ximcallback, (char \\*)0)/\\/\\* XSetIMValues not available on IRIX X11R6.3 \\*\\/ (void)0/' src/rxvttoolkit.C"
   - "for f in configure configure.ac; do $MOGRIX_ROOT/tools/safepatch $f --old '-D_XOPEN_SOURCE[^ ]*' --new '' --regex --count 0 --no-backup --quiet || :; done"
+  # IRIX has select() and poll() but cross-compilation can't detect them.
+  # Without these, libev finds no usable backends and crashes at startup.
+  ac_cv_overrides:
+    ac_cv_header_sys_select_h: "yes"
+    ac_cv_func_select: "yes"
+    ac_cv_header_poll_h: "yes"
+    ac_cv_func_poll: "yes"
   configure_flags:
     add:
     - --disable-pixbuf
