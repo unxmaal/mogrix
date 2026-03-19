@@ -468,51 +468,109 @@ functions:
     file: dicl/openat-compat.c
     header: sys/stat.h
     description: Get file status relative to directory fd
+    provides:
+      - fstatat
+      - stpcpy
+      - stpncpy
 
   faccessat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Check permissions relative to directory fd
+    provides:
+      - faccessat
+      - stpcpy
+      - stpncpy
 
   mkdirat:
     file: dicl/openat-compat.c
     header: sys/stat.h
     description: Create directory relative to directory fd
+    provides:
+      - mkdirat
+      - stpcpy
+      - stpncpy
 
   unlinkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Remove file/directory relative to directory fd
+    provides:
+      - unlinkat
+      - stpcpy
+      - stpncpy
 
   renameat:
     file: dicl/openat-compat.c
     header: stdio.h
     description: Rename file relative to directory fds
+    provides:
+      - renameat
+      - stpcpy
+      - stpncpy
 
   readlinkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Read symbolic link relative to directory fd
+    provides:
+      - readlinkat
+      - stpcpy
+      - stpncpy
 
   symlinkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Create symbolic link relative to directory fd
+    provides:
+      - symlinkat
+      - stpcpy
+      - stpncpy
 
   linkat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Create hard link relative to directory fds
+    provides:
+      - linkat
+      - stpcpy
+      - stpncpy
 
   fchmodat:
     file: dicl/openat-compat.c
     header: sys/stat.h
     description: Change file mode relative to directory fd
+    provides:
+      - fchmodat
+      - stpcpy
+      - stpncpy
 
   fchownat:
     file: dicl/openat-compat.c
     header: unistd.h
     description: Change file owner relative to directory fd
+    provides:
+      - fchownat
+      - stpcpy
+      - stpncpy
+
+  utimensat:
+    file: dicl/openat-compat.c
+    header: sys/stat.h
+    description: Change file timestamps relative to directory fd
+    provides:
+      - utimensat
+      - stpcpy
+      - stpncpy
+
+  futimens:
+    file: dicl/openat-compat.c
+    header: sys/stat.h
+    description: Change file timestamps (POSIX.1-2008)
+    provides:
+      - futimens
+      - stpcpy
+      - stpncpy
 
 # Common function sets for package classes
 sets:

@@ -6,6 +6,8 @@ rules:
   - png
   - pcre
   - onig
+  export_vars:
+    LIBS: "-lm"
   prep_commands:
   - '$MOGRIX_ROOT/tools/safepatch src/slutty.c --insert-top ''#include <fcntl.h>'' --no-backup --quiet'
   - "$MOGRIX_ROOT/tools/safepatch modules/slsmg-module.c --old '#include <slang.h>' --insert-after 'extern int SLtt_write_to_status_line(char *, int);' --no-backup --quiet"
@@ -24,6 +26,10 @@ rules:
       sed -i ''s/^#define HAVE_FENV_H.*/#undef HAVE_FENV_H/'' src/sysconf.h
 
       sed -i ''s/^#define HAVE_FECLEAREXCEPT.*/#undef HAVE_FECLEAREXCEPT/'' src/sysconf.h
+
+      # IRIX configure case sets ELF_DEP_LIBS empty — inject -lm for math functions
+
+      sed -i ''s/^ELF_DEP_LIBS[[:space:]]*=.*/ELF_DEP_LIBS = -ldl -lm -lc/'' src/Makefile
 
       # fails with %{?_smp_mflags}'
   - pattern: export ac_cv_header_sys_random_h="no"

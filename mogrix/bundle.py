@@ -1756,6 +1756,11 @@ class BundleBuilder:
             else:
                 manifest.tarball_path = tarball_path
 
+            # Clean up the working directory — output_dir is for produced
+            # bundles (.run / .tar.gz), not temp assembly directories.
+            shutil.rmtree(bundle_dir)
+            manifest.bundle_dir = None
+
         # Print summary
         self._print_summary(manifest)
 
