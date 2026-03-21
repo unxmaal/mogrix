@@ -3,11 +3,9 @@ rules:
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch tls/meson.build --delete-line \"subdir('tests')\" --no-backup --quiet"
   drop_buildrequires:
-  - meson
   - pkgconfig(gsettings-desktop-schemas)
   - pkgconfig(libproxy-1.0)
   - ca-certificates
-  - systemd-rpm-macros
   drop_requires:
   - ca-certificates
   - gsettings-desktop-schemas

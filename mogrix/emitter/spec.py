@@ -65,6 +65,7 @@ class SpecWriter:
         remove_lines: list[str] | None = None,
         rpm_macros: dict[str, str] | None = None,
         export_vars: dict[str, str] | None = None,
+        extra_cflags: list[str] | None = None,
         skip_find_lang: bool = False,
         skip_check: bool = False,
         install_cleanup: list[str] | None = None,
@@ -543,6 +544,19 @@ _mogrix_origdir=$(pwd)
                 content = re.sub(
                     r"^(%build)(\s*\n)",
                     f"\\1\\2{cppflags_line}\n",
+                    content,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+
+        # Inject extra CFLAGS
+        if extra_cflags:
+            cflags_str = " ".join(extra_cflags)
+            cflags_line = f'export CFLAGS="{cflags_str} $CFLAGS"'
+            if "%build" in content:
+                content = re.sub(
+                    r"^(%build)(\s*\n)",
+                    f"\\1\\2{cflags_line}\n",
                     content,
                     count=1,
                     flags=re.MULTILINE,

@@ -2,7 +2,6 @@ package: quilt
 rules:
   drop_buildrequires:
   - p7zip
-  - perl-podlators
   - util-linux-ng
   - '%{_sbindir}/sendmail'
   spec_replacements:

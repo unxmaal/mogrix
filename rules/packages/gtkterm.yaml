@@ -21,7 +21,6 @@ add_source:
 
 rules:
   drop_buildrequires:
-    - "meson"
     - "gettext"
 
   prep_commands:

@@ -21,8 +21,6 @@ rules:
     gl_cv_func_working_getdelim: "yes"
 
   drop_buildrequires:
-    - meson
-    - gtk-doc
     - bash-completion
     - /usr/bin/xsltproc
     - pkgconfig(glib-2.0)

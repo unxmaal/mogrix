@@ -2,8 +2,6 @@ package: nano
 classes:
 - nls-disabled
 rules:
-  drop_buildrequires:
-  - groff
   configure_flags:
     add:
     - --disable-libmagic

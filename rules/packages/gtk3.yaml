@@ -13,17 +13,13 @@ rules:
     - "pkgconfig(avahi-gobject)"
     - "pkgconfig(colord)"
     - "pkgconfig(egl)"
-    - "pkgconfig(gobject-introspection-1.0)"
     - "pkgconfig(tracker-sparql-3.0)"
     - "pkgconfig(wayland-client)"
     - "pkgconfig(wayland-cursor)"
     - "pkgconfig(wayland-egl)"
     - "pkgconfig(wayland-protocols)"
     - "pkgconfig(xkbcommon)"
-    - "cups-devel"
     # desktop-file-utils handled by generic rules
-    - "gtk-doc"
-    - "meson"
     - "gettext"
 
   drop_requires:

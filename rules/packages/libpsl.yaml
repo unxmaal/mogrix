@@ -2,7 +2,6 @@ package: libpsl
 rules:
   drop_buildrequires:
   - libicu-devel
-  - gtk-doc
   - publicsuffix-list
   drop_requires:
   - publicsuffix-list-dafsa

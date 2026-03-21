@@ -6,7 +6,6 @@ package: yasm
 
 rules:
   drop_buildrequires:
-    - xmlto
     - byacc
   prep_commands:
     # Remove $(LIBS) from host tool link lines — LIBS contains

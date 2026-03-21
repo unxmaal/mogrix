@@ -13,7 +13,6 @@ rules:
   - /usr/bin/g-ir-scanner
   - /usr/bin/marshalparser
   - /usr/bin/rst2man
-  - meson
   drop_requires:
   - libgnutls.so.30()(64bit)
   - libgnutls.so.30

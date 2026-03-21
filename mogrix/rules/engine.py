@@ -30,6 +30,7 @@ class TransformResult:
     configure_disable: list[str] = field(default_factory=list)
     configure_flags_add: list[str] = field(default_factory=list)
     configure_flags_remove: list[str] = field(default_factory=list)
+    extra_cflags: list[str] = field(default_factory=list)
     header_overlays: list[str] = field(default_factory=list)
     path_rewrites: dict[str, str] = field(default_factory=dict)
     compat_functions: list[str] = field(default_factory=list)
@@ -397,6 +398,13 @@ class RuleEngine:
             result.remove_lines.extend(rules["remove_lines"])
             result.applied_rules.append(
                 f"remove_lines: {len(rules['remove_lines'])} patterns"
+            )
+
+        # Extra CFLAGS (injected into %build)
+        if "extra_cflags" in rules:
+            result.extra_cflags.extend(rules["extra_cflags"])
+            result.applied_rules.append(
+                f"extra_cflags: {rules['extra_cflags']}"
             )
 
         # Package-specific configure flags

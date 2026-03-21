@@ -4,9 +4,6 @@
 package: gdbm
 
 rules:
-  drop_buildrequires:
-    - libtool
-
   prep_commands:
     # IRIX has isblank() but not iswblank() — provide compat
     - "$MOGRIX_ROOT/tools/safepatch tools/wordwrap.c --insert-top \"$(printf '#include <ctype.h>\\n#ifndef iswblank\\n#define iswblank(c) isblank((unsigned char)(c))\\n#endif')\" --no-backup --quiet"

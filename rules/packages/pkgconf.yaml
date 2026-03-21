@@ -15,7 +15,6 @@ rules:
     - kyua
     - autoconf
     - automake
-    - libtool
     - make
 
   # IRIX has strndup declared but not implemented in libc.

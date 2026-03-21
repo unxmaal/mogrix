@@ -69,7 +69,6 @@ rules:
   # Drop problematic dependencies (systemd-devel and libdicl handled by generic.yaml)
   drop_buildrequires:
     - gpgme-devel
-    - systemd-rpm-macros
 
   drop_requires:
     - systemd

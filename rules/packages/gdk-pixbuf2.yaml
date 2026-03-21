@@ -5,12 +5,9 @@ smoke_test:
 
 rules:
   drop_buildrequires:
-    - docbook-style-xsl
-    - gi-docgen
     - libxslt
     - shared-mime-info
     - /usr/bin/rst2man
-    - pkgconfig(gobject-introspection-1.0)
 
   drop_requires:
     - shared-mime-info

@@ -10,9 +10,7 @@ build_after:
 
 rules:
   drop_buildrequires:
-  - gobject-introspection-devel
   - graphite2-devel
-  - gtk-doc
   spec_replacements:
   - pattern: '%configure --disable-static --with-graphite2 --with-gobject --enable-introspection'
     replacement: 'export CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx"

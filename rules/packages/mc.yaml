@@ -8,7 +8,6 @@ smoke_test:
 rules:
   drop_buildrequires:
   - e2fsprogs-devel
-  - groff-base
   - check-devel
   - aspell-en
   configure_disable:

@@ -17,7 +17,6 @@ rules:
   - ima-evm-utils-devel
   - sequoia-sq
   - sequoia-policy-config-devel
-  - systemd-rpm-macros
   drop_requires:
   - libselinux
   - audit-libs

@@ -76,10 +76,33 @@ generic:
     - go-rpm-macros
     - ghc-compiler
     - ghc-rpm-macros
+    # Build system tools (run on host, not needed in cross env)
+    - meson
+    - libtool
+    - systemd-rpm-macros
+    # Documentation tools not needed for cross-compilation
+    - gtk-doc
+    - gi-docgen
+    - xmlto
+    - docbook-style-xsl
+    - ghostscript
+    - groff
+    - groff-base
+    - perl-podlators
+    # GNOME/systemd introspection not on IRIX
+    - vala
+    - gobject-introspection-devel
+    - "pkgconfig(gobject-introspection-1.0)"
+    - "pkgconfig(libsystemd)"
+    # Subsystems not on IRIX
+    - pam-devel
+    - cups-devel
+    - krb5-devel
 
   drop_requires:
     - libdicl
     - libdicl-devel
+    - crypto-policies  # Linux-only, not on IRIX
 
   # Remove gpgverify calls - source verification not needed for cross-compilation
   # Many Fedora packages use %{gpgverify} in %prep to verify source signatures

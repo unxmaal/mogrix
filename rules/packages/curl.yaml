@@ -10,8 +10,6 @@ build_after:
   - openssl
 
 rules:
-  drop_buildrequires:
-  - krb5-devel
   drop_requires:
   - libnghttp2
   - libssh

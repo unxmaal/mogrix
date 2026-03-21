@@ -6,10 +6,8 @@ rules:
   inject_compat_functions:
   - strcasestr
   drop_buildrequires:
-  - systemd-rpm-macros
   - libpurple-devel
   - '%{_bindir}/python3'
-  - docbook-style-xsl
   spec_replacements:
   - pattern: '%bcond_without otr'
     replacement: '%bcond_with otr'

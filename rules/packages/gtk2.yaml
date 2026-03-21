@@ -7,7 +7,6 @@ add_patch:
 
 rules:
   drop_buildrequires:
-    - cups-devel
     - colord-devel
     - pkgconfig(colord)
 

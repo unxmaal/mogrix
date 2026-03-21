@@ -4,9 +4,6 @@
 package: lcms2
 
 rules:
-  drop_buildrequires:
-    - meson
-
   spec_replacements:
     # Replace %meson macro with raw meson setup command
     - pattern: "%meson -Dutils=true"

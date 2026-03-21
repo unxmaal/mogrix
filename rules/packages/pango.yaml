@@ -13,8 +13,6 @@ rules:
   - "$MOGRIX_ROOT/tools/safepatch meson.build --old \"subdir('examples')\" --new \"#subdir('examples')\" --no-backup --quiet"
   - rm -rf subprojects/*.wrap
   drop_buildrequires:
-  - gi-docgen
-  - pkgconfig(gobject-introspection-1.0)
   - pkgconfig(libthai)
   spec_replacements:
   - pattern: "%meson \\\n  -Dinstall-tests=true \\\n  -Dgtk_doc=true\n\n%meson_build"

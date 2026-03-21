@@ -10,7 +10,6 @@ rules:
   - perl-interpreter
   - perl-open
   - texlive-bibtex
-  - ghostscript
   - graphviz
   - gettext
   - /usr/bin/epstopdf

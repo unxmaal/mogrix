@@ -13,22 +13,16 @@ smoke_test:
   expect: OpenSSH_9.6
 rules:
   drop_buildrequires:
-  - pam-devel
   - libfido2-devel
   - p11-kit-devel
   - gtk3-devel
   - gtk2-devel
   - libX11-devel
-  - perl-podlators
-  - groff
   - util-linux
   - xauth
   - libedit-devel
-  - krb5-devel
-  - systemd-rpm-macros
   drop_requires:
   - /sbin/nologin
-  - crypto-policies
   - pam
   - /usr/sbin/useradd
   - p11-kit

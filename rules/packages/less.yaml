@@ -15,9 +15,6 @@ rules:
   # No compat functions needed — less doesn't use gnulib
 
   # Drop test-only build deps
-  drop_buildrequires:
-    - groff-base  # man page formatting
-
   # IRIX has fsync, sigset_t, etc. Override for cross-compile checks.
   ac_cv_overrides:
     ac_cv_type_sigset_t: "yes"

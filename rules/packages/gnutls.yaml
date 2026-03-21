@@ -7,7 +7,6 @@ package: gnutls
 # benefits automatically — no downstream rebuilds needed.
 rules:
   drop_requires:
-  - crypto-policies
   - crypto-policies-scripts
   - p11-kit-trust
   drop_buildrequires:
