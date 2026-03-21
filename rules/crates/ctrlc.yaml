@@ -1,0 +1,21 @@
+# ctrlc — IRIX replacement for unix signal handling.
+#
+# ctrlc depends on the nix crate for signal handling, but nix has no
+# IRIX support (missing errno constants, signal number collisions,
+# missing sigevent type). Since ctrlc only uses a small subset of nix
+# (semaphores + sigaction), we replace the unix module entirely with
+# a direct libc implementation that uses raw libc calls.
+
+name_pattern: "ctrlc-*"
+skip_generic: true
+
+add_source:
+  - src: "patches/crates/ctrlc/unix_irix.rs"
+    dst: "src/platform/unix/mod.rs"
+
+text_replacements:
+  # Replace nix dependency with libc — our replacement uses libc directly.
+  - file: "Cargo.toml"
+    match: "[target.\"cfg(unix)\".dependencies.nix]\nversion = \"0.31\"\nfeatures = [\"signal\"]\ndefault-features = false"
+    replace: "[target.\"cfg(unix)\".dependencies.libc]\nversion = \"0.2\""
+    expected_count: 0

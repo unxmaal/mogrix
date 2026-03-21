@@ -1,0 +1,30 @@
+# tokio — IRIX fixes:
+# 1. ucred: uses impl_noproc (no SO_PEERCRED)
+# 2. DirEntry: IRIX dirent has no d_type, must exclude file_type caching
+# name_pattern must NOT match tokio-macros, tokio-native-tls, etc.
+
+name_pattern: "tokio-1.*"
+
+text_replacements:
+  # Add IRIX to noproc ucred group — there are two instances:
+  # 1. The `use self::impl_noproc::get_peer_cred` routing line
+  # 2. The `pub(crate) mod impl_noproc` definition
+  # Both have the same pattern: target_os = "espidf", target_os = "vita"
+  - file: "src/net/unix/ucred.rs"
+    match: 'target_os = "espidf", target_os = "vita"'
+    replace: 'target_os = "espidf", target_os = "vita", target_os = "irix"'
+    all: true
+    expected_count: 2
+
+  # IRIX dirent has no d_type field — exclude file_type caching in DirEntry.
+  # There are 3 cfg gates in read_dir.rs that list platforms without d_type.
+  # The generic rule only replaces the first occurrence per file (all: false).
+  # This rule handles all 3 with all: true.
+  - file: "src/fs/read_dir.rs"
+    match: |-
+      target_os = "nto",
+    replace: |-
+      target_os = "nto",
+              target_os = "irix",
+    all: true
+    expected_count: 0

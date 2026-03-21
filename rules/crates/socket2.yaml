@@ -1,0 +1,157 @@
+# socket2 — IRIX follows NTO for most cfg gates.
+# skip_generic because the generic NTO-alongside rule adds IRIX to blocks
+# where it shouldn't be (IP_RECVTOS, ip_mreq_source, etc.).
+#
+# IRIX lacks: accept4, IP_RECVTOS, ip_mreq_source, TCP_KEEPIDLE,
+#   TCP_KEEPALIVE, TCP_KEEPINTVL, TCP_KEEPCNT, ipv6_mreq,
+#   ip_mreqn, sin_len/sin6_len
+# IRIX has: IovLen = c_int, MAX_BUF_LEN = c_int
+
+name_pattern: "socket2-*"
+skip_generic: true
+
+text_replacements:
+  # ===== src/sys/unix.rs =====
+
+  # Ipv6Mreq exclusion — IRIX needs excluding (no ipv6_mreq)
+  - file: "src/sys/unix.rs"
+    match: '#[cfg(not(target_os = "nto"))]'
+    replace: '#[cfg(not(any(target_os = "nto", target_os = "irix")))]'
+
+  # IP_RECVTOS exclusion — add IRIX after NTO in not(any(...))
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"hurd\",\n    target_os = \"nto\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) use libc::IP_RECVTOS;"
+    replace: "    target_os = \"hurd\",\n    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) use libc::IP_RECVTOS;"
+
+  # IpMreqSource exclusion — add IRIX after NTO in not(any(...))
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"nto\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n)))]\npub(crate) use libc::{\n    ip_mreq_source as IpMreqSource"
+    replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n)))]\npub(crate) use libc::{\n    ip_mreq_source as IpMreqSource"
+
+  # IovLen = c_int — add IRIX (any(...) block, 2 closing parens)
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"cygwin\",\n))]\ntype IovLen = c_int;"
+    replace: "    target_os = \"cygwin\",\n    target_os = \"irix\",\n))]\ntype IovLen = c_int;"
+
+  # MAX_BUF_LEN: exclude IRIX from ssize_t::MAX (not(any(...)), 3 closing parens)
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"cygwin\",\n)))]\nconst MAX_BUF_LEN: usize = ssize_t::MAX as usize;"
+    replace: "    target_os = \"cygwin\",\n    target_os = \"irix\",\n)))]\nconst MAX_BUF_LEN: usize = ssize_t::MAX as usize;"
+
+  # MAX_BUF_LEN: add IRIX to c_int::MAX (any(...) block, 2 closing parens)
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"cygwin\",\n))]\nconst MAX_BUF_LEN: usize = c_int::MAX as usize - 1;"
+    replace: "    target_os = \"cygwin\",\n    target_os = \"irix\",\n))]\nconst MAX_BUF_LEN: usize = c_int::MAX as usize - 1;"
+
+  # TCP_KEEPIDLE as KEEPALIVE_TIME — exclude IRIX (not(any(...)), but closing is ))]
+  # because it's #[cfg(not(any(...)))]
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"nto\",\n    target_os = \"openbsd\",\n    target_os = \"tvos\",\n    target_os = \"watchos\",\n    target_os = \"vita\",\n)))]\nuse libc::TCP_KEEPIDLE as KEEPALIVE_TIME;"
+    replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"openbsd\",\n    target_os = \"tvos\",\n    target_os = \"watchos\",\n    target_os = \"vita\",\n)))]\nuse libc::TCP_KEEPIDLE as KEEPALIVE_TIME;"
+
+  # set_tcp_keepalive: add IRIX to exclusion (not(any(...)), 3 closing parens)
+  - file: "src/sys/unix.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"vita\"\n    )))]\n    if let Some(time) = keepalive.time {"
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"vita\"\n    )))]\n    if let Some(time) = keepalive.time {"
+
+  # into_secs: add IRIX to exclusion (not(any(...)), 3 closing parens)
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"nto\",\n    target_os = \"vita\"\n)))]\nfn into_secs"
+    replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"vita\"\n)))]\nfn into_secs"
+
+  # tcp_keepalive_time in unix.rs — exclude IRIX
+  - file: "src/sys/unix.rs"
+    match: 'not(any(target_os = "haiku", target_os = "openbsd", target_os = "vita"))'
+    replace: 'not(any(target_os = "haiku", target_os = "openbsd", target_os = "irix", target_os = "vita"))'
+
+  # to_mreqn exclusion — add IRIX (not(any(...)), 3 closing parens)
+  - file: "src/sys/unix.rs"
+    match: "    target_os = \"nto\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) const fn to_mreqn("
+    replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) const fn to_mreqn("
+
+  # ===== src/socket.rs =====
+
+  # Ipv6Addr import — exclude IRIX alongside NTO
+  # expected_count: 0 = idempotent; pre-patched registries already have this applied
+  - file: "src/socket.rs"
+    match: "#[cfg(not(target_os = \"nto\"))]\nuse std::net::Ipv6Addr;"
+    replace: "#[cfg(not(any(target_os = \"nto\", target_os = \"irix\")))]\nuse std::net::Ipv6Addr;"
+    expected_count: 0
+
+  # join_multicast_v4_n — add IRIX (not(any(...)), 3 closing parens)
+  - file: "src/socket.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn join_multicast_v4_n("
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn join_multicast_v4_n("
+    expected_count: 0
+
+  # leave_multicast_v4_n — add IRIX
+  - file: "src/socket.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn leave_multicast_v4_n("
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn leave_multicast_v4_n("
+    expected_count: 0
+
+  # join_ssm_v4 — add IRIX (uses IpMreqSource)
+  - file: "src/socket.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n    )))]\n    pub fn join_ssm_v4("
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n    )))]\n    pub fn join_ssm_v4("
+    expected_count: 0
+
+  # leave_ssm_v4 — add IRIX
+  - file: "src/socket.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n    )))]\n    pub fn leave_ssm_v4("
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n    )))]\n    pub fn leave_ssm_v4("
+    expected_count: 0
+
+  # set_recv_tos_v4 — add IRIX (uses IP_RECVTOS)
+  - file: "src/socket.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn set_recv_tos_v4("
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn set_recv_tos_v4("
+    expected_count: 0
+
+  # recv_tos_v4 — add IRIX
+  - file: "src/socket.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn recv_tos_v4("
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"espidf\",\n        target_os = \"vita\",\n        target_os = \"cygwin\",\n    )))]\n    pub fn recv_tos_v4("
+    expected_count: 0
+
+  # join_multicast_v6 — exclude IRIX (no Ipv6Mreq)
+  - file: "src/socket.rs"
+    match: "    #[cfg(not(target_os = \"nto\"))]\n    pub fn join_multicast_v6("
+    replace: "    #[cfg(not(any(target_os = \"nto\", target_os = \"irix\")))]\n    pub fn join_multicast_v6("
+    expected_count: 0
+
+  # leave_multicast_v6 — exclude IRIX (no Ipv6Mreq)
+  - file: "src/socket.rs"
+    match: "    #[cfg(not(target_os = \"nto\"))]\n    pub fn leave_multicast_v6("
+    replace: "    #[cfg(not(any(target_os = \"nto\", target_os = \"irix\")))]\n    pub fn leave_multicast_v6("
+    expected_count: 0
+
+  # tcp_keepalive_time in socket.rs — exclude IRIX
+  # This is #[cfg(all(feature = "all", not(any(windows, haiku, openbsd, vita))))]
+  - file: "src/socket.rs"
+    match: "            target_os = \"openbsd\",\n            target_os = \"vita\"\n        ))\n    ))]\n    pub fn tcp_keepalive_time("
+    replace: "            target_os = \"openbsd\",\n            target_os = \"irix\",\n            target_os = \"vita\"\n        ))\n    ))]\n    pub fn tcp_keepalive_time("
+    expected_count: 0
+
+  # ===== src/lib.rs =====
+
+  # TcpKeepalive struct fields — add IRIX (8-space indent, 2 occurrences)
+  - file: "src/lib.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"espidf\","
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"espidf\","
+    expected_count: 0
+    all: true
+
+  # TcpKeepalive::new() constructor — add IRIX (16-space indent, 2 occurrences)
+  - file: "src/lib.rs"
+    match: "                target_os = \"nto\",\n                target_os = \"espidf\","
+    replace: "                target_os = \"nto\",\n                target_os = \"irix\",\n                target_os = \"espidf\","
+    expected_count: 0
+    all: true
+
+  # ===== Cargo.toml =====
+  - file: "Cargo.toml"
+    match: 'target_os = "nto"'
+    replace: 'target_os = "nto", target_os = "irix"'
+    expected_count: 0
+    all: true

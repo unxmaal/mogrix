@@ -1,0 +1,32 @@
+# Generic Rust crate rules for IRIX cross-compilation.
+# Applied to ALL crates in the cargo registry.
+#
+# IRIX follows the same code paths as NTO (QNX Neutrino) — both are
+# SVR4-derived Unix without modern Linux features (no epoll, no accept4,
+# no pipe2, no SOCK_NONBLOCK).
+#
+# The generic rule adds target_os = "irix" alongside target_os = "nto"
+# in cfg gates, with exclusions for features IRIX doesn't have.
+
+# Structural fixers (always run)
+fix_bare_irix_lines: true
+fix_malformed_not: true
+
+text_replacements:
+  # Add IRIX alongside NTO in all cfg gates
+  # This is the primary generic rule — most crates only need this
+  - match: 'target_os = "nto",'
+    replace: |-
+      target_os = "nto",
+              target_os = "irix",
+    file_glob: "**/*.rs"
+    exclude_context:
+      - "sin_len"
+      - "sin6_len"
+      - "ss_len"
+      - "accept4"
+
+  # Also handle Cargo.toml conditional dependencies
+  - match: 'target_os = "nto"'
+    replace: 'target_os = "nto", target_os = "irix"'
+    file_glob: "Cargo.toml"

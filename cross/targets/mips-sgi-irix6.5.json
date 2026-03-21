@@ -1,0 +1,47 @@
+{
+    "llvm-target": "mips64-sgi-irix6.5",
+    "metadata": {
+        "description": "SGI IRIX 6.5 (MIPS N32 ABI)",
+        "tier": 3,
+        "host_tools": false,
+        "std": true
+    },
+    "arch": "mips64",
+    "data-layout": "E-m:e-p:32:32-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
+    "target-endian": "big",
+    "target-pointer-width": 32,
+    "target-c-int-width": 32,
+    "os": "irix",
+    "vendor": "sgi",
+    "target-family": ["unix"],
+    "abi": "n32",
+    "llvm-abiname": "n32",
+    "linker-flavor": "gcc",
+    "linker": "irix-cc",
+    "cpu": "mips3",
+    "features": "-noabicalls,+xgot",
+    "panic-strategy": "abort",
+    "has-thread-local": false,
+    "relro-level": "off",
+    "position-independent-executables": false,
+    "static-position-independent-executables": false,
+    "dynamic-linking": true,
+    "executables": true,
+    "has-rpath": true,
+    "max-atomic-width": 64,
+    "function-sections": false,
+    "eh-frame-header": false,
+    "pre-link-args": {
+        "gcc": [
+            "-L/opt/sgug-staging/usr/sgug/lib32"
+        ]
+    },
+    "late-link-args": {
+        "gcc": [
+            "-Wl,-Bstatic",
+            "-lrust_irix_compat",
+            "-Wl,-Bdynamic",
+            "-lgcc_s"
+        ]
+    }
+}

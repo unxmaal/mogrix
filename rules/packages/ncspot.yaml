@@ -1,0 +1,19 @@
+# ncspot — Terminal Spotify client (Rust)
+#
+# First Rust application in the mogrix pipeline.
+# Uses cargo +nightly -Zbuild-std for cross-compilation.
+# Depends on: openssl, SDL2 (audio backend), ncurses (via crossterm)
+#
+# The spec handles:
+#   %prep: cargo fetch + mogrix patch-crates + compat lib build
+#   %build: cargo +nightly build --release with IRIX target
+#   %install: single binary
+
+# Bundle configuration
+smoke_test:
+  - command: "ncspot --version 2>&1"
+    expect: "ncspot"
+
+build_after:
+  - openssl
+  - SDL2

@@ -462,12 +462,13 @@ def find_section_by_name(data, e_shoff, e_shentsize, e_shnum, target_name):
     return None
 
 
-def scan_libraries(lib_dir):
+def scan_libraries(lib_dir, exclude=None):
     """Scan a directory for shared libraries suitable for rebasing.
 
     Returns list of (path, base_vaddr, total_size) sorted largest-first.
-    Skips non-ELF files, symlinks, and non-shared-library ELFs.
+    Skips non-ELF files, symlinks, non-shared-library ELFs, and excluded patterns.
     """
+    exclude = exclude or []
     libs = []
     lib_path = Path(lib_dir)
 
@@ -478,6 +479,9 @@ def scan_libraries(lib_dir):
         if not f.is_file():
             continue
         if '.so' not in f.name:
+            continue
+        # Skip excluded libraries
+        if any(pat in f.name for pat in exclude):
             continue
 
         try:
@@ -504,7 +508,7 @@ def scan_libraries(lib_dir):
     return libs
 
 
-def rebase_bundle(lib_dir, dry_run=False, verbose=False):
+def rebase_bundle(lib_dir, dry_run=False, verbose=False, exclude=None):
     """Rebase all shared libraries in a bundle's library directory.
 
     Assigns unique non-overlapping base addresses and patches each
@@ -514,11 +518,12 @@ def rebase_bundle(lib_dir, dry_run=False, verbose=False):
         lib_dir: Path to the _lib32/ directory
         dry_run: if True, show assignments without modifying files
         verbose: if True, show detailed patching info
+        exclude: list of substrings to exclude from rebasing
 
     Returns:
         list of (lib_name, old_base, new_base, size) tuples
     """
-    libs = scan_libraries(lib_dir)
+    libs = scan_libraries(lib_dir, exclude=exclude)
     if not libs:
         print("mrqs: no shared libraries found to rebase", file=sys.stderr)
         return []
@@ -704,13 +709,16 @@ def main():
                         help='Show address assignments without modifying files')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Show detailed patching information')
+    parser.add_argument('--exclude', action='append', default=[],
+                        help='Exclude libraries matching this substring (repeatable)')
     args = parser.parse_args()
 
     if not os.path.isdir(args.lib_dir):
         print(f"mrqs: ERROR: {args.lib_dir} is not a directory", file=sys.stderr)
         sys.exit(1)
 
-    results = rebase_bundle(args.lib_dir, dry_run=args.dry_run, verbose=args.verbose)
+    results = rebase_bundle(args.lib_dir, dry_run=args.dry_run, verbose=args.verbose,
+                            exclude=args.exclude)
     if not results:
         sys.exit(1)
 

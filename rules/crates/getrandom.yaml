@@ -1,0 +1,46 @@
+# getrandom — IRIX uses /dev/urandom (use_file backend).
+# Needs: backend routing, errno routing, libc Cargo.toml dep.
+#
+# Versions in registry: 0.2.16 and 0.4.1
+# - 0.2.16: routing in src/lib.rs, errno in src/util_libc.rs, Cargo.toml uses cfg(unix) for libc
+# - 0.4.1:  routing in src/backends.rs, errno in src/utils/get_errno.rs, Cargo.toml has per-OS libc deps
+
+name_pattern: "getrandom-*"
+
+text_replacements:
+  # === Backend routing ===
+
+  # 0.2.16: backend routing is in lib.rs — single-line cfg_if with nto+aix in one any()
+  # Pattern: target_os = "nto", target_os = "aix"  (on one line in the cfg_if)
+  - match: 'target_os = "nto", target_os = "aix"'
+    replace: 'target_os = "nto", target_os = "aix", target_os = "irix"'
+    file: "src/lib.rs"
+    expected_count: 0  # only in 0.2.x
+
+  # 0.4.1: backend routing is in backends.rs — multi-line cfg_if with nto and aix on separate lines
+  - match: "        target_os = \"nto\",\n        target_os = \"aix\","
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"aix\","
+    file: "src/backends.rs"
+    expected_count: 0  # only in 0.4.x
+
+  # === Cargo.toml libc dependency ===
+
+  # 0.4.1: add IRIX to the use_file libc dep group (nto+aix on one line)
+  - match: 'target_os = "nto", target_os = "aix"'
+    replace: 'target_os = "nto", target_os = "irix", target_os = "aix"'
+    file: "Cargo.toml"
+    expected_count: 0  # only in 0.4.x (0.2.x uses cfg(unix))
+
+  # === Errno routing ===
+
+  # 0.2.16: errno in util_libc.rs — add IRIX to aix block
+  - match: '} else if #[cfg(target_os = "aix")] {'
+    replace: '} else if #[cfg(any(target_os = "aix", target_os = "irix"))] {'
+    file: "src/util_libc.rs"
+    expected_count: 0  # only in 0.2.x
+
+  # 0.4.1: errno in utils/get_errno.rs — add IRIX to aix block
+  - match: '} else if #[cfg(target_os = "aix")] {'
+    replace: '} else if #[cfg(any(target_os = "aix", target_os = "irix"))] {'
+    file: "src/utils/get_errno.rs"
+    expected_count: 0  # only in 0.4.x

@@ -1,0 +1,23 @@
+# souvlaki — Media controls (MPRIS/SMTC) library
+#
+# IRIX has no D-Bus, so MPRIS is not available. But souvlaki's platform
+# dispatch has a bug: both the unix/MPRIS block and the catch-all empty
+# block match on IRIX, causing a duplicate `mod platform` error.
+# Fix: exclude IRIX from the MPRIS path so the empty (no-op) backend is used.
+
+name_pattern: "souvlaki-*"
+
+text_replacements:
+  # Exclude IRIX from the MPRIS/D-Bus path — no D-Bus on IRIX.
+  # The catch-all empty backend will handle IRIX instead.
+  - file: "src/platform/mod.rs"
+    match: |-
+      #[cfg(all(
+          unix,
+          not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+      ))]
+    replace: |-
+      #[cfg(all(
+          unix,
+          not(any(target_os = "macos", target_os = "ios", target_os = "android", target_os = "irix"))
+      ))]

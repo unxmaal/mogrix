@@ -195,6 +195,9 @@ elif [ "$link_only" = "true" ]; then
             # Skip compiler flags that LLD doesn't understand
             -static|-dynamic|-Bdynamic|-Bstatic|-pedantic|-pedantic-errors)
                 ;;
+            # Skip GCC driver flags (used by Rust, CMake, etc.)
+            -nodefaultlibs|-nostdlib|-nostartfiles|-no-pie|-pie)
+                ;;
             -pipe|-pthread|-traditional|-ansi|-w)
                 ;;
             *)

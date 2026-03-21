@@ -1,0 +1,11 @@
+# openssl-probe — no IRIX-specific patching needed.
+# The crate probes standard system paths for SSL certificates.
+# It has no platform-specific cfg gates that would exclude IRIX.
+# The generic rules handle any necessary target_os additions.
+#
+# This file exists as a no-op to document that the crate was reviewed.
+
+name_pattern: "openssl-probe-*"
+
+# No text_replacements needed — the crate works on all unix platforms
+# without any platform-specific cfg gates.

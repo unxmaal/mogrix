@@ -1,0 +1,19 @@
+# num_threads — add fallback module for IRIX (no /proc/self/status).
+# The crate uses #[cfg_attr] to pick a platform-specific module file.
+# For IRIX (and any other unsupported platform), we add a fallback.
+
+name_pattern: "num_threads-*"
+
+text_replacements:
+  # Add fallback cfg_attr for unsupported platforms after the aix entry
+  - file: "src/lib.rs"
+    match: '#[cfg_attr(target_os = "aix", path = "aix.rs")]'
+    replace: |-
+      #[cfg_attr(target_os = "aix", path = "aix.rs")]
+      #[cfg_attr(not(any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "macos", target_os = "ios", target_os = "aix")), path = "fallback.rs")]
+
+create_file:
+  - path: "src/fallback.rs"
+    content: |
+      use std::num::NonZeroUsize;
+      pub(crate) fn num_threads() -> Option<NonZeroUsize> { None }
