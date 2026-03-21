@@ -1,0 +1,19 @@
+# termusic — Terminal music player (Rust)
+#
+# Hand-written spec, not converted from SRPM.
+# Audio: rodio → cpal (SDL2 dmedia backend on IRIX).
+# gRPC: tonic/prost (needs protoc).
+# Key IRIX patches: native-tls (not rustls), no souvlaki zbus,
+# ctrlc replacement (bypasses nix crate), backtrace skip_generic,
+# 8MB stack for BOTH player threads (IRIX 2MB Rust default causes overflow).
+# "main player loop" (server.rs) — does Backend init + config path checking.
+# "playback player loop" (rusty/mod.rs) — runs SDL2/cpal audio init.
+# System sqlite3 (not bundled amalgamation — cc-crate sqlite3.c has ABI/relocation
+# issue on IRIX, crashes in sqlite3_open before first syscall).
+# Deps: libsqlite3.so.0 (from sqlite-libs RPM), libSDL2, openssl, libgcc_s.
+
+smoke_test:
+  - command: "termusic --version 2>&1"
+    expect: "termusic"
+  - command: "termusic-server --version 2>&1"
+    expect: "termusic-server"

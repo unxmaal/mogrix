@@ -1,0 +1,50 @@
+# rustix — Skip generic NTO-alongside patching. rustix has its own fallback
+# paths for unknown Unix. Only add IRIX to specific blocks that cause compile
+# errors (missing _Opcode, d_type, unsafe makedev).
+#
+# skip_generic prevents the broad NTO-alongside rule from running.
+
+name_pattern: "rustix-*"
+skip_generic: true
+
+text_replacements:
+  # _Opcode: IRIX uses c_ulong for ioctl request parameter.
+  # Our libc module declares ioctl(fd: c_int, request: c_ulong, ...) matching
+  # the standard Rust libc convention. Add IRIX to the c_ulong group
+  # (alongside BSD, Haiku, Hurd, Redox, Vita).
+  - file: "src/ioctl/mod.rs"
+    match: "    target_os = \"hurd\",\n    target_os = \"vita\"\n)]\ntype _Opcode = c::c_ulong;"
+    replace: "    target_os = \"hurd\",\n    target_os = \"irix\",\n    target_os = \"vita\"\n)]\ntype _Opcode = c::c_ulong;"
+    expected_count: 0
+
+  # rustix 0.38 variant (different ordering)
+  - file: "src/ioctl/mod.rs"
+    match: "    target_os = \"horizon\",\n    target_os = \"hurd\",\n    target_os = \"vita\"\n))]"
+    replace: "    target_os = \"horizon\",\n    target_os = \"hurd\",\n    target_os = \"irix\",\n    target_os = \"vita\"\n))]"
+    expected_count: 0
+
+  # d_type: IRIX dirent has no d_type field. Add IRIX to ALL d_type exclusions.
+  # There are multiple: struct field definition and initializer.
+  - file: "src/backend/libc/fs/dir.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"vita\"\n    )))]\n    d_type: u8,"
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"vita\"\n    )))]\n    d_type: u8,"
+    expected_count: 0
+
+  # d_type in the DirEntry initializer (deeper indent)
+  - file: "src/backend/libc/fs/dir.rs"
+    match: "                        target_os = \"nto\",\n                        target_os = \"vita\"\n                    )))]\n                    d_type: dirent.d_type,"
+    replace: "                        target_os = \"nto\",\n                        target_os = \"irix\",\n                        target_os = \"vita\"\n                    )))]\n                    d_type: dirent.d_type,"
+    expected_count: 0
+
+  # d_type in the file_type() accessor method
+  - file: "src/backend/libc/fs/dir.rs"
+    match: "        target_os = \"nto\",\n        target_os = \"vita\"\n    )))]\n    #[inline]\n    pub fn file_type"
+    replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"vita\"\n    )))]\n    #[inline]\n    pub fn file_type"
+    expected_count: 0
+
+  # makedev: IRIX's libc::makedev is marked unsafe.
+  # Exclude IRIX from the generic (non-unsafe) block and add an IRIX block.
+  # The closing is )))].
+  - file: "src/backend/libc/fs/makedev.rs"
+    match: "    target_os = \"emscripten\",\n)))]\n#[inline]\npub(crate) fn makedev(maj: u32, min: u32) -> Dev {\n    c::makedev(maj, min)\n}"
+    replace: "    target_os = \"emscripten\",\n    target_os = \"irix\",\n)))]\n#[inline]\npub(crate) fn makedev(maj: u32, min: u32) -> Dev {\n    c::makedev(maj, min)\n}\n\n#[cfg(target_os = \"irix\")]\n#[inline]\npub(crate) fn makedev(maj: u32, min: u32) -> Dev {\n    unsafe { c::makedev(maj, min) }\n}"

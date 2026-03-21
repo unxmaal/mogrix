@@ -1,0 +1,10 @@
+[build]
+target = "mips-sgi-irix6.5.json"
+rustflags = [
+    "--cfg", "mio_unsupported_force_poll_poll",
+    "--cfg", "mio_unsupported_force_waker_pipe",
+]
+
+[unstable]
+build-std = ["std", "panic_abort"]
+json-target-spec = true

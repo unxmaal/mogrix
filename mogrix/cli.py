@@ -4410,5 +4410,82 @@ def _create_bootstrap_run(
     run_path.chmod(0o755)
 
 
+@main.command("patch-crates")
+@click.option(
+    "--registry-path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Cargo registry source directory (default: auto-detect)",
+)
+@click.option(
+    "--rules-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Rules directory (default: rules/)",
+)
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True),
+    default=None,
+    help="Rust IRIX project directory (default: ../rust-irix)",
+)
+def patch_crates(
+    registry_path: str | None,
+    rules_dir: str | None,
+    project_dir: str | None,
+):
+    """Patch Rust crates in cargo registry for IRIX cross-compilation.
+
+    Applies declarative transformation rules from rules/crates/ to all
+    crates in the cargo registry. Run after 'cargo fetch' and before
+    'cargo build'.
+
+    Rules follow the same pattern as mogrix RPM rules:
+    - Generic rules (rules/crates/generic_rust.yaml) applied to all crates
+    - Crate-specific rules (rules/crates/<name>.yaml) for overrides
+
+    Idempotent — safe to re-run after any cargo operation.
+    """
+    from mogrix.crate_patcher import patch_all_crates
+
+    if rules_dir is None:
+        rules_dir = str(
+            Path(__file__).parent.parent / "rules"
+        )
+
+    click.echo("=== mogrix patch-crates ===")
+    stats = patch_all_crates(
+        registry_dir=registry_path,
+        rules_dir=rules_dir,
+        project_dir=project_dir,
+    )
+
+    if "error" in stats:
+        click.echo(f"ERROR: {stats['error']}")
+        raise SystemExit(1)
+
+    click.echo(f"\nCrates processed: {stats['crates_processed']}")
+    click.echo(f"Crates patched:   {stats['crates_patched']}")
+    click.echo(f"Text replacements: {stats['replacements']}")
+    click.echo(f"Lines removed:     {stats['lines_removed']}")
+    click.echo(f"Sources added:     {stats['sources_added']}")
+    click.echo(f"Files created:     {stats['files_created']}")
+    click.echo(f"Bare lines fixed:  {stats['bare_lines_fixed']}")
+    click.echo(f"Malformed not() fixed: {stats['malformed_not_fixed']}")
+
+    errors = stats.get("errors", [])
+    if errors:
+        click.echo(f"\n{click.style(f'VALIDATION ERRORS: {len(errors)}', fg='red', bold=True)}")
+        click.echo("The following crate-specific patterns did not match.")
+        click.echo("This usually means a crate version changed. Update the rule.\n")
+        for err in errors:
+            click.echo(click.style(str(err), fg='red'))
+        click.echo(
+            f"\nTo suppress a specific check, add 'expected_count: 0' to the "
+            f"replacement entry in the rule YAML."
+        )
+        raise SystemExit(2)
+
+
 if __name__ == "__main__":
     main()

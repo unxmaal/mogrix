@@ -1,0 +1,27 @@
+# open — add IRIX to unix platform list and compile_error exclusion.
+# open-5.3.2 has three blocks that need IRIX added in src/lib.rs.
+# Do NOT add IRIX to the is-wsl Cargo.toml group — IRIX is not WSL.
+
+name_pattern: "open-*"
+skip_generic: true
+
+text_replacements:
+  # Add IRIX to `use unix as os` block (last entry is hurd without trailing comma)
+  - file: "src/lib.rs"
+    match: "    target_os = \"aix\",\n    target_os = \"hurd\"\n))]\nuse unix as os;"
+    replace: "    target_os = \"aix\",\n    target_os = \"hurd\",\n    target_os = \"irix\"\n))]\nuse unix as os;"
+
+  # Add IRIX to compile_error exclusion (not(any(...))) block
+  - file: "src/lib.rs"
+    match: "    target_os = \"aix\",\n    target_os = \"hurd\"\n)))]\ncompile_error!"
+    replace: "    target_os = \"aix\",\n    target_os = \"hurd\",\n    target_os = \"irix\"\n)))]\ncompile_error!"
+
+  # Add IRIX to mod unix declaration
+  - file: "src/lib.rs"
+    match: "    target_os = \"aix\",\n    target_os = \"hurd\"\n))]\nmod unix;"
+    replace: "    target_os = \"aix\",\n    target_os = \"hurd\",\n    target_os = \"irix\"\n))]\nmod unix;"
+
+  # Gate is_wsl usage — IRIX is not WSL, and the is-wsl crate isn't available
+  - file: "src/unix.rs"
+    match: "    let wsl_path = wsl_path(path);\n    if is_wsl::is_wsl() {\n        commands.push((\"wslview\", vec![&wsl_path]));\n    }"
+    replace: "    #[cfg(not(target_os = \"irix\"))]\n    {\n        let wsl_path = wsl_path(path);\n        if is_wsl::is_wsl() {\n            commands.push((\"wslview\", vec![&wsl_path]));\n        }\n    }"

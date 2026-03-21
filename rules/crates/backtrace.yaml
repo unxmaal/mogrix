@@ -1,0 +1,11 @@
+# backtrace — IRIX has no dl_iterate_phdr.
+#
+# The generic rule adds IRIX alongside NTO in cfg gates, but backtrace's
+# dl_iterate_phdr library loading strategy doesn't work on IRIX (no
+# dl_iterate_phdr or dl_phdr_info in IRIX libc).
+# Skip the generic rule entirely — backtrace falls through to the empty
+# native_libraries() fallback. Backtraces won't be symbolized but
+# the crate compiles and the program runs.
+
+name_pattern: "backtrace-*"
+skip_generic: true

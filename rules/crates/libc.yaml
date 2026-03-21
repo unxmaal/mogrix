@@ -1,0 +1,27 @@
+# libc crate — copy IRIX module and add module routing.
+# The IRIX libc module is maintained in mogrix at patches/crates/libc/
+# and gets copied into every libc version in the registry.
+
+name_pattern: "libc-0.2.*"
+
+add_source:
+  - src: "patches/crates/libc/unix/irix/mod.rs"
+    dst: "src/unix/irix/mod.rs"
+  - src: "patches/crates/libc/new/irix/mod.rs"
+    dst: "src/new/irix/mod.rs"
+    src_dir: false
+  - src: "patches/crates/libc/new/irix/unistd.rs"
+    dst: "src/new/irix/unistd.rs"
+
+text_replacements:
+  # Add IRIX module route in unix/mod.rs (insert before nuttx)
+  - file: "src/unix/mod.rs"
+    match: "    } else if #[cfg(target_os = \"nuttx\")] {\n        mod nuttx;\n        pub use self::nuttx::*;"
+    replace: "    } else if #[cfg(target_os = \"irix\")] {\n        mod irix;\n        pub use self::irix::*;\n    } else if #[cfg(target_os = \"nuttx\")] {\n        mod nuttx;\n        pub use self::nuttx::*;"
+
+  # Add IRIX module route in new/mod.rs (insert before illumos, alphabetical)
+  # expected_count: 0 because older libc versions (0.2.177) may not have this structure
+  - file: "src/new/mod.rs"
+    match: "    } else if #[cfg(target_os = \"illumos\")] {\n        mod illumos;\n        pub(crate) use illumos::*;"
+    replace: "    } else if #[cfg(target_os = \"irix\")] {\n        mod irix;\n        pub(crate) use irix::*;\n    } else if #[cfg(target_os = \"illumos\")] {\n        mod illumos;\n        pub(crate) use illumos::*;"
+    expected_count: 0

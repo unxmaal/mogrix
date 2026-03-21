@@ -1,0 +1,12 @@
+# signal-hook-registry — IRIX sometimes delivers signals with NULL siginfo_t.
+# This is legal on IRIX (not all signal sources populate siginfo).
+# signal-hook-registry aborts on NULL siginfo. Fix: skip actions instead of aborting.
+
+name_pattern: "signal-hook-registry-*"
+skip_generic: true
+
+text_replacements:
+  # Replace the abort-on-null-siginfo with a safe return
+  - file: "src/lib.rs"
+    match: "        let info = info.unwrap_or_else(|| {\n            // The info being null seems to be illegal according to POSIX, but has been observed on\n            // some probably broken platform. We can't do anything about that, that is just broken,\n            // but we are not allowed to panic in a signal handler, so we are left only with simply\n            // aborting. We try to write a message what happens, but using the libc stuff\n            // (`eprintln` is not guaranteed to be async-signal-safe).\n            unsafe {\n                const MSG: &[u8] =\n                    b\"Platform broken, got NULL as siginfo to signal handler. Aborting\";\n                libc::write(2, MSG.as_ptr() as *const _, MSG.len());\n                libc::abort();\n            }\n        });"
+    replace: "        let info = match unsafe { info.as_ref() } {\n            Some(i) => i,\n            None => {\n                // IRIX can deliver signals with NULL siginfo. Skip actions\n                // rather than aborting — the signal was still delivered.\n                return;\n            }\n        };"

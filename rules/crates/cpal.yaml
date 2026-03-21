@@ -1,0 +1,89 @@
+# cpal — SDL2 audio backend for IRIX.
+#
+# IRIX has no ALSA/PulseAudio/PipeWire. SDL2 IS available and proven.
+# Replace the null backend with an SDL2 backend that uses SDL2's
+# callback-based audio API via raw FFI.
+
+name_pattern: "cpal-*"
+skip_generic: true
+
+add_source:
+  - src: "patches/crates/cpal/sdl2_backend.rs"
+    dst: "src/host/sdl2.rs"
+
+text_replacements:
+  # Register the SDL2 module in host/mod.rs
+  - file: "src/host/mod.rs"
+    match: "pub(crate) mod null;"
+    replace: |-
+      pub(crate) mod null;
+      #[cfg(target_os = "irix")]
+      pub(crate) mod sdl2;
+    expected_count: 0
+
+  # Replace the null platform_impl with SDL2 for IRIX in platform/mod.rs.
+  # The null fallback block has a cfg(not(any(...))) that catches IRIX.
+  # We add an IRIX-specific block BEFORE the null fallback.
+  - file: "src/platform/mod.rs"
+    match: |-
+      #[cfg(not(any(
+          windows,
+          target_os = "linux",
+          target_os = "dragonfly",
+          target_os = "freebsd",
+          target_os = "netbsd",
+          target_os = "macos",
+          target_os = "ios",
+          target_os = "emscripten",
+          target_os = "android",
+          all(target_arch = "wasm32", feature = "wasm-bindgen"),
+      )))]
+      mod platform_impl {
+          pub use crate::host::null::{
+              Device as NullDevice, Devices as NullDevices, Host as NullHost,
+              SupportedInputConfigs as NullSupportedInputConfigs,
+              SupportedOutputConfigs as NullSupportedOutputConfigs,
+          };
+
+          impl_platform_host!(Null null "Null");
+    replace: |-
+      #[cfg(target_os = "irix")]
+      mod platform_impl {
+          pub use crate::host::sdl2::{
+              Device as Sdl2Device, Devices as Sdl2Devices, Host as Sdl2Host,
+              SupportedInputConfigs as Sdl2SupportedInputConfigs,
+              SupportedOutputConfigs as Sdl2SupportedOutputConfigs,
+          };
+
+          impl_platform_host!(Sdl2 sdl2 "SDL2");
+
+          /// The default host for the current compilation target platform.
+          pub fn default_host() -> Host {
+              Sdl2Host::new()
+                  .expect("SDL2 audio should be available on IRIX")
+                  .into()
+          }
+      }
+
+      #[cfg(not(any(
+          windows,
+          target_os = "linux",
+          target_os = "dragonfly",
+          target_os = "freebsd",
+          target_os = "netbsd",
+          target_os = "macos",
+          target_os = "ios",
+          target_os = "emscripten",
+          target_os = "android",
+          target_os = "irix",
+          all(target_arch = "wasm32", feature = "wasm-bindgen"),
+      )))]
+      mod platform_impl {
+          pub use crate::host::null::{
+              Device as NullDevice, Devices as NullDevices, Host as NullHost,
+              SupportedInputConfigs as NullSupportedInputConfigs,
+              SupportedOutputConfigs as NullSupportedOutputConfigs,
+          };
+
+          impl_platform_host!(Null null "Null");
+    expected_count: 0
