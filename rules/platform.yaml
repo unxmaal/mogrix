@@ -1,0 +1,210 @@
+# IRIX 6.5 Platform Definition
+# Centralized knowledge about what IRIX provides, lacks, and how it differs from Linux.
+# Used by the platform model (mogrix/platform.py) to inform automatic transform decisions.
+
+platform:
+  name: "IRIX 6.5"
+  arch: "mips"
+  abi: "n32"
+  prefix: "/usr/sgug"
+
+  # Functions shimmed by mogrix compat layer (from compat/catalog.yaml)
+  provides:
+    shimmed_functions:
+      - strdup
+      - strndup
+      - strnlen
+      - strcasestr
+      - strsep
+      - memmem
+      - pthread_setconcurrency
+      - realpath
+      - __muloti4
+      - stpcpy
+      - stpncpy
+      - basename
+      - explicit_bzero
+      - getline
+      - getdelim
+      - asprintf
+      - vasprintf
+      - fopencookie
+      - funopen
+      - dprintf
+      - vdprintf
+      - open_memstream
+      - setenv
+      - unsetenv
+      - strtof
+      - reallocarray
+      - secure_getenv
+      - mkdtemp
+      - bsearch
+      - posix_memalign
+      - qsort_r
+      - timegm
+      - err
+      - errx
+      - warn
+      - warnx
+      - mincore
+      - socketpair
+      - shm_open
+      - strerror_r
+      - strtoimax
+      - getopt_long
+      - getprogname
+      - setprogname
+      - dlmalloc
+      - openat
+      - faccessat
+      - fchmodat
+      - fchownat
+      - fstatat
+      - futimens
+      - linkat
+      - mkdirat
+      - readlinkat
+      - renameat
+      - symlinkat
+      - unlinkat
+      - utimensat
+      - openpty
+      - pselect
+      - _rld_new_interface
+      - _XGetRequest
+      - posix_spawn
+      - posix_spawnp
+      - sqlite3_stub
+
+  # Subsystems IRIX lacks entirely
+  lacks:
+    subsystems:
+      - selinux
+      - systemd
+      - udev
+      - inotify
+      - epoll
+      - fanotify
+      - timerfd
+      - libcap
+      - audit
+      - alsa
+      - dbus       # no D-Bus on IRIX
+      - pulseaudio # no PulseAudio
+      - wayland    # X11 only
+
+    # Build-time packages that don't exist on IRIX
+    buildrequires:
+      - systemd
+      - systemd-devel
+      - libselinux
+      - libselinux-devel
+      - kernel-headers
+      - alsa-lib-devel
+      - systemtap-sdt-devel
+      - libcap-devel
+      - libcap-ng-devel
+      - libacl-devel
+      - libattr-devel
+      - audit-libs-devel
+
+    # Functions IRIX libc truly lacks (NOT shimmed by compat)
+    functions:
+      - epoll_create
+      - epoll_ctl
+      - epoll_wait
+      - inotify_init
+      - inotify_add_watch
+      - signalfd
+      - timerfd_create
+      - __tls_get_addr    # no TLS support in rld
+
+  # IRIX-specific quirks that affect build/runtime behavior
+  quirks:
+    vsnprintf_null_returns_minus1:
+      description: "IRIX vsnprintf(NULL, 0, ...) returns -1, not required size"
+      severity: runtime_crash
+      workaround: "Use iterative buffer doubling or inject vasprintf compat"
+
+    printf_no_zu_format:
+      description: "IRIX libc printf doesn't support %zu/%zd/%zx (C99 z modifier)"
+      severity: runtime_crash
+      workaround: "Replace %zu with %u, %zd with %d, %zx with %x (safe on n32: size_t == unsigned int)"
+
+    no_tls_get_addr:
+      description: "IRIX rld doesn't support __tls_get_addr (TLS)"
+      severity: runtime_crash
+      workaround: "Disable TLS at configure time; sed out __thread in config headers"
+
+    bsearch_nmemb_zero_crash:
+      description: "IRIX libc bsearch(nmemb=0) underflows, dereferences garbage"
+      severity: runtime_crash
+      workaround: "libmogrix_compat.so preloaded via _RLDN32_LIST"
+
+    rld_no_linker_scripts:
+      description: "IRIX rld can't load GNU ld linker scripts (INPUT/GROUP)"
+      severity: runtime_crash
+      workaround: "Replace with symlinks in install step"
+
+    rld_dlopen_libpthread_crash:
+      description: "dlopen() of libpthread/libstdc++ crashes; must be NEEDED"
+      severity: runtime_crash
+      workaround: "Link executable with -lpthread -lstdc++ directly"
+
+    separate_code_3_segments:
+      description: "-z separate-code produces 3 LOAD segments, crashes rld for .so"
+      severity: runtime_crash
+      workaround: "Use custom linker script for standard 2-segment layout"
+
+    struct_comment_in_pwd_h:
+      description: "IRIX pwd.h defines struct comment, collides with app code"
+      severity: build_error
+      workaround: "Rename app's struct comment"
+
+    mode_t_is_unsigned_long:
+      description: "IRIX mode_t is unsigned long (4 bytes), Linux uses unsigned int"
+      severity: warning
+      workaround: "Use %lo format or cast to unsigned int"
+
+    dev_fd_no_utimes:
+      description: "IRIX /dev/fd exists but utimes('/dev/fd/N') fails"
+      severity: runtime_error
+      workaround: "Use filename-based utimes instead of fd-based"
+
+    native_tar_long_paths:
+      description: "IRIX native tar silently drops long filenames (>100 chars)"
+      severity: data_loss
+      workaround: "Always use gtar from chroot"
+
+    cp_r_breaks_symlinks:
+      description: "IRIX cp -r breaks on symlinks"
+      severity: data_loss
+      workaround: "Use tar pipe instead"
+
+    libpthread_reserved_signals:
+      description: "IRIX libpthread reserves signals 47 (SIGPTINTR) and 48 (SIGPTRESCHED)"
+      severity: runtime_crash
+      workaround: "Never install handlers for signals 47-48"
+
+  # Platform detection macros available on IRIX
+  defines:
+    - __sgi
+    - __sgi__
+    - sgi
+    - __unix__
+    - __mips__
+    - _MIPS_SIM
+
+  # X11 version differences
+  x11:
+    version: "R6.3"
+    missing_apis:
+      - XA_UTF8_STRING
+      - Xutf8TextListToTextProperty
+      - Xutf8LookupString
+      - XICCallback
+    workarounds:
+      XA_UTF8_STRING: 'XInternAtom(dpy, "UTF8_STRING", False)'
+      Xutf8_functions: "Use Xmb* equivalents"
+      XICCallback: "Use XIMCallback (identical struct)"

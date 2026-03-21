@@ -36,11 +36,7 @@ rules:
     FLTK_CONFIG: "/opt/sgug-staging/usr/sgug/bin/fltk-config"
 
   drop_buildrequires:
-    - perl-generators
-    - desktop-file-utils
     - gettext
-    - gcc-c++
-    - gcc
 
   drop_requires:
     - wget

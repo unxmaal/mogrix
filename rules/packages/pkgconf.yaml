@@ -15,7 +15,6 @@ rules:
     - kyua
     - autoconf
     - automake
-    - gcc
     - libtool
     - make
 

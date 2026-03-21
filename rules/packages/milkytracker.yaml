@@ -3,7 +3,6 @@ build_after:
   - SDL2
 rules:
   drop_buildrequires:
-  - desktop-file-utils
   - libappstream-glib
   - rtmidi-devel
   - zziplib-devel

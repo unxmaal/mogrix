@@ -10,9 +10,6 @@ rules:
     - doc
 
   # Drop python3 — used only for endianness detection in spec
-  drop_buildrequires:
-    - python3
-
   spec_replacements:
     # Replace Fedora 40 %{gsub} macro (not available in older rpmbuild)
     # ICU 74.2 -> dash: 74-2, underscore: 74_2

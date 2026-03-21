@@ -17,7 +17,6 @@ rules:
 
   drop_buildrequires:
     - readline-devel
-    - gnupg2
 
   drop_subpackages:
     - doc

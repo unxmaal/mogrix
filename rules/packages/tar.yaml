@@ -9,9 +9,6 @@ rules:
   - acl
   - attr
   - policycoreutils
-  - libacl-devel
-  - libselinux-devel
-  - texinfo
   drop_requires:
   - info
   configure_flags:

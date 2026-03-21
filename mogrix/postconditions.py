@@ -214,10 +214,56 @@ def _check_drop_patches(rules: dict, spec_content: str, report: PostconditionRep
                 report.error("drop_patches", f"Patch application still active: {stripped[:60]}")
 
 
+def _check_remove_lines(rules: dict, spec_content: str, report: PostconditionReport,
+                        original_content: str | None = None) -> None:
+    """Verify remove_lines patterns had effect."""
+    for pattern in rules.get("remove_lines", []):
+        # Check if pattern still exists in converted spec (outside comments)
+        for line in spec_content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if pattern in stripped:
+                report.error("remove_lines", f"pattern still present: '{pattern}' in {stripped[:60]}")
+        # Zero-match detection: if original provided, check if pattern was ever present
+        if original_content is not None:
+            found = any(pattern in line for line in original_content.splitlines()
+                        if not line.strip().startswith("#"))
+            if not found:
+                report.warning("remove_lines", f"pattern never matched original spec: '{pattern[:60]}'")
+
+
+def _check_zero_match_drop_requires(rules: dict, original_content: str,
+                                    report: PostconditionReport) -> None:
+    """Warn if drop_requires targets were never in the original spec."""
+    for dep in rules.get("drop_requires", []):
+        found = False
+        for line in original_content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if (stripped.startswith("Requires") or stripped.startswith("PreReq")) and dep in stripped:
+                found = True
+                break
+        if not found:
+            report.warning("drop_requires", f"'{dep}' was not in original spec (vacuous rule)")
+
+
+def _check_zero_match_configure_flags_remove(rules: dict, original_content: str,
+                                             report: PostconditionReport) -> None:
+    """Warn if configure_flags remove targets were never in the original spec."""
+    flags = rules.get("configure_flags", {})
+    for flag in flags.get("remove", []):
+        if flag not in original_content:
+            report.warning("configure_flags.remove",
+                           f"flag not in original spec: {flag} (vacuous rule)")
+
+
 def check_postconditions(
     package: str,
     rules: dict,
     spec_content: str,
+    original_content: str | None = None,
 ) -> PostconditionReport:
     """Run all postcondition checks on a converted spec.
 
@@ -225,6 +271,7 @@ def check_postconditions(
         package: Package name
         rules: The 'rules' dict from the package YAML (the value under the 'rules:' key)
         spec_content: The converted spec file content
+        original_content: The original (pre-conversion) spec content for zero-match detection
     """
     report = PostconditionReport(package=package)
 
@@ -241,5 +288,11 @@ def check_postconditions(
         _check_drop_subpackages(rules, spec_content, report)
         _check_flip_globals(rules, spec_content, report)
         _check_drop_patches(rules, spec_content, report)
+        _check_remove_lines(rules, spec_content, report, original_content)
+
+        # Zero-match detection (requires original content)
+        if original_content is not None:
+            _check_zero_match_drop_requires(rules, original_content, report)
+            _check_zero_match_configure_flags_remove(rules, original_content, report)
 
     return report
