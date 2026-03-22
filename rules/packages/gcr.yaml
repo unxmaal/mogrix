@@ -8,14 +8,9 @@ add_patch:
 
 rules:
   drop_buildrequires:
-    - meson
     - pkgconfig(gi-docgen)
-    - pkgconfig(gobject-introspection-1.0)
     - pkgconfig(gtk4)
-    - pkgconfig(libsystemd)
     - pkgconfig(systemd)
-    - systemd-rpm-macros
-    - vala
     - valgrind-devel
     - /usr/bin/gpg2
     - /usr/bin/ssh-add

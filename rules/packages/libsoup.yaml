@@ -1,14 +1,9 @@
 package: libsoup
 rules:
   drop_buildrequires:
-  - meson
-  - pkgconfig(gobject-introspection-1.0)
   - pkgconfig(sysprof-capture-4)
-  - vala
   - /usr/bin/ntlm_auth
-  - gtk-doc
   - glib-networking
-  - krb5-devel
   drop_requires:
   - glib2(x86-32) >= 2.58.0
   - glib-networking(x86-32) >= 2.58.0

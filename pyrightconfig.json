@@ -1,0 +1,8 @@
+{
+  "include": ["mogrix"],
+  "exclude": ["**/node_modules", "**/__pycache__", "build", "dist"],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.12",
+  "reportMissingImports": true,
+  "reportMissingModuleSource": false
+}

@@ -27,13 +27,7 @@ rules:
     CFLAGS: "-fno-stack-protector $CFLAGS"
     CXXFLAGS: "-fno-stack-protector $CXXFLAGS"
   drop_buildrequires:
-    - "gtk-doc"
-    - "meson"
     - "gettext"
-    - "vala"
-    - "pkgconfig(gobject-introspection-1.0)"
-    - "pkgconfig(libsystemd)"
-    - "systemd-rpm-macros"
   drop_requires:
     - systemd
     - systemd-libs

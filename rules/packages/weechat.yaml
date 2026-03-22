@@ -11,7 +11,6 @@ rules:
   - guile-devel
   - perl-ExtUtils-Embed
   - perl-devel
-  - docbook-style-xsl
   - source-highlight
   - asciidoctor
   - cpputest-devel

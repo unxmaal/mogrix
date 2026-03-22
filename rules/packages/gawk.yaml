@@ -20,7 +20,6 @@ rules:
     ac_cv_func_usleep: "yes"
 
   drop_buildrequires:
-  - ghostscript
   - glibc-all-langpacks
   - texinfo-tex
   - texlive-cm-super

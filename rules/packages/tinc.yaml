@@ -17,8 +17,6 @@ upstream:
 rules:
   explicit_provides:
   - tinc
-  configure_disable:
-  - systemd
   spec_replacements:
     - pattern: "%{_unitdir}/%{name}*.service"
       replacement: "# systemd units removed"

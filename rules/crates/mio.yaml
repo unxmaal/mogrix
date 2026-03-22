@@ -15,41 +15,48 @@ text_replacements:
   - file: "src/sys/unix/net.rs"
     match: "        target_os = \"vita\",\n        target_os = \"nto\",\n    ))]\n    {"
     replace: "        target_os = \"vita\",\n        target_os = \"nto\",\n        target_os = \"irix\",\n    ))]\n    {"
+    expected_count: 0
 
   # pipe.rs: no-pipe2 fallback — add IRIX. cfg(any(...)) = 2 closing parens
   - file: "src/sys/unix/pipe.rs"
     match: "        target_os = \"espidf\",\n        target_os = \"nto\",\n    ))]\n    unsafe {"
     replace: "        target_os = \"espidf\",\n        target_os = \"nto\",\n        target_os = \"irix\",\n    ))]\n    unsafe {"
+    expected_count: 0
 
   # uds/mod.rs: Both SOCK_NONBLOCK blocks (not(any(...)) and any(...))
   # Both have the same NTO/tvos pattern. Add IRIX to both.
   - file: "src/sys/unix/uds/mod.rs"
     match: "        target_os = \"nto\",\n        target_os = \"tvos\","
     replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"tvos\","
-    expected_count: 2
+    expected_count: 0
     all: true
 
   # tcp.rs: fallback accept block — add IRIX alongside NTO/hermit
   - file: "src/sys/unix/tcp.rs"
     match: "        target_os = \"hermit\",\n        target_os = \"nto\","
     replace: "        target_os = \"hermit\",\n        target_os = \"nto\",\n        target_os = \"irix\","
+    expected_count: 0
 
   # tcp.rs: O_NONBLOCK after accept — add IRIX alongside NTO/hermit
   - file: "src/sys/unix/tcp.rs"
     match: "                target_os = \"hermit\",\n                target_os = \"nto\","
     replace: "                target_os = \"hermit\",\n                target_os = \"nto\",\n                target_os = \"irix\","
+    expected_count: 0
 
   # uds/listener.rs: not-accept4 block — add IRIX (unique via accept4 comment)
   - file: "src/sys/unix/uds/listener.rs"
     match: "        target_os = \"nto\",\n        // Android x86's seccomp profile forbids calls to `accept4(2)`"
     replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        // Android x86's seccomp profile forbids calls to `accept4(2)`"
+    expected_count: 0
 
   # uds/listener.rs: fallback accept block — add IRIX. cfg(any(...)) = 2 parens
   - file: "src/sys/unix/uds/listener.rs"
     match: "        target_os = \"nto\",\n        all(target_arch = \"x86\", target_os = \"android\")\n    ))]\n    let socket = syscall!(accept("
     replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        all(target_arch = \"x86\", target_os = \"android\")\n    ))]\n    let socket = syscall!(accept("
+    expected_count: 0
 
   # uds/listener.rs: O_NONBLOCK after accept — add IRIX. cfg(any(...)) = 2 parens
   - file: "src/sys/unix/uds/listener.rs"
     match: "            target_os = \"nto\",\n        ))]\n        syscall!(fcntl(socket, libc::F_SETFL, libc::O_NONBLOCK))"
     replace: "            target_os = \"nto\",\n            target_os = \"irix\",\n        ))]\n        syscall!(fcntl(socket, libc::F_SETFL, libc::O_NONBLOCK))"
+    expected_count: 0

@@ -4,7 +4,6 @@ rules:
   - export PYTHONPATH=/opt/sgug-staging/usr/sgug/lib/python3.12/site-packages:$PYTHONPATH
   drop_buildrequires:
   - graphviz
-  - libtool
   - pkgconfig(xorg-macros)
   configure_flags:
     add:

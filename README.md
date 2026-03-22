@@ -28,6 +28,10 @@ Mogrix is a complete IRIX cross-compilation system that transforms C/C++ softwar
 
 - **App Bundles** - `mogrix bundle` creates optimized, self-contained app tarballs for IRIX that coexist with SGUG-RSE. Resolves dependencies via ELF scanning, prunes unused libraries, trims terminfo, and generates Flatpak-style install scripts. Extract anywhere, run `./install`, add one directory to PATH.
 
+- **General-Purpose Source Transforms** - `mogrix transform` applies declarative YAML rules to any source tree — not just IRIX packages. Strip telemetry, rebrand a fork, inject instrumentation, or any other batch source modification. Rule files are self-contained with postcondition validation. First use case: stripping telemetry and default provider lists from [opencode](https://github.com/opencodeco/opencode) for internal corporate deployment.
+
+- **Rust Crate Patching** - `mogrix patch-crates` applies YAML-declared transformations to Rust crates in the cargo registry for IRIX cross-compilation. Generic rules apply to all crates; crate-specific rules provide targeted overrides with strict pattern validation.
+
 ## Installation
 
 ```bash
@@ -172,6 +176,67 @@ nano
 
 Multiple bundles share the same `bin/` directory — one PATH entry covers all bundles. Each bundle includes `./uninstall` for clean removal.
 
+### Source Transforms
+
+Apply declarative YAML rules to any source tree. Rule files define the project, source directory, transforms, and postcondition checks — all in one file.
+
+```bash
+# Preview what would change (no writes)
+uv run mogrix transform opencode-strip --dry-run
+
+# Apply transforms
+uv run mogrix transform opencode-strip
+
+# Verify a previous transform (postconditions only)
+uv run mogrix transform opencode-strip --check-only
+
+# Override source directory
+uv run mogrix transform opencode-strip --source /path/to/opencode
+
+# Use a direct path instead of a name
+uv run mogrix transform rules/transforms/my-custom-rules.yaml
+```
+
+Rule files live in `rules/transforms/` and support:
+
+| Operation | Description |
+|-----------|-------------|
+| `text_replacements` | Exact or regex match-and-replace with expected_count validation |
+| `remove_lines` | Remove lines matching a pattern across file globs |
+| `remove_blocks` | Remove multi-line blocks by start/end markers |
+| `delete_files` | Delete files from the source tree |
+| `postconditions` | Verify absent/present strings and run build commands after transform |
+
+Example rule file (`rules/transforms/opencode-strip.yaml`):
+
+```yaml
+project: opencode
+source_dir: ~/projects/github/opencode
+
+text_replacements:
+  - file: src/provider/models.ts
+    match: "the exact text to find"
+    replace: "// stripped"
+    expected_count: 1           # fail if not exactly 1 match
+
+  - file: src/session/llm.ts
+    match_regex: "pattern.*to.*match"
+    replace: ""
+    all: true                   # replace all occurrences
+
+remove_lines:
+  - pattern: "phone-home-url.example.com"
+    file_glob: "**/*.ts"
+
+postconditions:
+  absent_strings:
+    - "phone-home-url.example.com"
+  present_strings:
+    - "Config"
+```
+
+Workflow for maintaining a stripped fork: `git pull upstream → mogrix transform <rulefile> → git commit`. The `expected_count` validation catches upstream drift — when patterns change, the transform fails loudly instead of silently skipping.
+
 ### Dependency Roadmap
 
 ```bash
@@ -291,6 +356,8 @@ All commands use `uv run mogrix` (or activate the venv first with `source .venv/
 | `mogrix score-rules` | Score package rules by complexity |
 | `mogrix bundle <package>` | Create self-contained IRIX app bundle |
 | `mogrix create-srpm <package>` | Generate SRPM from upstream git/tarball source |
+| `mogrix transform <rules>` | Apply declarative source transforms from a YAML rule file |
+| `mogrix patch-crates` | Patch Rust crates in cargo registry for IRIX cross-compilation |
 
 MCP test tools (via mogrix-test server): `test_bundle`, `test_binary`, `check_deps`, `par_trace`, `test_report`, `screenshot`. See [IRIX Testing](#irix-testing-mcp-test-harness).
 
@@ -480,11 +547,16 @@ mogrix/
 │   ├── bundle.py       # Self-contained IRIX app bundle generator
 │   ├── analyzers/      # Source-level static analysis
 │   ├── validators/     # Spec file validation
-│   └── patches/        # Patch catalog
+│   ├── patches/        # Patch catalog
+│   ├── text_transforms.py    # Shared text transform primitives
+│   ├── source_transform.py   # General-purpose source transform engine
+│   └── crate_patcher.py      # Rust crate patching for IRIX
 ├── rules/              # Rule definitions
 │   ├── generic.yaml    # Universal rules (applied to ALL packages)
 │   ├── classes/        # Class rules (nls-disabled, etc.)
 │   ├── packages/       # Package-specific rules (145 packages)
+│   ├── transforms/     # General-purpose source transform rules
+│   ├── crates/         # Rust crate patching rules
 │   └── source_checks.yaml  # IRIX source pattern definitions
 ├── headers/            # Header overlay files
 │   └── generic/        # Clang/IRIX compat headers
@@ -941,6 +1013,8 @@ AI assistants are powerful tools, but they have fundamental limitations:
 | `rules/methods/irix-testing.md` | IRIX testing methods including mogrix-test MCP tools |
 | `rules/packages/*.yaml` | Existing package rules - patterns to follow |
 | `compat/catalog.yaml` | Available compat functions |
+| `rules/transforms/*.yaml` | Source transform rules (e.g., opencode-strip) |
+| `rules/crates/*.yaml` | Rust crate patching rules |
 | `test-results/*.json` | Stored test results from mogrix-test MCP server |
 
 The goal is augmented intelligence: human judgment directing AI capability, with verification at every step.

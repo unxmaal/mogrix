@@ -43,7 +43,6 @@ rules:
     - "$MOGRIX_ROOT/tools/safepatch meson.build --delete-line 'shmstr.h' --no-backup --quiet"
 
   drop_buildrequires:
-    - gtk-doc
     - "pkgconfig(librsvg-2.0)"
     - "pkgconfig(xcb-render)"
 

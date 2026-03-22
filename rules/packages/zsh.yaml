@@ -3,7 +3,6 @@ rules:
   drop_buildrequires:
   - glibc-langpack-ja
   - hostname
-  - libcap-devel
   - texi2html
   configure_flags:
     add:

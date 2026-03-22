@@ -21,7 +21,6 @@ rules:
   configure_disable:
     - pam
   drop_buildrequires:
-    - pam-devel
     - utempter-devel
     - libutempter-devel
   prep_commands:

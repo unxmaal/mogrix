@@ -3,7 +3,6 @@ rules:
   drop_buildrequires:
   - autoconf
   - automake
-  - libtool
   drop_subpackages:
   - mingw32-libyaml
   - mingw64-libyaml

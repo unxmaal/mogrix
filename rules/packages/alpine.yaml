@@ -3,8 +3,6 @@ rules:
   inject_compat_functions:
   - mkdtemp
   drop_buildrequires:
-  - pam-devel
-  - krb5-devel
   - openldap-devel
   - passwd
   - hunspell

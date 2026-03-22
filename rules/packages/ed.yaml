@@ -6,7 +6,6 @@ package: ed
 rules:
   drop_buildrequires:
     - lzip
-    - gnupg2
   spec_replacements:
     # Skip GPG signature verification — gnupg2 not available in cross build
     - pattern: "%{gpgverify} --keyring='%{SOURCE2}' --signature='%{SOURCE1}' --data='%{SOURCE0}'"

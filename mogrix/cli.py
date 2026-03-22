@@ -203,6 +203,19 @@ def analyze(spec_or_srpm: str, rules_dir: str | None, no_source_scan: bool):
             for var, val in result.ac_cv_overrides.items():
                 console.print(f"  {var}={val}")
 
+        # Platform-derived transforms
+        from mogrix.platform import load_platform
+
+        platform = load_platform(rules_path)
+        platform_info = []
+        for subsys in sorted(platform.lacking_subsystems()):
+            if any(subsys in flag for flag in result.configure_disable):
+                platform_info.append(f"  --disable-{subsys} (platform lacks subsystem)")
+        if platform_info:
+            console.print("\n[bold]Platform-Derived Transforms:[/bold]")
+            for info in platform_info:
+                console.print(info)
+
         # Source code scanning (for SRPMs with tarballs)
         if not no_source_scan and extracted_dir:
             _run_source_analysis(extracted_dir, show_handled=True)
@@ -583,6 +596,7 @@ def _generate_converted_spec(
         remove_lines=result.remove_lines if result.remove_lines else None,
         rpm_macros=result.rpm_macros if result.rpm_macros else None,
         export_vars=result.export_vars if result.export_vars else None,
+        extra_cflags=result.extra_cflags if result.extra_cflags else None,
         skip_find_lang=result.skip_find_lang,
         skip_check=result.skip_check,
         install_cleanup=result.install_cleanup if result.install_cleanup else None,
@@ -2424,6 +2438,122 @@ def check_conversion(
 
     if total_errors:
         raise SystemExit(1)
+
+
+@main.command("promote-check")
+@click.option("--rules-dir", type=click.Path(exists=True), default=None, help="Path to rules directory")
+def promote_check(rules_dir: str | None):
+    """Scan package rules for redundant or promotable entries.
+
+    Reports three categories:
+
+    \b
+    REDUNDANT: Rules already in generic.yaml (remove from package YAML)
+    PROMOTION CANDIDATE: Rules in 3+ packages but not in generic.yaml
+    UNIQUE: Package-specific rules (fine as-is, not shown)
+
+    Examples:
+      mogrix promote-check
+      mogrix promote-check --rules-dir /path/to/rules
+    """
+    import yaml
+
+    rules_path = Path(rules_dir) if rules_dir else RULES_DIR
+
+    # Load generic rules
+    generic_path = rules_path / "generic.yaml"
+    with open(generic_path) as f:
+        generic_data = yaml.safe_load(f) or {}
+    generic_rules = generic_data.get("generic", {})
+
+    # Extract sets from generic
+    generic_drop_br = set(generic_rules.get("drop_buildrequires", []))
+    generic_drop_req = set(generic_rules.get("drop_requires", []))
+    generic_remove_lines = set(generic_rules.get("remove_lines", []))
+    generic_configure_disable = set(generic_rules.get("configure_disable", []))
+
+    # Scan all package YAMLs
+    pkg_dir = rules_path / "packages"
+    pkg_files = sorted(pkg_dir.glob("*.yaml"))
+
+    # Track occurrences: rule_type -> {value: [packages]}
+    occurrences: dict[str, dict[str, list[str]]] = {
+        "drop_buildrequires": {},
+        "drop_requires": {},
+        "remove_lines": {},
+        "configure_disable": {},
+        "configure_flags.remove": {},
+    }
+    redundant_entries = []  # (pkg, rule_type, value)
+
+    for pkg_file in pkg_files:
+        pkg_name = pkg_file.stem
+        with open(pkg_file) as f:
+            pkg_data = yaml.safe_load(f) or {}
+        rules = pkg_data.get("rules", pkg_data) or {}
+
+        for dep in rules.get("drop_buildrequires", []):
+            if dep in generic_drop_br:
+                redundant_entries.append((pkg_name, "drop_buildrequires", dep))
+            else:
+                occurrences["drop_buildrequires"].setdefault(dep, []).append(pkg_name)
+
+        for dep in rules.get("drop_requires", []):
+            if dep in generic_drop_req:
+                redundant_entries.append((pkg_name, "drop_requires", dep))
+            else:
+                occurrences["drop_requires"].setdefault(dep, []).append(pkg_name)
+
+        for pattern in rules.get("remove_lines", []):
+            if pattern in generic_remove_lines:
+                redundant_entries.append((pkg_name, "remove_lines", pattern))
+            else:
+                occurrences["remove_lines"].setdefault(pattern, []).append(pkg_name)
+
+        for flag in rules.get("configure_disable", []):
+            if flag in generic_configure_disable:
+                redundant_entries.append((pkg_name, "configure_disable", flag))
+            else:
+                occurrences["configure_disable"].setdefault(flag, []).append(pkg_name)
+
+        cfg = rules.get("configure_flags", {})
+        for flag in (cfg or {}).get("remove", []):
+            occurrences["configure_flags.remove"].setdefault(flag, []).append(pkg_name)
+
+    # Report
+    console.print("[bold]Promote Check Report[/bold]\n")
+
+    if redundant_entries:
+        console.print(f"[red bold]REDUNDANT ({len(redundant_entries)} entries)[/red bold]")
+        console.print("[dim]Already in generic.yaml — should be removed from package YAML[/dim]")
+        for pkg, rule_type, value in sorted(redundant_entries):
+            console.print(f"  [red]{pkg}[/red]: {rule_type}: {value[:60]}")
+    else:
+        console.print("[green]No redundant entries found[/green]")
+
+    console.print()
+
+    promotion_count = 0
+    for rule_type, value_pkgs in occurrences.items():
+        for value, pkgs in sorted(value_pkgs.items()):
+            if len(pkgs) >= 3:
+                if promotion_count == 0:
+                    console.print("[yellow bold]PROMOTION CANDIDATES (3+ packages)[/yellow bold]")
+                    console.print("[dim]Consider moving to generic.yaml[/dim]")
+                promotion_count += 1
+                console.print(
+                    f"  [yellow]{rule_type}[/yellow]: {value[:60]} "
+                    f"({len(pkgs)} pkgs: {', '.join(pkgs[:5])}{'...' if len(pkgs) > 5 else ''})"
+                )
+
+    if promotion_count == 0:
+        console.print("[green]No promotion candidates found[/green]")
+
+    console.print()
+    console.print(
+        f"[bold]Summary:[/bold] {len(pkg_files)} packages scanned, "
+        f"{len(redundant_entries)} redundant, {promotion_count} promotion candidates"
+    )
 
 
 @main.command("scan-defects")
@@ -4485,6 +4615,87 @@ def patch_crates(
             f"replacement entry in the rule YAML."
         )
         raise SystemExit(2)
+
+
+@main.command()
+@click.argument("rules")
+@click.option(
+    "--source",
+    type=click.Path(exists=True),
+    default=None,
+    help="Override the source directory (default: from rule file).",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would change without writing.",
+)
+@click.option(
+    "--check-only",
+    is_flag=True,
+    help="Run postconditions only (verify a previous transform).",
+)
+def transform(
+    rules: str,
+    source: str | None,
+    dry_run: bool,
+    check_only: bool,
+):
+    """Apply declarative source transforms from a rule file.
+
+    RULES is a path to a YAML rule file, or a name that resolves to
+    rules/transforms/<name>.yaml.
+
+    \b
+    Examples:
+      mogrix transform opencode-strip --dry-run
+      mogrix transform rules/transforms/opencode-strip.yaml
+      mogrix transform opencode-strip --check-only
+    """
+    import logging
+
+    from mogrix.source_transform import transform_project
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    action = "check" if check_only else ("dry-run" if dry_run else "transform")
+    click.echo(f"=== mogrix transform ({action}) ===")
+
+    try:
+        stats, postconditions_ok = transform_project(
+            rules_arg=rules,
+            source_override=source,
+            dry_run=dry_run,
+            check_only=check_only,
+        )
+    except FileNotFoundError as e:
+        click.echo(click.style(str(e), fg="red"))
+        raise SystemExit(1)
+
+    if not check_only:
+        click.echo(f"\nFiles modified:     {len(stats.files_modified)}")
+        click.echo(f"Text replacements:  {stats.replacements}")
+        click.echo(f"Lines removed:      {stats.lines_removed}")
+        click.echo(f"Files deleted:      {stats.files_deleted}")
+        click.echo(f"Blocks removed:     {stats.blocks_removed}")
+
+        if stats.errors:
+            click.echo(
+                click.style(
+                    f"\nVALIDATION ERRORS: {len(stats.errors)}",
+                    fg="red",
+                    bold=True,
+                )
+            )
+            for err in stats.errors:
+                click.echo(click.style(str(err), fg="red"))
+            raise SystemExit(2)
+
+    if postconditions_ok:
+        click.echo(click.style("\nPostconditions: PASS", fg="green"))
+    else:
+        click.echo(click.style("\nPostconditions: FAIL", fg="red"))
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":

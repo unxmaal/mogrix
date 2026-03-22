@@ -4,7 +4,6 @@ rules:
   - lksctp-tools-devel
   drop_requires:
   - ca-certificates
-  - crypto-policies
   inject_compat_functions:
   - secure_getenv
   - _rld_new_interface

@@ -65,6 +65,7 @@ class SpecWriter:
         remove_lines: list[str] | None = None,
         rpm_macros: dict[str, str] | None = None,
         export_vars: dict[str, str] | None = None,
+        extra_cflags: list[str] | None = None,
         skip_find_lang: bool = False,
         skip_check: bool = False,
         install_cleanup: list[str] | None = None,
@@ -186,14 +187,16 @@ class SpecWriter:
             def remove_from_multi_buildrequires(match, escaped=escaped_dep):
                 prefix = match.group(1)  # "BuildRequires:"
                 packages = match.group(2)
-                pkg_pattern = rf"(?:^|\s){escaped}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
-                new_packages = re.sub(pkg_pattern, " ", packages).strip()
+                # Match dep at start of string OR after whitespace
+                pkg_pattern = rf"(?:(?<=\s)|^){escaped}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
+                new_packages = re.sub(pkg_pattern, "", packages).strip()
                 new_packages = re.sub(r"\s+", " ", new_packages)
                 if not new_packages:
                     return ""
                 return f"{prefix} {new_packages}"
 
-            pattern_multi = rf"^(BuildRequires:)\s+(.+(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-]).*)$"
+            # Match any BuildRequires line (callback checks for the specific dep)
+            pattern_multi = rf"^(BuildRequires:)\s+(.+)$"
             content = re.sub(pattern_multi, remove_from_multi_buildrequires, content, flags=re.MULTILINE)
 
         # Handle glob drops — match BuildRequires lines where the package name matches the glob
@@ -214,8 +217,9 @@ class SpecWriter:
             def remove_glob_from_multi(match, dep_regex=dep_re):
                 prefix = match.group(1)
                 packages = match.group(2)
-                pkg_pattern = rf"(?:^|\s)({dep_regex})(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
-                new_packages = re.sub(pkg_pattern, " ", packages).strip()
+                # Match dep at start of string OR after whitespace
+                pkg_pattern = rf"(?:(?<=\s)|^)({dep_regex})(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
+                new_packages = re.sub(pkg_pattern, "", packages).strip()
                 new_packages = re.sub(r"\s+", " ", new_packages)
                 if not new_packages:
                     return ""
@@ -229,39 +233,30 @@ class SpecWriter:
                 flags=re.MULTILINE,
             )
 
-        # Remove dropped Requires
+        # Remove dropped Requires (includes PreReq: handling)
         if drop_requires:
             for dep in drop_requires:
                 escaped_dep = re.escape(dep)
-                # Match all Requires variants: Requires:, Requires(pre):, Requires(post):, etc.
+                # Match all Requires variants: Requires:, Requires(pre):, Requires(post):, PreReq:
                 # Also handle %{_isa} suffix and version constraints
-                # Pattern 1: Single-package Requires line (with optional scriptlet qualifier)
-                # Matches: Requires: pkg, Requires(pre): pkg, Requires: pkg%{_isa} >= 1.0
-                # Handle: pkg, pkg%{_isa}, pkg(%{version}), pkg(%{version}) >= 1.0
-                pattern = rf"^Requires(\([^)]+\))?:\s*{escaped_dep}(\([^)]*\))?(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
+                # Pattern 1: Single-package Requires/PreReq line (with optional scriptlet qualifier)
+                pattern = rf"^(?:Requires(\([^)]+\))?|PreReq):\s*{escaped_dep}(\([^)]*\))?(%\{{[^}}]+\}})?(\s*[<>=].*)?$"
                 content = re.sub(pattern, "", content, flags=re.MULTILINE)
 
-                # Pattern 2: Package in a multi-package Requires line
-                # Remove just that package from the line, preserving others
-                # Matches: "Requires: foo bar pkg baz" -> "Requires: foo bar baz"
-                def remove_from_multi_requires(match):
-                    full_line = match.group(0)
-                    prefix = match.group(1)  # "Requires:" or "Requires(pre):" etc
+                # Pattern 2: Package in a multi-package Requires/PreReq line
+                def remove_from_multi_requires(match, escaped=escaped_dep):
+                    prefix = match.group(1)  # "Requires:", "Requires(pre):", "PreReq:" etc
                     packages = match.group(2)
-                    # Remove the specific package (with optional version constraint)
-                    # Handle: pkg, pkg >= 1.0, pkg%{_isa}, pkg%{_isa} >= 1.0
-                    # Use negative lookahead (?![a-zA-Z0-9_-]) to avoid matching pkg in pkg-devel
-                    pkg_pattern = rf"(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
-                    new_packages = re.sub(pkg_pattern, " ", packages).strip()
-                    # Clean up multiple spaces
+                    # Match dep at start of string OR after whitespace
+                    pkg_pattern = rf"(?:(?<=\s)|^){escaped}(?![a-zA-Z0-9_-])(%\{{[^}}]+\}})?(\s*[<>=]+\s*[\d.]+)?"
+                    new_packages = re.sub(pkg_pattern, "", packages).strip()
                     new_packages = re.sub(r"\s+", " ", new_packages)
                     if not new_packages:
-                        return ""  # Remove entire line if no packages left
+                        return ""
                     return f"{prefix} {new_packages}"
 
-                # Match Requires lines that contain multiple packages
-                # Use word boundary to avoid matching pkg in pkg-devel
-                pattern_multi = rf"^(Requires(?:\([^)]+\))?:)\s+(.+(?:^|\s){escaped_dep}(?![a-zA-Z0-9_-]).*)$"
+                # Match any Requires/PreReq line (callback checks for the specific dep)
+                pattern_multi = rf"^((?:Requires(?:\([^)]+\))?|PreReq):)\s+(.+)$"
                 content = re.sub(pattern_multi, remove_from_multi_requires, content, flags=re.MULTILINE)
 
         # Remove specific lines (substring match - removes lines containing pattern)
@@ -317,19 +312,39 @@ class SpecWriter:
                 flags=re.MULTILINE,
             )
 
-        # Remove configure flags
+        # Remove configure flags (conditional-aware)
         if result.configure_flags_remove:
             for flag in result.configure_flags_remove:
-                # Remove the flag and any argument (e.g., --with-foo=bar)
                 escaped = re.escape(flag)
-                # Handle flag with = argument
-                # Use lookahead to ensure we match the WHOLE flag, not a prefix
-                # e.g., --enable-jit must not match inside --enable-jit-sealloc
-                content = re.sub(
-                    rf"\s*{escaped}(?=[=\s\\]|$)(=[^\s]+)?",
-                    "",
-                    content,
-                )
+                flag_re = re.compile(rf"\s*{escaped}(?=[=\s\\]|$)(=[^\s]+)?")
+                # Check if the flag appears inside a %if/%else/%endif block.
+                # If so, skip removal and warn — the text engine can't safely
+                # restructure conditional blocks. Use bcond flipping instead.
+                lines = content.splitlines()
+                cond_depth = 0
+                in_conditional = {}  # line_idx -> bool
+                for idx, line in enumerate(lines):
+                    s = line.strip()
+                    if re.match(r"^%if\b", s):
+                        cond_depth += 1
+                    in_conditional[idx] = cond_depth > 0
+                    if re.match(r"^%endif\b", s):
+                        cond_depth -= 1
+
+                flag_in_cond = False
+                for idx, line in enumerate(lines):
+                    if flag_re.search(line) and in_conditional.get(idx, False):
+                        flag_in_cond = True
+                        break
+
+                if flag_in_cond:
+                    logger.warning(
+                        "configure_flags remove: '%s' is inside %%if/%%endif block, "
+                        "skipping (use bcond flipping or spec_replacements instead)",
+                        flag,
+                    )
+                else:
+                    content = flag_re.sub("", content)
 
         # Add configure flags
         if result.configure_flags_add:
@@ -534,6 +549,19 @@ _mogrix_origdir=$(pwd)
                     flags=re.MULTILINE,
                 )
 
+        # Inject extra CFLAGS
+        if extra_cflags:
+            cflags_str = " ".join(extra_cflags)
+            cflags_line = f'export CFLAGS="{cflags_str} $CFLAGS"'
+            if "%build" in content:
+                content = re.sub(
+                    r"^(%build)(\s*\n)",
+                    f"\\1\\2{cflags_line}\n",
+                    content,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+
         # Inject ac_cv overrides (autoconf cache variables)
         if ac_cv_overrides:
             ac_cv_lines = "\n".join(
@@ -655,7 +683,7 @@ _mogrix_origdir=$(pwd)
             # Fallback: insert at end of %install section (before next section)
             if not inserted:
                 content = re.sub(
-                    r"(^%install\s*\n.*?)(\n^%(?:files|pre|post|preun|postun|changelog|package|check)\b)",
+                    r"(^%install\s*\n.*?)(\n^%(?:files|pre|post|preun|postun|changelog|package|check|trigger|transfiletrigger)\b)",
                     lambda m: f"{m.group(1)}\n\n{cleanup_comment}\n{cleanup_cmds}{m.group(2)}",
                     content,
                     count=1,
@@ -700,30 +728,59 @@ _mogrix_origdir=$(pwd)
         return content
 
     def _comment_conditional(self, content: str, cond_name: str) -> str:
-        """Comment out a conditional block."""
-        # Match %if containing the condition name through %endif
-        pattern = rf"(^%if[^\n]*{re.escape(cond_name)}[^\n]*$)(.*?)(^%endif\s*$)"
-
-        def comment_block(match):
-            if_line = match.group(1)
-            block_content = match.group(2)
-            endif_line = match.group(3)
-            # Comment each line
-            commented_if = "#" + if_line
-            commented_content = "\n".join(
-                "#" + line if line.strip() else line
-                for line in block_content.split("\n")
-            )
-            commented_endif = "#" + endif_line
-            return commented_if + commented_content + commented_endif
-
-        return re.sub(pattern, comment_block, content, flags=re.MULTILINE | re.DOTALL)
+        """Comment out a conditional block, handling nested %if/%endif."""
+        escaped = re.escape(cond_name)
+        lines = content.splitlines()
+        result = list(lines)
+        i = 0
+        while i < len(lines):
+            stripped = lines[i].strip()
+            if re.match(rf"^%if.*{escaped}", stripped):
+                # Track nesting to find matching %endif
+                depth = 1
+                j = i + 1
+                while j < len(lines) and depth > 0:
+                    s = lines[j].strip()
+                    if re.match(r"^%if\b", s):
+                        depth += 1
+                    elif s == "%endif" or re.match(r"^%endif\s", s):
+                        depth -= 1
+                    j += 1
+                # Comment lines i through j-1
+                for k in range(i, j):
+                    if lines[k].strip():
+                        result[k] = "#" + lines[k]
+                i = j
+                continue
+            i += 1
+        return "\n".join(result)
 
     def _remove_conditional(self, content: str, cond_name: str) -> str:
-        """Remove a conditional block entirely."""
-        # Match %if containing the condition name through %endif
-        pattern = rf"^%if[^\n]*{re.escape(cond_name)}[^\n]*$.*?^%endif\s*$\n?"
-        return re.sub(pattern, "", content, flags=re.MULTILINE | re.DOTALL)
+        """Remove a conditional block entirely, handling nested %if/%endif."""
+        escaped = re.escape(cond_name)
+        lines = content.splitlines(keepends=True)
+        result_lines = []
+        i = 0
+        while i < len(lines):
+            stripped = lines[i].strip()
+            # Find %if line containing the condition name
+            if re.match(rf"^%if.*{escaped}", stripped):
+                # Track nesting to find matching %endif
+                depth = 1
+                j = i + 1
+                while j < len(lines) and depth > 0:
+                    s = lines[j].strip()
+                    if re.match(r"^%if\b", s):
+                        depth += 1
+                    elif s == "%endif" or re.match(r"^%endif\s", s):
+                        depth -= 1
+                    j += 1
+                # Skip lines i..j-1 (the entire %if...%endif block)
+                i = j
+                continue
+            result_lines.append(lines[i])
+            i += 1
+        return "".join(result_lines)
 
     def _force_conditional_true(self, content: str, cond_name: str) -> str:
         """Force a conditional to always be true (remove %if/%endif, keep content)."""
@@ -752,7 +809,7 @@ _mogrix_origdir=$(pwd)
     _ALL_SECTION_MARKERS = re.compile(
         r"^%(files|package|description|prep|build|install|"
         r"check|pre|post|preun|postun|pretrans|posttrans|"
-        r"changelog|clean|verifyscript)\b"
+        r"changelog|clean|verifyscript|trigger|transfiletrigger)\b"
     )
 
     def _comment_subpackage(self, content: str, subpkg_pattern: str) -> str:

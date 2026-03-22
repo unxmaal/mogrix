@@ -2,7 +2,6 @@ package: libssh2
 rules:
   drop_buildrequires:
   - openssh-server
-  - groff
   - /usr/bin/man
   drop_subpackages:
   - docs

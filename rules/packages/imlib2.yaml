@@ -11,7 +11,6 @@ rules:
   - libwebp-devel
   - openjpeg2-devel
   - libXext-devel
-  - libtool
   drop_subpackages:
   - id3tag-loader
   ac_cv_overrides:

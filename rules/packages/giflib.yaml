@@ -4,7 +4,6 @@ rules:
   - mingw32-*
   - mingw64-*
   drop_buildrequires:
-  - xmlto
   - mingw32-filesystem
   - mingw32-gcc
   - mingw64-filesystem

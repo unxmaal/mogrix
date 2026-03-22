@@ -5,7 +5,6 @@ smoke_test:
 rules:
   drop_buildrequires:
   - autoconf-archive
-  - libtool
   - libnotify-devel
   - libotr-devel
   - gpgme-devel

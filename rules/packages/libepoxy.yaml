@@ -6,7 +6,6 @@ rules:
     - libGL-devel
     - libX11-devel
     - mesa-dri-drivers
-    - python3
     - xorg-x11-server-Xvfb
     - pkgconfig(egl)
     - pkgconfig(gl)

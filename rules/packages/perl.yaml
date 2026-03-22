@@ -13,7 +13,6 @@ rules:
   - '[A-Za-z]*'
   drop_buildrequires:
   - libdb-devel
-  - groff-base
   - procps
   - tcsh
   drop_requires:

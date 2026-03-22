@@ -7,7 +7,6 @@ rules:
   drop_buildrequires:
   - qt5-rpm-macros
   - make
-  - cups-devel
   - findutils
   - libjpeg-devel
   - libmng-devel
@@ -25,7 +24,6 @@ rules:
   - pkgconfig(libpulse)
   - pkgconfig(libpulse-mainloop-glib)
   - pkgconfig(libinput)
-  - pkgconfig(libsystemd)
   - pkgconfig(vulkan)
   - libEGL-devel
   - pkgconfig(gbm)

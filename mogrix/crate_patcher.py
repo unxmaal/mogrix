@@ -32,13 +32,27 @@ import shutil
 
 import yaml
 
+from mogrix.text_transforms import (
+    PatchError as _SharedPatchError,
+    TransformStats as _SharedStats,
+    apply_remove_lines as _shared_apply_remove_lines,
+    apply_text_replacements as _shared_apply_text_replacements,
+    count_matches as _count_matches,
+    find_line_number as _find_line_number,
+    replace_with_context_check as _replace_with_context_check,
+)
+
 log = logging.getLogger(__name__)
 
 REGISTRY_BASE = os.path.expanduser("~/.cargo/registry/src")
 
 
 class PatchError:
-    """A validation failure from a text replacement."""
+    """A validation failure from a text replacement.
+
+    Thin wrapper around the shared PatchError, preserving the crate_patcher
+    interface (uses 'crate' instead of 'context').
+    """
 
     def __init__(self, crate: str, file: str, pattern: str,
                  expected: int, found: int, rule_file: str = ""):
@@ -97,67 +111,6 @@ def match_crate(crate_dir_name: str, pattern: str) -> bool:
     """Check if a crate directory name matches a glob pattern."""
     import fnmatch
     return fnmatch.fnmatch(crate_dir_name, pattern)
-
-
-def _count_matches(content: str, pattern: str, is_regex: bool = False) -> int:
-    """Count occurrences of a pattern in content."""
-    if is_regex:
-        return len(re.findall(pattern, content))
-    count = 0
-    start = 0
-    while True:
-        idx = content.find(pattern, start)
-        if idx == -1:
-            break
-        count += 1
-        start = idx + 1
-    return count
-
-
-def _find_line_number(content: str, pattern: str) -> int | None:
-    """Find the line number of the first occurrence of pattern."""
-    idx = content.find(pattern)
-    if idx == -1:
-        return None
-    return content[:idx].count('\n') + 1
-
-
-def _replace_with_context_check(
-    content: str, match_str: str, replace_str: str,
-    exclude_ctx: list[str], replace_all: bool,
-) -> str:
-    """Replace occurrences of match_str, skipping those near excluded context.
-
-    This handles the case where a file has multiple occurrences of a pattern,
-    some in excluded contexts and some not. Only the non-excluded ones get
-    replaced.
-    """
-    result = []
-    pos = 0
-    replaced = False
-
-    while pos < len(content):
-        idx = content.find(match_str, pos)
-        if idx == -1:
-            result.append(content[pos:])
-            break
-
-        # Check context around this occurrence
-        ctx_window = content[max(0, idx - 200):idx + len(match_str) + 200]
-        excluded = any(exc in ctx_window for exc in exclude_ctx)
-
-        if excluded or (replaced and not replace_all):
-            # Keep original text
-            result.append(content[pos:idx + len(match_str)])
-        else:
-            # Replace this occurrence
-            result.append(content[pos:idx])
-            result.append(replace_str)
-            replaced = True
-
-        pos = idx + len(match_str)
-
-    return ''.join(result)
 
 
 def apply_text_replacements(

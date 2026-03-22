@@ -37,4 +37,3 @@ rules:
 
   drop_buildrequires:
     - xorg-x11-util-macros
-    - xmlto

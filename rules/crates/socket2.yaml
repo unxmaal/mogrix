@@ -7,6 +7,8 @@
 #   ip_mreqn, sin_len/sin6_len
 # IRIX has: IovLen = c_int, MAX_BUF_LEN = c_int
 
+# socket2 0.6.3+ has upstream IRIX support; patterns below are no-ops for 0.6.3+.
+# Older versions (0.6.1, 0.6.2) still need these patches.
 name_pattern: "socket2-*"
 skip_generic: true
 
@@ -14,60 +16,74 @@ text_replacements:
   # ===== src/sys/unix.rs =====
 
   # Ipv6Mreq exclusion — IRIX needs excluding (no ipv6_mreq)
+  # expected_count: 0 — upstreamed in socket2 0.6.3+
   - file: "src/sys/unix.rs"
     match: '#[cfg(not(target_os = "nto"))]'
     replace: '#[cfg(not(any(target_os = "nto", target_os = "irix")))]'
+    expected_count: 0
 
   # IP_RECVTOS exclusion — add IRIX after NTO in not(any(...))
+  # expected_count: 0 — upstreamed in socket2 0.6.3+
   - file: "src/sys/unix.rs"
     match: "    target_os = \"hurd\",\n    target_os = \"nto\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) use libc::IP_RECVTOS;"
     replace: "    target_os = \"hurd\",\n    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) use libc::IP_RECVTOS;"
+    expected_count: 0
 
   # IpMreqSource exclusion — add IRIX after NTO in not(any(...))
+  # expected_count: 0 — upstreamed in socket2 0.6.3+
   - file: "src/sys/unix.rs"
     match: "    target_os = \"nto\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n)))]\npub(crate) use libc::{\n    ip_mreq_source as IpMreqSource"
     replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n)))]\npub(crate) use libc::{\n    ip_mreq_source as IpMreqSource"
+    expected_count: 0
 
   # IovLen = c_int — add IRIX (any(...) block, 2 closing parens)
   - file: "src/sys/unix.rs"
     match: "    target_os = \"cygwin\",\n))]\ntype IovLen = c_int;"
     replace: "    target_os = \"cygwin\",\n    target_os = \"irix\",\n))]\ntype IovLen = c_int;"
+    expected_count: 0
 
   # MAX_BUF_LEN: exclude IRIX from ssize_t::MAX (not(any(...)), 3 closing parens)
   - file: "src/sys/unix.rs"
     match: "    target_os = \"cygwin\",\n)))]\nconst MAX_BUF_LEN: usize = ssize_t::MAX as usize;"
     replace: "    target_os = \"cygwin\",\n    target_os = \"irix\",\n)))]\nconst MAX_BUF_LEN: usize = ssize_t::MAX as usize;"
+    expected_count: 0
 
   # MAX_BUF_LEN: add IRIX to c_int::MAX (any(...) block, 2 closing parens)
   - file: "src/sys/unix.rs"
     match: "    target_os = \"cygwin\",\n))]\nconst MAX_BUF_LEN: usize = c_int::MAX as usize - 1;"
     replace: "    target_os = \"cygwin\",\n    target_os = \"irix\",\n))]\nconst MAX_BUF_LEN: usize = c_int::MAX as usize - 1;"
+    expected_count: 0
 
   # TCP_KEEPIDLE as KEEPALIVE_TIME — exclude IRIX (not(any(...)), but closing is ))]
   # because it's #[cfg(not(any(...)))]
   - file: "src/sys/unix.rs"
     match: "    target_os = \"nto\",\n    target_os = \"openbsd\",\n    target_os = \"tvos\",\n    target_os = \"watchos\",\n    target_os = \"vita\",\n)))]\nuse libc::TCP_KEEPIDLE as KEEPALIVE_TIME;"
     replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"openbsd\",\n    target_os = \"tvos\",\n    target_os = \"watchos\",\n    target_os = \"vita\",\n)))]\nuse libc::TCP_KEEPIDLE as KEEPALIVE_TIME;"
+    expected_count: 0
 
   # set_tcp_keepalive: add IRIX to exclusion (not(any(...)), 3 closing parens)
   - file: "src/sys/unix.rs"
     match: "        target_os = \"nto\",\n        target_os = \"vita\"\n    )))]\n    if let Some(time) = keepalive.time {"
     replace: "        target_os = \"nto\",\n        target_os = \"irix\",\n        target_os = \"vita\"\n    )))]\n    if let Some(time) = keepalive.time {"
+    expected_count: 0
 
   # into_secs: add IRIX to exclusion (not(any(...)), 3 closing parens)
   - file: "src/sys/unix.rs"
     match: "    target_os = \"nto\",\n    target_os = \"vita\"\n)))]\nfn into_secs"
     replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"vita\"\n)))]\nfn into_secs"
+    expected_count: 0
 
   # tcp_keepalive_time in unix.rs — exclude IRIX
   - file: "src/sys/unix.rs"
     match: 'not(any(target_os = "haiku", target_os = "openbsd", target_os = "vita"))'
     replace: 'not(any(target_os = "haiku", target_os = "openbsd", target_os = "irix", target_os = "vita"))'
+    expected_count: 0
 
   # to_mreqn exclusion — add IRIX (not(any(...)), 3 closing parens)
   - file: "src/sys/unix.rs"
     match: "    target_os = \"nto\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) const fn to_mreqn("
     replace: "    target_os = \"nto\",\n    target_os = \"irix\",\n    target_os = \"espidf\",\n    target_os = \"vita\",\n    target_os = \"cygwin\",\n)))]\npub(crate) const fn to_mreqn("
+    expected_count: 0
 
   # ===== src/socket.rs =====
 

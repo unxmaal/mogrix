@@ -18,7 +18,6 @@ rules:
   - fuse
   - docbook-utils
   - swtpm
-  - systemd-rpm-macros
   drop_requires:
   - pinentry
   ac_cv_overrides:

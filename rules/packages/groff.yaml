@@ -8,7 +8,6 @@ rules:
   drop_buildrequires:
   - netpbm-progs
   - psutils
-  - ghostscript
   drop_subpackages:
   - doc
   - x11

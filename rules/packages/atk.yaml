@@ -12,10 +12,6 @@ upstream:
   summary: "Interfaces for accessibility support"
   source_dir: atk-2.36.0
 rules:
-  drop_buildrequires:
-    - gobject-introspection-devel
-    - gtk-doc
-    - gi-docgen
   meson_flags:
     add:
       - -Dintrospection=false

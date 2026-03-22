@@ -22,7 +22,6 @@ rules:
   - glibc-gconv-extra
   - autoconf
   - gettext
-  - libtool
   - make
   - hunspell-devel
   - lua-devel
