@@ -385,6 +385,16 @@ class MogrixPlugin(MCMPlugin):
         db = server.db
         tracker = server.tracker
 
+        # Track which MCP tools the agent has called this session.
+        # Used by get_nudge() to enforce the search-first mandate.
+        self._mcp_tools_called: set[str] = set()
+
+        # Register the mcp_first nudge type so the escalation system
+        # can block the agent if they ignore it.
+        tracker.RESOLVES["mcp_first"] = frozenset({
+            "search", "report_error", "check_compat", "knowledge_query",
+        })
+
         # Resolve paths relative to project root
         project_root = server.project_root
         catalog_path = project_root / "compat" / "catalog.yaml"
@@ -686,42 +696,237 @@ class MogrixPlugin(MCMPlugin):
 
             return result_msg
 
+        # --- Override session_handoff to auto-populate findings_summary ---
+        # The core mcm-engine session_handoff hardcodes findings_summary="".
+        # FastMCP keeps the first registration, so @mcp.tool() won't override.
+        # Instead, we replace the function in the tool manager after registration.
+        import json as _json
+
+        def _patched_session_handoff(
+            status: str,
+            current_task: str = "",
+            next_steps: str = "",
+            blockers: str = "",
+        ) -> str:
+            """Snapshot session state for the next session to pick up.
+
+            Resets ALL behavioral counters. Automatically creates a final snapshot
+            with the handoff data. Call this before ending a session or when nudged
+            to checkpoint.
+
+            Args:
+                status: One-line session status summary
+                current_task: What's currently in progress
+                next_steps: What the next session should do
+                blockers: Any blockers or decisions needed
+            """
+            tracker.record_call("session_handoff")
+
+            # Compute findings_summary from DB before resetting
+            turn_count = tracker.turn_count
+            duration = tracker.elapsed_seconds()
+
+            # Count knowledge/errors/rules stored this session (last 24h as proxy)
+            counts = {}
+            for table in ("knowledge", "errors", "rules"):
+                try:
+                    row = db.execute(
+                        f"SELECT COUNT(*) as cnt FROM {table} "
+                        "WHERE created_at >= datetime('now', '-1 day')"
+                    ).fetchone()
+                    if row and row["cnt"] > 0:
+                        counts[table] = row["cnt"]
+                except Exception:
+                    pass
+
+            if counts:
+                findings_summary = ", ".join(f"{v} {k}" for k, v in counts.items())
+            else:
+                findings_summary = ""
+
+            # Pre-handoff warning if nothing stored in a non-trivial session
+            warning = ""
+            if not counts and turn_count > 10:
+                warning = (
+                    "\nWARNING: No findings stored this session "
+                    f"({turn_count} tool calls). Consider calling "
+                    "add_knowledge or add_rule before handoff."
+                )
+
+            tracker.reset_all()
+
+            context = _json.dumps({
+                "turn_count": turn_count,
+                "session_duration_s": duration,
+                "knowledge_stored": sum(counts.values()) if counts else 0,
+            })
+
+            db.execute_write(
+                "INSERT INTO sessions "
+                "(status, current_task, findings_summary, next_steps, blockers, context_snapshot) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (status, current_task, findings_summary, next_steps, blockers, context),
+            )
+            db.commit()
+
+            # Auto-create a final snapshot
+            session_row = db.execute(
+                "SELECT id FROM sessions ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            session_id = session_row["id"] if session_row else None
+
+            if session_id is not None:
+                seq_row = db.execute(
+                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 as next_seq "
+                    "FROM snapshots WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+            else:
+                seq_row = db.execute(
+                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 as next_seq "
+                    "FROM snapshots WHERE session_id IS NULL",
+                ).fetchone()
+            next_seq = seq_row["next_seq"]
+
+            try:
+                db.execute_write(
+                    "INSERT INTO snapshots "
+                    "(session_id, sequence_num, goal, progress, next_steps, blockers) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (session_id, next_seq, current_task, status, next_steps, blockers),
+                )
+                db.commit()
+            except Exception:
+                pass
+
+            result = "Session handoff recorded. Counters reset."
+            if findings_summary:
+                result += f"\nFindings stored: {findings_summary}"
+            result += warning
+            return result
+
+        # Monkey-patch the tool manager to use our version
+        _tool_mgr = mcp._tool_manager
+        if "session_handoff" in _tool_mgr._tools:
+            _orig_tool = _tool_mgr._tools["session_handoff"]
+            _orig_tool.fn = _patched_session_handoff
+
     def get_nudge(self, tracker: SessionTracker) -> str | None:
-        """Domain nudge: remind about MCP-first workflow."""
-        if tracker.turn_count < 5:
+        """Domain nudge: enforce MCP-first workflow.
+
+        Tiered enforcement:
+        - Turn 3-5: WARNING if no search/report_error/check_compat called
+        - Turn 6+: Adds "mcp_first" to pending_nudges so escalation system
+          blocks after 2 ignores (nudge_escalation_threshold=2)
+        - Every 15 turns: periodic reminder to store findings
+        """
+        if tracker.turn_count < 3:
             return None
 
-        # Check if report_error or check_compat have been called this session
-        tool_calls = set()
-        for topic in tracker.topic_freq:
-            # topic_freq tracks topics, not tool names — we rely on the
-            # core nudge system for store reminders. This nudge fires once
-            # as a general reminder.
-            pass
+        # The mcp_first nudge lifecycle:
+        # 1. Not yet fired: "mcp_first" absent from pending AND ignored
+        # 2. Fired, awaiting resolution: "mcp_first" in pending_nudges
+        # 3. Resolved: record_call() removed it from pending+ignored
+        #
+        # We use a separate flag to track whether we've ever fired it.
+        # Once resolved (agent called search/report_error/check_compat),
+        # we stop firing.
+        mcp_first_ever_fired = hasattr(self, "_mcp_first_fired") and self._mcp_first_fired
+        mcp_first_resolved = (
+            mcp_first_ever_fired
+            and "mcp_first" not in tracker.pending_nudges
+            and "mcp_first" not in tracker.ignored_counts
+        )
+        mcp_first_pending = "mcp_first" in tracker.pending_nudges
 
-        if tracker.turn_count == 5:
+        # Already resolved — agent used MCP tools, stop nagging
+        if mcp_first_resolved:
+            pass  # fall through to periodic check
+        # Turn 3+: first fire
+        elif not mcp_first_ever_fired:
+            self._mcp_first_fired = True
+            tracker.pending_nudges.add("mcp_first")
             return (
-                "MOGRIX WORKFLOW CHECK: Have you used `report_error` for errors "
-                "and `check_compat` for missing symbols? These are MANDATORY "
-                "before manual fixes. Also: call `add_rule` IMMEDIATELY after "
-                "confirming a fix works."
+                "WARNING: No MCP search tools called yet (search, report_error, "
+                "check_compat). You MUST call one of these BEFORE making fixes. "
+                "This is non-negotiable — fixes without MCP search violate "
+                "project rules and will be blocked."
             )
+        # Still pending — fire again (escalation system tracks ignores and blocks)
+        elif mcp_first_pending:
+            return (
+                "MANDATORY: You have not called report_error, search, or "
+                "check_compat this session. Call one NOW. The escalation "
+                "system will block all other tools after further ignores."
+            )
+
+        # Every 15 turns: periodic reminder
+        if tracker.turn_count > 0 and tracker.turn_count % 15 == 0:
+            return (
+                "PERIODIC CHECK: Have you stored findings with add_rule or "
+                "add_knowledge? Have you checked the knowledge DB for existing "
+                "solutions before implementing new ones?"
+            )
+
         return None
 
     def on_session_start(self, db: KnowledgeDB) -> dict[str, str]:
-        """Return active tasks and boundary count for session context."""
+        """Return active tasks, boundary count, and last session findings."""
         result = {}
 
-        # Active tasks
+        # Reset tool tracking for this new session
+        self._mcp_tools_called = set()
+        self._mcp_first_fired = False
+
+        # Active tasks with age
         try:
             tasks = db.execute(
-                "SELECT subject, status, project FROM tasks WHERE status = 'active' ORDER BY project, id"
+                "SELECT subject, status, project, created FROM tasks "
+                "WHERE status = 'active' ORDER BY project, id"
             ).fetchall()
             if tasks:
-                lines = [f"  - [{t['project']}] {t['subject']}" for t in tasks]
+                lines = []
+                for t in tasks:
+                    age = ""
+                    if t["created"]:
+                        try:
+                            from datetime import datetime
+                            created = datetime.fromisoformat(t["created"].replace("Z", "+00:00"))
+                            days = (datetime.now(created.tzinfo) - created).days
+                            if days > 0:
+                                age = f" ({days}d ago)"
+                        except Exception:
+                            pass
+                    lines.append(f"  - [{t['project']}] {t['subject']}{age}")
                 result["Active tasks"] = "\n" + "\n".join(lines)
             else:
                 result["Active tasks"] = "None"
+        except Exception:
+            pass
+
+        # Last session findings summary
+        try:
+            last_session = db.execute(
+                "SELECT status, current_task, findings_summary, created_at "
+                "FROM sessions ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if last_session and last_session["created_at"]:
+                ts = last_session["created_at"]
+                # Count knowledge/rules/errors stored since last session
+                counts = {}
+                for table in ("knowledge", "errors", "rules"):
+                    try:
+                        row = db.execute(
+                            f"SELECT COUNT(*) as cnt FROM {table} WHERE created_at >= ?",
+                            (ts,),
+                        ).fetchone()
+                        if row and row["cnt"] > 0:
+                            counts[table] = row["cnt"]
+                    except Exception:
+                        pass
+                if counts:
+                    parts = [f"{v} {k}" for k, v in counts.items()]
+                    result["Last session stored"] = ", ".join(parts)
         except Exception:
             pass
 

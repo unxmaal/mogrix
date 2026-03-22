@@ -48,9 +48,10 @@ A separate MCP server (`tools/mogrix-test-server.py`) provides structured testin
 
 **Key differences from irix MCP tools:**
 
-- `test_bundle` deploys to `/tmp/mogrix-test/` on the IRIX **host** (not chroot). Bundle wrappers set their own `LD_LIBRARYN32_PATH`, so running through chroot would pollute the environment.
+- `test_bundle` deploys to `/usr/people/edodd/apps/` on the IRIX **host** (not chroot). Tests run as **edodd** (not root) to match real user permissions. Bundle wrappers set their own `LD_LIBRARYN32_PATH`, so running through chroot would pollute the environment. On failure, auto-diagnostics (par trace) are collected and included in the response.
+- `test_bundle` validates bundle structure before testing: checks for `_bin/` directory and at least one wrapper script. Missing `_lib32/` triggers a warning (static bundles may not have it).
 - `test_binary` supports both chroot mode (default, for installed packages) and `host_mode` (for bundle binaries).
-- `test_binary host_mode=true` does NOT `cd` to the binary's directory. Tests needing relative paths (e.g. `testdata/`) will fail. Use `irix_host_exec` with explicit `cd /path && ./binary` for those cases.
+- `test_binary` now accepts an optional `cwd` parameter. In `host_mode`, it defaults to the binary's parent directory, so tests needing relative paths work automatically.
 - `screenshot` captures the X11 display via `xwd` on IRIX, transfers via SCP, converts to PNG on Linux.
 
 **Typical testing workflow:**
