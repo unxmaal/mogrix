@@ -48,3 +48,4 @@ text_replacements:
   - file: "src/backend/libc/fs/makedev.rs"
     match: "    target_os = \"emscripten\",\n)))]\n#[inline]\npub(crate) fn makedev(maj: u32, min: u32) -> Dev {\n    c::makedev(maj, min)\n}"
     replace: "    target_os = \"emscripten\",\n    target_os = \"irix\",\n)))]\n#[inline]\npub(crate) fn makedev(maj: u32, min: u32) -> Dev {\n    c::makedev(maj, min)\n}\n\n#[cfg(target_os = \"irix\")]\n#[inline]\npub(crate) fn makedev(maj: u32, min: u32) -> Dev {\n    unsafe { c::makedev(maj, min) }\n}"
+    expected_count: 0

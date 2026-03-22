@@ -20,6 +20,8 @@ text_replacements:
       #[cfg(target_os = "irix")]
       pub(crate) mod sdl2;
     expected_count: 0
+    exclude_context:
+      - "pub(crate) mod sdl2"
 
   # Replace the null platform_impl with SDL2 for IRIX in platform/mod.rs.
   # The null fallback block has a cfg(not(any(...))) that catches IRIX.
