@@ -91,6 +91,66 @@ text_replacements:
     replace: "hint: undefined"
     expected_count: 1
 
+  # ══════════════════════════════════════════════════════════════════════
+  # ROUND 2: Server-side data exfiltration (from adversarial audit)
+  # ══════════════════════════════════════════════════════════════════════
+
+  # ── 11. ZenData — full conversation logging to Cloudflare R2 ─────────
+  # CRITICAL: Stores every LLM prompt+response to external bucket
+  - file: packages/console/app/src/routes/zen/util/dataDumper.ts
+    match: "import { Resource, waitUntil } from \"@opencode-ai/console-resource\"\n\nexport function createDataDumper(sessionId: string, requestId: string, projectId: string) {"
+    replace: "export function createDataDumper(sessionId: string, requestId: string, projectId: string) {"
+    expected_count: 1
+  - file: packages/console/app/src/routes/zen/util/dataDumper.ts
+    match: "if (Resource.App.stage !== \"production\") return\n  if (sessionId === \"\") return\n\n  let data: Record<string, any> = { sessionId, requestId, projectId }\n  let metadata: Record<string, any> = { sessionId, requestId, projectId }\n\n  return {\n    provideModel: (model?: string) => {\n      data.modelName = model\n      metadata.modelName = model\n    },\n    provideRequest: (request: string) => (data.request = request),\n    provideResponse: (response: string) => (data.response = response),\n    provideStream: (chunk: string) => (data.response = (data.response ?? \"\") + chunk),\n    flush: () => {"
+    replace: "return {\n    provideModel: () => {},\n    provideRequest: () => {},\n    provideResponse: () => {},\n    provideStream: () => {},\n    flush: () => {"
+    expected_count: 1
+
+  # ── 12. Honeycomb APM — geolocation + full request/response telemetry ─
+  # CRITICAL: Ships conversation data + IP + lat/long to honeycomb.io
+  - file: packages/console/function/src/log-processor.ts
+    match: "api.honeycomb.io"
+    replace: "localhost:0/disabled"
+    expected_count: 1
+
+  # ── 13. Salesforce CRM — enterprise lead capture ─────────────────────
+  - file: packages/console/app/src/routes/api/enterprise.ts
+    match: "import { createLead } from \"~/lib/salesforce\"\n"
+    replace: ""
+    expected_count: 1
+  - file: packages/console/app/src/routes/api/enterprise.ts
+    match: "createLead({\n        name: body.name,\n        role: body.role,\n        company: body.company,\n        email: body.email,\n        phone: body.phone,\n        message: body.message,\n      }),"
+    replace: "// stripped: no salesforce lead capture"
+    expected_count: 1
+
+  # ── 14. PostHog analytics — download statistics ──────────────────────
+  - file: script/stats.ts
+    match: "async function sendToPostHog(event: string, properties: Record<string, any>) {\n  const key = process.env[\"POSTHOG_KEY\"]\n\n  if (!key) {\n    console.warn(\"POSTHOG_API_KEY not set, skipping PostHog event\")\n    return\n  }\n\n  const response = await fetch(\"https://us.i.posthog.com/i/v0/e/\", {\n    method: \"POST\",\n    headers: {\n      \"Content-Type\": \"application/json\",\n    },\n    body: JSON.stringify({\n      distinct_id: \"download\",\n      api_key: key,\n      event,\n      properties: {\n        ...properties,\n      },\n    }),\n  }).catch(() => null)\n\n  if (response && !response.ok) {\n    console.warn(`PostHog API error: ${response.status}`)\n  }\n}"
+    replace: "async function sendToPostHog(_event: string, _properties: Record<string, any>) {\n  // stripped: no PostHog analytics\n}"
+    expected_count: 1
+
+  # ── 15. Trial limiter — IP-based tracking ────────────────────────────
+  - file: packages/console/app/src/routes/zen/util/trialLimiter.ts
+    match_regex: "import.*\nimport.*\nimport.*\nimport.*\n\nexport function createTrialLimiter"
+    replace: "export function createTrialLimiter"
+    expected_count: 1
+
+  # ── 16. app.opencode.ai proxy fallback ───────────────────────────────
+  - file: packages/opencode/src/server/server.ts
+    match: "await proxy(`https://app.opencode.ai${path}`"
+    replace: "await proxy(`http://localhost${path}`"
+    expected_count: 1
+  - file: packages/opencode/src/server/server.ts
+    match: "host: \"app.opencode.ai\","
+    replace: "host: \"localhost\","
+    expected_count: 1
+
+  # ── 17. GitHub version check ─────────────────────────────────────────
+  - file: packages/opencode/src/installation/index.ts
+    match: "const response = yield* httpOk.execute(\n            HttpClientRequest.get(\"https://api.github.com/repos/anomalyco/opencode/releases/latest\").pipe(\n              HttpClientRequest.acceptJson,\n            ),\n          )\n          const data = yield* HttpClientResponse.schemaBodyJson(GitHubRelease)(response)\n          return data.tag_name.replace(/^v/, \"\")"
+    replace: "return \"0.0.0\" // stripped: no GitHub version check"
+    expected_count: 1
+
 # ── 7. Social cards + api.opencode.ai ────────────────────────────────
 remove_lines:
   - pattern: "social-cards.sst.dev"
@@ -105,15 +165,29 @@ remove_lines:
     file_glob: "**/*.yml"
   - pattern: "api.opencode.ai"
     file_glob: "**/*.json"
+  # Honeycomb + Feishu + Discord + PostHog + contact@anoma.ly
+  - pattern: "honeycomb.io"
+    file_glob: "**/*.ts"
+  - pattern: "open.feishu.cn"
+    file_glob: "**/*.ts"
+  - pattern: "contact@anoma.ly"
+    file_glob: "**/*.ts"
+  - pattern: "posthog.com"
+    file_glob: "**/*.ts"
+
+# ── Delete files that are pure exfiltration ──────────────────────────
+delete_files:
+  - packages/console/app/src/lib/salesforce.ts
 
 # ── Postconditions ────────────────────────────────────────────────────
-# Note: experimental_telemetry appears in schema docs (config.ts describe(),
-# openapi.json, SDK types) — those are harmless descriptions, not telemetry
-# code. x-opencode-* in packages/console/ is server-side, not client phoning
-# home. Postconditions check the core opencode package only.
 postconditions:
   absent_strings:
     - "models.dev/api.json"
+    - "api.honeycomb.io"
+    - "open.feishu.cn"
+    - "us.i.posthog.com"
+    # contact@anoma.ly: remaining hits are in legal pages (ToS, privacy policy,
+    # billing) — legitimate "contact us" text, not data exfiltration
   present_strings:
     - "Config"
     - "Session"
