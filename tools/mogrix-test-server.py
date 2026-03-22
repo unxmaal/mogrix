@@ -38,6 +38,7 @@ RESULTS_DIR = PROJECT_ROOT / "test-results"
 
 IRIX_HOST = os.environ.get("IRIX_HOST", "192.168.0.81")
 IRIX_USER = os.environ.get("IRIX_USER", "root")
+IRIX_TEST_USER = os.environ.get("IRIX_TEST_USER", "edodd")  # User to run tests as
 IRIX_CHROOT = os.environ.get("IRIX_CHROOT", "/opt/chroot")
 MOGRIX_TEST_LOG = os.environ.get("MOGRIX_TEST_LOG", "/tmp/mogrix-test-mcp.log")
 
@@ -688,6 +689,13 @@ class MogrixTestServer:
                                 "binaries. Default: false"
                             ),
                         },
+                        "cwd": {
+                            "type": "string",
+                            "description": (
+                                "Working directory on IRIX. Default: binary's "
+                                "parent dir in host_mode, /usr/sgug in chroot."
+                            ),
+                        },
                     },
                     "required": ["binary"],
                 },
@@ -855,6 +863,29 @@ class MogrixTestServer:
                     f"Expected .run file or directory, got: {bundle_path}",
                 )
 
+            # Validate bundle structure
+            has_lib32 = (bundle_dir / "_lib32").is_dir()
+            has_bin = (bundle_dir / "_bin").is_dir()
+            wrappers = [
+                f for f in bundle_dir.iterdir()
+                if f.is_file() and not f.name.startswith(".")
+                and f.name not in ("install", "uninstall", "README")
+                and f.suffix not in (".json", ".txt", ".md")
+            ]
+            if not has_bin:
+                return self._tool_error(
+                    request_id,
+                    f"Bundle structure invalid: missing _bin/ directory in {bundle_name}. "
+                    "This is not a valid mogrix bundle.",
+                )
+            if not wrappers:
+                return self._tool_error(
+                    request_id,
+                    f"Bundle structure invalid: no wrapper scripts found in {bundle_name}.",
+                )
+            if not has_lib32:
+                log(f"WARNING: {bundle_name} has no _lib32/ directory (static bundle?)")
+
             # Discover tests
             try:
                 from mogrix.test import TestDiscovery, ScriptGenerator
@@ -886,13 +917,19 @@ class MogrixTestServer:
 
             remote_bundle = f"{remote_dir}/{bundle_name}"
 
-            # Run test script via SSH stdin (host mode)
+            # Fix ownership so test user can run the bundle
+            test_user = IRIX_TEST_USER
+            self.ssh.exec_host(
+                f"chown -R {test_user} {remote_bundle} 2>/dev/null"
+            )
+
+            # Run test script via SSH stdin as test user (not root)
             ssh_cmd = [
                 "ssh",
                 "-o", f"ControlPath={self.ssh.socket_path}",
                 "-o", "BatchMode=yes",
                 f"{self.ssh.user}@{self.ssh.host}",
-                f"/bin/sh -s {remote_bundle}",
+                f"su - {test_user} -c '/bin/sh -s {remote_bundle}'",
             ]
 
             log(f"Running tests for {bundle_name}...")
@@ -937,12 +974,13 @@ class MogrixTestServer:
             # Save results
             # Derive package name from bundle name (strip version-release suffix)
             pkg_name = bundle_name.split("-")[0]
-            # Better: match against known package names
+            name_heuristic = True
             for part_count in range(1, 5):
                 candidate = "-".join(bundle_name.split("-")[:part_count])
                 yaml_path = RULES_DIR / "packages" / f"{candidate}.yaml"
                 if yaml_path.exists():
                     pkg_name = candidate
+                    name_heuristic = False
                     break
 
             summary = {
@@ -950,8 +988,83 @@ class MogrixTestServer:
                 "passed": passed,
                 "failed": failed,
                 "skipped": skipped,
+                "name_heuristic": name_heuristic,
             }
             saved_path = save_results(pkg_name, bundle_name, test_results, summary)
+
+            # Auto-diagnostics on failure: collect par trace + NEEDED chain +
+            # soname resolution for the first failing binary
+            diag_output = ""
+            diag_data = {}
+            if failed > 0:
+                first_fail = next(
+                    (r for r in test_results if r["status"] == "FAIL"), None
+                )
+                if first_fail:
+                    fail_bin = first_fail["name"]
+                    lib_path = f"{remote_bundle}/_lib32"
+                    bin_path = f"{remote_bundle}/_bin/{fail_bin}"
+
+                    diag_parts = []
+                    try:
+                        # 1. NEEDED chain (elfdump on IRIX)
+                        needed_cmd = (
+                            f"elfdump -L {bin_path} 2>/dev/null "
+                            "| grep NEEDED || "
+                            f"odump -D {bin_path} 2>/dev/null "
+                            "| grep NEEDED"
+                        )
+                        rc_n, out_n, _ = self.ssh.exec_host(needed_cmd, timeout=10)
+                        if out_n.strip():
+                            diag_parts.append(f"NEEDED chain:\n{out_n.strip()}")
+                            diag_data["needed"] = out_n.strip()
+
+                        # 2. Soname resolution check
+                        resolve_cmd = (
+                            f"LD_LIBRARYN32_PATH={lib_path} "
+                            f"rld -v {bin_path} 2>&1 | head -20"
+                        )
+                        rc_r, out_r, _ = self.ssh.exec_host(resolve_cmd, timeout=10)
+                        if out_r.strip():
+                            diag_parts.append(f"Library resolution:\n{out_r.strip()}")
+                            diag_data["resolution"] = out_r.strip()
+
+                        # 3. Par trace (syscall-level)
+                        par_cmd = (
+                            f"cd {remote_bundle} && "
+                            f"LD_LIBRARYN32_PATH={lib_path} "
+                            f"par {bin_path} --version "
+                            "2>&1 | head -30"
+                        )
+                        rc_p, out_p, _ = self.ssh.exec_host(par_cmd, timeout=15)
+                        if out_p.strip():
+                            diag_parts.append(f"Par trace:\n{out_p.strip()}")
+                            diag_data["par_trace"] = out_p.strip()
+
+                        if diag_parts:
+                            diag_output = (
+                                f"\n--- Auto-diagnostics for {fail_bin} ---\n"
+                                + "\n\n".join(diag_parts)
+                            )
+                    except Exception as e:
+                        log(f"Auto-diagnostics failed: {e}")
+
+                    # Save diagnostics alongside test results
+                    if diag_data:
+                        diag_path = RESULTS_DIR / pkg_name
+                        diag_path.mkdir(parents=True, exist_ok=True)
+                        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+                        diag_file = diag_path / f"diag-{ts}.json"
+                        try:
+                            diag_file.write_text(json.dumps({
+                                "binary": fail_bin,
+                                "bundle": bundle_name,
+                                "timestamp": ts,
+                                **diag_data,
+                            }, indent=2))
+                            log(f"Diagnostics saved to {diag_file}")
+                        except Exception:
+                            pass
 
             # Clean up on IRIX
             if not keep:
@@ -972,8 +1085,15 @@ class MogrixTestServer:
                 f"\nSummary: {total} tests — "
                 f"{passed} passed, {failed} failed, {skipped} skipped"
             )
+            if name_heuristic:
+                lines.append(
+                    f"NOTE: No rule file found for '{pkg_name}', "
+                    "package name is a heuristic guess."
+                )
             if failed > 0:
                 lines.append("BUNDLE HAS TEST FAILURES")
+                if diag_output:
+                    lines.append(diag_output)
             else:
                 lines.append("All tests passed.")
 
@@ -997,6 +1117,7 @@ class MogrixTestServer:
         timeout = args.get("timeout", 10)
         env_vars = args.get("env", {})
         host_mode = args.get("host_mode", False)
+        cwd = args.get("cwd", "")
 
         if not binary:
             return self._tool_error(request_id, "binary is required")
@@ -1005,17 +1126,24 @@ class MogrixTestServer:
         if err:
             return err
 
+        # Default cwd: binary's parent directory in host_mode
+        if not cwd and host_mode:
+            # Extract parent dir from binary path
+            last_slash = binary.rfind("/")
+            if last_slash > 0:
+                cwd = binary[:last_slash]
+
         # Build command with env vars (double-quote values for sh safety)
         env_prefix = ""
         if env_vars:
             parts = []
             for k, v in env_vars.items():
-                # Escape any double quotes or backslashes in the value
                 escaped_v = str(v).replace("\\", "\\\\").replace('"', '\\"')
                 parts.append(f'{k}="{escaped_v}"; export {k}')
             env_prefix = "; ".join(parts) + "; "
 
-        command = f"{env_prefix}{binary} {cmd_args}"
+        cd_prefix = f"cd {cwd} && " if cwd else ""
+        command = f"{cd_prefix}{env_prefix}{binary} {cmd_args}"
 
         if host_mode:
             rc, stdout, stderr = self.ssh.exec_host(command, timeout)

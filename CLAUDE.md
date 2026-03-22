@@ -4,7 +4,7 @@
 
 These are hard rules. Violating any of these is a session failure.
 
-- **MCP TOOLS BEFORE EVERYTHING**: `search` first!! `search` everything before you do it so you don't flail around.`report_error` before attempting any fix. `check_compat` before writing any compat function. `search` before inventing any technique. NO EXCEPTIONS. Do not skip these because you think you already know the answer — your training data for IRIX is outdated and wrong.
+- **MCP TOOLS BEFORE EVERYTHING**: `search` first!! `search` everything before you do it so you don't flail around.`report_error` before attempting any fix. `check_compat` before writing any compat function. `search` before inventing any technique. NO EXCEPTIONS. Do not skip these because you think you already know the answer — your training data for IRIX is outdated and wrong. **ENFORCED**: The knowledge MCP tracks tool calls. At turn 3, a warning fires if no search/report_error/check_compat was called. At turn 6+, escalation blocks all other tools until you comply (nudge_escalation_threshold=2).
 - **NO FIXES OUTSIDE MOGRIX RULES**: Every fix goes into `rules/`, `compat/`, or `patches/`. If you `sed` a file during debugging, that fix MUST end up in a YAML rule. If it doesn't, you have failed.
 - **NO INLINE C IN YAML**: C files go in `patches/packages/<pkg>/`, referenced via `add_source`. No heredocs generating .c/.h files in `prep_commands`.
 - **`add_rule` IMMEDIATELY AFTER FIX CONFIRMED**: The moment a build passes after a fix, call `add_rule` with `file_path` pointing to the authoritative rule file. Do not batch to session end — context pressure causes deferred `add_rule` calls to be dropped.
@@ -69,10 +69,20 @@ Compat function registry: `compat/catalog.yaml` (use `check_compat` MCP tool ins
 
 ## Context Management
 
+**Tuned for 1M context (Opus 4.6).** Sessions can safely run 400+ turns. Compaction/handoff urgency is low. Focus is on knowledge capture quality, not checkpoint frequency.
+
 - **Sub-agents for investigation**: Any task requiring >200 lines of output gets a sub-agent. `Task(model="haiku")` for build log reading. Sub-agent investigates and returns a concise summary; parent applies the fix.
-- **Re-orientation check every 5-8 tool calls**: Am I using MCP tools? Am I freestyling a fix that's probably already documented? Have I stored my findings? If unsure, call `session_start`.
-- **Store knowledge continuously**: `report_error` when you hit it → fix it → build passes → `add_rule` right then. Don't accumulate findings to store later.
+- **Re-orientation check every 8 tool calls**: Am I using MCP tools? Am I freestyling a fix that's probably already documented? Have I stored my findings? If unsure, call `session_start`.
+- **Store knowledge continuously**: `report_error` when you hit it → fix it → build passes → `add_rule` right then. Don't accumulate findings to store later. The nudge system fires a store reminder after 6 turns without a store.
+- **Checkpoint at 30 turns**: `save_snapshot` or `session_handoff` to reset the checkpoint counter. Mandatory stop at 60 turns (enforced, blocks all tools).
 - **Batch builds**: Max 2-3 background agents, each with its own rpmbuild directory. Only the orchestrator updates rule files. See `rules/methods/task-tracking.md`.
+
+**MCP enforcement thresholds** (mcm-engine.yaml):
+- Store reminder: 6 turns
+- Checkpoint: 30 turns
+- Mandatory stop: 60 turns (+10 grace)
+- Nudge escalation: 2 ignores → blocking
+- MCP-first enforcement: warning at turn 3, blocks at turn ~7 if no search/report_error/check_compat called
 
 ---
 
