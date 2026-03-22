@@ -4617,5 +4617,86 @@ def patch_crates(
         raise SystemExit(2)
 
 
+@main.command()
+@click.argument("rules")
+@click.option(
+    "--source",
+    type=click.Path(exists=True),
+    default=None,
+    help="Override the source directory (default: from rule file).",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would change without writing.",
+)
+@click.option(
+    "--check-only",
+    is_flag=True,
+    help="Run postconditions only (verify a previous transform).",
+)
+def transform(
+    rules: str,
+    source: str | None,
+    dry_run: bool,
+    check_only: bool,
+):
+    """Apply declarative source transforms from a rule file.
+
+    RULES is a path to a YAML rule file, or a name that resolves to
+    rules/transforms/<name>.yaml.
+
+    \b
+    Examples:
+      mogrix transform opencode-strip --dry-run
+      mogrix transform rules/transforms/opencode-strip.yaml
+      mogrix transform opencode-strip --check-only
+    """
+    import logging
+
+    from mogrix.source_transform import transform_project
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    action = "check" if check_only else ("dry-run" if dry_run else "transform")
+    click.echo(f"=== mogrix transform ({action}) ===")
+
+    try:
+        stats, postconditions_ok = transform_project(
+            rules_arg=rules,
+            source_override=source,
+            dry_run=dry_run,
+            check_only=check_only,
+        )
+    except FileNotFoundError as e:
+        click.echo(click.style(str(e), fg="red"))
+        raise SystemExit(1)
+
+    if not check_only:
+        click.echo(f"\nFiles modified:     {len(stats.files_modified)}")
+        click.echo(f"Text replacements:  {stats.replacements}")
+        click.echo(f"Lines removed:      {stats.lines_removed}")
+        click.echo(f"Files deleted:      {stats.files_deleted}")
+        click.echo(f"Blocks removed:     {stats.blocks_removed}")
+
+        if stats.errors:
+            click.echo(
+                click.style(
+                    f"\nVALIDATION ERRORS: {len(stats.errors)}",
+                    fg="red",
+                    bold=True,
+                )
+            )
+            for err in stats.errors:
+                click.echo(click.style(str(err), fg="red"))
+            raise SystemExit(2)
+
+    if postconditions_ok:
+        click.echo(click.style("\nPostconditions: PASS", fg="green"))
+    else:
+        click.echo(click.style("\nPostconditions: FAIL", fg="red"))
+        raise SystemExit(3)
+
+
 if __name__ == "__main__":
     main()

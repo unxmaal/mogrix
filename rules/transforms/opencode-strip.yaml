@@ -1,0 +1,120 @@
+# Strip telemetry and phone-home from opencode.
+#
+# Usage:
+#   mogrix transform opencode-strip --dry-run   # preview
+#   mogrix transform opencode-strip              # apply
+#   mogrix transform opencode-strip --check-only # verify
+#
+# Workflow: git pull upstream → mogrix transform opencode-strip → git commit
+
+project: opencode
+source_dir: ~/projects/github/opencode
+
+# ── 1. models.dev auto-fetch ──────────────────────────────────────────
+# Gut the refresh() function body and the setInterval loop so no
+# periodic fetches to models.dev happen.  Data() still falls through
+# to the local snapshot.
+text_replacements:
+  # 1a: Gut refresh() — replace body with empty stub
+  - file: packages/opencode/src/provider/models.ts
+    match: "export async function refresh() {\n    const result = await fetch(`${url()}/api.json`, {\n      headers: {\n        \"User-Agent\": Installation.USER_AGENT,\n      },\n      signal: AbortSignal.timeout(10 * 1000),\n    }).catch((e) => {\n      log.error(\"Failed to fetch models.dev\", {\n        error: e,\n      })\n    })\n    if (result && result.ok) {\n      await Filesystem.write(filepath, await result.text())\n      ModelsDev.Data.reset()\n    }\n  }"
+    replace: "export async function refresh() {\n    // stripped: no remote model fetch\n  }"
+    expected_count: 1
+
+  # 1b: Kill the setInterval block that calls refresh() every hour
+  - file: packages/opencode/src/provider/models.ts
+    match: "if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes(\"--get-yargs-completions\")) {\n  ModelsDev.refresh()\n  setInterval(\n    async () => {\n      await ModelsDev.refresh()\n    },\n    60 * 1000 * 60,\n  ).unref()\n}"
+    replace: "// stripped: no periodic model fetch"
+    expected_count: 1
+
+  # 1c: Remove the fetch fallback in Data() — keep snapshot/file paths
+  - file: packages/opencode/src/provider/models.ts
+    match: "if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return {}\n    const json = await fetch(`${url()}/api.json`).then((x) => x.text())\n    return JSON.parse(json)"
+    replace: "return {}"
+    expected_count: 1
+
+  # 1d: Remove snapshot import from Data() — no bundled provider list
+  - file: packages/opencode/src/provider/models.ts
+    match: "// @ts-ignore\n    const snapshot = await import(\"./models-snapshot\")\n      .then((m) => m.snapshot as Record<string, unknown>)\n      .catch(() => undefined)\n    if (snapshot) return snapshot"
+    replace: "// stripped: no bundled models snapshot"
+    expected_count: 1
+
+  # ── 2. Tracking headers ──────────────────────────────────────────────
+  # Remove x-opencode-* headers block from LLM stream call
+  - file: packages/opencode/src/session/llm.ts
+    match: "headers: {\n        ...(input.model.providerID.startsWith(\"opencode\") && {\n          \"x-opencode-project\": Instance.project.id,\n          \"x-opencode-session\": input.sessionID,\n          \"x-opencode-request\": input.user.id,\n          \"x-opencode-client\": Flag.OPENCODE_CLIENT,\n        }),\n        ...input.model.headers,\n        ...headers,\n      },"
+    replace: "headers: {\n        ...input.model.headers,\n        ...headers,\n      },"
+    expected_count: 1
+
+  # ── 3. OpenTelemetry (LLM) ──────────────────────────────────────────
+  - file: packages/opencode/src/session/llm.ts
+    match: "experimental_telemetry: {\n        isEnabled: cfg.experimental?.openTelemetry,\n        metadata: {\n          userId: cfg.username ?? \"unknown\",\n          sessionId: input.sessionID,\n        },\n      },"
+    replace: ""
+    expected_count: 1
+
+  # ── 4. OpenTelemetry (Agent) ─────────────────────────────────────────
+  - file: packages/opencode/src/agent/agent.ts
+    match: "experimental_telemetry: {\n        isEnabled: cfg.experimental?.openTelemetry,\n        metadata: {\n          userId: cfg.username ?? \"unknown\",\n        },\n      },"
+    replace: ""
+    expected_count: 1
+
+  # ── 5. Account.active() config fetch ─────────────────────────────────
+  - file: packages/opencode/src/config/config.ts
+    match: "const active = await Account.active()\n    if (active?.active_org_id) {\n      try {\n        const [config, token] = await Promise.all([\n          Account.config(active.id, active.active_org_id),\n          Account.token(active.id),\n        ])\n        if (token) {\n          process.env[\"OPENCODE_CONSOLE_TOKEN\"] = token\n          Env.set(\"OPENCODE_CONSOLE_TOKEN\", token)\n        }\n\n        if (config) {\n          result = mergeConfigConcatArrays(\n            result,\n            await load(JSON.stringify(config), {\n              dir: path.dirname(`${active.url}/api/config`),\n              source: `${active.url}/api/config`,\n            }),\n          )\n        }\n      } catch (err: any) {\n        log.debug(\"failed to fetch remote account config\", { error: err?.message ?? err })\n      }\n    }"
+    replace: "// stripped: no remote account config fetch"
+    expected_count: 1
+
+  # ── 6. .well-known config fetch ──────────────────────────────────────
+  - file: packages/opencode/src/config/config.ts
+    match: "if (value.type === \"wellknown\") {\n        const url = key.replace(/\\/+$/, \"\")\n        process.env[value.key] = value.token\n        log.debug(\"fetching remote config\", { url: `${url}/.well-known/opencode` })\n        const response = await fetch(`${url}/.well-known/opencode`)\n        if (!response.ok) {\n          throw new Error(`failed to fetch remote config from ${url}: ${response.status}`)\n        }\n        const wellknown = (await response.json()) as any\n        const remoteConfig = wellknown.config ?? {}\n        // Add $schema to prevent load() from trying to write back to a non-existent file\n        if (!remoteConfig.$schema) remoteConfig.$schema = \"https://opencode.ai/config.json\"\n        result = mergeConfigConcatArrays(\n          result,\n          await load(JSON.stringify(remoteConfig), {\n            dir: path.dirname(`${url}/.well-known/opencode`),\n            source: `${url}/.well-known/opencode`,\n          }),\n        )\n        log.debug(\"loaded remote config from well-known\", { url })\n      }"
+    replace: "// stripped: no well-known config fetch"
+    expected_count: 1
+
+  # ── 8. Empty the bundled models snapshot ──────────────────────────────
+  # The snapshot is a 1.6 MB auto-generated file with every provider from
+  # models.dev. Replace with empty export so /connect only shows configured
+  # providers.
+  - file: packages/opencode/src/provider/models-snapshot.ts
+    match_regex: "^// Auto-generated.*\nexport const snapshot = \\{.*"
+    replace: "// Auto-generated by build.ts - do not edit\nexport const snapshot = {}"
+    expected_count: 1
+
+  # ── 9. Strip hardcoded provider priority in login flow ────────────────
+  - file: packages/opencode/src/cli/cmd/providers.ts
+    match: "const priority: Record<string, number> = {\n          opencode: 0,\n          openai: 1,\n          \"github-copilot\": 2,\n          google: 3,\n          anthropic: 4,\n          openrouter: 5,\n          vercel: 6,\n        }"
+    replace: "const priority: Record<string, number> = {}"
+    expected_count: 1
+
+  # ── 10. Strip provider recommendation hints ───────────────────────────
+  - file: packages/opencode/src/cli/cmd/providers.ts
+    match: "hint: {\n                opencode: \"recommended\",\n                openai: \"ChatGPT Plus/Pro or API key\",\n              }[x.id]"
+    replace: "hint: undefined"
+    expected_count: 1
+
+# ── 7. Social cards + api.opencode.ai ────────────────────────────────
+remove_lines:
+  - pattern: "social-cards.sst.dev"
+    file_glob: "**/*.ts"
+  - pattern: "social-cards.sst.dev"
+    file_glob: "**/*.tsx"
+  - pattern: "social-cards.sst.dev"
+    file_glob: "**/*.mjs"
+  - pattern: "api.opencode.ai"
+    file_glob: "**/*.ts"
+  - pattern: "api.opencode.ai"
+    file_glob: "**/*.yml"
+  - pattern: "api.opencode.ai"
+    file_glob: "**/*.json"
+
+# ── Postconditions ────────────────────────────────────────────────────
+# Note: experimental_telemetry appears in schema docs (config.ts describe(),
+# openapi.json, SDK types) — those are harmless descriptions, not telemetry
+# code. x-opencode-* in packages/console/ is server-side, not client phoning
+# home. Postconditions check the core opencode package only.
+postconditions:
+  absent_strings:
+    - "models.dev/api.json"
+  present_strings:
+    - "Config"
+    - "Session"
+    - "ModelsDev"
