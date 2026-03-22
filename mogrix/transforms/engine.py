@@ -98,11 +98,22 @@ class ASTTransformEngine:
                 if isinstance(node, MacroDef) and node.name in name_set:
                     if node.value in ("0", "1"):
                         new_val = "0" if node.value == "1" else "1"
-                        # Update the span text
-                        node.span.original_text = node.span.original_text.replace(
-                            f"%{node.keyword} {node.name} {node.value}",
-                            f"%{node.keyword} {node.name} {new_val}",
+                        # Reconstruct from parsed fields rather than str.replace,
+                        # which fails on unusual formatting (extra spaces, comments)
+                        orig = node.span.original_text
+                        # Preserve any trailing comment or whitespace
+                        line = orig.rstrip("\n")
+                        reconstructed = f"%{node.keyword} {node.name} {new_val}"
+                        # If the original had a trailing comment, preserve it
+                        # Look for content after the value that isn't just whitespace
+                        m = re.match(
+                            rf"(%{node.keyword}\s+{re.escape(node.name)}\s+{re.escape(node.value)})(.*)",
+                            line,
                         )
+                        if m:
+                            trailing = m.group(2)
+                            reconstructed = f"%{node.keyword} {node.name} {new_val}{trailing}"
+                        node.span.original_text = reconstructed + "\n" if orig.endswith("\n") else reconstructed
                         node.value = new_val
                         count += 1
                 elif isinstance(node, (Section, Conditional)):

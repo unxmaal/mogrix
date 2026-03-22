@@ -24,7 +24,8 @@ def test_engine_drops_buildrequires():
 
     assert "systemd" not in result.spec.buildrequires
     assert "libselinux" not in result.spec.buildrequires
-    assert "gcc" in result.spec.buildrequires
+    # gcc is dropped by generic.yaml (line 43), so it should NOT be present
+    assert "gcc" not in result.spec.buildrequires
     assert "zlib" in result.spec.buildrequires
 
 
@@ -43,7 +44,8 @@ def test_engine_collects_rpm_macros():
     assert "_prefix" in result.rpm_macros
     assert result.rpm_macros["_prefix"] == "/usr/sgug"
     assert "_libdir" in result.rpm_macros
-    assert "gcc" in result.spec.buildrequires
+    # gcc is dropped by generic.yaml, so it should NOT be present
+    assert "gcc" not in result.spec.buildrequires
 
 
 def test_engine_tracks_applied_rules():
