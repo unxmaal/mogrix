@@ -698,11 +698,11 @@ class MogrixPlugin(MCMPlugin):
 
         # --- Override session_handoff to auto-populate findings_summary ---
         # The core mcm-engine session_handoff hardcodes findings_summary="".
-        # This override computes it from the DB and warns if nothing was stored.
+        # FastMCP keeps the first registration, so @mcp.tool() won't override.
+        # Instead, we replace the function in the tool manager after registration.
         import json as _json
 
-        @mcp.tool()
-        def session_handoff(
+        def _patched_session_handoff(
             status: str,
             current_task: str = "",
             next_steps: str = "",
@@ -732,7 +732,7 @@ class MogrixPlugin(MCMPlugin):
                 try:
                     row = db.execute(
                         f"SELECT COUNT(*) as cnt FROM {table} "
-                        "WHERE created >= datetime('now', '-1 day')"
+                        "WHERE created_at >= datetime('now', '-1 day')"
                     ).fetchone()
                     if row and row["cnt"] > 0:
                         counts[table] = row["cnt"]
@@ -804,6 +804,12 @@ class MogrixPlugin(MCMPlugin):
                 result += f"\nFindings stored: {findings_summary}"
             result += warning
             return result
+
+        # Monkey-patch the tool manager to use our version
+        _tool_mgr = mcp._tool_manager
+        if "session_handoff" in _tool_mgr._tools:
+            _orig_tool = _tool_mgr._tools["session_handoff"]
+            _orig_tool.fn = _patched_session_handoff
 
     def get_nudge(self, tracker: SessionTracker) -> str | None:
         """Domain nudge: enforce MCP-first workflow.
@@ -911,7 +917,7 @@ class MogrixPlugin(MCMPlugin):
                 for table in ("knowledge", "errors", "rules"):
                     try:
                         row = db.execute(
-                            f"SELECT COUNT(*) as cnt FROM {table} WHERE created >= ?",
+                            f"SELECT COUNT(*) as cnt FROM {table} WHERE created_at >= ?",
                             (ts,),
                         ).fetchone()
                         if row and row["cnt"] > 0:
