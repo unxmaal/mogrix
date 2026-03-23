@@ -24,6 +24,16 @@ dev = [
 lint = [
     "rpmlint>=2.8.0",
 ]
+ast = [
+    "tree-sitter>=0.24.0",
+    "tree-sitter-typescript",
+    "tree-sitter-javascript",
+    "tree-sitter-python",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
+    "tree-sitter-go",
+    "tree-sitter-rust",
+]
 
 [project.scripts]
 mogrix = "mogrix.cli:main"

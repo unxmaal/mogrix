@@ -70,18 +70,52 @@ if [ $errors -gt 0 ]; then
     exit 1
 fi
 
+# Collect symlink targets from /usr/include that point outside the tree.
+# IRIX has several subsystems installed under /usr/ with symlinks in
+# /usr/include (e.g., /usr/include/Xm -> ../Motif-1.2/include/Xm).
+# Without the targets, the sysroot has dangling symlinks.
+EXTRA_DIRS=""
+echo "Checking for symlink targets in /usr/include..."
+for link in /usr/include/*; do
+    if [ -L "$link" ]; then
+        target=`ls -l "$link" | awk '{print $NF}'`
+        # Resolve relative paths
+        case "$target" in
+            /*) resolved="$target" ;;
+            *)  resolved="/usr/include/$target" ;;
+        esac
+        # Normalize (remove /../)
+        resolved=`cd "\`dirname $resolved\`" 2>/dev/null && echo "\`pwd\`/\`basename $resolved\`"`
+        # Check if the resolved path is outside /usr/include
+        case "$resolved" in
+            /usr/include/*) ;;
+            *)
+                # Strip leading / for tar
+                dir=`echo "$resolved" | sed 's|^/||'`
+                if [ -d "$resolved" ]; then
+                    echo "  [SYMLINK] $link -> $target (adding $dir)"
+                    EXTRA_DIRS="$EXTRA_DIRS $dir"
+                fi
+                ;;
+        esac
+    fi
+done
+echo ""
+
 # Create the tarball
 # Use tar with full paths so extraction preserves the directory structure:
 #   usr/include/...
 #   usr/lib32/...
 #   lib32/...
-#   usr/lib64/...  (if present)
-#   lib64/...      (if present)
+#   usr/lib64/...        (if present)
+#   lib64/...            (if present)
+#   usr/Motif-1.2/...    (if symlinked from /usr/include/Xm)
+#   etc.
 echo "Creating tarball: $OUTPUT"
 echo "This may take several minutes on slower hardware..."
 echo ""
 
-cd / && tar cf - usr/include usr/lib32 lib32 $OPTIONAL_DIRS | gzip > "$OUTPUT"
+cd / && tar cf - usr/include usr/lib32 lib32 $OPTIONAL_DIRS $EXTRA_DIRS | gzip > "$OUTPUT"
 status=$?
 
 if [ $status -ne 0 ]; then

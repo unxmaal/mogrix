@@ -1,0 +1,76 @@
+language: c
+extensions: [".c", ".h"]
+templates:
+  gut_function:
+    description: "Replace the body of a C function with a replacement body"
+    params: [function_name, replacement_body]
+    query: |
+      (function_definition
+        declarator: (function_declarator
+          declarator: (identifier) @fn_name)
+        body: (compound_statement) @fn_body
+        (#eq? @fn_name "${function_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  remove_call:
+    description: "Remove an expression statement containing a call to the named function"
+    params: [function_name]
+    query: |
+      (expression_statement
+        (call_expression
+          function: (identifier) @fn_name)
+        (#eq? @fn_name "${function_name}")) @stmt
+    capture: stmt
+    action: remove_statement
+
+  remove_if_block:
+    description: "Remove an if statement whose condition matches a regex pattern"
+    params: [condition_pattern]
+    query: |
+      (if_statement
+        condition: (parenthesized_expression) @cond
+        (#match? @cond "${condition_pattern}")) @if_stmt
+    capture: if_stmt
+    action: remove_statement
+
+  replace_string_literal:
+    description: "Replace string literals matching a pattern with a new value"
+    params: [old_pattern, new_value]
+    query: |
+      (string_literal) @str
+      (#match? @str "${old_pattern}")
+    capture: str
+    action: replace
+    replacement: "\"${new_value}\""
+
+  remove_include:
+    description: "Remove a #include directive matching a path pattern"
+    params: [header_pattern]
+    query: |
+      (preproc_include
+        path: (_) @path
+        (#match? @path "${header_pattern}")) @include
+    capture: include
+    action: remove_statement
+
+  remove_ifdef_block:
+    description: "Remove an #ifdef/#ifndef block by macro name"
+    params: [macro_name]
+    query: |
+      (preproc_ifdef
+        name: (identifier) @name
+        (#eq? @name "${macro_name}")) @ifdef
+    capture: ifdef
+    action: remove_statement
+
+  remove_struct_field:
+    description: "Remove a field declaration from a struct by field name"
+    params: [field_name]
+    query: |
+      (field_declaration
+        declarator: (field_identifier) @field
+        (#eq? @field "${field_name}")) @decl
+    capture: decl
+    action: remove_statement

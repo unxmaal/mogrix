@@ -10,22 +10,68 @@
 project: opencode
 source_dir: ~/projects/github/opencode
 
-# ── 1. models.dev auto-fetch ──────────────────────────────────────────
-# Gut the refresh() function body and the setInterval loop so no
-# periodic fetches to models.dev happen.  Data() still falls through
-# to the local snapshot.
-text_replacements:
-  # 1a: Gut refresh() — replace body with empty stub
+# ══════════════════════════════════════════════════════════════════════
+# AST TRANSFORMS — structural changes via tree-sitter (survive reformatting)
+# ══════════════════════════════════════════════════════════════════════
+ast_transforms:
+  # 1a: Gut refresh() function body
   - file: packages/opencode/src/provider/models.ts
-    match: "export async function refresh() {\n    const result = await fetch(`${url()}/api.json`, {\n      headers: {\n        \"User-Agent\": Installation.USER_AGENT,\n      },\n      signal: AbortSignal.timeout(10 * 1000),\n    }).catch((e) => {\n      log.error(\"Failed to fetch models.dev\", {\n        error: e,\n      })\n    })\n    if (result && result.ok) {\n      await Filesystem.write(filepath, await result.text())\n      ModelsDev.Data.reset()\n    }\n  }"
-    replace: "export async function refresh() {\n    // stripped: no remote model fetch\n  }"
+    template: gut_function
+    params:
+      function_name: refresh
+      replacement_body: "{\n    // stripped: no remote model fetch\n  }"
     expected_count: 1
 
-  # 1b: Kill the setInterval block that calls refresh() every hour
+  # 1b: Remove the setInterval block — target the if that contains setInterval
   - file: packages/opencode/src/provider/models.ts
-    match: "if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes(\"--get-yargs-completions\")) {\n  ModelsDev.refresh()\n  setInterval(\n    async () => {\n      await ModelsDev.refresh()\n    },\n    60 * 1000 * 60,\n  ).unref()\n}"
-    replace: "// stripped: no periodic model fetch"
+    query: |
+      (if_statement
+        condition: (parenthesized_expression) @cond
+        (#match? @cond "OPENCODE_DISABLE_MODELS_FETCH")
+        consequence: (statement_block
+          (expression_statement
+            (call_expression
+              function: (member_expression) @fn
+              (#match? @fn "ModelsDev.refresh"))))) @if_stmt
+    capture: if_stmt
+    action: remove
     expected_count: 1
+
+  # 3+4: Remove experimental_telemetry object properties (LLM + Agent)
+  - file: packages/opencode/src/session/llm.ts
+    template: remove_object_property
+    params:
+      property_name: "experimental_telemetry"
+    expected_count: 1
+
+  - file: packages/opencode/src/agent/agent.ts
+    template: remove_object_property
+    params:
+      property_name: "experimental_telemetry"
+    expected_count: 1
+
+  # 13a: Remove Salesforce import
+  - file: packages/console/app/src/routes/api/enterprise.ts
+    template: remove_import
+    params:
+      module_pattern: "salesforce"
+    expected_count: 1
+
+  # 14: Gut PostHog analytics function
+  - file: script/stats.ts
+    template: gut_function
+    params:
+      function_name: sendToPostHog
+      replacement_body: "{\n  // stripped: no PostHog analytics\n}"
+    expected_count: 1
+
+# ══════════════════════════════════════════════════════════════════════
+# TEXT TRANSFORMS — exact string matching for cases where AST is overkill
+# ══════════════════════════════════════════════════════════════════════
+
+# ── 1. models.dev auto-fetch (remaining text-level changes) ──────────
+text_replacements:
+  # 1a+1b: now handled by ast_transforms above
 
   # 1c: Remove the fetch fallback in Data() — keep snapshot/file paths
   - file: packages/opencode/src/provider/models.ts
@@ -41,22 +87,14 @@ text_replacements:
 
   # ── 2. Tracking headers ──────────────────────────────────────────────
   # Remove x-opencode-* headers block from LLM stream call
+  # NOTE: AST remove_object_property(experimental_telemetry) modifies this file first,
+  # which shifts the text. Use expected_count: 0 to tolerate the miss when AST already handled it.
   - file: packages/opencode/src/session/llm.ts
     match: "headers: {\n        ...(input.model.providerID.startsWith(\"opencode\") && {\n          \"x-opencode-project\": Instance.project.id,\n          \"x-opencode-session\": input.sessionID,\n          \"x-opencode-request\": input.user.id,\n          \"x-opencode-client\": Flag.OPENCODE_CLIENT,\n        }),\n        ...input.model.headers,\n        ...headers,\n      },"
     replace: "headers: {\n        ...input.model.headers,\n        ...headers,\n      },"
-    expected_count: 1
+    expected_count: 0
 
-  # ── 3. OpenTelemetry (LLM) ──────────────────────────────────────────
-  - file: packages/opencode/src/session/llm.ts
-    match: "experimental_telemetry: {\n        isEnabled: cfg.experimental?.openTelemetry,\n        metadata: {\n          userId: cfg.username ?? \"unknown\",\n          sessionId: input.sessionID,\n        },\n      },"
-    replace: ""
-    expected_count: 1
-
-  # ── 4. OpenTelemetry (Agent) ─────────────────────────────────────────
-  - file: packages/opencode/src/agent/agent.ts
-    match: "experimental_telemetry: {\n        isEnabled: cfg.experimental?.openTelemetry,\n        metadata: {\n          userId: cfg.username ?? \"unknown\",\n        },\n      },"
-    replace: ""
-    expected_count: 1
+  # 3+4: experimental_telemetry now handled by ast_transforms above
 
   # ── 5. Account.active() config fetch ─────────────────────────────────
   - file: packages/opencode/src/config/config.ts
@@ -114,20 +152,14 @@ text_replacements:
     expected_count: 1
 
   # ── 13. Salesforce CRM — enterprise lead capture ─────────────────────
-  - file: packages/console/app/src/routes/api/enterprise.ts
-    match: "import { createLead } from \"~/lib/salesforce\"\n"
-    replace: ""
-    expected_count: 1
+  # 13a import removal + createLead call now handled by ast_transforms above.
+  # This text fallback tolerates the miss (expected_count: 0).
   - file: packages/console/app/src/routes/api/enterprise.ts
     match: "createLead({\n        name: body.name,\n        role: body.role,\n        company: body.company,\n        email: body.email,\n        phone: body.phone,\n        message: body.message,\n      }),"
     replace: "// stripped: no salesforce lead capture"
-    expected_count: 1
+    expected_count: 0
 
-  # ── 14. PostHog analytics — download statistics ──────────────────────
-  - file: script/stats.ts
-    match: "async function sendToPostHog(event: string, properties: Record<string, any>) {\n  const key = process.env[\"POSTHOG_KEY\"]\n\n  if (!key) {\n    console.warn(\"POSTHOG_API_KEY not set, skipping PostHog event\")\n    return\n  }\n\n  const response = await fetch(\"https://us.i.posthog.com/i/v0/e/\", {\n    method: \"POST\",\n    headers: {\n      \"Content-Type\": \"application/json\",\n    },\n    body: JSON.stringify({\n      distinct_id: \"download\",\n      api_key: key,\n      event,\n      properties: {\n        ...properties,\n      },\n    }),\n  }).catch(() => null)\n\n  if (response && !response.ok) {\n    console.warn(`PostHog API error: ${response.status}`)\n  }\n}"
-    replace: "async function sendToPostHog(_event: string, _properties: Record<string, any>) {\n  // stripped: no PostHog analytics\n}"
-    expected_count: 1
+  # 14: PostHog function gutting now handled by ast_transforms above
 
   # ── 15. Trial limiter — IP-based tracking ────────────────────────────
   - file: packages/console/app/src/routes/zen/util/trialLimiter.ts

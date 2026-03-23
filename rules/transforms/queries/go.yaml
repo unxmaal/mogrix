@@ -1,0 +1,89 @@
+language: go
+extensions: [".go"]
+templates:
+  gut_function:
+    description: "Replace the body of a Go function with a replacement body"
+    params: [function_name, replacement_body]
+    query: |
+      (function_declaration
+        name: (identifier) @fn_name
+        body: (block) @fn_body
+        (#eq? @fn_name "${function_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  remove_call:
+    description: "Remove an expression statement containing a call to the named function or method"
+    params: [function_name]
+    query: |
+      (expression_statement
+        (call_expression
+          function: [
+            (identifier) @fn_name
+            (selector_expression
+              field: (field_identifier) @fn_name)
+          ]
+          (#eq? @fn_name "${function_name}"))) @stmt
+    capture: stmt
+    action: remove_statement
+
+  remove_if_block:
+    description: "Remove an if statement whose condition matches a regex pattern"
+    params: [condition_pattern]
+    query: |
+      (if_statement
+        condition: (_) @cond
+        (#match? @cond "${condition_pattern}")) @if_stmt
+    capture: if_stmt
+    action: remove_statement
+
+  replace_string_literal:
+    description: "Replace interpreted string literals matching a pattern with a new value"
+    params: [old_pattern, new_value]
+    query: |
+      (interpreted_string_literal) @str
+      (#match? @str "${old_pattern}")
+    capture: str
+    action: replace
+    replacement: "\"${new_value}\""
+
+  remove_import:
+    description: "Remove an import spec matching a path pattern"
+    params: [import_pattern]
+    query: |
+      (import_spec
+        path: (interpreted_string_literal) @path
+        (#match? @path "${import_pattern}")) @import
+    capture: import
+    action: remove_statement
+
+  gut_method:
+    description: "Replace the body of a method (function with receiver) with a replacement body"
+    params: [receiver_type, method_name, replacement_body]
+    query: |
+      (method_declaration
+        receiver: (parameter_list
+          (parameter_declaration
+            type: [
+              (type_identifier) @recv_type
+              (pointer_type
+                (type_identifier) @recv_type)
+            ]))
+        name: (field_identifier) @method_name
+        body: (block) @method_body
+        (#eq? @recv_type "${receiver_type}")
+        (#eq? @method_name "${method_name}"))
+    capture: method_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  remove_struct_field:
+    description: "Remove a field from a struct type by field name"
+    params: [field_name]
+    query: |
+      (field_declaration
+        name: (field_identifier) @field
+        (#eq? @field "${field_name}")) @decl
+    capture: decl
+    action: remove_statement

@@ -54,6 +54,8 @@ class TransformStats:
     lines_removed: int = 0
     files_deleted: int = 0
     blocks_removed: int = 0
+    ast_applied: int = 0
+    ast_failed: int = 0
     errors: list[PatchError] = field(default_factory=list)
     files_modified: set[str] = field(default_factory=set)
 

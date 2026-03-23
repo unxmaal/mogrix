@@ -4635,11 +4635,17 @@ def patch_crates(
     is_flag=True,
     help="Run postconditions only (verify a previous transform).",
 )
+@click.option(
+    "--debug-queries",
+    is_flag=True,
+    help="Print tree-sitter AST structure and query matches for debugging.",
+)
 def transform(
     rules: str,
     source: str | None,
     dry_run: bool,
     check_only: bool,
+    debug_queries: bool,
 ):
     """Apply declarative source transforms from a rule file.
 
@@ -4667,6 +4673,7 @@ def transform(
             source_override=source,
             dry_run=dry_run,
             check_only=check_only,
+            debug_queries=debug_queries,
         )
     except FileNotFoundError as e:
         click.echo(click.style(str(e), fg="red"))
@@ -4674,6 +4681,7 @@ def transform(
 
     if not check_only:
         click.echo(f"\nFiles modified:     {len(stats.files_modified)}")
+        click.echo(f"AST transforms:     {stats.ast_applied}")
         click.echo(f"Text replacements:  {stats.replacements}")
         click.echo(f"Lines removed:      {stats.lines_removed}")
         click.echo(f"Files deleted:      {stats.files_deleted}")

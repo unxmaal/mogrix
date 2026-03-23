@@ -1,0 +1,121 @@
+language: javascript
+extensions: [".js", ".jsx", ".mjs", ".cjs"]
+templates:
+  gut_function:
+    description: "Replace the body of a JavaScript function"
+    params: [function_name, replacement_body]
+    query: |
+      (function_declaration
+        name: (identifier) @fn_name
+        body: (statement_block) @fn_body
+        (#eq? @fn_name "${function_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  remove_call:
+    description: "Remove an expression statement containing a call to the named function or method"
+    params: [function_name]
+    query: |
+      (expression_statement
+        [
+          (call_expression
+            function: (identifier) @fn_name
+            (#eq? @fn_name "${function_name}"))
+          (call_expression
+            function: (member_expression
+              property: (property_identifier) @fn_name)
+            (#eq? @fn_name "${function_name}"))
+          (await_expression
+            (call_expression
+              function: (identifier) @fn_name
+              (#eq? @fn_name "${function_name}")))
+          (await_expression
+            (call_expression
+              function: (member_expression
+                property: (property_identifier) @fn_name)
+              (#eq? @fn_name "${function_name}")))
+        ]) @stmt
+    capture: stmt
+    action: remove_statement
+
+  remove_if_block:
+    description: "Remove an if statement whose condition matches a regex pattern"
+    params: [condition_pattern]
+    query: |
+      (if_statement
+        condition: (parenthesized_expression) @cond
+        (#match? @cond "${condition_pattern}")) @if_stmt
+    capture: if_stmt
+    action: remove_statement
+
+  replace_string_literal:
+    description: "Replace string literals matching a pattern with a new value"
+    params: [old_pattern, new_value]
+    query: |
+      (string) @str
+      (#match? @str "${old_pattern}")
+    capture: str
+    action: replace
+    replacement: "\"${new_value}\""
+
+  remove_import:
+    description: "Remove an import statement matching a module pattern"
+    params: [module_pattern]
+    query: |
+      (import_statement
+        source: (string) @source
+        (#match? @source "${module_pattern}")) @import_stmt
+    capture: import_stmt
+    action: remove_statement
+
+  remove_object_property:
+    description: "Remove a property from an object literal by key name"
+    params: [property_name]
+    query: |
+      (pair
+        key: (property_identifier) @key
+        (#eq? @key "${property_name}")) @prop
+    capture: prop
+    action: remove_statement
+
+  remove_timer:
+    description: "Remove setInterval or setTimeout calls"
+    params: [timer_function]
+    query: |
+      (expression_statement
+        (call_expression
+          function: (identifier) @fn_name
+          (#eq? @fn_name "${timer_function}"))) @stmt
+    capture: stmt
+    action: remove_statement
+
+  gut_method:
+    description: "Replace the body of a method in a class declaration"
+    params: [class_name, method_name, replacement_body]
+    query: |
+      (class_declaration
+        name: (identifier) @cls_name
+        body: (class_body
+          (method_definition
+            name: (property_identifier) @method_name
+            body: (statement_block) @method_body))
+        (#eq? @cls_name "${class_name}")
+        (#eq? @method_name "${method_name}"))
+    capture: method_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  gut_arrow_function:
+    description: "Replace an arrow function assigned to a const/let/var by name"
+    params: [function_name, replacement_body]
+    query: |
+      (lexical_declaration
+        (variable_declarator
+          name: (identifier) @fn_name
+          value: (arrow_function
+            body: (statement_block) @fn_body))
+        (#eq? @fn_name "${function_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "{ ${replacement_body} }"

@@ -245,6 +245,7 @@ def transform_project(
     source_override: str | None = None,
     dry_run: bool = False,
     check_only: bool = False,
+    debug_queries: bool = False,
 ) -> tuple[TransformStats, bool]:
     """Main orchestrator: load rules and apply all transforms.
 
@@ -284,7 +285,23 @@ def transform_project(
         log.info("Phase: remove_blocks (%d blocks)", len(rules["remove_blocks"]))
         remove_blocks(source_dir, rules["remove_blocks"], stats, dry_run)
 
-    # Phase 3: Text replacements
+    # Phase 3: AST transforms (structural, language-aware)
+    if "ast_transforms" in rules:
+        try:
+            from mogrix.ast_transforms import ASTTransformEngine
+            ast_engine = ASTTransformEngine(source_dir)
+            log.info(
+                "Phase: ast_transforms (%d rules)",
+                len(rules["ast_transforms"]),
+            )
+            ast_engine.apply_transforms(
+                rules["ast_transforms"], stats,
+                dry_run=dry_run, debug_queries=debug_queries,
+            )
+        except RuntimeError as e:
+            log.error("AST transforms unavailable: %s", e)
+
+    # Phase 4: Text replacements
     if "text_replacements" in rules:
         log.info(
             "Phase: text_replacements (%d rules)",
