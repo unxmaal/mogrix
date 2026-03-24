@@ -68,6 +68,7 @@
 - [ ] Tree-sitter policy model: define stripping policies (telemetry, analytics, tracking) that auto-derive transform rules
 - [ ] More AST templates: `remove_decorator` (Python), `remove_feature_gate` (Rust), `remove_ifdef_block` (C/C++)
 - [ ] `mogrix transform --diff` mode showing structural before/after
+- [ ] Wire tree-sitter into RPM build pipeline for structural C/C++ source patching — replace brittle `safepatch` sed commands in `prep_commands` with AST queries that survive upstream refactoring (e.g., telescope `d_type` → `stat()` fix, `clock_gettime` → `gettimeofday` replacements)
 
 ---
 

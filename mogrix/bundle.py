@@ -1533,6 +1533,30 @@ class BundleBuilder:
                 'FIGLET_FONTDIR="$dir/share/figlet"'
             )
             extra_env_lines.append("export FIGLET_FONTDIR")
+        # Per-package bundle_env from rules YAML — generic mechanism for any
+        # package to declare env vars needed in bundle wrappers.
+        # Format in rules/packages/<pkg>.yaml:
+        #   bundle_env:
+        #     MC_DATADIR: "$dir/share/mc/"
+        #     MC_SYSCONFDIR: "$dir/etc/"
+        from pathlib import Path as _BPath
+        _rules_dir = _BPath(__file__).parent.parent / "rules" / "packages"
+        _rule_file = _rules_dir / f"{manifest.target_package}.yaml"
+        if _rule_file.exists():
+            import yaml as _yaml
+            with open(_rule_file) as _rf:
+                _rule = _yaml.safe_load(_rf) or {}
+            for env_var, env_val in _rule.get("bundle_env", {}).items():
+                extra_env_lines.append(f'{env_var}="{env_val}"')
+                extra_env_lines.append(f"export {env_var}")
+            # bundle_post_commands: shell commands run in the bundle dir
+            # after assembly, before packaging. For creating symlinks, etc.
+            for cmd in _rule.get("bundle_post_commands", []):
+                console.print(f"  [dim]post-command:[/dim] {cmd}")
+                subprocess.run(
+                    cmd, shell=True, cwd=str(bundle_dir),
+                    capture_output=True, text=True,
+                )
         # CA certificate bundle — set env var + weechat gnutls_ca_user
         ca_bundle = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
         if ca_bundle.is_file():

@@ -1,4 +1,16 @@
 package: mc
+
+# Bundle wrapper env vars — mc hardcodes /usr/sgug paths at compile time.
+# These override so mc finds data files relative to the bundle directory.
+# $dir is expanded by the wrapper script to the bundle's install path.
+# mc only supports MC_DATADIR env var for sysconfig_dir, and hardcodes
+# DATADIR and LIBEXECDIR at compile time. Patch source to also check
+# MC_DATADIR for share_data_dir and add MC_LIBEXECDIR support.
+bundle_env:
+  MC_DATADIR: "$dir/etc/mc/"
+  MC_SHARE_DATA: "$dir/share/mc/"
+  MC_LIBEXECDIR: "$dir/libexec/mc/"
+
 smoke_test:
   - command: "/usr/sgug/bin/mc --version 2>&1 | head -1"
     expect: "Midnight Commander"
@@ -19,6 +31,32 @@ rules:
     - --with-screen=slang
   drop_subpackages:
   - python
+  prep_commands:
+    # Patch main.c to support MC_SHARE_DATA and MC_LIBEXECDIR env vars.
+    # mc only checks MC_DATADIR for sysconfig_dir, and hardcodes DATADIR
+    # and LIBEXECDIR at compile time. Bundles need runtime overrides.
+    #
+    # After: mc_global.share_data_dir = g_strdup (DATADIR);
+    # Insert: check MC_SHARE_DATA env var override
+    - |
+      perl -pi -e '
+        s{mc_global\.share_data_dir = g_strdup \(DATADIR\);}{
+        {
+            const char *share_env = g_getenv("MC_SHARE_DATA");
+            mc_global.share_data_dir = g_strdup(share_env != NULL ? share_env : DATADIR);
+        }}' src/main.c
+    # LIBEXECDIR is a -D compile flag. Replace direct uses with inline
+    # env var check so bundles can override the libexec path at runtime.
+    - '$MOGRIX_ROOT/tools/safepatch src/vfs/extfs/extfs.c --old "extfs_get_plugins (LIBEXECDIR," --new "extfs_get_plugins (g_getenv(\"MC_LIBEXECDIR\") ? g_getenv(\"MC_LIBEXECDIR\") : LIBEXECDIR," --no-backup --quiet'
+    - '$MOGRIX_ROOT/tools/safepatch src/vfs/shell/shell.c --old "g_build_path (PATH_SEP_STR, LIBEXECDIR," --new "g_build_path (PATH_SEP_STR, g_getenv(\"MC_LIBEXECDIR\") ? g_getenv(\"MC_LIBEXECDIR\") : LIBEXECDIR," --no-backup --quiet'
+    # Help file: man2hlp (Perl) generates mc.hlp with [Contents] as the
+    # top-level node, but help.c defaults to [main]. On Fedora this works
+    # because the pre-built xnc.hlp (which has [main]) is installed directly.
+    # During cross-build, man2hlp runs and replaces [main] with [Contents].
+    # Fix: change the default node from [main] to [Contents] everywhere.
+    - '$MOGRIX_ROOT/tools/safepatch src/help.c --old "event_data->node = \"[main]\";" --new "event_data->node = \"[Contents]\";" --no-backup --quiet'
+    - '$MOGRIX_ROOT/tools/safepatch src/help.c --old "main_node = search_string (fdata, \"[main]\");" --new "main_node = search_string (fdata, \"[Contents]\");" --no-backup --quiet'
+    - '$MOGRIX_ROOT/tools/safepatch src/filemanager/cmd.c --old "event_data.node = \"[main]\";" --new "event_data.node = \"[Contents]\";" --no-backup --quiet'
   spec_replacements:
   # autogen.sh needs autopoint (not installed). Supply the gettext files
   # autopoint would provide, then run autoreconf directly. Disable NLS
