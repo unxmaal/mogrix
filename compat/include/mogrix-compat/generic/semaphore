@@ -1,0 +1,59 @@
+// C++20 <semaphore> polyfill for GCC 9 libstdc++
+// Provides std::binary_semaphore and std::counting_semaphore
+// using mutex + condition_variable
+// Auto-disables when real <semaphore> is available
+#pragma once
+
+#if !__has_include_next(<semaphore>)
+
+#ifndef _MOGRIX_SEMAPHORE_POLYFILL
+#define _MOGRIX_SEMAPHORE_POLYFILL
+
+#include <mutex>
+#include <condition_variable>
+#include <algorithm>
+
+namespace std {
+
+template <int LeastMaxValue = 1>
+class counting_semaphore {
+public:
+    explicit counting_semaphore(int initial) : _count(initial) {}
+
+    void release(int update = 1) {
+        std::lock_guard<std::mutex> lk(_mtx);
+        _count += update;
+        if (update == 1)
+            _cv.notify_one();
+        else
+            _cv.notify_all();
+    }
+
+    void acquire() {
+        std::unique_lock<std::mutex> lk(_mtx);
+        _cv.wait(lk, [this] { return _count > 0; });
+        --_count;
+    }
+
+    bool try_acquire() noexcept {
+        std::lock_guard<std::mutex> lk(_mtx);
+        if (_count > 0) { --_count; return true; }
+        return false;
+    }
+
+    static constexpr int max() noexcept { return LeastMaxValue; }
+
+private:
+    std::mutex _mtx;
+    std::condition_variable _cv;
+    int _count;
+};
+
+using binary_semaphore = counting_semaphore<1>;
+
+} // namespace std
+
+#endif // _MOGRIX_SEMAPHORE_POLYFILL
+#else
+#include_next <semaphore>
+#endif

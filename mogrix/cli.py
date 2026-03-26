@@ -2934,6 +2934,37 @@ def setup_cross(
         link_path.symlink_to(target)
         console.print(f"  [green]✓[/green] Symlink: {link_name} → {target}")
 
+    # Symlink IRIX sysroot directories into staging
+    # The staging sysroot is a merge of IRIX system files + cross-compiled sgug files.
+    # IRIX system headers and libs come from /opt/irix-sysroot and must always be
+    # present for linking. Symlinking (not copying) ensures they survive stage --clean
+    # and stay in sync with the sysroot tarball.
+    irix_sysroot = Path(sysroot)
+    sysroot_links = [
+        (irix_sysroot / "usr" / "include", staging_path.parent.parent / "usr" / "include"),
+        (irix_sysroot / "usr" / "lib32", staging_path.parent.parent / "usr" / "lib32"),
+        (irix_sysroot / "lib32", staging_path.parent.parent / "lib32"),
+    ]
+    for target, link_path in sysroot_links:
+        if not target.exists():
+            console.print(f"  [yellow]![/yellow] Sysroot path not found: {target}")
+            continue
+        if link_path.is_symlink():
+            if link_path.resolve() == target.resolve():
+                console.print(f"  [dim]✓ Already linked: {link_path.name} → {target}[/dim]")
+                continue
+            link_path.unlink()
+        elif link_path.is_dir():
+            # Real directory exists (e.g. from old manual copy) — replace with symlink
+            if not any(link_path.iterdir()):
+                link_path.rmdir()
+            else:
+                console.print(f"  [yellow]![/yellow] {link_path} is a non-empty directory, skipping symlink")
+                continue
+        link_path.parent.mkdir(parents=True, exist_ok=True)
+        link_path.symlink_to(target)
+        console.print(f"  [green]✓[/green] Sysroot symlink: {link_path} → {target}")
+
     # Create C++ wrapper as symlink/copy of C wrapper
     cxx_wrapper = staging_path / "bin" / "irix-cxx"
     if not cxx_wrapper.exists():

@@ -58,6 +58,22 @@
 - [ ] Evaluate: can OpenCode's TypeScript be bundled to run on QuickJS?
 - [ ] Evaluate: QuickJS + dillo = JS-capable browser lighter than ir8/WebKit?
 
+### C++20 Polyfill Header (Prerequisite for btop and future C++ packages)
+- [ ] Create `compat/include/mogrix-compat/generic/cpp20-polyfill.h`
+- [ ] Implements: `std::to_string`, `std::source_location`, `std::binary_semaphore`, `std::ranges::{count_if,for_each,find,distance}`, `std::cmp_equal/cmp_not_equal`, `std::views::iota`, `std::span`
+- [ ] All guarded with `__cpp_lib_*` feature test macros — auto-disables when real C++20 libstdc++ is available
+- [ ] Force-included by `irix-cxx` wrapper for all C++ builds
+- [ ] Consolidates existing per-package shims (cmake to_string, WebKit span, Qt5 pmr, doxygen to_string)
+- [ ] Unblocks: btop (platform backend ready, blocked on C++20), future C++ packages
+- [ ] Path to C++20: when we upgrade to GCC 13+, the polyfill becomes no-op automatically
+
+### btop for IRIX (Blocked on C++20 polyfill)
+- [ ] Platform backend written: `patches/packages/btop/btop_collect.cpp` (1147 lines)
+- [ ] Rules written: `rules/packages/btop.yaml`
+- [ ] Stub headers: `ifaddrs.h`, `irix_compat.hpp`
+- [ ] Blocked: btop shared code uses C++20 pervasively (ranges, source_location, semaphore, cmp_not_equal, views::iota)
+- [ ] Once C++20 polyfill header is done: reconvert + rebuild + bundle
+
 ### Infrastructure
 - [ ] Rebuild staleness fix: use content hashes for cross-package inputs (generic.yaml touches invalidate ALL packages)
 - [ ] Automate libmogrix_compat.so build in `setup-cross` (currently manual)
@@ -90,6 +106,7 @@
 - [ ] LLD: suppress GNU version section OUTPUT (keep internal objects alive)
 - [ ] .eh_frame: move to RW LOAD segment (needed for C++ shared libraries on IRIX)
 - [ ] Fresh sysroot from actual IRIX machine (current one may be from a different SGI)
+- [ ] **GCC 13+ libstdc++**: Cross-compile newer libstdc++ with full C++20 support. Would eliminate the polyfill header entirely and unlock all modern C++ packages natively. Requires: build GCC 13 targeting MIPS N32, extract libstdc++.so, deploy to staging. The C++20 polyfill header is the bridge until this is done.
 
 ---
 
