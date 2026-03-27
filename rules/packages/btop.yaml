@@ -1,0 +1,136 @@
+package: btop
+
+build_after:
+  - ncurses
+
+# mrqs rebase crashes the new libstdc++ (without cow-fs_*).
+# The rebased binary SIGSEGV at any non-original base address.
+# Skip until mrqs is fixed for the new library layout.
+skip_mrqs_rebase: true
+
+add_source:
+  - btop_collect.cpp
+  - ifaddrs.h
+
+rules:
+  inject_compat_functions:
+    - strsignal
+    - strcasestr
+    - pselect
+    - setenv
+
+  drop_buildrequires:
+    - systemd-devel
+    - libdrm-devel
+    - gpu-firmware-dev
+
+  configure_disable:
+    - gpu
+
+  spec_replacements:
+    # btop uses Make, not autoconf. The spec's %make_build uses the Makefile
+    # which detects PLATFORM from uname. For cross-compilation, override PLATFORM.
+    - pattern: '%make_build'
+      replacement: |
+        # Copy IRIX btop_collect.cpp over the Linux one
+        mkdir -p src/irix
+        cp %{_sourcedir}/btop_collect.cpp src/irix/btop_collect.cpp
+
+        # Patch Makefile to add IRIX platform
+        sed -i '/^else ifeq (\$(PLATFORM_LC),openbsd)/i\
+        else ifeq ($(PLATFORM_LC),irix)\
+        \tPLATFORM_DIR := irix\
+        \tTHREADS\t:= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)\
+        \tSU_GROUP := sys\
+        ' Makefile
+
+        # Force PLATFORM to irix for cross-compilation
+        %{__make} %{?_smp_mflags} \
+          PLATFORM=irix \
+          CXX="%{__cxx}" \
+          OPTFLAGS="%{optflags}" \
+          PREFIX="%{_prefix}" \
+          STATIC=true \
+          GPU_SUPPORT=false \
+          FORTIFY_SOURCE=false \
+          ADDFLAGS="-lm -lpthread -lmogrix-compat -L$(pwd)/mogrix-compat"
+
+    # Install is simple — just the binary + themes + desktop file
+    - pattern: '%make_install'
+      replacement: |
+        %{__make} install PREFIX="%{_prefix}" DESTDIR="%{buildroot}"
+
+    # Remove desktop file validation and clean up desktop/icon files (no desktop on IRIX)
+    - pattern: 'desktop-file-validate %{buildroot}%{_datadir}/applications/btop.desktop'
+      replacement: |
+        # desktop removed for IRIX
+        rm -rf %{buildroot}%{_datadir}/applications
+        rm -rf %{buildroot}%{_datadir}/icons
+    # Comment out desktop and icon files from %files
+    - pattern: '%{_datadir}/applications/btop.desktop'
+      replacement: '# %{_datadir}/applications/btop.desktop'
+    - pattern: '%{_datadir}/icons/hicolor'
+      replacement: '# %{_datadir}/icons/hicolor'
+
+  prep_commands:
+    # C++20 polyfills are now systemic:
+    #   <ranges>, <semaphore>, <source_location> → compat/include/mogrix-compat/generic/
+    #   std::to_string, std::cmp_*, quick_exit → utility_polyfill.h (force-included by irix-cxx)
+    # Only btop-specific fixes needed here:
+
+    # IRIX: no <ifaddrs.h> — provide local stub
+    - 'cp %{_sourcedir}/ifaddrs.h src/ifaddrs.h'
+    - 'sed -i "s|override REQFLAGS   := -std=c++20|override REQFLAGS   := -std=c++20 -Isrc|" Makefile'
+    # IRIX: pthread_timedjoin_np is GNU-specific. Replace with pthread_join.
+    - 'sed -i "s/pthread_timedjoin_np(Runner::runner_id, nullptr, &ts)/pthread_join(Runner::runner_id, nullptr)/" src/btop.cpp'
+    # btop_tools.cpp ssplit() uses views::split|views::transform pipe.
+    # Replace with traditional C++ implementation.
+    - |
+      perl -0pi -e 's{auto ssplit\(const string& str, const char& delim\) -> vector<string> \{.*?\n\t\treturn out;\n\t\}}{auto ssplit(const string\& str, const char\& delim) -> vector<string> \{
+      \t\tvector<string> out;
+      \t\tsize_t start = 0, end;
+      \t\twhile ((end = str.find(delim, start)) != string::npos) \{
+      \t\t\tif (end > start) out.emplace_back(str.substr(start, end - start));
+      \t\t\tstart = end + 1;
+      \t\t\}
+      \t\tif (start < str.size()) out.emplace_back(str.substr(start));
+      \t\treturn out;
+      \t\}}s' src/btop_tools.cpp
+    # IRIX: wchar_t is a keyword in C++ mode
+    - 'sed -i "1i#define _WCHAR_T" src/btop_tools.cpp 2>/dev/null || true'
+    # IRIX: default to tty_mode + utf_force.
+    - |
+      sed -i '/argumentParser(argc, argv);/a\
+      \t// IRIX: force tty mode and UTF\
+      \tif (not Global::arg_tty) { Config::set("tty_mode", true); Global::arg_tty = true; }\
+      \tGlobal::utf_force = true;' src/btop.cpp
+    # IRIX: %zu format specifier not supported in libc printf
+    - 'find src -name "*.cpp" -exec sed -i "s/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g" {} + 2>/dev/null || true'
+    # IRIX: clamp negative size vars in Proc::draw to prevent size_t underflow.
+    # prog_size/cmd_size/thread_size can be negative when terminal is narrow.
+    # ljust/rjust take size_t — negative int wraps to ~4GB → OOM SIGSEGV.
+    - |
+      sed -i '/tree_size += 5;/a\
+      \t\t\tprog_size = max(0, prog_size);\
+      \t\t\tcmd_size = max(0, cmd_size);\
+      \t\t\ttree_size = max(0, tree_size);' src/btop_draw.cpp
+    # IRIX: replace graph_symbols.at() with safe find() in all draw functions.
+    # C++ exceptions crash on IRIX (broken unwinder), so .at() throwing
+    # std::out_of_range is fatal. Use find() + early return instead.
+    - |
+      python3 -c "
+      with open('src/btop_draw.cpp') as f: c = f.read()
+      old = 'auto& graph_bg = Symbols::graph_symbols.at((graph_symbol == \"default\" ? Config::getS(\"graph_symbol\") + \"_up\" : graph_symbol + \"_up\")).at(6);'
+      n = c.count(old)
+      for i in range(n, 0, -1):
+          idx = c.rfind(old)
+          if idx < 0: break
+          replacement = 'auto _gk' + str(i) + ' = (graph_symbol == \"default\" ? Config::getS(\"graph_symbol\") + \"_up\" : graph_symbol + \"_up\"); auto _gi' + str(i) + ' = Symbols::graph_symbols.find(_gk' + str(i) + '); if (_gi' + str(i) + ' == Symbols::graph_symbols.end()) return \"\"; auto& graph_bg = _gi' + str(i) + '->second.at(6);'
+          c = c[:idx] + replacement + c[idx+len(old):]
+      with open('src/btop_draw.cpp', 'w') as f: f.write(c)
+      print(f'Fixed {n} graph_bg instances')
+      "
+
+smoke_test:
+  - command: "/usr/sgug/bin/btop --version"
+    expect: "btop"

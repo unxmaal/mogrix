@@ -1,0 +1,97 @@
+language: rust
+extensions: [".rs"]
+templates:
+  gut_function:
+    description: "Replace the body of a Rust function with a replacement body"
+    params: [function_name, replacement_body]
+    query: |
+      (function_item
+        name: (identifier) @fn_name
+        body: (block) @fn_body
+        (#eq? @fn_name "${function_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  remove_call:
+    description: "Remove an expression statement containing a call to the named function"
+    params: [function_name]
+    query: |
+      (expression_statement
+        (call_expression
+          function: [
+            (identifier) @fn_name
+            (scoped_identifier
+              name: (identifier) @fn_name)
+            (field_expression
+              field: (field_identifier) @fn_name)
+          ]
+          (#eq? @fn_name "${function_name}"))) @stmt
+    capture: stmt
+    action: remove_statement
+
+  remove_if_block:
+    description: "Remove an if expression whose condition matches a regex pattern"
+    params: [condition_pattern]
+    query: |
+      (if_expression
+        condition: (_) @cond
+        (#match? @cond "${condition_pattern}")) @if_expr
+    capture: if_expr
+    action: remove_statement
+
+  replace_string_literal:
+    description: "Replace string literals matching a pattern with a new value"
+    params: [old_pattern, new_value]
+    query: |
+      (string_literal) @str
+      (#match? @str "${old_pattern}")
+    capture: str
+    action: replace
+    replacement: "\"${new_value}\""
+
+  remove_use:
+    description: "Remove a use declaration matching a path pattern"
+    params: [path_pattern]
+    query: |
+      (use_declaration
+        argument: (_) @path
+        (#match? @path "${path_pattern}")) @use_decl
+    capture: use_decl
+    action: remove_statement
+
+  remove_attribute:
+    description: "Remove an attribute item matching a pattern"
+    params: [attr_pattern]
+    query: |
+      (attribute_item
+        (_) @attr
+        (#match? @attr "${attr_pattern}")) @attr_item
+    capture: attr_item
+    action: remove_statement
+
+  gut_method:
+    description: "Replace the body of a method inside an impl block"
+    params: [type_name, method_name, replacement_body]
+    query: |
+      (impl_item
+        type: (type_identifier) @type_name
+        body: (declaration_list
+          (function_item
+            name: (identifier) @method_name
+            body: (block) @method_body))
+        (#eq? @type_name "${type_name}")
+        (#eq? @method_name "${method_name}"))
+    capture: method_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  remove_struct_field:
+    description: "Remove a field from a struct definition by field name"
+    params: [field_name]
+    query: |
+      (field_declaration
+        name: (field_identifier) @field
+        (#eq? @field "${field_name}")) @decl
+    capture: decl
+    action: remove_statement

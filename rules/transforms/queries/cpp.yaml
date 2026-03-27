@@ -1,0 +1,113 @@
+language: cpp
+extensions: [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"]
+inherits: c
+templates:
+  gut_function:
+    description: "Replace the body of a C++ function (including qualified names) with a replacement body"
+    params: [function_name, replacement_body]
+    query: |
+      (function_definition
+        declarator: (function_declarator
+          declarator: [
+            (identifier) @fn_name
+            (qualified_identifier) @fn_name
+          ])
+        body: (compound_statement) @fn_body
+        (#match? @fn_name "${function_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  remove_call:
+    description: "Remove an expression statement containing a call to the named function or method"
+    params: [function_name]
+    query: |
+      (expression_statement
+        (call_expression
+          function: [
+            (identifier) @fn_name
+            (qualified_identifier) @fn_name
+          ]
+          (#match? @fn_name "${function_name}"))) @stmt
+    capture: stmt
+    action: remove_statement
+
+  remove_if_block:
+    description: "Remove an if statement whose condition matches a regex pattern"
+    params: [condition_pattern]
+    query: |
+      (if_statement
+        condition: (condition_clause) @cond
+        (#match? @cond "${condition_pattern}")) @if_stmt
+    capture: if_stmt
+    action: remove_statement
+
+  replace_string_literal:
+    description: "Replace string literals matching a pattern with a new value"
+    params: [old_pattern, new_value]
+    query: |
+      (string_literal) @str
+      (#match? @str "${old_pattern}")
+    capture: str
+    action: replace
+    replacement: "\"${new_value}\""
+
+  remove_include:
+    description: "Remove a #include directive matching a path pattern"
+    params: [header_pattern]
+    query: |
+      (preproc_include
+        path: (_) @path
+        (#match? @path "${header_pattern}")) @include
+    capture: include
+    action: remove_statement
+
+  remove_ifdef_block:
+    description: "Remove an #ifdef/#ifndef block by macro name"
+    params: [macro_name]
+    query: |
+      (preproc_ifdef
+        name: (identifier) @name
+        (#eq? @name "${macro_name}")) @ifdef
+    capture: ifdef
+    action: remove_statement
+
+  remove_struct_field:
+    description: "Remove a field declaration from a struct or class by field name"
+    params: [field_name]
+    query: |
+      (field_declaration
+        declarator: (field_identifier) @field
+        (#eq? @field "${field_name}")) @decl
+    capture: decl
+    action: remove_statement
+
+  gut_method:
+    description: "Replace the body of a method inside a class definition"
+    params: [class_name, method_name, replacement_body]
+    query: |
+      (class_specifier
+        name: (type_identifier) @cls_name
+        body: (field_declaration_list
+          (function_definition
+            declarator: (function_declarator
+              declarator: (field_identifier) @method_name)
+            body: (compound_statement) @method_body))
+        (#eq? @cls_name "${class_name}")
+        (#eq? @method_name "${method_name}"))
+    capture: method_body
+    action: replace
+    replacement: "{ ${replacement_body} }"
+
+  gut_qualified_method:
+    description: "Replace the body of an out-of-class method definition (Class::method)"
+    params: [qualified_name, replacement_body]
+    query: |
+      (function_definition
+        declarator: (function_declarator
+          declarator: (qualified_identifier) @qname)
+        body: (compound_statement) @fn_body
+        (#match? @qname "${qualified_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "{ ${replacement_body} }"

@@ -1,0 +1,259 @@
+// C++20 <ranges> polyfill for GCC 9 libstdc++
+// Provides the subset of std::ranges and std::views used by common packages
+// Auto-disables when real <ranges> is available
+#pragma once
+
+#if !__has_include_next(<ranges>)
+
+#ifndef _MOGRIX_RANGES_POLYFILL
+#define _MOGRIX_RANGES_POLYFILL
+
+#include <algorithm>
+#include <functional>
+#include <iterator>
+#include <limits>
+#include <numeric>
+#include <vector>
+#include <type_traits>
+
+namespace std {
+
+// std::identity (C++20) — transparent functor
+#ifndef __cpp_lib_identity
+struct identity {
+    template <typename T>
+    constexpr T&& operator()(T&& t) const noexcept { return std::forward<T>(t); }
+    using is_transparent = void;
+};
+#endif
+
+namespace ranges {
+
+    // --- subrange (iterable pair of iterators) ---
+    template <typename It>
+    struct subrange {
+        It _begin, _end;
+        constexpr It begin() const { return _begin; }
+        constexpr It end() const { return _end; }
+        constexpr bool empty() const { return _begin == _end; }
+    };
+
+    // --- Algorithms that forward to std:: equivalents ---
+
+    template <typename Range, typename Pred>
+    constexpr auto count_if(Range&& r, Pred pred) {
+        return std::count_if(std::begin(r), std::end(r), pred);
+    }
+
+    template <typename Range, typename Func>
+    constexpr auto for_each(Range&& r, Func f) {
+        return std::for_each(std::begin(r), std::end(r), f);
+    }
+
+    template <typename Range, typename T>
+    constexpr auto find(Range&& r, const T& val) {
+        return std::find(std::begin(r), std::end(r), val);
+    }
+
+    // --- find with projection (C++20) ---
+    template <typename Range, typename T, typename Proj>
+    constexpr auto find(Range&& r, const T& val, Proj proj) {
+        for (auto it = std::begin(r); it != std::end(r); ++it) {
+            if (std::invoke(proj, *it) == val) return it;
+        }
+        return std::end(r);
+    }
+
+    template <typename It1, typename It2>
+    constexpr auto distance(It1 first, It2 last) {
+        return std::distance(first, last);
+    }
+
+    template <typename Range>
+    constexpr auto begin(Range&& r) { return std::begin(r); }
+
+    template <typename Range>
+    constexpr auto end(Range&& r) { return std::end(r); }
+
+    template <typename Range>
+    constexpr auto size(Range&& r) { return std::distance(std::begin(r), std::end(r)); }
+
+    template <typename Range>
+    constexpr bool empty(Range&& r) { return std::begin(r) == std::end(r); }
+
+    // --- Sort ---
+    template <typename Range, typename Comp = std::less<>>
+    constexpr void sort(Range&& r, Comp comp = {}) {
+        std::sort(std::begin(r), std::end(r), comp);
+    }
+
+    // --- Sort with projection ---
+    template <typename Range, typename Comp, typename Proj>
+    constexpr void sort(Range&& r, Comp comp, Proj proj) {
+        std::sort(std::begin(r), std::end(r),
+            [&](const auto& a, const auto& b) {
+                return comp(std::invoke(proj, a), std::invoke(proj, b));
+            });
+    }
+
+    // --- Reverse ---
+    template <typename Range>
+    constexpr void reverse(Range&& r) {
+        std::reverse(std::begin(r), std::end(r));
+    }
+
+    // --- find_if ---
+    template <typename Range, typename Pred>
+    constexpr auto find_if(Range&& r, Pred pred) {
+        return std::find_if(std::begin(r), std::end(r), pred);
+    }
+
+    // --- transform ---
+    template <typename Range, typename OutputIt, typename UnaryOp>
+    constexpr auto transform(Range&& r, OutputIt out, UnaryOp op) {
+        return std::transform(std::begin(r), std::end(r), out, op);
+    }
+
+    // --- any_of / all_of / none_of ---
+    template <typename Range, typename Pred>
+    constexpr bool any_of(Range&& r, Pred pred) {
+        return std::any_of(std::begin(r), std::end(r), pred);
+    }
+
+    template <typename Range, typename Pred>
+    constexpr bool all_of(Range&& r, Pred pred) {
+        return std::all_of(std::begin(r), std::end(r), pred);
+    }
+
+    template <typename Range, typename Pred>
+    constexpr bool none_of(Range&& r, Pred pred) {
+        return std::none_of(std::begin(r), std::end(r), pred);
+    }
+
+    // --- count ---
+    template <typename Range, typename T>
+    constexpr auto count(Range&& r, const T& val) {
+        return std::count(std::begin(r), std::end(r), val);
+    }
+
+    // --- accumulate (reduce) ---
+    template <typename Range, typename T>
+    constexpr auto accumulate(Range&& r, T init) {
+        for (auto&& v : r) init += v;
+        return init;
+    }
+
+    // --- min_element / max_element ---
+    template <typename Range>
+    constexpr auto min_element(Range&& r) {
+        return std::min_element(std::begin(r), std::end(r));
+    }
+
+    template <typename Range>
+    constexpr auto max_element(Range&& r) {
+        return std::max_element(std::begin(r), std::end(r));
+    }
+
+    // --- remove_if (returns subrange of removed elements, like C++20) ---
+    template <typename Range, typename Pred>
+    constexpr auto remove_if(Range&& r, Pred pred) {
+        auto it = std::remove_if(std::begin(r), std::end(r), pred);
+        return subrange<decltype(it)>{it, std::end(r)};
+    }
+
+    // --- copy ---
+    template <typename Range, typename OutputIt>
+    constexpr auto copy(Range&& r, OutputIt out) {
+        return std::copy(std::begin(r), std::end(r), out);
+    }
+
+    // --- stable_sort with projection ---
+    template <typename Range, typename Comp, typename Proj>
+    constexpr void stable_sort(Range&& r, Comp comp, Proj proj) {
+        std::stable_sort(std::begin(r), std::end(r),
+            [&](const auto& a, const auto& b) {
+                return comp(std::invoke(proj, a), std::invoke(proj, b));
+            });
+    }
+
+    template <typename Range, typename Comp = std::less<>>
+    constexpr void stable_sort(Range&& r, Comp comp = {}) {
+        std::stable_sort(std::begin(r), std::end(r), comp);
+    }
+
+    // --- transform (two input ranges → output) ---
+    template <typename Range1, typename Range2, typename OutputIt, typename BinaryOp>
+    constexpr auto transform(Range1&& r1, Range2&& r2, OutputIt out, BinaryOp op) {
+        auto it1 = std::begin(r1);
+        auto it2 = std::begin(r2);
+        for (; it1 != std::end(r1) && it2 != std::end(r2); ++it1, ++it2, ++out)
+            *out = op(*it1, *it2);
+        return out;
+    }
+
+    // --- equal_range with projection ---
+    template <typename Range, typename T, typename Comp = std::less<>, typename Proj = std::identity>
+    constexpr auto equal_range(Range&& r, const T& val, Comp comp = {}, Proj proj = {}) {
+        auto first = std::begin(r);
+        auto last = std::end(r);
+        auto lower = std::lower_bound(first, last, val,
+            [&](const auto& elem, const auto& v) { return comp(std::invoke(proj, elem), v); });
+        auto upper = std::upper_bound(lower, last, val,
+            [&](const auto& v, const auto& elem) { return comp(v, std::invoke(proj, elem)); });
+        return subrange<decltype(lower)>{lower, upper};
+    }
+
+    // --- less / greater (projection-aware comparators) ---
+    struct less {
+        template <typename T, typename U>
+        constexpr bool operator()(T&& t, U&& u) const { return t < u; }
+    };
+
+    struct greater {
+        template <typename T, typename U>
+        constexpr bool operator()(T&& t, U&& u) const { return t > u; }
+    };
+
+} // namespace ranges
+
+namespace views {
+
+    // --- iota view (generates sequence of integers) ---
+    class _iota_view {
+    public:
+        class iterator {
+        public:
+            using value_type = int;
+            using difference_type = int;
+            using reference = int;
+            using iterator_category = std::input_iterator_tag;
+
+            explicit iterator(int val) : _val(val) {}
+            int operator*() const { return _val; }
+            iterator& operator++() { ++_val; return *this; }
+            iterator operator++(int) { auto tmp = *this; ++_val; return tmp; }
+            bool operator==(const iterator& o) const { return _val == o._val; }
+            bool operator!=(const iterator& o) const { return _val != o._val; }
+        private:
+            int _val;
+        };
+
+        _iota_view(int start, int end) : _start(start), _end(end) {}
+        _iota_view(int start) : _start(start), _end(std::numeric_limits<int>::max()) {}
+        iterator begin() const { return iterator(_start); }
+        iterator end() const { return iterator(_end); }
+
+    private:
+        int _start, _end;
+    };
+
+    inline _iota_view iota(int start, int end) { return _iota_view(start, end); }
+    inline _iota_view iota(int start) { return _iota_view(start); }
+
+} // namespace views
+} // namespace std
+
+#endif // _MOGRIX_RANGES_POLYFILL
+#else
+#include_next <ranges>
+#endif

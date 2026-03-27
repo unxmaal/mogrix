@@ -379,6 +379,33 @@ patch_file("sys/fs/unix.rs", [
         '        target_os = "irix",\n'
         '    ))]'
     ),
+    # IRIX realpath(path, NULL) returns EINVAL — IRIX requires a buffer.
+    # Replace canonicalize() to allocate a buffer instead of passing NULL.
+    (
+        'pub fn canonicalize(path: &CStr) -> io::Result<PathBuf> {\n'
+        '    let r = unsafe { libc::realpath(path.as_ptr(), ptr::null_mut()) };\n'
+        '    if r.is_null() {\n'
+        '        return Err(io::Error::last_os_error());\n'
+        '    }\n'
+        '    Ok(PathBuf::from(OsString::from_vec(unsafe {\n'
+        '        let buf = CStr::from_ptr(r).to_bytes().to_vec();\n'
+        '        libc::free(r as *mut _);\n'
+        '        buf\n'
+        '    })))\n'
+        '}',
+        'pub fn canonicalize(path: &CStr) -> io::Result<PathBuf> {\n'
+        '    // IRIX realpath() does not support NULL as second argument.\n'
+        '    // Allocate a PATH_MAX buffer and pass it explicitly.\n'
+        '    let mut buf = vec![0u8; libc::PATH_MAX as usize];\n'
+        '    let r = unsafe { libc::realpath(path.as_ptr(), buf.as_mut_ptr() as *mut libc::c_char) };\n'
+        '    if r.is_null() {\n'
+        '        return Err(io::Error::last_os_error());\n'
+        '    }\n'
+        '    Ok(PathBuf::from(OsString::from_vec(unsafe {\n'
+        '        CStr::from_ptr(r).to_bytes().to_vec()\n'
+        '    })))\n'
+        '}'
+    ),
 ])
 
 # ---------------------------------------------------------------------------

@@ -471,9 +471,19 @@ pub const O_SYNC: c_int = 0x10;
 pub const O_DSYNC: c_int = 0x20;
 pub const O_NDELAY: c_int = O_NONBLOCK;
 pub const O_ACCMODE: c_int = 0x3;
-pub const O_CLOEXEC: c_int = 0x80000;
-pub const O_DIRECTORY: c_int = 0x10000;
-pub const O_NOFOLLOW: c_int = 0x20000;
+// IRIX does NOT support O_CLOEXEC, O_DIRECTORY, or O_NOFOLLOW.
+// These MUST be 0 — non-zero values collide with IRIX flags:
+//   0x10000 = O_BULK (loosen semantics for bandwidth)
+//   0x20000 = O_LCINVAL (flush+invalidate on last close)
+//   0x80000 = undefined (causes EINVAL)
+// Rust std::fs uses O_CLOEXEC|O_DIRECTORY on open() for read_dir().
+// With non-zero values, IRIX returns EINVAL → directory scan fails.
+// O_CLOEXEC: use fcntl(F_SETFD, FD_CLOEXEC) after open instead.
+// O_DIRECTORY: IRIX open() works on directories without this flag.
+// O_NOFOLLOW: IRIX cannot prevent symlink following.
+pub const O_CLOEXEC: c_int = 0;
+pub const O_DIRECTORY: c_int = 0;
+pub const O_NOFOLLOW: c_int = 0;
 pub const O_ASYNC: c_int = 0x40;  // FASYNC on IRIX (SVR4)
 
 // --- fcntl commands ---
@@ -944,15 +954,16 @@ pub const AT_SYMLINK_FOLLOW: c_int = 0x2000;  // Same as Solaris
 // Rust libc uses c_ulong for ioctl request parameter on all Unix.
 // IRIX native ioctl(2) takes int, but the Rust binding uses c_ulong.
 // Note: IRIX doesn't support FIOCLEX on sockets — use fcntl(F_SETFD) instead.
-pub const FIOCLEX: c_ulong = 0x6601;
-pub const FIONBIO: c_ulong = 0x667e;
 // IRIX ioctl encoding: direction | (size << 16) | (group << 8) | num
-// struct winsize is 8 bytes, group 't' = 0x74
+// direction: _IO=0x20000000, _IOR=0x40000000, _IOW=0x80000000, _IOWR=0xC0000000
+// CRITICAL: bare values (without encoding) cause ioctl to silently fail on IRIX.
+pub const FIOCLEX: c_ulong = 0x20006601;     // _IO('f', 1)
+pub const FIONBIO: c_ulong = 0x8004667e;     // _IOW('f', 126, int)
+pub const FIONREAD: c_ulong = 0x4004667f;    // _IOR('f', 127, int)
 pub const TIOCGWINSZ: c_ulong = 0x40087468;  // _IOR('t', 104, struct winsize)
 pub const TIOCSWINSZ: c_ulong = 0x80087467;  // _IOW('t', 103, struct winsize)
-pub const FIONREAD: c_ulong = 0x467f;     // IRIX FIONREAD
-pub const TIOCEXCL: c_ulong = 0x740d;     // tIOC | 13
-pub const TIOCNXCL: c_ulong = 0x740e;     // tIOC | 14
+pub const TIOCEXCL: c_ulong = 0x740d;         // tIOC | 13 (old-style, no direction encoding)
+pub const TIOCNXCL: c_ulong = 0x740e;         // tIOC | 14 (old-style, no direction encoding)
 
 // --- Socket listen backlog ---
 pub const SOMAXCONN: c_int = 5;

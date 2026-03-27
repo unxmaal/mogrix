@@ -1,0 +1,90 @@
+language: python
+extensions: [".py", ".pyi"]
+templates:
+  gut_function:
+    description: "Replace the body of a Python function with a replacement body"
+    params: [function_name, replacement_body]
+    query: |
+      (function_definition
+        name: (identifier) @fn_name
+        body: (block) @fn_body
+        (#eq? @fn_name "${function_name}"))
+    capture: fn_body
+    action: replace
+    replacement: "${replacement_body}"
+
+  remove_call:
+    description: "Remove an expression statement containing a call to the named function"
+    params: [function_name]
+    query: |
+      (expression_statement
+        (call
+          function: [
+            (identifier) @fn_name
+            (attribute
+              attribute: (identifier) @fn_name)
+          ]
+          (#eq? @fn_name "${function_name}"))) @stmt
+    capture: stmt
+    action: remove_statement
+
+  remove_if_block:
+    description: "Remove an if statement whose condition matches a regex pattern"
+    params: [condition_pattern]
+    query: |
+      (if_statement
+        condition: (_) @cond
+        (#match? @cond "${condition_pattern}")) @if_stmt
+    capture: if_stmt
+    action: remove_statement
+
+  replace_string_literal:
+    description: "Replace string literals matching a pattern with a new value"
+    params: [old_pattern, new_value]
+    query: |
+      (string) @str
+      (#match? @str "${old_pattern}")
+    capture: str
+    action: replace
+    replacement: "\"${new_value}\""
+
+  remove_import:
+    description: "Remove an import statement matching a module pattern"
+    params: [module_pattern]
+    query: |
+      [
+        (import_statement
+          name: (dotted_name) @mod
+          (#match? @mod "${module_pattern}")) @import_stmt
+        (import_from_statement
+          module_name: (dotted_name) @mod
+          (#match? @mod "${module_pattern}")) @import_stmt
+      ]
+    capture: import_stmt
+    action: remove_statement
+
+  remove_decorator:
+    description: "Remove a decorator by name pattern"
+    params: [decorator_pattern]
+    query: |
+      (decorator
+        (_) @dec_name
+        (#match? @dec_name "${decorator_pattern}")) @decorator
+    capture: decorator
+    action: remove_statement
+
+  gut_method:
+    description: "Replace the body of a method inside a class definition"
+    params: [class_name, method_name, replacement_body]
+    query: |
+      (class_definition
+        name: (identifier) @cls_name
+        body: (block
+          (function_definition
+            name: (identifier) @method_name
+            body: (block) @method_body))
+        (#eq? @cls_name "${class_name}")
+        (#eq? @method_name "${method_name}"))
+    capture: method_body
+    action: replace
+    replacement: "${replacement_body}"

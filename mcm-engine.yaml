@@ -16,7 +16,7 @@ nudges:
   # Compaction/handoff thresholds are relaxed; enforcement thresholds are tightened.
   store_reminder_turns: 6        # was 4 — less aggressive, sessions are longer
   checkpoint_turns: 30            # was 10 — 1M context, no rush to checkpoint
-  mandatory_stop_turns: 60        # was 20 — allows much longer sessions
+  mandatory_stop_turns: 120        # was 20 — allows much longer sessions
   hyper_focus_threshold: 4        # was 3 — slight increase for longer sessions
   rules_check_interval: 8         # was 5 — less frequent but still periodic
   # Block tool calls (return error) after mandatory_stop + grace without checkpoint.

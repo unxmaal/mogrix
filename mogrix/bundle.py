@@ -334,6 +334,67 @@ class BundleBuilder:
             f"{len(self._irix_sonames)} IRIX native libs[/dim]"
         )
 
+    def _resolve_package_name(self, name: str) -> str | None:
+        """Resolve a user-provided package name to an actual RPM name.
+
+        Handles cases where the rule name differs from the RPM name:
+          - 'vim' → 'vim-enhanced' (subpackage from same SRPM)
+          - 'tree-pkg' → 'tree' (different RPM name)
+
+        Resolution order:
+          1. Exact match in _name_to_rpms
+          2. Check rule YAML for 'rpm_name' field
+          3. Find RPMs from same source (SOURCERPM starts with package name)
+          4. Fuzzy match: any RPM name containing the package name
+        """
+        # 1. Exact match
+        if name in self._name_to_rpms:
+            return name
+
+        # 2. Check rule YAML for rpm_name alias
+        from pathlib import Path as _Path
+        _rules_dir = _Path(__file__).parent.parent / "rules" / "packages"
+        _rule_file = _rules_dir / f"{name}.yaml"
+        if _rule_file.exists():
+            import yaml as _yaml
+            with open(_rule_file) as _f:
+                _rule = _yaml.safe_load(_f) or {}
+            rpm_name = _rule.get("rpm_name")
+            if rpm_name and rpm_name in self._name_to_rpms:
+                console.print(f"[dim]  {name} → {rpm_name} (from rule rpm_name)[/dim]")
+                return rpm_name
+
+        # 3. Find RPMs from same SRPM (e.g., vim → vim-enhanced via SOURCERPM)
+        for source_rpm, rpms in self._source_to_rpms.items():
+            # SOURCERPM format: "vim-9.1.158-1.src.rpm"
+            # Extract the base package name from SOURCERPM
+            src_base = source_rpm.rsplit("-", 2)[0] if source_rpm.count("-") >= 2 else source_rpm
+            if src_base == name:
+                # Found RPMs from this source — pick the best one
+                # Prefer: exact name > name-enhanced > first non-devel non-lib
+                rpm_names = [self._rpm_query(r, "%{NAME}") for r in rpms]
+                for candidate in rpm_names:
+                    if candidate == name:
+                        return candidate
+                # Try enhanced/minimal variants
+                for candidate in rpm_names:
+                    if candidate.startswith(name + "-") and not candidate.endswith(("-devel", "-static", "-doc", "-libs")):
+                        console.print(f"[dim]  {name} → {candidate} (from SRPM {source_rpm})[/dim]")
+                        return candidate
+                # Take first non-devel
+                for candidate in rpm_names:
+                    if not candidate.endswith(("-devel", "-static", "-doc")):
+                        console.print(f"[dim]  {name} → {candidate} (from SRPM {source_rpm})[/dim]")
+                        return candidate
+
+        # 4. Fuzzy: any RPM whose name starts with the package name
+        for rpm_name in self._name_to_rpms:
+            if rpm_name.startswith(name + "-") and not rpm_name.endswith(("-devel", "-static", "-doc", "-libs")):
+                console.print(f"[dim]  {name} → {rpm_name} (fuzzy prefix match)[/dim]")
+                return rpm_name
+
+        return None
+
     def _rpm_query(self, rpm_path: Path, fmt: str) -> str:
         """Query RPM metadata field."""
         result = subprocess.run(
@@ -723,6 +784,7 @@ class BundleBuilder:
         This is safe because rld handles displacement correctly for all cases
         EXCEPT the R_MIPS_REL32 UND symbol pre-resolution in executables,
         which only needs libstdc++'s address to be known at bundle time.
+
         """
         lib_dir = bundle_dir / "_lib32"
         if not lib_dir.is_dir():
@@ -1055,12 +1117,49 @@ class BundleBuilder:
         extra_packages: list[str] | None = None,
     ) -> BundleManifest:
         """Resolve all transitive runtime dependencies for a package bundle."""
-        # Find target RPMs
-        if target_package not in self._name_to_rpms:
-            console.print(
-                f"[red]Package '{target_package}' not found in {self.rpms_dir}[/red]"
-            )
+        # Find target RPMs — resolve name mismatches (vim → vim-enhanced, etc.)
+        resolved_name = self._resolve_package_name(target_package)
+        if resolved_name is None:
+            # Package truly not found — check rules for build hints
+            from pathlib import Path as _Path
+            _rules_dir = _Path(__file__).parent.parent / "rules" / "packages"
+            _rule_file = _rules_dir / f"{target_package}.yaml"
+            if _rule_file.exists():
+                import yaml as _yaml
+                with open(_rule_file) as _f:
+                    _rule = _yaml.safe_load(_f) or {}
+                if _rule.get("skip") or _rule.get("blocked"):
+                    reason = _rule.get("blocked_reason", "blocked/skipped in rules")
+                    console.print(
+                        f"[red]Package '{target_package}' is blocked: {reason}[/red]"
+                    )
+                elif "upstream" in _rule:
+                    _url = _rule["upstream"].get("url", "")
+                    console.print(
+                        f"[red]Package '{target_package}' not found in {self.rpms_dir}[/red]\n"
+                        f"[yellow]But it has upstream sources in {_rule_file.name}:[/yellow]\n"
+                        f"  url: {_url}\n"
+                        f"[yellow]Build it first:[/yellow]\n"
+                        f"  uv run mogrix create-srpm {target_package}\n"
+                        f"  uv run mogrix convert ~/mogrix_inputs/SRPMS/{target_package}-*.src.rpm\n"
+                        f"  uv run mogrix build ~/mogrix_outputs/converted/{target_package}-*-converted/{target_package}-*.src.rpm --cross\n"
+                        f"  uv run mogrix stage ~/rpmbuild/RPMS/mips/{target_package}*.rpm\n"
+                        f"  cp ~/rpmbuild/RPMS/mips/{target_package}*.rpm ~/mogrix_outputs/RPMS/"
+                    )
+                else:
+                    console.print(
+                        f"[red]Package '{target_package}' not found in {self.rpms_dir}[/red]\n"
+                        f"[yellow]Rule file exists ({_rule_file.name}) but no RPM built.[/yellow]\n"
+                        f"[yellow]Try: uv run mogrix fetch {target_package} -y[/yellow]"
+                    )
+            else:
+                console.print(
+                    f"[red]Package '{target_package}' not found in {self.rpms_dir}[/red]"
+                )
             raise SystemExit(1)
+
+        if resolved_name != target_package:
+            target_package = resolved_name
 
         target_rpms = self._name_to_rpms[target_package]
         target_version = self._rpm_query(target_rpms[0], "%{VERSION}-%{RELEASE}")
@@ -1071,8 +1170,9 @@ class BundleBuilder:
             queue.extend(self._get_sibling_rpms(rpm))
 
         for extra in extra_packages or []:
-            if extra in self._name_to_rpms:
-                for rpm in self._name_to_rpms[extra]:
+            resolved_extra = self._resolve_package_name(extra)
+            if resolved_extra:
+                for rpm in self._name_to_rpms[resolved_extra]:
                     queue.extend(self._get_sibling_rpms(rpm))
             else:
                 console.print(
@@ -1332,13 +1432,26 @@ class BundleBuilder:
         self._strip_rpaths(bundle_dir)
 
         # Rebase shared libraries to unique non-overlapping base addresses.
-        # Set MOGRIX_NO_MRQS=1 to skip rebasing (debugging).
+        # Set MOGRIX_NO_MRQS=1 to skip rebasing (debugging), or set
+        # skip_mrqs_rebase: true in the package rules YAML.
         # IRIX rld loads libraries at their preferred address if possible.
         # Without rebasing, all mogrix-built libs share 0x0f800000 and rld
         # displaces all but one — breaking pre-resolved R_MIPS_REL32 relocs.
         # mrqs assigns unique addresses and patches each library in-place.
-        if not os.environ.get("MOGRIX_NO_MRQS"):
+        skip_rebase = bool(os.environ.get("MOGRIX_NO_MRQS"))
+        if not skip_rebase:
+            # Check package rules for skip_mrqs_rebase flag
+            from pathlib import Path as _P
+            _rf = _P(__file__).parent.parent / "rules" / "packages" / f"{manifest.target_package}.yaml"
+            if _rf.exists():
+                import yaml as _y
+                with open(_rf) as _f:
+                    _r = _y.safe_load(_f) or {}
+                skip_rebase = _r.get("skip_mrqs_rebase", False)
+        if not skip_rebase:
             self._rebase_libraries(bundle_dir)
+        else:
+            console.print("[yellow]  mrqs rebase SKIPPED (skip_mrqs_rebase or MOGRIX_NO_MRQS)[/yellow]")
 
             # Pre-resolve UND symbol R_MIPS_REL32 relocations in executables.
             # After mrqs rebases libraries, their symbol addresses are final.
@@ -1434,6 +1547,30 @@ class BundleBuilder:
                 'FIGLET_FONTDIR="$dir/share/figlet"'
             )
             extra_env_lines.append("export FIGLET_FONTDIR")
+        # Per-package bundle_env from rules YAML — generic mechanism for any
+        # package to declare env vars needed in bundle wrappers.
+        # Format in rules/packages/<pkg>.yaml:
+        #   bundle_env:
+        #     MC_DATADIR: "$dir/share/mc/"
+        #     MC_SYSCONFDIR: "$dir/etc/"
+        from pathlib import Path as _BPath
+        _rules_dir = _BPath(__file__).parent.parent / "rules" / "packages"
+        _rule_file = _rules_dir / f"{manifest.target_package}.yaml"
+        if _rule_file.exists():
+            import yaml as _yaml
+            with open(_rule_file) as _rf:
+                _rule = _yaml.safe_load(_rf) or {}
+            for env_var, env_val in _rule.get("bundle_env", {}).items():
+                extra_env_lines.append(f'{env_var}="{env_val}"')
+                extra_env_lines.append(f"export {env_var}")
+            # bundle_post_commands: shell commands run in the bundle dir
+            # after assembly, before packaging. For creating symlinks, etc.
+            for cmd in _rule.get("bundle_post_commands", []):
+                console.print(f"  [dim]post-command:[/dim] {cmd}")
+                subprocess.run(
+                    cmd, shell=True, cwd=str(bundle_dir),
+                    capture_output=True, text=True,
+                )
         # CA certificate bundle — set env var + weechat gnutls_ca_user
         ca_bundle = bundle_dir / "etc" / "pki" / "tls" / "certs" / "ca-bundle.crt"
         if ca_bundle.is_file():

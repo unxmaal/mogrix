@@ -280,9 +280,15 @@ CXX17_SOURCES=(
     fs_dir.cc
     fs_ops.cc
     fs_path.cc
-    cow-fs_dir.cc
-    cow-fs_ops.cc
-    cow-fs_path.cc
+    # cow-fs_dir.cc, cow-fs_ops.cc, cow-fs_path.cc EXCLUDED:
+    # Old-ABI (COW string) filesystem. Internal _Dir struct has same mangled name
+    # in both ABIs but different memory layout (COW vs SSO strings in path member).
+    # Linking both causes ODR violation → SIGBUS when linker picks wrong _Dir.
+    # GCC avoids this by marking old-ABI _Dir as hidden; clang doesn't.
+    # -fvisibility=hidden and llvm-objcopy --localize-symbol don't fully prevent
+    # the collision because template instantiations retain WEAK+DEFAULT binding.
+    # Old-ABI filesystem is not needed: C++17 filesystem didn't exist in GCC
+    # versions that defaulted to the old ABI, so no binary can need these symbols.
     ostream-inst.cc
     string-inst.cc
 )
