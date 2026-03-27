@@ -784,6 +784,7 @@ class BundleBuilder:
         This is safe because rld handles displacement correctly for all cases
         EXCEPT the R_MIPS_REL32 UND symbol pre-resolution in executables,
         which only needs libstdc++'s address to be known at bundle time.
+
         """
         lib_dir = bundle_dir / "_lib32"
         if not lib_dir.is_dir():
@@ -1431,13 +1432,26 @@ class BundleBuilder:
         self._strip_rpaths(bundle_dir)
 
         # Rebase shared libraries to unique non-overlapping base addresses.
-        # Set MOGRIX_NO_MRQS=1 to skip rebasing (debugging).
+        # Set MOGRIX_NO_MRQS=1 to skip rebasing (debugging), or set
+        # skip_mrqs_rebase: true in the package rules YAML.
         # IRIX rld loads libraries at their preferred address if possible.
         # Without rebasing, all mogrix-built libs share 0x0f800000 and rld
         # displaces all but one — breaking pre-resolved R_MIPS_REL32 relocs.
         # mrqs assigns unique addresses and patches each library in-place.
-        if not os.environ.get("MOGRIX_NO_MRQS"):
+        skip_rebase = bool(os.environ.get("MOGRIX_NO_MRQS"))
+        if not skip_rebase:
+            # Check package rules for skip_mrqs_rebase flag
+            from pathlib import Path as _P
+            _rf = _P(__file__).parent.parent / "rules" / "packages" / f"{manifest.target_package}.yaml"
+            if _rf.exists():
+                import yaml as _y
+                with open(_rf) as _f:
+                    _r = _y.safe_load(_f) or {}
+                skip_rebase = _r.get("skip_mrqs_rebase", False)
+        if not skip_rebase:
             self._rebase_libraries(bundle_dir)
+        else:
+            console.print("[yellow]  mrqs rebase SKIPPED (skip_mrqs_rebase or MOGRIX_NO_MRQS)[/yellow]")
 
             # Pre-resolve UND symbol R_MIPS_REL32 relocations in executables.
             # After mrqs rebases libraries, their symbol addresses are final.

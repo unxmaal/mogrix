@@ -3,6 +3,11 @@ package: btop
 build_after:
   - ncurses
 
+# mrqs rebase crashes the new libstdc++ (without cow-fs_*).
+# The rebased binary SIGSEGV at any non-original base address.
+# Skip until mrqs is fixed for the new library layout.
+skip_mrqs_rebase: true
+
 add_source:
   - btop_collect.cpp
   - ifaddrs.h
