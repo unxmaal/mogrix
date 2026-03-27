@@ -54,7 +54,10 @@
  * isfinite/isnormal/signbit: cmath defines its own constexpr versions
  * in std:: — providing our own at global scope conflicts with
  * `using std::isfinite;` in GCC 9's C++ math.h wrapper. */
+/* Skip if libc++ restrict-fix header already provides these */
+#ifndef MOGRIX_IRIX_RESTRICT_FIX_H
 static __inline__ int isinf(double x) { return __builtin_isinf(x); }
+#endif
 
 #else /* C mode */
 

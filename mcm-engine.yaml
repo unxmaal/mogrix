@@ -16,9 +16,9 @@ nudges:
   # Compaction/handoff thresholds are relaxed; enforcement thresholds are tightened.
   store_reminder_turns: 6        # was 4 — less aggressive, sessions are longer
   checkpoint_turns: 30            # was 10 — 1M context, no rush to checkpoint
-  mandatory_stop_turns: 120        # was 20 — allows much longer sessions
-  hyper_focus_threshold: 4        # was 3 — slight increase for longer sessions
-  rules_check_interval: 8         # was 5 — less frequent but still periodic
+  mandatory_stop_turns: 320        # was 20 — allows much longer sessions
+  hyper_focus_threshold: 8        # was 3 — slight increase for longer sessions
+  rules_check_interval: 4         # was 5 — less frequent but still periodic
   # Block tool calls (return error) after mandatory_stop + grace without checkpoint.
   mandatory_stop_blocking: true
   mandatory_stop_grace: 10        # was 5 — more grace for long sessions
@@ -29,9 +29,11 @@ nudges:
 server_name: mogrix-knowledge
 
 server_instructions: |
-  Mogrix knowledge DB for cross-compiling Fedora SRPMs to IRIX 6.5 (MIPS n32).
+  Mogrix knowledge DB for converting various inputs, such as Fedora SRPMs, to various outputs, such as SRPMs for IRIX 6.5 (MIPS n32).
 
   BEHAVIORAL MANDATES (non-negotiable):
+
+  0. Do not be lazy. Do not cheat. Focus on correctness and precision, not the "quickest way" to solve problems. Carefully examine any potential shortcut     and consider how it will impact downstream packages.
 
   1. MUST call `report_error` BEFORE attempting manual fixes for any build/link/runtime error.
      It logs the error AND auto-searches rules, errors, and compat catalog in one call.

@@ -8,6 +8,37 @@
 
 ---
 
+## Highest Priority: libc++ Migration
+
+Replace GCC's libstdc++ with LLVM's libc++ as the C++ standard library.
+
+**Why**: We're fighting an endless stream of bugs from compiling GCC's runtime library with clang — ODR violations, visibility mismatches, broken exceptions, broken rebasing, dual-ABI headaches, GCC 9.2 vs 9.5 header mismatches. Every fix exposes another issue. The fundamental problem is using compiler A to compile compiler B's runtime.
+
+**Why now**: We don't need SGUG-RSE ABI compatibility. Our bundles are self-contained. There's no technical reason to use GCC's libstdc++ — it was an inherited assumption from the SGUG-RSE project that we never questioned.
+
+**What libc++ gives us**:
+- Compiled by clang, for clang — no compiler mismatch
+- C++20/C++23 features are first-class (eliminates most polyfill headers)
+- Single ABI — no cow/SSO dual-ABI, no ODR violations
+- Exception handling may work (libc++ + LLVM libunwind is a tested stack)
+- Rebasing should work (no GCC-specific hidden assumptions)
+- Smaller, cleaner codebase
+
+**Work required**:
+- [ ] Port libc++ to MIPS N32 IRIX (platform headers, threading via pthreads, locale)
+- [ ] Port LLVM libunwind to IRIX (signal handling, stack walking, MIPS N32 register context)
+- [ ] Build both with clang 16 cross-compiler
+- [ ] Add `-stdlib=libc++` to irix-cxx wrapper
+- [ ] Rebuild all packages (full v16 rebuild)
+- [ ] Remove GCC 9.5 source tree, build-libstdcxx.sh, cow-fs_* workarounds, polyfill headers that libc++ natively supports
+- [ ] Fix or remove mrqs (may not be needed if libc++ rebases cleanly)
+
+**Risk**: libc++ on MIPS N32 may need porting work for IRIX-specific threading (sproc/pthread model), locale (IRIX locale APIs), and possibly missing POSIX functions. But these are well-defined problems, unlike the open-ended "why does clang compile GCC's code wrong" investigation.
+
+**Bridge**: Current libstdc++ (with cow-fs_* exclusion + skip_mrqs_rebase) works for all packages. The migration can be incremental — build libc++ alongside libstdc++, test packages one at a time.
+
+---
+
 ## Near-Term (Next 1-2 Sessions)
 
 ### Unblock Motif Apps
@@ -58,21 +89,43 @@
 - [ ] Evaluate: can OpenCode's TypeScript be bundled to run on QuickJS?
 - [ ] Evaluate: QuickJS + dillo = JS-capable browser lighter than ir8/WebKit?
 
-### C++20 Polyfill Header (Prerequisite for btop and future C++ packages)
-- [ ] Create `compat/include/mogrix-compat/generic/cpp20-polyfill.h`
-- [ ] Implements: `std::to_string`, `std::source_location`, `std::binary_semaphore`, `std::ranges::{count_if,for_each,find,distance}`, `std::cmp_equal/cmp_not_equal`, `std::views::iota`, `std::span`
-- [ ] All guarded with `__cpp_lib_*` feature test macros — auto-disables when real C++20 libstdc++ is available
-- [ ] Force-included by `irix-cxx` wrapper for all C++ builds
-- [ ] Consolidates existing per-package shims (cmake to_string, WebKit span, Qt5 pmr, doxygen to_string)
-- [ ] Unblocks: btop (platform backend ready, blocked on C++20), future C++ packages
-- [ ] Path to C++20: when we upgrade to GCC 13+, the polyfill becomes no-op automatically
+### C++20 Polyfill Header (DONE — bridge until libc++ migration)
+- [x] Created systemic polyfill headers at `compat/include/mogrix-compat/generic/`
+- [x] Implements: ranges, semaphore, source_location, utility_polyfill.h (to_string, cmp_*)
+- [x] All guarded with `__cpp_lib_*` feature test macros
+- [x] Force-included by `irix-cxx` wrapper
+- [x] Unblocked btop (first C++20 app on IRIX)
+- [ ] **Will be eliminated by libc++ migration** — libc++ has native C++20 support
 
-### btop for IRIX (Blocked on C++20 polyfill)
-- [ ] Platform backend written: `patches/packages/btop/btop_collect.cpp` (1147 lines)
-- [ ] Rules written: `rules/packages/btop.yaml`
-- [ ] Stub headers: `ifaddrs.h`, `irix_compat.hpp`
-- [ ] Blocked: btop shared code uses C++20 pervasively (ranges, source_location, semaphore, cmp_not_equal, views::iota)
-- [ ] Once C++20 polyfill header is done: reconvert + rebuild + bundle
+### btop for IRIX (DONE)
+- [x] Platform backend: `patches/packages/btop/btop_collect.cpp` (sysmp, PIOCPSINFO, statvfs, getpwuid_r)
+- [x] Rules: `rules/packages/btop.yaml` (8 prep_commands fixes)
+- [x] Fixes applied: cow-fs_* ODR exclusion, graph_symbols safe find, size clamping, to_string %f, tty_mode defaults
+- [x] Production bundle deployed and verified on IRIX 6.5 IP30 (screenshot confirmed)
+- [x] `skip_mrqs_rebase: true` (workaround until libc++ migration)
+
+### Toolchain Gaps (from assumptions audit)
+
+**dlmalloc: opt-in, not opt-out**
+- [ ] Investigate: does IRIX libc malloc actually cause problems? Profile with/without dlmalloc.
+- [ ] If no evidence of problems: flip default to OFF, make `MOGRIX_USE_DLMALLOC=1` opt-in
+- [ ] dlmalloc causes cross-heap crashes with IRIX native Motif (nedit), and mmap(0) returning NULL with 77+ loaded libraries required a custom fix. The blanket usage creates more problems than it solves unless IRIX malloc is demonstrably broken.
+
+**-mxgot: per-package, not global**
+- [ ] Add `xgot: false` as a per-package rules flag (default: off)
+- [ ] Only enable for libraries with large GOTs (WebKit, libicudata, libstdc++)
+- [ ] Remove `-mxgot` from `irix-cc` global flags
+- [ ] -mxgot generates 3-instruction GOT access (vs 1), produces 4.6x more GOT entries, increases code size. Most packages don't need it.
+
+**Post-link fixups → LLD patches**
+- [ ] Move fix-anon-relocs logic into LLD source (anonymous R_MIPS_REL32 repointing)
+- [ ] Move strip-verneed logic into LLD source (GNU version section suppression)
+- [ ] These are fragile Python scripts that swallowed errors silently for months (77 staged libs went unfixed). They should be in the linker where errors are caught at link time.
+
+**Sysroot provenance**
+- [ ] Verify current `/opt/irix-sysroot` against the target IRIX machine
+- [ ] Document differences (additional SGI packages installed, not ABI-breaking)
+- [ ] Consider: regenerate sysroot from target machine with `create-irix-sysroot.sh`
 
 ### Infrastructure
 - [ ] Rebuild staleness fix: use content hashes for cross-package inputs (generic.yaml touches invalidate ALL packages)
@@ -103,10 +156,11 @@
 - [ ] **Development tools**: GDB (crashes with libstdc++ issue), cmake (not built in v14)
 
 ### Toolchain
+- [ ] **libc++ migration** (see Highest Priority above)
 - [ ] LLD: suppress GNU version section OUTPUT (keep internal objects alive)
-- [ ] .eh_frame: move to RW LOAD segment (needed for C++ shared libraries on IRIX)
+- [ ] .eh_frame: move to RW LOAD segment (may be resolved by libc++ + libunwind migration)
 - [ ] Fresh sysroot from actual IRIX machine (current one may be from a different SGI)
-- [ ] **GCC 13+ libstdc++**: Cross-compile newer libstdc++ with full C++20 support. Would eliminate the polyfill header entirely and unlock all modern C++ packages natively. Requires: build GCC 13 targeting MIPS N32, extract libstdc++.so, deploy to staging. The C++20 polyfill header is the bridge until this is done.
+- [ ] Fix mrqs rebase for new libstdc++ (or determine if libc++ rebases correctly, making this moot)
 
 ---
 
