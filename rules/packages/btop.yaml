@@ -13,6 +13,9 @@ add_source:
   - ifaddrs.h
 
 rules:
+  export_vars:
+    LLVM_PROJECT: /home/edodd/projects/github/unxmaal/mogrix/tmp/llvm-build/llvm-project-22.1.2.src
+
   inject_compat_functions:
     - strsignal
     - strcasestr
@@ -47,7 +50,7 @@ rules:
         # Force PLATFORM to irix for cross-compilation
         %{__make} %{?_smp_mflags} \
           PLATFORM=irix \
-          CXX="%{__cxx}" \
+          CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx-libcxx" \
           OPTFLAGS="%{optflags}" \
           PREFIX="%{_prefix}" \
           STATIC=true \
@@ -98,12 +101,19 @@ rules:
       \t\}}s' src/btop_tools.cpp
     # IRIX: wchar_t is a keyword in C++ mode
     - 'sed -i "1i#define _WCHAR_T" src/btop_tools.cpp 2>/dev/null || true'
-    # IRIX: default to tty_mode + utf_force.
+    # IRIX: force UTF-8 and disable tty_mode unconditionally.
+    # tty_mode uses ASCII box-drawing which looks terrible.
+    # utf_force bypasses btop's locale detection (IRIX has no real UTF-8 locale).
+    # Any modern terminal (wezterm SSH, urxvt with Xft) handles Unicode fine.
+    # Users on raw IRIX console can pass --tty_on flag if needed.
     - |
       sed -i '/argumentParser(argc, argv);/a\
-      \t// IRIX: force tty mode and UTF\
-      \tif (not Global::arg_tty) { Config::set("tty_mode", true); Global::arg_tty = true; }\
       \tGlobal::utf_force = true;' src/btop.cpp
+    # libc++: quick_exit not in <cstdlib> on IRIX — use _exit
+    - 'sed -i "s/quick_exit(excode)/_exit(excode)/g" src/btop.cpp'
+    # fmt library: consteval not fully supported on MIPS cross-compile.
+    # Downgrade to constexpr via define in fmt's core.h
+    - 'sed -i "1i#define FMT_CONSTEVAL constexpr" include/fmt/core.h 2>/dev/null || sed -i "1i#define FMT_CONSTEVAL constexpr" include/fmt/base.h 2>/dev/null || true'
     # IRIX: %zu format specifier not supported in libc printf
     - 'find src -name "*.cpp" -exec sed -i "s/%zu/%u/g; s/%zd/%d/g; s/%zx/%x/g" {} + 2>/dev/null || true'
     # IRIX: clamp negative size vars in Proc::draw to prevent size_t underflow.

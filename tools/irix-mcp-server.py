@@ -651,7 +651,7 @@ class IRIXMCPServer:
 
     def _tool_exec(self, request_id: Any, args: dict) -> dict:
         command = args.get("command", "")
-        timeout = args.get("timeout", IRIX_TIMEOUT)
+        timeout = int(args.get("timeout", IRIX_TIMEOUT))
 
         if not command:
             return self._tool_error(request_id, "command is required")
@@ -682,7 +682,7 @@ class IRIXMCPServer:
         remote_path = args.get("remote_path", "")
         host_path = args.get("host_path", False)
         owner = args.get("owner", "")
-        timeout = args.get("timeout")
+        timeout = int(args["timeout"]) if args.get("timeout") is not None else None
 
         if not local_path or not remote_path:
             return self._tool_error(request_id, "local_path and remote_path required")
@@ -736,7 +736,7 @@ class IRIXMCPServer:
 
     def _tool_par(self, request_id: Any, args: dict) -> dict:
         command = args.get("command", "")
-        timeout = args.get("timeout", 30)
+        timeout = int(args.get("timeout", 30))
 
         if not command:
             return self._tool_error(request_id, "command is required")
@@ -764,7 +764,7 @@ class IRIXMCPServer:
 
     def _tool_host_exec(self, request_id: Any, args: dict) -> dict:
         command = args.get("command", "")
-        timeout = args.get("timeout", IRIX_TIMEOUT)
+        timeout = int(args.get("timeout", IRIX_TIMEOUT))
 
         if not command:
             return self._tool_error(request_id, "command is required")

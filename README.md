@@ -161,14 +161,14 @@ Install on IRIX:
 
 ```sh
 # Extract anywhere
-tar xzf nano-7.2-6-irix-bundle.tar.gz -C /opt/mogrix-apps/
+tar xzf nano-7.2-6-irix-bundle.tar.gz -C ~/apps/
 
 # Run the install script (creates trampolines in ../bin/)
-cd /opt/mogrix-apps/nano-7.2-6-irix-bundle
+cd ~/apps/nano-7.2-6-irix-bundle
 ./install
 
 # Add to PATH once (put in ~/.profile for permanent)
-PATH=/opt/mogrix-apps/bin:$PATH; export PATH
+PATH=~/apps/bin:$PATH; export PATH
 
 # Run like any other command
 nano

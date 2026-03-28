@@ -1,5 +1,8 @@
 package: rxvt-unicode
 rules:
+  export_vars:
+    LLVM_PROJECT: /home/edodd/projects/github/unxmaal/mogrix/tmp/llvm-build/llvm-project-22.1.2.src
+
   inject_compat_functions:
   - unsetenv
   drop_buildrequires:
@@ -19,6 +22,16 @@ rules:
   - "for f in $(find src -name '*.C' -o -name '*.h'); do $MOGRIX_ROOT/tools/safepatch \"$f\" --old 'XUTF8StringStyle' --new 'XCompoundTextStyle' --count 0 --no-backup --quiet || :; done"
   - "sed -i 's/XSetIMValues (xim, XNDestroyCallback, &ximcallback, (char \\*)0)/\\/\\* XSetIMValues not available on IRIX X11R6.3 \\*\\/ (void)0/' src/rxvttoolkit.C"
   - "for f in configure configure.ac; do $MOGRIX_ROOT/tools/safepatch $f --old '-D_XOPEN_SOURCE[^ ]*' --new '' --regex --count 0 --no-backup --quiet || :; done"
+  # emman.c is #included from rxvtutil.C as a C file in a C++ TU.
+  # It relies on stdlib.h for malloc/free/realloc but doesn't include it.
+  # On glibc this works via transitive includes; IRIX headers are stricter.
+  - "sed -i '1i #include <stdlib.h>' src/emman.c"
+  # ev_cpp.C includes ev.h -> signal.h before sys/types.h. On IRIX,
+  # signal.h -> sys/signal.h -> sys/types.h -> bsd_types.h -> sys/select.h
+  # -> our compat sys/select.h -> signal.h (circular, guard blocks re-entry).
+  # sigset_t is not yet defined at that point. Fix: include sys/types.h first
+  # so the chain resolves without circularity.
+  - "sed -i '1i #include <sys/types.h>' src/ev_cpp.C"
   # IRIX has select() and poll() but cross-compilation can't detect them.
   # Without these, libev finds no usable backends and crashes at startup.
   ac_cv_overrides:
@@ -26,6 +39,12 @@ rules:
     ac_cv_func_select: "yes"
     ac_cv_header_poll_h: "yes"
     ac_cv_func_poll: "yes"
+    # IRIX has pid_t and mode_t in sys/types.h. Cross-compilation fails to
+    # detect them, causing config.h to #define pid_t __int64 (not a valid
+    # IRIX type — __int64_t exists but __int64 does not) and #define mode_t int.
+    # These macros poison every IRIX system header that uses pid_t/mode_t.
+    ac_cv_type_pid_t: "yes"
+    ac_cv_type_mode_t: "yes"
   configure_flags:
     add:
     - --disable-pixbuf

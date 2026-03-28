@@ -8,34 +8,37 @@
 
 ---
 
-## Highest Priority: libc++ Migration
+## Highest Priority: Prefix Change + libc++ Cutover
 
-Replace GCC's libstdc++ with LLVM's libc++ as the C++ standard library.
+### 1. Change install prefix from /usr/sgug to /opt/mogrix
 
-**Why**: We're fighting an endless stream of bugs from compiling GCC's runtime library with clang — ODR violations, visibility mismatches, broken exceptions, broken rebasing, dual-ABI headaches, GCC 9.2 vs 9.5 header mismatches. Every fix exposes another issue. The fundamental problem is using compiler A to compile compiler B's runtime.
+**Status**: Planned. See `sgug_prefix_change.md` for full details.
 
-**Why now**: We don't need SGUG-RSE ABI compatibility. Our bundles are self-contained. There's no technical reason to use GCC's libstdc++ — it was an inherited assumption from the SGUG-RSE project that we never questioned.
+`/usr/sgug` is an SGUG-RSE convention. Staging accumulated SGUG-RSE artifacts (GCC 9 C++ headers) that conflicted with LLVM 22 libc++. Changing to `/opt/mogrix` gives clean separation and eliminates the contamination vector.
 
-**What libc++ gives us**:
-- Compiled by clang, for clang — no compiler mismatch
-- C++20/C++23 features are first-class (eliminates most polyfill headers)
-- Single ABI — no cow/SSO dual-ABI, no ODR violations
-- Exception handling may work (libc++ + LLVM libunwind is a tested stack)
-- Rebasing should work (no GCC-specific hidden assumptions)
-- Smaller, cleaner codebase
+- [ ] Mechanical sed across ~550 references in YAML rules, Python, shell scripts, cmake
+- [ ] Update rpmmacros.irix, compiler wrappers, cli.py, bundle.py
+- [ ] New staging path: `/opt/mogrix-staging/` (flat, no nested prefix)
+- [ ] Full rebuild-all after prefix change
 
-**Work required**:
-- [ ] Port libc++ to MIPS N32 IRIX (platform headers, threading via pthreads, locale)
-- [ ] Port LLVM libunwind to IRIX (signal handling, stack walking, MIPS N32 register context)
-- [ ] Build both with clang 16 cross-compiler
-- [ ] Add `-stdlib=libc++` to irix-cxx wrapper
-- [ ] Rebuild all packages (full v16 rebuild)
-- [ ] Remove GCC 9.5 source tree, build-libstdcxx.sh, cow-fs_* workarounds, polyfill headers that libc++ natively supports
-- [ ] Fix or remove mrqs (may not be needed if libc++ rebases cleanly)
+### 2. libc++ Migration (DONE — integration remaining)
 
-**Risk**: libc++ on MIPS N32 may need porting work for IRIX-specific threading (sproc/pthread model), locale (IRIX locale APIs), and possibly missing POSIX functions. But these are well-defined problems, unlike the open-ended "why does clang compile GCC's code wrong" investigation.
+**Completed**:
+- [x] LLVM 22.1.2 clang + LLD built and installed (`/opt/cross/`)
+- [x] libc++ 22 built with iostream, locale, filesystem, ranges (56/56 sources, 875 exports)
+- [x] libc++abi 22 built with exceptions (libgcc_s unwinder, not LLVM libunwind)
+- [x] C++ exceptions working on IRIX (6/6 tests pass)
+- [x] btop built and running on IRIX with libc++ + LLVM 22
+- [x] Locale stubs (xlocale_irix.h) for IRIX
+- [x] LLD IRIX patches ported to LLVM 22 (11 patches, `001-lld-irix-support.patch`)
+- [x] `irix-cxx-libcxx` compiler wrapper
+- [x] `strip-eh-relocs` post-link tool
 
-**Bridge**: Current libstdc++ (with cow-fs_* exclusion + skip_mrqs_rebase) works for all packages. The migration can be incremental — build libc++ alongside libstdc++, test packages one at a time.
+**Remaining** (after prefix change):
+- [ ] Make `irix-cxx-libcxx` the default `%{__cxx}` in rpmmacros
+- [ ] Rebuild all C++ packages with libc++
+- [ ] Remove libstdc++ build infrastructure, GCC 9 source, polyfill headers
+- [ ] Retire `irix-cxx` (libstdc++ wrapper)
 
 ---
 
