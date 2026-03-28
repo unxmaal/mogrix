@@ -1,23 +1,21 @@
 /*
- * eh_frame_reg.c — .eh_frame registration and DW.ref fixup for IRIX executables
+ * eh_frame_reg.c — .eh_frame registration and DW.ref fixup for IRIX
  *
- * Linked into every executable by irix-ld (right after crtbeginT.o).
- * Uses weak references so it's harmless for C programs that don't
- * link libgcc_s or use exceptions.
+ * Linked into every executable and shared library by irix-ld.
+ * Uses weak references so it's harmless for C programs.
+ *
+ * Supports TWO unwinder backends:
+ *   - GCC libgcc_s: uses __register_frame_info (registers entire section)
+ *   - LLVM libunwind: __register_frame_info is a no-op stub!
+ *     Must iterate FDEs and call __register_frame for each one.
  *
  * Fixes two IRIX rld limitations:
  *
  * 1. No .eh_frame registration: IRIX rld has no PT_GNU_EH_FRAME support
- *    and doesn't process DT_INIT_ARRAY. The GCC DW2 unwinder uses
- *    registration-based FDE lookup (__register_frame_info), so without
- *    this, _Unwind_Find_FDE fails and _Unwind_RaiseException returns
- *    _URC_END_OF_STACK → __cxa_throw calls terminate().
+ *    and doesn't process DT_INIT_ARRAY.
  *
  * 2. DW.ref.__gxx_personality_v0 stays NULL: IRIX rld does not resolve
  *    R_MIPS_REL32 relocations targeting FUNC-type symbols in executables.
- *    Clang generates DW.ref.* indirect pointers in .data for .eh_frame
- *    personality references (encoding 0x80 = DW_EH_PE_indirect). Without
- *    fixup, the unwinder reads NULL as the personality function pointer.
  *
  * Link order: crt1.o crtbeginT.o eh_frame_reg.o <user objects> crtendT.o crtn.o
  * This object MUST be linked before user objects so __EH_FRAME_BEGIN__
@@ -26,6 +24,7 @@
 
 /* Weak references — resolve to NULL if not present (pure C programs) */
 extern void __register_frame_info(const void *, void *) __attribute__((weak));
+extern void __register_frame(const void *) __attribute__((weak));
 
 extern int __gxx_personality_v0(void) __attribute__((weak));
 extern int __gcc_personality_v0(void) __attribute__((weak));
@@ -44,15 +43,50 @@ extern void *__mogrix_dw_ref_gcc
 static const char __EH_FRAME_BEGIN__[]
     __attribute__((section(".eh_frame"), aligned(4), used)) = { };
 
-/* Scratch buffer for the unwinder's internal object struct.
+/* Scratch buffer for GCC unwinder's internal object struct.
  * sizeof(struct object) in GCC's unwind-dw2-fde.h is ~28 bytes on ILP32;
- * 64 bytes provides margin. */
+ * 64 bytes provides margin. Not used by LLVM libunwind. */
 static char __eh_frame_object[64] __attribute__((aligned(8)));
 
-/* Constructor called by crtbeginT.o's __do_global_ctors_aux.
- * .ctors are walked backward from __CTOR_END__, so this entry
- * (early in the array) runs LAST among constructors — after all
- * user constructors have been registered, we register .eh_frame. */
+/*
+ * Walk .eh_frame section and register each FDE with LLVM libunwind.
+ *
+ * .eh_frame format (DWARF):
+ *   [length:4][CIE_id:4][data...]     CIE: CIE_id == 0
+ *   [length:4][CIE_ptr:4][data...]     FDE: CIE_ptr != 0
+ *   [0:4]                              Terminator
+ *
+ * __register_frame() takes a pointer to a single FDE and adds it
+ * to libunwind's DwarfFDECache.
+ */
+static void __register_fdes_with_libunwind(const char *eh_frame) {
+    const unsigned char *p = (const unsigned char *)eh_frame;
+
+    for (;;) {
+        /* Read 4-byte length */
+        unsigned int length = *(const unsigned int *)p;
+        if (length == 0)
+            break;  /* Terminator */
+
+        /* Extended length (0xFFFFFFFF) — skip, not expected on N32 */
+        if (length == 0xFFFFFFFF)
+            break;
+
+        /* Read CIE_id/CIE_pointer at offset 4 */
+        unsigned int cie_id = *(const unsigned int *)(p + 4);
+
+        if (cie_id != 0) {
+            /* This is an FDE (CIE_pointer != 0) — register it */
+            __register_frame(p);
+        }
+        /* else: CIE record — skip */
+
+        /* Advance: length field (4 bytes) + record data (length bytes) */
+        p += 4 + length;
+    }
+}
+
+/* Constructor called from .ctors */
 static void __eh_frame_init(void) {
     /* Fix DW.ref personality pointers before .eh_frame registration.
      * IRIX rld resolved the GOT entries (function addresses) but left
@@ -64,8 +98,12 @@ static void __eh_frame_init(void) {
         __mogrix_dw_ref_gcc = (void *)(unsigned long)&__gcc_personality_v0;
     }
 
-    /* Register executable's .eh_frame with the GCC DW2 unwinder */
-    if (__register_frame_info) {
+    /* Register .eh_frame with the unwinder.
+     * Try __register_frame first (LLVM libunwind — per-FDE registration).
+     * Fall back to __register_frame_info (GCC libgcc_s — whole-section). */
+    if (__register_frame) {
+        __register_fdes_with_libunwind(__EH_FRAME_BEGIN__);
+    } else if (__register_frame_info) {
         __register_frame_info(__EH_FRAME_BEGIN__, __eh_frame_object);
     }
 }

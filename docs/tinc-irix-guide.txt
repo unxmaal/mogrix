@@ -33,7 +33,7 @@ This example sets up a tinc network called "mogrix" between:
 STEP 1: Create config directory structure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On the IRIX box (assuming bundle at /opt/mogrix-apps/tinc-*):
+On the IRIX box (assuming bundle at ~/apps/tinc-*):
 
     TINC_HOME=/usr/people/edodd/tinc
     mkdir -p $TINC_HOME/mogrix/hosts
@@ -61,7 +61,7 @@ into the host file.
 
 Alternatively, generate keys ON the IRIX box:
 
-    BUNDLE=/opt/mogrix-apps/tinc-*-irix-bundle
+    BUNDLE=~/apps/tinc-*-irix-bundle
     $BUNDLE/tincd -n mogrix -K 2048 \
         --config=$TINC_HOME/mogrix
 
@@ -168,7 +168,7 @@ On Linux:
 
 On IRIX:
 
-    BUNDLE=/opt/mogrix-apps/tinc-*-irix-bundle
+    BUNDLE=~/apps/tinc-*-irix-bundle
     $BUNDLE/tincd -n mogrix -D \
         --config=$TINC_HOME/mogrix
 

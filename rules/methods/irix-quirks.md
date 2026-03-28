@@ -242,3 +242,75 @@ When you encounter a new IRIX-specific issue:
 3. If it's package-specific:
    - Handle in the package's YAML rule file
    - Add a comment explaining why
+
+---
+
+## C++ Exception Handling is Broken
+
+C++ exceptions compiled by clang for IRIX crash with SIGSEGV instead of unwinding. The DWARF unwinder in our clang-built runtime doesn't work correctly for throw/catch.
+
+### std::map::at() / std::unordered_map::at() → SIGSEGV
+
+**Problem**: `.at()` throws `std::out_of_range` when a key is missing. On IRIX, the throw triggers SIGSEGV (broken unwinder) instead of a catchable exception.
+
+**Symptom**: SIGSEGV during normal operation when a map lookup fails — no backtrace, no error message.
+
+**Solution**: Replace `.at()` with `.find()` + null check:
+```cpp
+// WRONG on IRIX:
+auto& val = my_map.at(key);
+
+// CORRECT:
+auto it = my_map.find(key);
+if (it == my_map.end()) return default_value;
+auto& val = it->second;
+```
+
+**Affected packages**: btop (4 instances of `graph_symbols.at()` in btop_draw.cpp). Any C++ app using `.at()` with dynamic keys.
+
+**Scope**: GLOBAL — affects any C++ code that could throw exceptions.
+
+---
+
+## Thread Safety: getpwuid → getpwuid_r
+
+**Problem**: `getpwuid()` returns a pointer to static internal data. In multithreaded apps, concurrent calls from different threads corrupt each other's results, leading to crashes or wrong data.
+
+**Symptom**: SIGSEGV or garbled usernames in process lists, user lookups, etc.
+
+**Solution**: Use the POSIX reentrant version `getpwuid_r()`:
+```cpp
+struct passwd pwd_buf;
+char pw_strbuf[256];
+struct passwd *pwd_result = nullptr;
+if (getpwuid_r(uid, &pwd_buf, pw_strbuf, sizeof(pw_strbuf), &pwd_result) == 0 && pwd_result)
+    username = pwd_result->pw_name;
+else
+    username = std::to_string(uid);
+```
+
+Available on IRIX via `_SGI_REENTRANT_FUNCTIONS` (set by our `-D_SGI_REENTRANT_FUNCTIONS` flag).
+
+**Note**: `getpwuid_r` on IRIX does NIS lookups for unknown UIDs which can block for seconds. Consider falling back to numeric UID if the lookup is slow or returns ENOENT.
+
+**Affected packages**: btop (process collection thread). Any multithreaded app doing user lookups.
+
+**Scope**: GLOBAL — affects any multithreaded app calling `getpwuid()`.
+
+---
+
+## Negative int → size_t Underflow in String Functions
+
+**Problem**: Functions like `ljust()`, `rjust()`, `string::resize()` take `size_t` (unsigned) parameters. When computed int values go negative (e.g., terminal width calculations), the implicit conversion wraps to ~4GB, causing massive allocation → OOM SIGSEGV.
+
+**Symptom**: SIGSEGV during TUI rendering when the terminal is narrow.
+
+**Solution**: Clamp values before passing to size_t functions:
+```cpp
+prog_size = max(0, prog_size);
+cmd_size = max(0, cmd_size);
+```
+
+**Affected packages**: btop (Proc::draw size calculations). Any TUI app computing layout sizes from terminal dimensions.
+
+**Scope**: GLOBAL — affects any code computing sizes from terminal width/height.

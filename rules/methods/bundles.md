@@ -15,7 +15,7 @@ Bundles solve this by:
 ## Layout
 
 ```
-/opt/mogrix-apps/                              # User extracts bundles here
+~/apps/                              # User extracts bundles here
   bin/                                         # ONE directory in PATH (trampolines)
     nano                                       # → ../nano-7.2-6-irix-bundle.0217261456/nano
     weechat                                    # → ../weechat-4.2.1-2-irix-bundle.0216262337/weechat
@@ -195,7 +195,7 @@ The extraction script uses **full absolute paths** for every command because IRI
 sh nano-7.2-6-irix-bundle.0217261456.run
 
 # Install to specific directory
-sh nano-7.2-6-irix-bundle.0217261456.run /opt/mogrix-apps
+sh nano-7.2-6-irix-bundle.0217261456.run ~/apps
 
 # Extract only (don't run install script)
 sh nano-7.2-6-irix-bundle.0217261456.run --extract-only /tmp
@@ -242,9 +242,9 @@ Output goes to `~/mogrix_outputs/bundles/`:
 
 ```sh
 # On IRIX
-cd /opt/mogrix-apps
+cd ~/apps
 sh /tmp/nano-7.2-6-irix-bundle.0217261456.run .
-PATH=/opt/mogrix-apps/bin:$PATH; export PATH
+PATH=~/apps/bin:$PATH; export PATH
 nano
 ```
 
@@ -252,12 +252,12 @@ nano
 
 ```sh
 # On IRIX (one-time setup)
-mkdir -p /opt/mogrix-apps
-PATH=/opt/mogrix-apps/bin:$PATH; export PATH
+mkdir -p ~/apps
+PATH=~/apps/bin:$PATH; export PATH
 # Add that PATH line to ~/.profile
 
 # Per bundle
-cd /opt/mogrix-apps
+cd ~/apps
 gzip -dc /tmp/weechat-4.2.1-2a-irix-bundle.tar.gz | tar xf -
 cd weechat-4.2.1-2a-irix-bundle
 ./install
@@ -267,9 +267,9 @@ weechat
 ### Uninstalling
 
 ```sh
-cd /opt/mogrix-apps/weechat-4.2.1-2a-irix-bundle
+cd ~/apps/weechat-4.2.1-2a-irix-bundle
 ./uninstall
-# Then optionally: rm -rf /opt/mogrix-apps/weechat-4.2.1-2a-irix-bundle
+# Then optionally: rm -rf ~/apps/weechat-4.2.1-2a-irix-bundle
 ```
 
 ## Key Files

@@ -6,7 +6,7 @@ dependencies and wrapper scripts that set LD_LIBRARYN32_PATH.
 
 Installation model (like Flatpak exports/bin):
 
-    /opt/mogrix-apps/                   # extract bundles here
+    ~/apps/                   # extract bundles here
       bin/                              # ONE directory in PATH (trampolines)
         nano                            # trampoline: resolves own dir, execs
                                         #   ../nano-7.2-6-irix-bundle/nano
@@ -19,8 +19,8 @@ Installation model (like Flatpak exports/bin):
         _lib32/                         # shared libraries (pruned to NEEDED only)
         share/                          # data files (terminfo trimmed to common terms)
 
-    User setup (once):  PATH=/opt/mogrix-apps/bin:$PATH; export PATH
-    Per bundle:         cd /opt/mogrix-apps/nano-7.2-6-irix-bundle && ./install
+    User setup (once):  PATH=~/apps/bin:$PATH; export PATH
+    Per bundle:         cd ~/apps/nano-7.2-6-irix-bundle && ./install
 
 Bundle optimization:
     - _lib32/ pruned to only sonames transitively NEEDED by bundle binaries
@@ -2032,27 +2032,27 @@ class BundleBuilder:
         lines.extend([
             "## Quick Install (from .run file)",
             "",
-            f"    sh {bundle_name}.run /opt/mogrix-apps",
+            f"    sh {bundle_name}.run ~/apps",
             "",
             "## Manual Install (from .tar.gz)",
             "",
-            f"    cd /opt/mogrix-apps",
+            f"    cd ~/apps",
             f"    gunzip {bundle_name}.tar.gz",
             f"    tar xf {bundle_name}.tar",
             f"    cd {bundle_name}",
             "    ./install",
             "",
-            "Then add /opt/mogrix-apps/bin to your PATH (once, in ~/.profile):",
+            "Then add ~/apps/bin to your PATH (once, in ~/.profile):",
             "",
-            "    PATH=/opt/mogrix-apps/bin:$PATH; export PATH",
+            "    PATH=~/apps/bin:$PATH; export PATH",
             "",
             f"Now just run: {primary}",
             "",
             "## Uninstall",
             "",
-            f"    cd /opt/mogrix-apps/{bundle_name}",
+            f"    cd ~/apps/{bundle_name}",
             "    ./uninstall",
-            f"    rm -rf /opt/mogrix-apps/{bundle_name}",
+            f"    rm -rf ~/apps/{bundle_name}",
             "",
             "## Available Commands",
             "",

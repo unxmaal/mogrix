@@ -11,6 +11,9 @@ upstream:
   summary: "Pty/tty library with utmp/wtmp/lastlog handling"
 
 rules:
+  export_vars:
+    LLVM_PROJECT: /home/edodd/projects/github/unxmaal/mogrix/tmp/llvm-build/llvm-project-22.1.2.src
+
   drop_buildrequires:
     - signify
   spec_replacements:
@@ -26,7 +29,7 @@ rules:
           -DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_C_COMPILER=%{__cc} \
-          -DCMAKE_CXX_COMPILER=%{__cxx} \
+          -DCMAKE_CXX_COMPILER=/opt/sgug-staging/usr/sgug/bin/irix-cxx-libcxx \
           -DCMAKE_AR=%{__ar} \
           -DCMAKE_RANLIB=%{__ranlib} \
           -DCMAKE_INSTALL_PREFIX=%{_prefix} \

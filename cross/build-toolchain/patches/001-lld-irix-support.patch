@@ -1,0 +1,141 @@
+# LLD IRIX Support Patches for LLVM 22.1.2
+# Applied by: cross/build-toolchain/build-llvm-irix.sh
+#
+# 11 patches enabling IRIX 6.5 (MIPS N32) ELF output via -m elf32btsmipn32_irix
+#
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -152,6 +152,9 @@
+   if (s.ends_with("_fbsd")) {
+     s = s.drop_back(5);
+     osabi = ELFOSABI_FREEBSD;
++  } else if (s.ends_with("_irix")) {
++    s = s.drop_back(5);
++    osabi = ELFOSABI_IRIX;
+   }
+ 
+   std::pair<ELFKind, uint16_t> ret =
+@@ -2039,6 +2042,18 @@
+   ctx.arg.pcRelOptimize =
+       args.hasFlag(OPT_pcrel_optimize, OPT_no_pcrel_optimize, m == EM_PPC64);
+ 
++  // IRIX target-specific defaults. IRIX rld predates several GNU ELF
++  // extensions and requires a 2-segment (RE + RW) layout.
++  if (ctx.arg.osabi == ELFOSABI_IRIX) {
++    ctx.arg.singleRoRx = true;
++    ctx.arg.zRelro = false;
++    ctx.arg.zText = false;
++    ctx.arg.mipsGotSize = 1048576;
++    ctx.arg.enableNewDtags = false;
++    if (!ctx.arg.imageBase.has_value())
++      ctx.arg.imageBase = ctx.arg.shared ? 0x0f800000 : 0x10000000;
++  }
++
+   if (!args.hasArg(OPT_hash_style)) {
+     if (ctx.arg.emachine == EM_MIPS)
+       ctx.arg.sysvHash = true;
+@@ -2070,6 +2085,7 @@
+       ErrAlways(ctx) << "cannot open --why-extract= file " << ctx.arg.whyExtract
+                      << ": " << e.message();
+   }
++
+ }
+ 
+ static bool isFormatBinary(Ctx &ctx, StringRef s) {
+@@ -3436,7 +3452,10 @@
+   // is limited to writing trap instructions on the last executable segment.
+   ctx.arg.commonPageSize = getCommonPageSize(ctx, args);
+ 
+-  ctx.arg.imageBase = getImageBase(ctx, args);
++  // Only override imageBase if the user passed --image-base. Target-specific
++  // defaults (e.g., IRIX non-zero base in setConfigs) must not be clobbered.
++  if (auto base = getImageBase(ctx, args))
++    ctx.arg.imageBase = base;
+ 
+   // This adds a .comment section containing a version string.
+   if (!ctx.arg.relocatable)
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -2063,7 +2063,8 @@
+         // Add separate segments for MIPS-specific sections.
+         addPhdrForSection(part, SHT_MIPS_REGINFO, PT_MIPS_REGINFO, PF_R);
+         addPhdrForSection(part, SHT_MIPS_OPTIONS, PT_MIPS_OPTIONS, PF_R);
+-        addPhdrForSection(part, SHT_MIPS_ABIFLAGS, PT_MIPS_ABIFLAGS, PF_R);
++        if (ctx.arg.osabi != ELFOSABI_IRIX)
++          addPhdrForSection(part, SHT_MIPS_ABIFLAGS, PT_MIPS_ABIFLAGS, PF_R);
+       }
+       if (ctx.arg.emachine == EM_RISCV)
+         addPhdrForSection(part, SHT_RISCV_ATTRIBUTES, PT_RISCV_ATTRIBUTES,
+@@ -2325,10 +2326,13 @@
+ 
+   // nmagic or omagic output does not have PT_PHDR, PT_INTERP, or the readonly
+   // PT_LOAD.
++  bool skipPhdr = ctx.arg.osabi == ELFOSABI_IRIX && ctx.arg.shared;
+   if (!ctx.arg.nmagic && !ctx.arg.omagic) {
+     // The first phdr entry is PT_PHDR which describes the program header
+     // itself.
+-    if (isMain)
++    if (skipPhdr) {
++      // IRIX shared libraries do not get a PT_PHDR segment.
++    } else if (isMain)
+       addHdr(PT_PHDR, PF_R)->add(ctx.out.programHeaders.get());
+     else
+       addHdr(PT_PHDR, PF_R)->add(part.programHeaders->getParent());
+@@ -2471,6 +2475,10 @@
+       addHdr(PT_OPENBSD_SYSCALLS, cmd->getPhdrFlags())->add(cmd);
+   }
+ 
++  // IRIX does not support PT_GNU_STACK.
++  if (ctx.arg.osabi == ELFOSABI_IRIX)
++    ctx.arg.zGnustack = GnuStackKind::None;
++
+   if (ctx.arg.zGnustack != GnuStackKind::None) {
+     // PT_GNU_STACK is a special section to tell the loader to make the
+     // pages for the stack non-executable. If you really want an executable
+--- a/lld/ELF/SyntheticSections.cpp
++++ b/lld/ELF/SyntheticSections.cpp
+@@ -396,7 +396,10 @@
+ }
+ 
+ EhFrameSection::EhFrameSection(Ctx &ctx)
+-    : SyntheticSection(ctx, ".eh_frame", SHT_PROGBITS, SHF_ALLOC, 1) {}
++    : SyntheticSection(ctx, ".eh_frame", SHT_PROGBITS, SHF_ALLOC, 1) {
++  if (ctx.arg.osabi == ELFOSABI_IRIX)
++    flags |= SHF_WRITE;
++}
+ 
+ // Search for an existing CIE record or create a new one.
+ // CIE records from input object files are uniquified by their contents
+@@ -1546,11 +1549,11 @@
+       addInt(DT_PREINIT_ARRAY, ctx.out.preinitArray->addr);
+       addInt(DT_PREINIT_ARRAYSZ, ctx.out.preinitArray->size);
+     }
+-    if (ctx.out.initArray) {
++    if (ctx.out.initArray && ctx.arg.osabi != ELFOSABI_IRIX) {
+       addInt(DT_INIT_ARRAY, ctx.out.initArray->addr);
+       addInt(DT_INIT_ARRAYSZ, ctx.out.initArray->size);
+     }
+-    if (ctx.out.finiArray) {
++    if (ctx.out.finiArray && ctx.arg.osabi != ELFOSABI_IRIX) {
+       addInt(DT_FINI_ARRAY, ctx.out.finiArray->addr);
+       addInt(DT_FINI_ARRAYSZ, ctx.out.finiArray->size);
+     }
+@@ -4407,7 +4410,7 @@
+   eHdr->e_ident[EI_DATA] =
+       ELFT::Endianness == endianness::little ? ELFDATA2LSB : ELFDATA2MSB;
+   eHdr->e_ident[EI_VERSION] = EV_CURRENT;
+-  eHdr->e_ident[EI_OSABI] = ctx.arg.osabi;
++  eHdr->e_ident[EI_OSABI] = ctx.arg.osabi == ELFOSABI_IRIX ? ELFOSABI_NONE : ctx.arg.osabi;
+   eHdr->e_ident[EI_ABIVERSION] = getAbiVersion(ctx);
+   eHdr->e_machine = ctx.arg.emachine;
+   eHdr->e_version = EV_CURRENT;
+@@ -4705,7 +4708,8 @@
+       ctx.in.mipsRldMap = std::make_unique<MipsRldMapSection>(ctx);
+       add(*ctx.in.mipsRldMap);
+     }
+-    if ((ctx.in.mipsAbiFlags = MipsAbiFlagsSection<ELFT>::create(ctx)))
++    if (ctx.arg.osabi != ELFOSABI_IRIX &&
++        (ctx.in.mipsAbiFlags = MipsAbiFlagsSection<ELFT>::create(ctx)))
+       add(*ctx.in.mipsAbiFlags);
+     if ((ctx.in.mipsOptions = MipsOptionsSection<ELFT>::create(ctx)))
+       add(*ctx.in.mipsOptions);

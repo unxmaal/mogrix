@@ -13,7 +13,8 @@ extern "C" {
 #endif
 
 /* C99 isblank() - test for blank character (space or tab) */
-#ifndef isblank
+/* IRIX 6.5 _does_ have isblank() in ctype.h — only provide if missing */
+#if !defined(isblank) && !defined(__sgi)
 static __inline__ int isblank(int c)
 {
     return (c == ' ' || c == '\t');

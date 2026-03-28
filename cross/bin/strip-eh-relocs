@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Strip R_MIPS_REL32 relocations targeting .eh_frame from .rel.dyn.
+
+IRIX rld crashes on unaligned R_MIPS_REL32 writes. .eh_frame on MIPS has
+many unaligned reloc targets. Since findUnwindSections reads .eh_frame from
+the file (not memory), we don't need rld to apply these relocs.
+
+Zeroes out the matching reloc entries (r_offset=0, r_info=0) which rld
+treats as no-ops.
+"""
+import struct, sys, shutil
+
+def main():
+    if len(sys.argv) != 2:
+        print(f"Usage: {sys.argv[0]} <elf-file>", file=sys.stderr)
+        sys.exit(1)
+
+    path = sys.argv[1]
+    with open(path, 'rb') as f:
+        data = bytearray(f.read())
+
+    # Parse ELF header (big-endian 32-bit)
+    e_shoff = struct.unpack('>I', data[32:36])[0]
+    e_shentsize = struct.unpack('>H', data[46:48])[0]
+    e_shnum = struct.unpack('>H', data[48:50])[0]
+    e_shstrndx = struct.unpack('>H', data[50:52])[0]
+
+    # Parse sections
+    sections = []
+    for i in range(e_shnum):
+        off = e_shoff + i * e_shentsize
+        sh = struct.unpack('>10I', data[off:off+40])
+        sections.append(sh)
+
+    # String table
+    strtab_off = sections[e_shstrndx][4]
+    def name(idx):
+        end = data.index(b'\0', strtab_off + idx)
+        return data[strtab_off + idx:end].decode('ascii', errors='replace')
+
+    # Find .eh_frame and .rel.dyn
+    eh_va = eh_sz = 0
+    rel_off = rel_sz = 0
+    for sh in sections:
+        n = name(sh[0])
+        if n == '.eh_frame':
+            eh_va, eh_sz = sh[3], sh[5]
+        elif n == '.rel.dyn':
+            rel_off, rel_sz = sh[4], sh[5]
+
+    if not eh_sz or not rel_sz:
+        print("No .eh_frame or .rel.dyn", file=sys.stderr)
+        sys.exit(0)
+
+    # Zero out R_MIPS_REL32 entries targeting .eh_frame
+    stripped = 0
+    for j in range(0, rel_sz, 8):
+        r_offset, r_info = struct.unpack('>II', data[rel_off+j:rel_off+j+8])
+        r_type = r_info & 0xff
+        if r_type == 3 and eh_va <= r_offset < eh_va + eh_sz:  # R_MIPS_REL32=3
+            struct.pack_into('>II', data, rel_off+j, 0, 0)  # zero out
+            stripped += 1
+
+    if stripped:
+        with open(path, 'wb') as f:
+            f.write(data)
+        print(f"Stripped {stripped} .eh_frame relocs from {path}")
+    else:
+        print(f"No .eh_frame relocs to strip in {path}")
+
+if __name__ == '__main__':
+    main()

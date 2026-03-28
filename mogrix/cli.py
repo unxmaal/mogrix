@@ -2880,6 +2880,13 @@ def setup_cross(
         # Runtime libraries (cross-compiled from GCC 9.5.0 source)
         (CROSS_DIR / "lib32" / "libgcc_s.so.1", staging_path / "lib32" / "libgcc_s.so.1", "libgcc_s runtime (from GCC 9.5.0)"),
         (CROSS_DIR / "lib32" / "libstdc++.so.6", staging_path / "lib32" / "libstdc++.so.6", "libstdc++ runtime (from GCC 9.5.0)"),
+        # libc++ runtime (LLVM, cross-compiled for IRIX)
+        (CROSS_DIR / "lib32" / "libc++.so.1", staging_path / "lib32" / "libc++.so.1", "libc++ runtime (LLVM)"),
+        (CROSS_DIR / "lib32" / "libc++abi.so.1", staging_path / "lib32" / "libc++abi.so.1", "libc++abi runtime (LLVM, eh_relocs stripped)"),
+        # libc++ compiler wrapper
+        (CROSS_DIR / "bin" / "irix-cxx-libcxx", staging_path / "bin" / "irix-cxx-libcxx", "C++ compiler wrapper (libc++)"),
+        (CROSS_DIR / "bin" / "irix-cxx-restrict-fix.h", staging_path / "bin" / "irix-cxx-restrict-fix.h", "C++ restrict/timespec fix header"),
+        (CROSS_DIR / "bin" / "strip-eh-relocs", staging_path / "bin" / "strip-eh-relocs", "Strip unaligned .eh_frame relocs"),
     ]
 
     # Add dicl-clang-compat headers (IRIX header fixes for clang)
@@ -2926,6 +2933,8 @@ def setup_cross(
     runtime_symlinks = [
         ("libgcc_s.so.1", "libgcc_s.so"),
         ("libstdc++.so.6", "libstdc++.so"),
+        ("libc++.so.1", "libc++.so"),
+        ("libc++abi.so.1", "libc++abi.so"),
     ]
     for target, link_name in runtime_symlinks:
         link_path = staging_path / "lib32" / link_name
@@ -3079,12 +3088,17 @@ def stage(
         "usr/sgug/bin/irix-ld",
         "usr/sgug/bin/fix-anon-relocs",
         "usr/sgug/bin/strip-verneed",
+        "usr/sgug/bin/strip-eh-relocs",
+        "usr/sgug/bin/irix-cxx-libcxx",
+        "usr/sgug/bin/irix-cxx-restrict-fix.h",
     }
 
     # Legacy set for backward compat with _list_staged_packages
     PREEXISTING_LIBS = {
         "libstdc++.so", "libstdc++.so.6",
         "libgcc_s.so", "libgcc_s.so.1",
+        "libc++.so", "libc++.so.1",
+        "libc++abi.so", "libc++abi.so.1",
     }
 
     PREEXISTING_HEADERS: set[str] = set()
