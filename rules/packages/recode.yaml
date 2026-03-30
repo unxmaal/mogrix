@@ -1,4 +1,6 @@
 package: recode
+
+build_after: none
 rules:
   # Fix gnulib sigaction struct redefinition: tell gnulib IRIX has working sigaction
   ac_cv_overrides:

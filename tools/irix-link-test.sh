@@ -4,7 +4,7 @@
 cd /tmp
 
 # Try SGUG ld with -z noexecstack to suppress GNU_STACK
-/usr/sgug/bin/ld -shared -z noexecstack -o libhello-nostack.so hello.o -lc
+/opt/mogrix/bin/ld -shared -z noexecstack -o libhello-nostack.so hello.o -lc
 RC=$?
 echo "SGUG ld -z noexecstack: RC=$RC"
 if [ $RC -eq 0 ]; then

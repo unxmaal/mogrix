@@ -1,7 +1,9 @@
 package: st
 
+build_after: none
+
 smoke_test:
-  - command: "/usr/sgug/bin/st -v 2>&1"
+  - command: "/opt/mogrix/bin/st -v 2>&1"
     expect: "st"
 
 rules:
@@ -42,7 +44,7 @@ rules:
   - pattern: CFLAGS="%{optflags}" LDFLAGS="%{?__global_ldflags}" make %{?_smp_mflags}
     replacement: "# Build mogrix compat library first (before main build — plain Makefile, not autotools)\nCOMPAT_DIR=$(pwd)/mogrix-compat\nfor f in $COMPAT_DIR/*.c; do\n  %{__cc} %{optflags} -c \"$f\"\
       \ -o \"${f%.c}.o\"\ndone\n%{__ar} rcs \"$COMPAT_DIR/libmogrix-compat.a\" $COMPAT_DIR/*.o\n# Build st with cross-compiler and compat library\nexport PKG_CONFIG_LIBDIR=\"%{_sgug_staging}/lib32/pkgconfig\"\
-      \nexport PKG_CONFIG_SYSROOT_DIR=\"/opt/sgug-staging\"\nmake %{?_smp_mflags} CC=\"%{__cc}\" CFLAGS=\"%{optflags}\" LDFLAGS=\"%{?__global_ldflags} -L$COMPAT_DIR -lmogrix-compat\"\n"
+      \nexport PKG_CONFIG_SYSROOT_DIR=\"$MOGRIX_STAGING_ROOT\"\nmake %{?_smp_mflags} CC=\"%{__cc}\" CFLAGS=\"%{optflags}\" LDFLAGS=\"%{?__global_ldflags} -L$COMPAT_DIR -lmogrix-compat\"\n"
   - pattern: 'mv %{buildroot}%{_bindir}/%{name}{,-fedora}
 
       '

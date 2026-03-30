@@ -1,8 +1,10 @@
 package: rpm
+
+build_after: none
 smoke_test:
-- command: /usr/sgug/bin/rpm --version
+- command: /opt/mogrix/bin/rpm --version
   expect: 4.19.1.1
-- command: /usr/sgug/bin/rpm -qa
+- command: /opt/mogrix/bin/rpm -qa
 add_patch:
 - rpm.irixfixes.patch
 rules:
@@ -32,32 +34,32 @@ rules:
   - popt
   - rpm-sequoia
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
-    CPPFLAGS: -I/opt/sgug-staging/usr/sgug/include $CPPFLAGS
-    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
+    CPPFLAGS: -I$MOGRIX_STAGING/include $CPPFLAGS
+    LDFLAGS: -L$MOGRIX_STAGING/lib32 $LDFLAGS
   spec_replacements:
   - pattern: "cmake \\\n      -DCMAKE_INSTALL_PREFIX"
     replacement: "cmake \\\n      -DCMAKE_SYSTEM_NAME=IRIX \\\n      -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n      -DCMAKE_C_COMPILER=%{__cc} \\\n      -DCMAKE_CXX_COMPILER=%{__cxx} \\\n      -DCMAKE_AR=%{__ar}\
       \ \\\n      -DCMAKE_RANLIB=%{__ranlib} \\\n      -DCMAKE_EXE_LINKER_FLAGS=\"-Wl,--image-base=0x1000000 -Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen\" \\\n      -DCMAKE_SHARED_LINKER_FLAGS=\"\
-      -Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen\" \\\n      -DRPM_CONFIGDIR=/usr/sgug/lib32/rpm \\\n      -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n   \
-      \   -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n      -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n      -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\\n      -DLUA_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include\
-      \ \\\n      -DLUA_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/liblua.so \\\n      -DZLIB_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libz.so \\\n      -DZLIB_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include\
-      \ \\\n      -DBZIP2_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libbz2.so \\\n      -DBZIP2_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/libbz2.so \\\n      -DBZIP2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include\
-      \ \\\n      -DBZIP2_INCLUDE_DIRS=/opt/sgug-staging/usr/sgug/include \\\n      -DLIBLZMA_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/liblzma.so \\\n      -DLIBLZMA_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include\
-      \ \\\n      -DOPENSSL_ROOT_DIR=/opt/sgug-staging/usr/sgug \\\n      -DOPENSSL_CRYPTO_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libcrypto.so \\\n      -DOPENSSL_SSL_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libssl.so\
-      \ \\\n      -DPOPT_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libpopt.so \\\n      -DPOPT_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DIconv_LIBRARY= \\\n      -DIconv_INCLUDE_DIR=/opt/irix-sysroot/usr/include\
+      -Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen\" \\\n      -DRPM_CONFIGDIR=/opt/mogrix/lib32/rpm \\\n      -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \\\n   \
+      \   -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n      -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n      -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \\\n      -DLUA_INCLUDE_DIR=$MOGRIX_STAGING/include\
+      \ \\\n      -DLUA_LIBRARIES=$MOGRIX_STAGING/lib32/liblua.so \\\n      -DZLIB_LIBRARY=$MOGRIX_STAGING/lib32/libz.so \\\n      -DZLIB_INCLUDE_DIR=$MOGRIX_STAGING/include\
+      \ \\\n      -DBZIP2_LIBRARY=$MOGRIX_STAGING/lib32/libbz2.so \\\n      -DBZIP2_LIBRARIES=$MOGRIX_STAGING/lib32/libbz2.so \\\n      -DBZIP2_INCLUDE_DIR=$MOGRIX_STAGING/include\
+      \ \\\n      -DBZIP2_INCLUDE_DIRS=$MOGRIX_STAGING/include \\\n      -DLIBLZMA_LIBRARY=$MOGRIX_STAGING/lib32/liblzma.so \\\n      -DLIBLZMA_INCLUDE_DIR=$MOGRIX_STAGING/include\
+      \ \\\n      -DOPENSSL_ROOT_DIR=$MOGRIX_STAGING \\\n      -DOPENSSL_CRYPTO_LIBRARY=$MOGRIX_STAGING/lib32/libcrypto.so \\\n      -DOPENSSL_SSL_LIBRARY=$MOGRIX_STAGING/lib32/libssl.so\
+      \ \\\n      -DPOPT_LIBRARY=$MOGRIX_STAGING/lib32/libpopt.so \\\n      -DPOPT_INCLUDE_DIR=$MOGRIX_STAGING/include \\\n      -DIconv_LIBRARY= \\\n      -DIconv_INCLUDE_DIR=/opt/irix-sysroot/usr/include\
       \ \\\n      -DIconv_IS_BUILT_IN=TRUE \\\n      -DENABLE_NLS=OFF \\\n      -DENABLE_OPENMP=OFF \\\n      -DENABLE_PYTHON=OFF \\\n      -DENABLE_PLUGINS=OFF \\\n      -DENABLE_TESTSUITE=OFF \\\n   \
-      \   -DENABLE_SQLITE=ON \\\n      -DSQLite3_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DSQLite3_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libsqlite3.so \\\n      -DENABLE_NDB=OFF \\\n\
+      \   -DENABLE_SQLITE=ON \\\n      -DSQLite3_INCLUDE_DIR=$MOGRIX_STAGING/include \\\n      -DSQLite3_LIBRARY=$MOGRIX_STAGING/lib32/libsqlite3.so \\\n      -DENABLE_NDB=OFF \\\n\
       \      -DENABLE_BDB_RO=OFF \\\n      -DENABLE_CUTF8=OFF \\\n      -DWITH_CAP=OFF \\\n      -DWITH_ACL=OFF \\\n      -DWITH_SELINUX=OFF \\\n      -DWITH_AUDIT=OFF \\\n      -DWITH_DBUS=OFF \\\n   \
       \   -DWITH_FAPOLICYD=OFF \\\n      -DWITH_FSVERITY=OFF \\\n      -DWITH_IMAEVM=OFF \\\n      -DWITH_ARCHIVE=OFF \\\n      -DWITH_READLINE=OFF \\\n      -DWITH_INTERNAL_OPENPGP=ON \\\n      -DWITH_OPENSSL=ON\
-      \ \\\n      -DMAGIC_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libmagic.so \\\n      -DMAGIC_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n      -DHAVE_BASENAME=1 \\\n      -DHAVE_DIRNAME=1 \\\n\
+      \ \\\n      -DMAGIC_LIBRARY=$MOGRIX_STAGING/lib32/libmagic.so \\\n      -DMAGIC_INCLUDE_DIR=$MOGRIX_STAGING/include \\\n      -DHAVE_BASENAME=1 \\\n      -DHAVE_DIRNAME=1 \\\n\
       \      -DHAVE_GETCWD=1 \\\n      -DHAVE_MKSTEMP=1 \\\n      -DHAVE_REALPATH=1 \\\n      -DHAVE_SETENV=1 \\\n      -DHAVE_UNSETENV=1 \\\n      -DHAVE_GETLINE=1 \\\n      -DHAVE_ASPRINTF=1 \\\n    \
       \  -DHAVE_VASPRINTF=1 \\\n      -DHAVE_OPENAT=1 \\\n      -DHAVE_FSTATAT=1 \\\n      -DHAVE_FACCESSAT=1 \\\n      -DHAVE_MKDIRAT=1 \\\n      -DHAVE_UNLINKAT=1 \\\n      -DHAVE_RENAMEAT=1 \\\n    \
       \  -DHAVE_READLINKAT=1 \\\n      -DHAVE_SYMLINKAT=1 \\\n      -DHAVE_LINKAT=1 \\\n      -DHAVE_FCHMODAT=1 \\\n      -DHAVE_FCHOWNAT=1 \\\n      -DHAVE_MKFIFOAT=1 \\\n      -DHAVE_MKNODAT=1 \\\n  \
-      \    -DHAVE_UTIMENSAT=1 \\\n      -DHAVE_FUTIMENS=1 \\\n      -DHAVE_UTIMES=1 \\\n      -DHAVE_LOCALTIME_R=1 \\\n      -DHAVE_STATVFS=1 \\\n      -DHAVE_GETADDRINFO=1 \\\n      -DHAVE_REGCOMP=1 \\\n      -DHAVE_PUTENV=1 \\\n      -DHAVE_FDATASYNC=1 \\\n      -DHAVE_STPCPY=1 \\\n      -DHAVE_STPNCPY=1 \\\n      -DHAVE_SETPROGNAME=1 \\\n      -DCMAKE_INSTALL_PREFIX=/usr/sgug \\\n      -DCMAKE_INSTALL_LIBDIR=lib32\
-      \ \\\n      -DCMAKE_INSTALL_SHAREDSTATEDIR:PATH=/usr/sgug/var/lib"
+      \    -DHAVE_UTIMENSAT=1 \\\n      -DHAVE_FUTIMENS=1 \\\n      -DHAVE_UTIMES=1 \\\n      -DHAVE_LOCALTIME_R=1 \\\n      -DHAVE_STATVFS=1 \\\n      -DHAVE_GETADDRINFO=1 \\\n      -DHAVE_REGCOMP=1 \\\n      -DHAVE_PUTENV=1 \\\n      -DHAVE_FDATASYNC=1 \\\n      -DHAVE_STPCPY=1 \\\n      -DHAVE_STPNCPY=1 \\\n      -DHAVE_SETPROGNAME=1 \\\n      -DCMAKE_INSTALL_PREFIX=/opt/mogrix \\\n      -DCMAKE_INSTALL_LIBDIR=lib32\
+      \ \\\n      -DCMAKE_INSTALL_SHAREDSTATEDIR:PATH=/opt/mogrix/var/lib"
   - pattern: "-DCMAKE_INSTALL_PREFIX=%{_usr} \\\n      -DCMAKE_INSTALL_SHAREDSTATEDIR:PATH=%{_var}/lib"
     replacement: ''
   - pattern: '%{?with_bdb_ro:-DENABLE_BDB_RO=ON}'
@@ -154,11 +156,11 @@ rules:
   - pattern: '%dir %{_libdir}/rpm-plugins'
     replacement: '# %dir %{_libdir}/rpm-plugins - plugins disabled'
   - pattern: rm $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md
-    replacement: "rm -f $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md\n\n# Merge rpm lib files from lib to lib32 for N32 ABI\nif [ -d $RPM_BUILD_ROOT/usr/sgug/lib/rpm ]; then\n  mkdir -p $RPM_BUILD_ROOT/usr/sgug/lib32/rpm\n\
-      \  cp -a $RPM_BUILD_ROOT/usr/sgug/lib/rpm/* $RPM_BUILD_ROOT/usr/sgug/lib32/rpm/\n  rm -rf $RPM_BUILD_ROOT/usr/sgug/lib/rpm\nfi\n\n# Create /var/run for lockfiles (rpm owns this as lowest-level package\
-      \ needing it)\nmkdir -p $RPM_BUILD_ROOT/var/run\n\n# Create /var/lib/rpm symlink to actual database location\nmkdir -p $RPM_BUILD_ROOT/var/lib\nln -sf ../../usr/sgug/lib32/sysimage/rpm $RPM_BUILD_ROOT/var/lib/rpm\n\
-      \n# Create macros.sqlite to set sqlite as default database backend for IRIX\nmkdir -p $RPM_BUILD_ROOT/usr/sgug/etc/rpm\necho '%%_db_backend sqlite' > $RPM_BUILD_ROOT/usr/sgug/etc/rpm/macros.sqlite\n\
-      \n# Create macros.ldconfig to make ldconfig macros no-ops on IRIX (uses rld instead)\ncat > $RPM_BUILD_ROOT/usr/sgug/etc/rpm/macros.ldconfig << 'LDCONFIG_EOF'\n# IRIX uses rld, not ldconfig - make\
+    replacement: "rm -f $RPM_BUILD_ROOT/%{_defaultdocdir}/rpm/README.md\n\n# Merge rpm lib files from lib to lib32 for N32 ABI\nif [ -d $RPM_BUILD_ROOT/opt/mogrix/lib/rpm ]; then\n  mkdir -p $RPM_BUILD_ROOT/opt/mogrix/lib32/rpm\n\
+      \  cp -a $RPM_BUILD_ROOT/opt/mogrix/lib/rpm/* $RPM_BUILD_ROOT/opt/mogrix/lib32/rpm/\n  rm -rf $RPM_BUILD_ROOT/opt/mogrix/lib/rpm\nfi\n\n# Create /var/run for lockfiles (rpm owns this as lowest-level package\
+      \ needing it)\nmkdir -p $RPM_BUILD_ROOT/var/run\n\n# Create /var/lib/rpm symlink to actual database location\nmkdir -p $RPM_BUILD_ROOT/var/lib\nln -sf ../../opt/mogrix/lib32/sysimage/rpm $RPM_BUILD_ROOT/var/lib/rpm\n\
+      \n# Create macros.sqlite to set sqlite as default database backend for IRIX\nmkdir -p $RPM_BUILD_ROOT/opt/mogrix/etc/rpm\necho '%%_db_backend sqlite' > $RPM_BUILD_ROOT/opt/mogrix/etc/rpm/macros.sqlite\n\
+      \n# Create macros.ldconfig to make ldconfig macros no-ops on IRIX (uses rld instead)\ncat > $RPM_BUILD_ROOT/opt/mogrix/etc/rpm/macros.ldconfig << 'LDCONFIG_EOF'\n# IRIX uses rld, not ldconfig - make\
       \ ldconfig macros no-ops\n%%ldconfig /bin/true\n%%ldconfig_post(n:) /bin/true\n%%ldconfig_postun(n:) /bin/true\n%%ldconfig_scriptlets(n:) %%{nil}\nLDCONFIG_EOF"
   - pattern: '%dir %{python3_sitearch}/rpm
 
@@ -261,11 +263,11 @@ rules:
 
       /var/lib/rpm
 
-      %dir /usr/sgug/etc/rpm
+      %dir /opt/mogrix/etc/rpm
 
-      %config(noreplace) /usr/sgug/etc/rpm/macros.sqlite
+      %config(noreplace) /opt/mogrix/etc/rpm/macros.sqlite
 
-      %config(noreplace) /usr/sgug/etc/rpm/macros.ldconfig
+      %config(noreplace) /opt/mogrix/etc/rpm/macros.ldconfig
 
 
       %{_bindir}/rpm

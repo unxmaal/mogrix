@@ -99,41 +99,41 @@ show_contents() {
     log_info "Checking extracted contents..."
     echo ""
 
-    if [ -d "$CHROOT_DIR/usr/sgug" ]; then
+    if [ -d "$CHROOT_DIR/opt/mogrix" ]; then
         echo "SGUG directories:"
-        ls "$CHROOT_DIR/usr/sgug/" 2>/dev/null
+        ls "$CHROOT_DIR/opt/mogrix/" 2>/dev/null
         echo ""
 
-        if [ -d "$CHROOT_DIR/usr/sgug/bin" ]; then
+        if [ -d "$CHROOT_DIR/opt/mogrix/bin" ]; then
             echo "Key binaries:"
             for bin in rpm tdnf openssl file; do
-                if [ -f "$CHROOT_DIR/usr/sgug/bin/$bin" ]; then
-                    echo "  [OK] /usr/sgug/bin/$bin"
+                if [ -f "$CHROOT_DIR/opt/mogrix/bin/$bin" ]; then
+                    echo "  [OK] /opt/mogrix/bin/$bin"
                 else
-                    echo "  [MISSING] /usr/sgug/bin/$bin"
+                    echo "  [MISSING] /opt/mogrix/bin/$bin"
                 fi
             done
         fi
 
         echo ""
-        if [ -d "$CHROOT_DIR/usr/sgug/lib32" ]; then
+        if [ -d "$CHROOT_DIR/opt/mogrix/lib32" ]; then
             echo "Key libraries:"
             for lib in librpm.so libssl.so libz.so liblua.so libmagic.so libsolv.so; do
-                if [ -f "$CHROOT_DIR/usr/sgug/lib32/$lib" ]; then
-                    echo "  [OK] /usr/sgug/lib32/$lib"
+                if [ -f "$CHROOT_DIR/opt/mogrix/lib32/$lib" ]; then
+                    echo "  [OK] /opt/mogrix/lib32/$lib"
                 else
-                    echo "  [MISSING] /usr/sgug/lib32/$lib"
+                    echo "  [MISSING] /opt/mogrix/lib32/$lib"
                 fi
             done
         fi
     else
-        log_warn "/usr/sgug not found in chroot"
+        log_warn "/opt/mogrix not found in chroot"
     fi
 }
 
 # Create chroot shell script
 create_chroot_shell() {
-    SHELL_SCRIPT="$CHROOT_DIR/usr/sgug/bin/chroot-shell.sh"
+    SHELL_SCRIPT="$CHROOT_DIR/opt/mogrix/bin/chroot-shell.sh"
 
     log_info "Creating chroot shell script: $SHELL_SCRIPT"
 
@@ -143,9 +143,9 @@ create_chroot_shell() {
 # chroot-shell.sh - Set up environment for testing in chroot
 #
 # Source this script or run it to get a shell with proper paths:
-#   . /usr/sgug/bin/chroot-shell.sh
+#   . /opt/mogrix/bin/chroot-shell.sh
 # or:
-#   /usr/sgug/bin/chroot-shell.sh
+#   /opt/mogrix/bin/chroot-shell.sh
 #
 
 # Clear conflicting environment
@@ -157,7 +157,7 @@ unset LD_LIBRARY_PATH
 unset LD_LIBRARYN32_PATH
 unset LD_LIBRARYN64_PATH
 
-SGUG_ROOT=/usr/sgug
+SGUG_ROOT=/opt/mogrix
 SGUG_BIN=$SGUG_ROOT/bin
 SGUG_LIB=$SGUG_ROOT/lib32
 
@@ -206,10 +206,10 @@ print_instructions() {
     echo "  chroot $CHROOT_DIR /bin/sh"
     echo ""
     echo "  # Then source the environment script:"
-    echo "  . /usr/sgug/bin/chroot-shell.sh"
+    echo "  . /opt/mogrix/bin/chroot-shell.sh"
     echo ""
     echo "  # Or run it directly for a configured shell:"
-    echo "  /usr/sgug/bin/chroot-shell.sh"
+    echo "  /opt/mogrix/bin/chroot-shell.sh"
     echo ""
     echo "  # Test rpm:"
     echo "  rpm --version"
@@ -218,7 +218,7 @@ print_instructions() {
     echo "  tdnf --version"
     echo ""
     echo "To clean up (if needed):"
-    echo "  rm -rf $CHROOT_DIR/usr/sgug"
+    echo "  rm -rf $CHROOT_DIR/opt/mogrix"
     echo ""
 }
 

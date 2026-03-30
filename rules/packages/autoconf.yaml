@@ -1,8 +1,10 @@
 # autoconf package rules for IRIX cross-compilation
 package: autoconf
 
+build_after: none
+
 smoke_test:
-  - command: "/usr/sgug/bin/autoconf --version"
+  - command: "/opt/mogrix/bin/autoconf --version"
     expect: "2.71"
 
 # Autoconf is noarch (Perl scripts + m4 macros).
@@ -10,7 +12,7 @@ smoke_test:
 
 rules:
   # Autoconf's configure checks for perl by running it. The PATH includes
-  # staging (/opt/sgug-staging/usr/sgug/bin) which has our cross-compiled MIPS
+  # staging ($MOGRIX_STAGING/bin) which has our cross-compiled MIPS
   # perl that can't execute on x86_64. Force configure to use host perl.
   export_vars:
     PERL: "/usr/bin/perl"
@@ -25,8 +27,8 @@ rules:
       replacement: ""
 
   # Fix shebangs and hardcoded paths baked in from the build host:
-  # - /usr/bin/perl → IRIX system perl 5.004, must use /usr/sgug/bin/perl
-  # - /usr/bin/m4 → IRIX system m4 (not GNU), must use /usr/sgug/bin/m4
+  # - /usr/bin/perl → IRIX system perl 5.004, must use /opt/mogrix/bin/perl
+  # - /usr/bin/m4 → IRIX system m4 (not GNU), must use /opt/mogrix/bin/m4
   install_cleanup:
-    - "find %{buildroot}%{_bindir} -type f -exec grep -l '/usr/bin/perl' {} \\; | xargs -r sed -i 's|/usr/bin/perl|/usr/sgug/bin/perl|g'"
-    - "find %{buildroot}%{_bindir} -type f -exec grep -l '/usr/bin/m4' {} \\; | xargs -r sed -i 's|/usr/bin/m4|/usr/sgug/bin/m4|g'"
+    - "find %{buildroot}%{_bindir} -type f -exec grep -l '/usr/bin/perl' {} \\; | xargs -r sed -i 's|/usr/bin/perl|/opt/mogrix/bin/perl|g'"
+    - "find %{buildroot}%{_bindir} -type f -exec grep -l '/usr/bin/m4' {} \\; | xargs -r sed -i 's|/usr/bin/m4|/opt/mogrix/bin/m4|g'"

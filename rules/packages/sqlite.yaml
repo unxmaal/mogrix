@@ -11,14 +11,19 @@
 
 package: sqlite
 
+build_after:
+  - zlib-ng
+
 rules:
   # lemon is a build-time parser generator — runs on the build host (x86-64),
   # not on IRIX. Dropping it prevents an x86-64 binary in a .mips.rpm which
   # would fail dep-check (libc.so.6 unresolvable).
-  drop_subpackages:
-    - lemon
-    - tcl
-    - analyzer
+  # drop_subpackages DISABLED for sqlite — engine _comment_orphaned_conditionals
+  # creates dangling %endif. tcl/sqldiff disabled via bcond flip. lemon removed
+  # via remove_lines + spec_replacement for install commands.
+  remove_lines:
+    - "%{_bindir}/lemon"
+    - "%{_datadir}/lemon"
   # Note: bcond_invert is not implemented, using spec_replacements instead
 
   configure_flags:
@@ -63,6 +68,13 @@ rules:
       replacement: "%bcond_with tcl"
     - pattern: "%bcond_without sqldiff"
       replacement: "%bcond_with sqldiff"
+    # Remove i686 test removal block (not our arch, and remove_conditionals can't handle %ifarch)
+    - pattern: "%ifarch == i686\nrm test/atof1.test\nrm test/func4.test\n%endif"
+      replacement: "# i686 test removal removed for IRIX"
+    # Remove nested %if tcl / %if sqldiff files block that causes orphaned %endif
+    # after drop_subpackages strips the %files lines
+    - pattern: "%if %{with tcl}\n%files tcl\n%{tcl_sitearch}/sqlite3\n\n%if %{with sqldiff}\n%files tools\n%{_bindir}/sqldiff\n%endif\n\n%files analyzer\n%{_bindir}/sqlite3_analyzer\n%endif"
+      replacement: "# tcl/tools/analyzer file lists removed for IRIX"
     # Fix multi-line CFLAGS export — the backslash continuations break mogrix
     # compat injection which inserts code after "export CFLAGS=..." line.
     # Collapse to a single line so the emitter can inject after it cleanly.
@@ -72,9 +84,6 @@ rules:
     # Remove lemon install commands (subpackage dropped)
     - pattern: "install -D -m0755 lemon $RPM_BUILD_ROOT/%{_bindir}/lemon\ninstall -D -m0644 tool/lempar.c $RPM_BUILD_ROOT/%{_datadir}/lemon/lempar.c"
       replacement: "# lemon install removed for IRIX (subpackage dropped)"
-    # Remove the %if %{with tcl} block entirely (tcl, sqldiff, analyzer subpackages)
-    - pattern: "%if %{with tcl}\n%files tcl\n%{tcl_sitearch}/sqlite3\n\n%if %{with sqldiff}\n%files tools\n%{_bindir}/sqldiff\n%endif\n\n%files analyzer\n%{_bindir}/sqlite3_analyzer\n%endif"
-      replacement: "# tcl/tools/analyzer subpackages removed for IRIX"
     - pattern: "sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool"
       replacement: |
         sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool

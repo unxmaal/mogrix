@@ -1,4 +1,6 @@
 package: zip
+
+build_after: none
 rules:
   drop_buildrequires: []
   drop_requires:

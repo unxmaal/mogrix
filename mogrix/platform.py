@@ -55,7 +55,7 @@ class PlatformModel:
 
     @property
     def prefix(self) -> str:
-        return self._data.get("prefix", "/usr/sgug")
+        return self._data.get("prefix", "/opt/mogrix")
 
     def has_function(self, name: str) -> bool:
         """Check if a function is available (either native or shimmed).

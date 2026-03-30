@@ -1,4 +1,7 @@
 package: openssl
+
+build_after:
+  - zlib-ng
 rules:
   drop_buildrequires:
   - lksctp-tools-devel
@@ -9,15 +12,19 @@ rules:
   - _rld_new_interface
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch include/internal/e_os.h --old 'internal/numbers.h' --insert-after 'extern char *strerror_r(int errnum, char *buf, size_t buflen);' --no-backup --quiet"
+  # OpenSSL Configure splits CC env var into CROSS_COMPILE prefix + binary name.
+  # With CC=%{_staging}/bin/irix-cc, Configure sets CROSS_COMPILE=%{_staging}/
+  # and CC=bin/irix-cc. Makefile then uses $(CROSS_COMPILE)bin/irix-cc = full path.
+  # No need to patch Configurations — the env var approach handles it.
   export_vars:
-    CC: /opt/sgug-staging/usr/sgug/bin/irix-cc
+    CC: "%{_staging}/bin/irix-cc"
     AR: /opt/cross/bin/llvm-ar
     RANLIB: /opt/cross/bin/llvm-ranlib
   spec_replacements:
   - pattern: sslarch=%{_os}-%{_target_cpu}
     replacement: 'sslarch=irix-mips3-gcc
 
-      sslflags="no-asm no-async no-dgram no-afalgeng no-tests -mabi=n32"'
+      sslflags="no-asm no-async no-dgram no-afalgeng no-tests no-buildtest-c++ -mabi=n32"'
   - pattern: sslarch="linux-mips32 -mips32r2"
     replacement: '# sslarch="linux-mips32 -mips32r2" # disabled for IRIX'
   - pattern: enable-fips
@@ -89,10 +96,10 @@ rules:
     replacement: |-
       mv $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/misc/tsget $RPM_BUILD_ROOT%{_bindir}
       # Fix shebangs for IRIX (must be after install/mv commands)
-      sed -i '1s|^#!/bin/bash|#!/usr/sgug/bin/bash|' $RPM_BUILD_ROOT%{_bindir}/renew-dummy-cert $RPM_BUILD_ROOT%{_bindir}/make-dummy-cert || true
-      sed -i '1s|^#!/usr/bin/perl|#!/usr/sgug/bin/perl|' $RPM_BUILD_ROOT%{_bindir}/CA.pl $RPM_BUILD_ROOT%{_bindir}/tsget.pl $RPM_BUILD_ROOT%{_bindir}/tsget || true
+      sed -i '1s|^#!/bin/bash|#!/opt/mogrix/bin/bash|' $RPM_BUILD_ROOT%{_bindir}/renew-dummy-cert $RPM_BUILD_ROOT%{_bindir}/make-dummy-cert || true
+      sed -i '1s|^#!/usr/bin/perl|#!/opt/mogrix/bin/perl|' $RPM_BUILD_ROOT%{_bindir}/CA.pl $RPM_BUILD_ROOT%{_bindir}/tsget.pl $RPM_BUILD_ROOT%{_bindir}/tsget || true
   install_cleanup:
   - ln -sf configuration-mips.h $RPM_BUILD_ROOT%{_includedir}/openssl/configuration-mips64.h
   - sed -i 's|^ssl_conf = ssl_module|# ssl_conf = ssl_module
   - sed -i 's|^\.include = /etc/crypto-policies|# .include = /etc/crypto-policies
-  - sed -i 's|= /etc/pki/|= /usr/sgug/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf
+  - sed -i 's|= /etc/pki/|= /opt/mogrix/etc/pki/|g' $RPM_BUILD_ROOT%{_sysconfdir}/pki/tls/openssl.cnf

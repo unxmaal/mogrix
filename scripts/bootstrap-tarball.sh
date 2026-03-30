@@ -200,8 +200,8 @@ extract_rpms() {
 
     # Create missing directories that packages should own but may not in older builds
     log_info "Creating required directories..."
-    mkdir -p "$BOOTSTRAP_DIR/usr/sgug/var/cache/tdnf"
-    log_info "Created /usr/sgug/var/cache/tdnf"
+    mkdir -p "$BOOTSTRAP_DIR/opt/mogrix/var/cache/tdnf"
+    log_info "Created /opt/mogrix/var/cache/tdnf"
 }
 
 # Install extra tools (sgugshell, sgug-exec) into bootstrap
@@ -210,18 +210,18 @@ install_extras() {
 
     # sgugshell - interactive SGUG environment shell
     if [ -f "$PROJECT_DIR/tools/sgugshell" ]; then
-        cp "$PROJECT_DIR/tools/sgugshell" "$BOOTSTRAP_DIR/usr/sgug/bin/sgugshell"
-        chmod +x "$BOOTSTRAP_DIR/usr/sgug/bin/sgugshell"
-        echo "  [OK] /usr/sgug/bin/sgugshell"
+        cp "$PROJECT_DIR/tools/sgugshell" "$BOOTSTRAP_DIR/opt/mogrix/bin/sgugshell"
+        chmod +x "$BOOTSTRAP_DIR/opt/mogrix/bin/sgugshell"
+        echo "  [OK] /opt/mogrix/bin/sgugshell"
     else
         log_warn "tools/sgugshell not found - skipping"
     fi
 
     # sgug-exec - single-command wrapper
     if [ -f "$PROJECT_DIR/tools/sgug-exec" ]; then
-        cp "$PROJECT_DIR/tools/sgug-exec" "$BOOTSTRAP_DIR/usr/sgug/bin/sgug-exec"
-        chmod +x "$BOOTSTRAP_DIR/usr/sgug/bin/sgug-exec"
-        echo "  [OK] /usr/sgug/bin/sgug-exec"
+        cp "$PROJECT_DIR/tools/sgug-exec" "$BOOTSTRAP_DIR/opt/mogrix/bin/sgug-exec"
+        chmod +x "$BOOTSTRAP_DIR/opt/mogrix/bin/sgug-exec"
+        echo "  [OK] /opt/mogrix/bin/sgug-exec"
     else
         log_warn "tools/sgug-exec not found - skipping"
     fi
@@ -232,28 +232,28 @@ generate_repo_config() {
     log_info "Installing tdnf repository configuration..."
 
     # Install mogrix.repo (public package server)
-    mkdir -p "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d"
-    cp "$PROJECT_DIR/configs/tdnf/mogrix.repo" "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d/mogrix.repo"
+    mkdir -p "$BOOTSTRAP_DIR/opt/mogrix/etc/yum.repos.d"
+    cp "$PROJECT_DIR/configs/tdnf/mogrix.repo" "$BOOTSTRAP_DIR/opt/mogrix/etc/yum.repos.d/mogrix.repo"
 
     # If --repo-url was provided, also create a local override repo
     if [ -n "$REPO_URL" ]; then
         log_info "Adding local repo override: $REPO_URL"
-        cat > "$BOOTSTRAP_DIR/usr/sgug/etc/yum.repos.d/mogrix-local.repo" << EOF
+        cat > "$BOOTSTRAP_DIR/opt/mogrix/etc/yum.repos.d/mogrix-local.repo" << EOF
 [mogrix-local]
 name=Mogrix Local Repository
 baseurl=${REPO_URL}
 enabled=1
 gpgcheck=0
 EOF
-        echo "  [OK] /usr/sgug/etc/yum.repos.d/mogrix-local.repo (local override)"
+        echo "  [OK] /opt/mogrix/etc/yum.repos.d/mogrix-local.repo (local override)"
     fi
 
-    echo "  [OK] /usr/sgug/etc/yum.repos.d/mogrix.repo"
+    echo "  [OK] /opt/mogrix/etc/yum.repos.d/mogrix.repo"
 
     # Write tdnf.conf (our version, not whatever the RPM shipped)
-    mkdir -p "$BOOTSTRAP_DIR/usr/sgug/etc/tdnf"
-    cp "$PROJECT_DIR/configs/tdnf/tdnf.conf" "$BOOTSTRAP_DIR/usr/sgug/etc/tdnf/tdnf.conf"
-    echo "  [OK] /usr/sgug/etc/tdnf/tdnf.conf"
+    mkdir -p "$BOOTSTRAP_DIR/opt/mogrix/etc/tdnf"
+    cp "$PROJECT_DIR/configs/tdnf/tdnf.conf" "$BOOTSTRAP_DIR/opt/mogrix/etc/tdnf/tdnf.conf"
+    echo "  [OK] /opt/mogrix/etc/tdnf/tdnf.conf"
 }
 
 # Generate serve-repo.sh helper script
@@ -319,26 +319,26 @@ verify_contents() {
 
     # Critical binaries
     for bin in rpm tdnf sgugshell sgug-exec; do
-        if [ -f "$BOOTSTRAP_DIR/usr/sgug/bin/$bin" ]; then
-            echo "  [OK] /usr/sgug/bin/$bin"
+        if [ -f "$BOOTSTRAP_DIR/opt/mogrix/bin/$bin" ]; then
+            echo "  [OK] /opt/mogrix/bin/$bin"
         else
-            echo "  [MISSING] /usr/sgug/bin/$bin"
+            echo "  [MISSING] /opt/mogrix/bin/$bin"
             errors=$((errors + 1))
         fi
     done
 
     # Critical libraries (use versioned names for ssl since that's the SONAME)
     for lib in librpm.so libtdnf.so libsolv.so libz.so libssl.so.3; do
-        if [ -f "$BOOTSTRAP_DIR/usr/sgug/lib32/$lib" ]; then
-            echo "  [OK] /usr/sgug/lib32/$lib"
+        if [ -f "$BOOTSTRAP_DIR/opt/mogrix/lib32/$lib" ]; then
+            echo "  [OK] /opt/mogrix/lib32/$lib"
         else
-            echo "  [MISSING] /usr/sgug/lib32/$lib"
+            echo "  [MISSING] /opt/mogrix/lib32/$lib"
             errors=$((errors + 1))
         fi
     done
 
     # Critical directories (created by packages per package-rules.md)
-    for dir in /var/run /usr/sgug/etc/yum.repos.d /usr/sgug/var/cache/tdnf; do
+    for dir in /var/run /opt/mogrix/etc/yum.repos.d /opt/mogrix/var/cache/tdnf; do
         if [ -d "$BOOTSTRAP_DIR$dir" ]; then
             echo "  [OK] $dir"
         else
@@ -348,7 +348,7 @@ verify_contents() {
     done
 
     # Critical config files
-    for cfg in /usr/sgug/etc/tdnf/tdnf.conf /usr/sgug/etc/rpm/macros.sqlite /usr/sgug/etc/yum.repos.d/mogrix.repo; do
+    for cfg in /opt/mogrix/etc/tdnf/tdnf.conf /opt/mogrix/etc/rpm/macros.sqlite /opt/mogrix/etc/yum.repos.d/mogrix.repo; do
         if [ -f "$BOOTSTRAP_DIR$cfg" ]; then
             echo "  [OK] $cfg"
         else
@@ -366,10 +366,10 @@ verify_contents() {
     fi
 
     # libz.so symlink (needed by libsolvext)
-    if [ -L "$BOOTSTRAP_DIR/usr/sgug/lib32/libz.so" ] || [ -f "$BOOTSTRAP_DIR/usr/sgug/lib32/libz.so" ]; then
-        echo "  [OK] /usr/sgug/lib32/libz.so"
+    if [ -L "$BOOTSTRAP_DIR/opt/mogrix/lib32/libz.so" ] || [ -f "$BOOTSTRAP_DIR/opt/mogrix/lib32/libz.so" ]; then
+        echo "  [OK] /opt/mogrix/lib32/libz.so"
     else
-        echo "  [MISSING] /usr/sgug/lib32/libz.so"
+        echo "  [MISSING] /opt/mogrix/lib32/libz.so"
         errors=$((errors + 1))
     fi
 
@@ -444,7 +444,7 @@ print_next_steps() {
     echo "  ${TARBALL}.gz"
     echo ""
     echo "The tarball is self-contained and includes:"
-    echo "  - Extracted files under /usr/sgug/"
+    echo "  - Extracted files under /opt/mogrix/"
     echo "  - RPM files in /tmp/bootstrap-rpms/ for database registration"
     echo "  - sgugshell + sgug-exec environment wrappers"
     echo "  - tdnf repo config pointing to https://packages.mogrix.unxmaal.com/repo/"
@@ -459,7 +459,7 @@ print_next_steps() {
     echo "   # On IRIX: cd /opt/chroot && gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -"
     echo ""
     echo "3. Initialize rpm database and register packages:"
-    echo "   chroot /opt/chroot /usr/sgug/bin/sgugshell"
+    echo "   chroot /opt/chroot /opt/mogrix/bin/sgugshell"
     echo "   rpm --initdb"
     echo "   rpm -Uvh --nodeps /tmp/bootstrap-rpms/*.rpm"
     echo ""

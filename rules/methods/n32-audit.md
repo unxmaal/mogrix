@@ -51,7 +51,7 @@ irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
 ## GOT Size Audit
 
 ### Overview
-Audited all 237 .so files in `/opt/sgug-staging/usr/sgug/lib32/`:
+Audited all 237 .so files in `$MOGRIX_STAGING/lib32/`:
 - **217** mogrix-built (Feb 7-19, before `-Bsymbolic` fix on Feb 20) — missing SYMBOLIC
 - **5** post-Feb-20 (have `-Bsymbolic`): libicudata, libjavascriptcoregtk, libmogrix_compat, libpipeline, libwebkit2gtk
 - **~15** SGUG pre-existing (Aug 2019, can't change): libXm, libXaw, libXmu, etc.
@@ -108,7 +108,7 @@ This is not urgent — all binaries work today. But should be done before adding
 
 | File | Change |
 |------|--------|
-| `/opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.so` | Rebuilt without glib_critical_trap.c |
+| `$MOGRIX_STAGING/lib32/libmogrix_compat.so` | Rebuilt without glib_critical_trap.c |
 | `rules/INDEX.md` | Added anti-pattern for GLib in libmogrix_compat.so |
 | `rules/methods/compat-functions.md` | Added CRITICAL warning about GLib deps |
 | `rules/methods/n32-audit.md` | This document |

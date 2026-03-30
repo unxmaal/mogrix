@@ -165,9 +165,9 @@ class TestDiscovery:
         """
         import re
         results = []
-        # Match /usr/sgug/bin/<binary> followed by end-of-string, space, or quote
+        # Match /opt/mogrix/bin/<binary> followed by end-of-string, space, or quote
         pat = re.compile(
-            r"/usr/sgug/(?:s?bin)/" + re.escape(binary) + r"(?:\s|$|[\"'])"
+            r"/opt/mogrix/(?:s?bin)/" + re.escape(binary) + r"(?:\s|$|[\"'])"
         )
         for pkg_name, tests in self._smoke_tests.items():
             for test in tests:
@@ -181,13 +181,13 @@ class TestDiscovery:
     def _adapt_command(self, command: str, binary: str) -> str:
         """Rewrite YAML smoke_test command for bundle context.
 
-        Replace /usr/sgug/bin/<binary> with $BUNDLE_DIR/<binary>.
+        Replace /opt/mogrix/bin/<binary> with $BUNDLE_DIR/<binary>.
         """
         adapted = command.replace(
-            f"/usr/sgug/bin/{binary}", f"$BUNDLE_DIR/{binary}"
+            f"/opt/mogrix/bin/{binary}", f"$BUNDLE_DIR/{binary}"
         )
         adapted = adapted.replace(
-            f"/usr/sgug/sbin/{binary}", f"$BUNDLE_DIR/{binary}"
+            f"/opt/mogrix/sbin/{binary}", f"$BUNDLE_DIR/{binary}"
         )
         return adapted
 

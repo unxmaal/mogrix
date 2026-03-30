@@ -2,6 +2,8 @@
 # Fedora uses meson, but lz4 has a plain Makefile — use that for cross-compilation
 package: lz4
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - "meson >= 0.43"

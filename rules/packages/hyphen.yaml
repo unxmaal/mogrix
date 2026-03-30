@@ -1,4 +1,6 @@
 package: hyphen
+
+build_after: none
 rules:
   spec_replacements:
   - pattern: pushd $RPM_BUILD_ROOT/%{_datadir}/hyphen/

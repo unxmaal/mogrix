@@ -1,10 +1,15 @@
 package: file
+
+build_after:
+  - bzip2
+  - xz
+  - zlib-ng
 rules:
   ac_cv_overrides:
     ac_cv_func_getopt_long: 'yes'
     ac_cv_c_undeclared_builtin_options: 'none needed'
   export_vars:
-    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32
+    LDFLAGS: -L$MOGRIX_STAGING/lib32
   configure_flags:
     add:
     - --enable-fsect-man5

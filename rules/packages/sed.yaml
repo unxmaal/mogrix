@@ -1,10 +1,12 @@
 package: sed
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: echo foo | /usr/sgug/bin/sed s/foo/bar/
+- command: echo foo | /opt/mogrix/bin/sed s/foo/bar/
   expect: bar
-- command: /usr/sgug/bin/sed --version
+- command: /opt/mogrix/bin/sed --version
   expect: '4.9'
 rules:
   drop_buildrequires:

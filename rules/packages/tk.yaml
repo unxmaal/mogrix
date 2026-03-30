@@ -1,6 +1,13 @@
 # tk package rules for IRIX cross-compilation
 package: tk
 
+build_after:
+  - fontconfig
+  - freetype
+  - libX11
+  - libXft
+  - zlib-ng
+
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - tk.sgifixes.patch
@@ -8,7 +15,7 @@ add_patch:
 rules:
   configure_flags:
     add:
-      - --with-tcl=/opt/sgug-staging/usr/sgug/lib32
+      - --with-tcl=$MOGRIX_STAGING/lib32
       - --enable-threads
 
   spec_replacements:

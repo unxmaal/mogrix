@@ -3,6 +3,8 @@
 # Python xcbgen module used by libxcb's build to generate C sources.
 package: xcb-proto
 
+build_after: none
+
 rules:
   spec_replacements:
     # %python3_sitelib macro not defined in cross rpmmacros.

@@ -4,8 +4,11 @@
 
 package: p11-kit
 
+build_after:
+  - libffi
+
 smoke_test:
-  - command: "/usr/sgug/bin/p11-kit --help 2>&1"
+  - command: "/opt/mogrix/bin/p11-kit --help 2>&1"
     expect: "p11-kit"
 
 rules:

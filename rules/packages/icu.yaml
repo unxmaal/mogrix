@@ -1,4 +1,11 @@
+# SKIP: libc++ chrono headers hit incomplete __timespec type from IRIX
+# time_core.h #define timespec __timespec macro. Platform gap — needs
+# dedicated session to fix libc++/IRIX timespec interaction.
+# harfbuzz and webkitgtk depend on icu — will be dep-blocked.
 package: icu
+
+build_after: none
+skip: true
 
 rules:
   # ICU needs strdup compat for dlmalloc heap consistency
@@ -68,13 +75,13 @@ rules:
 
         # === STEP 2: Cross-compile ICU for IRIX (MIPS n32, big-endian) ===
         # Restore cross-compile env
-        export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc
-        export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx
+        export CC=$MOGRIX_STAGING/bin/irix-cc
+        export CXX=$MOGRIX_STAGING/bin/irix-cxx-libcxx
         export AR=/opt/cross/bin/llvm-ar
         export RANLIB=/opt/cross/bin/llvm-ranlib
-        export LD=/opt/sgug-staging/usr/sgug/bin/irix-ld
-        export PKG_CONFIG_LIBDIR=/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig
-        export PKG_CONFIG_SYSROOT_DIR=/opt/sgug-staging
+        export LD=$MOGRIX_STAGING/bin/irix-ld
+        export PKG_CONFIG_LIBDIR=$MOGRIX_STAGING/lib32/pkgconfig:$MOGRIX_STAGING/share/pkgconfig
+        export PKG_CONFIG_SYSROOT_DIR=$MOGRIX_STAGING_ROOT
         export MOGRIX_ROOT="/home/edodd/projects/github/unxmaal/mogrix"
         export LIBS="$_SAVED_LIBS"
         export CPPFLAGS="$_SAVED_CPPFLAGS"
@@ -88,16 +95,16 @@ rules:
     - pattern: "%configure $OPTIONS"
       replacement: |-
         ../source/configure \
-          --prefix=/usr/sgug \
-          --exec-prefix=/usr/sgug \
-          --bindir=/usr/sgug/bin \
-          --sbindir=/usr/sgug/sbin \
-          --libdir=/usr/sgug/lib32 \
-          --includedir=/usr/sgug/include \
-          --datadir=/usr/sgug/share \
-          --mandir=/usr/sgug/share/man \
-          --infodir=/usr/sgug/share/info \
-          --sysconfdir=/usr/sgug/etc \
+          --prefix=/opt/mogrix \
+          --exec-prefix=/opt/mogrix \
+          --bindir=/opt/mogrix/bin \
+          --sbindir=/opt/mogrix/sbin \
+          --libdir=/opt/mogrix/lib32 \
+          --includedir=/opt/mogrix/include \
+          --datadir=/opt/mogrix/share \
+          --mandir=/opt/mogrix/share/man \
+          --infodir=/opt/mogrix/share/info \
+          --sysconfdir=/opt/mogrix/etc \
           --host=mips-irix6.5 \
           --build=x86_64-linux-gnu \
           --with-cross-build=$HOST_ICU_DIR \

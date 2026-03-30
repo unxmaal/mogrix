@@ -1,6 +1,8 @@
 # dejagnu package rules for IRIX cross-compilation
 package: dejagnu
 
+build_after: none
+
 # Old sgifixes.patch targeted 1.6.2 (configure.ac + runtest.in).
 # dejagnu 1.6.3 already ships a proper runtest script and uses
 # AC_CONFIG_FILES([Makefile]) — patch is no longer needed.

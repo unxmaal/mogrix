@@ -1,4 +1,9 @@
 package: libpsl
+
+build_after:
+  - gettext
+  - libidn2
+  - libunistring
 rules:
   drop_buildrequires:
   - libicu-devel

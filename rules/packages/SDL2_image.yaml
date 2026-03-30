@@ -4,6 +4,12 @@
 # Disabled: AVIF, JXL (modern codecs not ported)
 package: SDL2_image
 
+build_after:
+  - SDL2
+  - libjpeg-turbo
+  - libpng
+  - libtiff
+
 rules:
   drop_buildrequires:
     - libavif-devel

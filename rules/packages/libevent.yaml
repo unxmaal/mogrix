@@ -1,4 +1,6 @@
 package: libevent
+
+build_after: none
 rules:
   prep_commands:
   - $MOGRIX_ROOT/tools/safepatch Makefile.am --delete-line 'include test/include.am' --no-backup --quiet

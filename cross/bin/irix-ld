@@ -34,7 +34,7 @@
 
 # Configurable paths - set by mogrix setup-cross or environment
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:?MOGRIX_STAGING must be set — run builds via mogrix CLI or set it to staging/opt/mogrix}"
 LLD="${IRIX_LLD:-/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18}"
 
 # Filter out flags that don't apply to clang/lld and detect -shared
@@ -134,10 +134,10 @@ if [ "$is_shared" = "1" ]; then
           $CRTBEGIN \
           $EH_FRAME_REG \
           $DSOHANDLE \
+          $filtered_args \
           -L$STAGING/lib32 \
           -L$SYSROOT/lib32 \
           -L$SYSROOT/usr/lib32 \
-          $filtered_args \
           $LIBGCC_S_FLAG \
           $CRTEND
         rc=$?
@@ -164,10 +164,10 @@ if [ "$is_shared" = "1" ]; then
       $CRTBEGIN \
       $EH_FRAME_REG \
       $DSOHANDLE \
+      $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
-      $filtered_args \
       $LIBGCC_S_FLAG \
       $CRTEND
     rc=$?
@@ -234,10 +234,10 @@ else
       $DSOHANDLE \
       $DLMALLOC \
       $SAFEMEM \
+      $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
-      $filtered_args \
       -lsoft_float_stubs \
       -lc \
       $CRTEND \

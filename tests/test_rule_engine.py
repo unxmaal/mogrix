@@ -42,7 +42,7 @@ def test_engine_collects_rpm_macros():
     result = engine.apply(spec)
 
     assert "_prefix" in result.rpm_macros
-    assert result.rpm_macros["_prefix"] == "/usr/sgug"
+    assert result.rpm_macros["_prefix"] == "/opt/mogrix"
     assert "_libdir" in result.rpm_macros
     # gcc is dropped by generic.yaml, so it should NOT be present
     assert "gcc" not in result.spec.buildrequires

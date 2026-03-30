@@ -1,6 +1,8 @@
 # lolcat - colorful cat (FC40: 1.4)
 package: lolcat
 
+build_after: none
+
 rules:
   prep_commands:
     # Remove unused #include <err.h> — IRIX doesn't have err.h

@@ -1,6 +1,9 @@
 package: tcsh
+
+build_after:
+  - ncurses
 smoke_test:
-- command: /usr/sgug/bin/tcsh -c 'echo $version'
+- command: /opt/mogrix/bin/tcsh -c 'echo $version'
   expect: '6.24'
 bundle_trampoline_exclude:
 - csh

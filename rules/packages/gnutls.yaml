@@ -1,4 +1,13 @@
 package: gnutls
+
+build_after:
+  - gettext
+  - gmp
+  - libidn2
+  - libtasn1
+  - libunistring
+  - nettle
+  - p11-kit
 # Re-enablement audit (Feb 2025): p11-kit trust store and IDN re-enabled.
 # - p11-kit: PKCS#11 trust module for system certificate store
 # - libidn2: international domain name support in TLS handshake

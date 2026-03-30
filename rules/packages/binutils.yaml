@@ -1,5 +1,7 @@
 # binutils package rules for IRIX cross-compilation
 package: binutils
+
+build_after: none
 skip: true
 skip_reason: "binutils configure tries to compile+run test executables, which fails under cross-compilation. IRIX has native assembler/linker and we use LLVM tools. Not needed on target."
 blocked: true

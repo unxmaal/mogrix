@@ -6,7 +6,7 @@ platform:
   name: "IRIX 6.5"
   arch: "mips"
   abi: "n32"
-  prefix: "/usr/sgug"
+  prefix: "/opt/mogrix"
 
   # Functions shimmed by mogrix compat layer (from compat/catalog.yaml)
   provides:

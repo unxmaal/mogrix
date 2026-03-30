@@ -1,5 +1,7 @@
 # emacs package rules for IRIX cross-compilation
 package: emacs
+
+build_after: none
 skip: true
 skip_reason: "Emacs 29.2 explicitly rejects IRIX in configure. Last IRIX support was ~emacs 23.x. Needs extensive porting work."
 blocked: true

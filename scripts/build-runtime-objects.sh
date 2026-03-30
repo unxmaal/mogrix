@@ -3,7 +3,7 @@
 # build-runtime-objects.sh — Build ALL runtime objects needed in staging
 #
 # This script builds every object file and library that must exist in
-# /opt/sgug-staging/usr/sgug/lib32/ before any package can be cross-compiled.
+# $MOGRIX_STAGING/lib32/ before any package can be cross-compiled.
 #
 # Prerequisites:
 #   - irix-cc deployed to staging (run: uv run mogrix setup-cross)
@@ -46,7 +46,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MOGRIX_DIR="$(dirname "$SCRIPT_DIR")"
-STAGING="/opt/sgug-staging/usr/sgug"
+STAGING="$MOGRIX_STAGING"
 CROSS="/opt/cross/bin"
 CC="${STAGING}/bin/irix-cc"
 AR="${CROSS}/llvm-ar"

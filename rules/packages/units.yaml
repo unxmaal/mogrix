@@ -1,4 +1,7 @@
 package: units
+
+build_after:
+  - readline
 rules:
   drop_buildrequires:
   - python3-requests

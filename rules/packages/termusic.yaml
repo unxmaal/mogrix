@@ -12,8 +12,15 @@
 # issue on IRIX, crashes in sqlite3_open before first syscall).
 # Deps: libsqlite3.so.0 (from sqlite-libs RPM), libSDL2, openssl, libgcc_s.
 
+
+package: termusic
+build_after: none
+language: rust
+
 smoke_test:
   - command: "termusic --version 2>&1"
     expect: "termusic"
   - command: "termusic-server --version 2>&1"
     expect: "termusic-server"
+
+build_after: none

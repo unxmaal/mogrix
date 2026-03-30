@@ -1,6 +1,9 @@
 # libpng package rules for IRIX cross-compilation
 package: libpng
 
+build_after:
+  - zlib-ng
+
 rules:
   # Contrib tools have conflicts with IRIX headers and missing zlib features.
   # pngcp.c redefines struct option (conflicts with SGUG getopt.h).

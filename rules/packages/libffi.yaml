@@ -1,6 +1,8 @@
 # libffi package rules for IRIX cross-compilation
 package: libffi
 
+build_after: none
+
 # NOTE: Old sgifixes.patch was for libffi 3.2.1 + MIPSpro compiler.
 # With clang (__GNUC__ defined), the #pragma pack guards don't apply.
 # Test suite changes are irrelevant (skip_check). No patch needed.

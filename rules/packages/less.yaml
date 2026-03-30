@@ -7,8 +7,11 @@
 
 package: less
 
+build_after:
+  - ncurses
+
 smoke_test:
-  - command: "/usr/sgug/bin/less --version"
+  - command: "/opt/mogrix/bin/less --version"
     expect: "less 643"
 
 rules:

@@ -1,5 +1,11 @@
 # ctags - universal ctags source code indexer
 package: ctags
+
+build_after:
+  - jansson
+  - libxml2
+  - libyaml
+  - pcre2
 rules:
   export_vars:
     # IRIX has basename() in libgen, not libc

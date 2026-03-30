@@ -21,7 +21,7 @@ LIBUNWIND_SRC="$LLVM_PROJECT/libunwind"
 # Cross-compiler settings
 CLANGXX="/opt/cross/bin/clang++"
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:-/opt/sgug-staging/usr/sgug}"
 IRIX_LD="$STAGING/bin/irix-ld"
 
 # Build directory

@@ -2,9 +2,14 @@
 # Foundation library for fontconfig, libX11, and many other packages
 package: expat
 
+build_after: none
+
 rules:
   inject_compat_functions:
     - strtof
+
+  ac_cv_overrides:
+    ac_cv_c_undeclared_builtin_options: "none needed"
 
   configure_flags:
     add:

@@ -20,13 +20,13 @@
 
 # Configurable paths - set by mogrix setup-cross
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:?MOGRIX_STAGING must be set — run builds via mogrix CLI or set it to staging/opt/mogrix}"
 CLANG="${IRIX_CLANG:-/opt/cross/bin/clang++}"
 LD="${STAGING}/bin/irix-ld"
 
-# LLVM project source paths for libc++ headers
-LLVM_PROJECT="${LLVM_PROJECT:-$HOME/projects/github/llvm-project}"
-LIBCXX_CONFIG="${LIBCXX_CONFIG:-$(dirname "$0")/../build-runtime/libcxx-config}"
+# libc++ headers — deployed to staging by setup-cross from cross/include/
+LIBCXX_INCLUDE="${STAGING}/include/libcxx"
+LIBCXXABI_INCLUDE="${STAGING}/include/libcxxabi"
 
 # Header search order:
 # 1. libc++ __config_site (IRIX-specific configuration)
@@ -62,8 +62,8 @@ CLANG_FLAGS="$CLANG_FLAGS -include $STAGING/include/dicl-clang-compat/stdarg.h"
 CLANG_FLAGS="$CLANG_FLAGS -I$STAGING/include/mogrix-cxx20-polyfills"
 # libc++ headers: __config_site from mogrix config, headers from LLVM source
 CLANG_FLAGS="$CLANG_FLAGS -I$STAGING/include/mogrix-libcxx-config"
-CLANG_FLAGS="$CLANG_FLAGS -I$LLVM_PROJECT/libcxx/include"
-CLANG_FLAGS="$CLANG_FLAGS -I$LLVM_PROJECT/libcxxabi/include"
+CLANG_FLAGS="$CLANG_FLAGS -I$LIBCXX_INCLUDE"
+CLANG_FLAGS="$CLANG_FLAGS -I$LIBCXXABI_INCLUDE"
 # System compat headers (xlocale stubs, math fixes, etc.)
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat"
 CLANG_FLAGS="$CLANG_FLAGS -isystem $STAGING/include/mogrix-compat/generic"

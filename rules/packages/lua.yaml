@@ -12,6 +12,10 @@
 
 package: lua
 
+build_after:
+  - ncurses
+  - readline
+
 rules:
   # Autoconf cache overrides
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml

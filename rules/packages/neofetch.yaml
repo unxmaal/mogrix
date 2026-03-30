@@ -1,6 +1,8 @@
 # neofetch - system information tool (bash script)
-# Uses make with PREFIX — needs override for /usr/sgug
+# Uses make with PREFIX — needs override for /opt/mogrix
 package: neofetch
+
+build_after: none
 
 rules:
   spec_replacements:

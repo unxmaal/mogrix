@@ -36,6 +36,6 @@ rules:
   - "$MOGRIX_ROOT/tools/safepatch Utilities/cmcppdap/src/network.cpp --insert-top '#include \"mogrix-to-string-compat.h\"' --no-backup --quiet"
   - "$MOGRIX_ROOT/tools/safepatch Utilities/cmcppdap/src/content_stream.cpp --insert-top '#include \"mogrix-to-string-compat.h\"' --no-backup --quiet"
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT

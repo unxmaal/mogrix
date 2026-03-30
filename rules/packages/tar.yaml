@@ -1,8 +1,10 @@
 package: tar
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: /usr/sgug/bin/tar --version
+- command: /opt/mogrix/bin/tar --version
   expect: '1.35'
 rules:
   drop_buildrequires:

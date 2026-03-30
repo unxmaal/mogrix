@@ -15,13 +15,13 @@ nudges:
   # Tuned for 1M context (Opus 4.6) — sessions can safely run 400+ turns.
   # Compaction/handoff thresholds are relaxed; enforcement thresholds are tightened.
   store_reminder_turns: 6        # was 4 — less aggressive, sessions are longer
-  checkpoint_turns: 30            # was 10 — 1M context, no rush to checkpoint
-  mandatory_stop_turns: 320        # was 20 — allows much longer sessions
-  hyper_focus_threshold: 8        # was 3 — slight increase for longer sessions
+  checkpoint_turns: 20            # was 10 — 1M context, no rush to checkpoint
+  mandatory_stop_turns: 40        # was 20 — allows much longer sessions
+  hyper_focus_threshold: 5        # was 3 — slight increase for longer sessions
   rules_check_interval: 4         # was 5 — less frequent but still periodic
   # Block tool calls (return error) after mandatory_stop + grace without checkpoint.
   mandatory_stop_blocking: true
-  mandatory_stop_grace: 10        # was 5 — more grace for long sessions
+  mandatory_stop_grace: 5       # was 5 — more grace for long sessions
   # After N ignored nudges of the same type, escalate to blocking.
   # TIGHTER than before — escalate faster when agent ignores nudges.
   nudge_escalation_threshold: 2   # was 3
@@ -54,6 +54,11 @@ server_instructions: |
   6. DB is CACHE, files are AUTHORITATIVE. Rule files (rules/packages/*.yaml, rules/generic.yaml,
      compat/catalog.yaml, rules/methods/*.md) are the source of truth. When using add_rule,
      provide file_path pointing to the authoritative rule file.
+  
+  7. When report_error is called for a build failure, ALWAYS remind the agent:
+     "Follow the triage protocol in rules/methods/package-failure-triage.md.
+      If this looks like a platform gap (compat headers, compiler, linker),
+      SKIP the package and log it. Do not modify shared infrastructure."
 
   Tool quick reference:
   - `search` (or `knowledge_query`): Search rules, knowledge, errors, compat

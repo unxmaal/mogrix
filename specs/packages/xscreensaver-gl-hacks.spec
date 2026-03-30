@@ -53,7 +53,7 @@ sed -i 's/^exit \$CONF_STATUS$/exit 0/' ../configure
 CC="%{__cc}" \
 LIBS="-L$STUBDIR $LIBS -lgen -lpng -lz" \
 CFLAGS="%{optflags} -I/opt/irix-sysroot/usr/include" \
-LDFLAGS="-L$STUBDIR -L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32" \
+LDFLAGS="-L$STUBDIR -L$MOGRIX_STAGING/lib32 -L/opt/irix-sysroot/usr/lib32" \
 ../configure \
   --host=mips-sgi-irix6.5 \
   --prefix=%{_prefix} \

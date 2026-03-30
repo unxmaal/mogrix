@@ -1,6 +1,8 @@
 package: profanity
+
+build_after: none
 smoke_test:
-  - command: "/usr/sgug/bin/profanity -v 2>&1"
+  - command: "/opt/mogrix/bin/profanity -v 2>&1"
     expect: "Profanity"
 rules:
   drop_buildrequires:

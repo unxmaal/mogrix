@@ -150,7 +150,7 @@ The compat versions call `malloc` (which resolves to dlmalloc), ensuring consist
 
 **Symptom**:
 ```
-rld: Error: elfmap failed on /usr/sgug/lib32/libcurses.so : read 16 bytes too short to be elf header
+rld: Error: elfmap failed on /opt/mogrix/lib32/libcurses.so : read 16 bytes too short to be elf header
 ```
 
 **Solution**: Replace `echo "INPUT(-lfoo)"` with `ln -sf` symlinks in the package's install step.

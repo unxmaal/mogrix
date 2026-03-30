@@ -2,6 +2,9 @@
 # Links against ncurses (available in staging via SGUG-RSE)
 package: sl
 
+build_after:
+  - ncurses
+
 rules:
   spec_replacements:
     # sl's Makefile hardcodes link command as $(CC) $(CFLAGS) -o sl sl.c -lncurses

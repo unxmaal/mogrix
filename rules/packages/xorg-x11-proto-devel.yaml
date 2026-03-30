@@ -1,5 +1,7 @@
 package: xorg-x11-proto-devel
 
+build_after: none
+
 upstream:
   url: https://www.x.org/pub/individual/proto/xorgproto-2019.1.tar.bz2
   version: "2019.1"

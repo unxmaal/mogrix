@@ -22,7 +22,7 @@ GCC_CFG="$SCRIPT_DIR/gcc-config"
 # Cross-compiler settings
 CLANG="/opt/cross/bin/clang++"
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:-/opt/sgug-staging/usr/sgug}"
 IRIX_LD="$STAGING/bin/irix-ld"
 
 # Base flags matching irix-cxx

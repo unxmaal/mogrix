@@ -19,9 +19,9 @@ rules:
       cmake -B _build -S . \
         -DCMAKE_TOOLCHAIN_FILE=$MOGRIX_ROOT/cross/cmake-irix-toolchain.cmake \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr/sgug \
+        -DCMAKE_INSTALL_PREFIX=/opt/mogrix \
         -DCMAKE_INSTALL_LIBDIR=lib32 \
-        -DSDL2_DIR=/opt/sgug-staging/usr/sgug/lib32/cmake/SDL2 \
+        -DSDL2_DIR=$MOGRIX_STAGING/lib32/cmake/SDL2 \
         -DCMAKE_EXE_LINKER_FLAGS="-lm" \
         -DBUILD_SHARED_LIBS:BOOL=OFF
   - pattern: "%cmake_build"
@@ -58,5 +58,5 @@ rules:
   - pattern: "%{_datadir}/%{name}"
     replacement: "%{_datadir}/milkytracker"
 smoke_test:
-  - command: "/usr/sgug/bin/milkytracker --help 2>&1"
+  - command: "/opt/mogrix/bin/milkytracker --help 2>&1"
     expect: ""

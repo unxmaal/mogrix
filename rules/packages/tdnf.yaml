@@ -3,9 +3,9 @@
 # Has sgifixes patches, needs compat functions
 #
 smoke_test:
-  - command: "/usr/sgug/bin/tdnf --version"
+  - command: "/opt/mogrix/bin/tdnf --version"
     expect: "tdnf"
-  - command: "/usr/sgug/bin/tdnf repolist"
+  - command: "/opt/mogrix/bin/tdnf repolist"
 #
 # ---metadata---
 # complexity: high
@@ -23,10 +23,10 @@ smoke_test:
 #   - common/config.h (same + TDNF_DEFAULT_VARS_DIRS)
 #
 # These are NOT cmake-configurable. Must be patched in %build section.
-# Our patches change them to /usr/sgug/etc/* to match SGUG-RSE conventions.
+# Our patches change them to /opt/mogrix/etc/* to match SGUG-RSE conventions.
 #
 # Build command (MUST use --target for correct arch):
-#   rpmbuild --macros="/usr/lib/rpm/macros:/opt/sgug-staging/rpmmacros.irix" \
+#   rpmbuild --macros="/usr/lib/rpm/macros:$MOGRIX_STAGING_ROOT/rpmmacros.irix" \
 #     --define '_disable_source_fetch 1' --nodeps --target=mips-sgi-irix -ba tdnf.spec
 # ---
 
@@ -50,7 +50,7 @@ upstream:
   source_dir: tdnf-tdnf-3.5.14
 
 # IRIX-specific patches
-# client-defines.sgifixes.patch - fixes hardcoded /etc paths to /usr/sgug/etc
+# client-defines.sgifixes.patch - fixes hardcoded /etc paths to /opt/mogrix/etc
 # gpgcheck-rpm419.sgifixes.patch - fixes gpgcheck for rpm 4.19 API
 # tdnf-common-utils.sgifixes.patch - bypasses realpath() which returns EINVAL on IRIX for non-existent paths
 # add_patch not used — hand-written spec already has Patch500-504 for IRIX patches
@@ -58,11 +58,11 @@ upstream:
 
 rules:
   # Hand-written spec has compat sources baked in — disable generic injection
+  # (Source100-110 already used).
   inject_compat_functions: []
-  # Remove _XOPEN_SOURCE=500 which triggers IRIX sys/time.h static select()
-  # wrapper that conflicts with unistd.h's extern select() declaration
-  prep_commands:
-    - "$MOGRIX_ROOT/tools/safepatch CMakeLists.txt --delete-line '_XOPEN_SOURCE' --no-backup --quiet || true"
+  # _XOPEN_SOURCE removal is already baked into the hand-written spec.
+  # Do NOT add it to prep_commands — the emitter injects a duplicate
+  # that fails when a Fedora patch already removed the line.
 
   # Mogrix provides compat functions - override SGUG-RSE's libdicl-based system
   # These get statically linked so we don't need libdicl at runtime
@@ -94,12 +94,22 @@ rules:
 
   # Use cross-compiled deps from staging
   export_vars:
-    PKG_CONFIG_PATH: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_LIBDIR: "/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-    PKG_CONFIG_SYSROOT_DIR: "/opt/sgug-staging"
+    PKG_CONFIG_PATH: "$MOGRIX_STAGING/lib32/pkgconfig"
+    PKG_CONFIG_LIBDIR: "$MOGRIX_STAGING/lib32/pkgconfig"
+    PKG_CONFIG_SYSROOT_DIR: "$MOGRIX_STAGING_ROOT"
 
   # Fix the %check section and cmake macros for cross-compilation
   spec_replacements:
+    # Hand-written spec has hardcoded old prefix (/usr/sgug, /opt/sgug-staging/usr/sgug).
+    # Fix ALL paths to new prefix. This must happen before any other replacements.
+    - pattern: "/usr/sgug"
+      replacement: "/opt/mogrix"
+    # Source101 is getopt_long.c (was sqlite3_stub.c in old spec). Keep it.
+    - pattern: "/opt/sgug-staging/opt/mogrix"
+      replacement: "%{_staging}"
+    # Inject MOGRIX_STAGING export before PKG_CONFIG (irix-cc needs it).
+    - pattern: 'export PKG_CONFIG_PATH="%{_staging}/lib32/pkgconfig"'
+      replacement: "export MOGRIX_STAGING=\"%{_staging}\"\nexport MOGRIX_STAGING_ROOT=\"%{_staging_root}\"\nexport PKG_CONFIG_PATH=\"$MOGRIX_STAGING/lib32/pkgconfig\"\nexport PKG_CONFIG_LIBDIR=\"$MOGRIX_STAGING/lib32/pkgconfig\"\nexport PKG_CONFIG_SYSROOT_DIR=\"$MOGRIX_STAGING_ROOT\""
     # Remove systemd unit dir from mkdir (IRIX has no systemd)
     - pattern: "         %{buildroot}%{_unitdir} \\\n"
       replacement: ""
@@ -107,12 +117,7 @@ rules:
     # Replace with inline License tag.
     - pattern: "%include %{SOURCE1}"
       replacement: "License: LGPL-2.1-only AND LGPL-2.1-or-later AND GPL-2.0-only AND BSD-3-Clause"
-    # Use SGUG-RSE compat system, but replace sqlite3_stub with real sqlite3
-    # Only disable Source101 (sqlite3_stub) and its cp command
-    - pattern: "Source101: sqlite3_stub.c"
-      replacement: "# Source101: sqlite3_stub.c - using real sqlite3 instead"
-    - pattern: "cp %{SOURCE101} mogrix-compat/"
-      replacement: "# cp %{SOURCE101} mogrix-compat/ - using real sqlite3 instead"
+    # Source101 was sqlite3_stub.c in old spec, now getopt_long.c — keep cp intact
     # Remove stale SOURCE107 reference (doesn't exist after previous conversions)
     - pattern: "cp %{SOURCE107} mogrix-compat/"
       replacement: "# cp %{SOURCE107} - removed (Source107 no longer exists)"
@@ -153,13 +158,13 @@ rules:
           -DCMAKE_RANLIB=%{__ranlib} \
           -DCMAKE_INSTALL_PREFIX=%{_prefix} \
           -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
-          -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include" \
-          -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
-          -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
-          -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
-          -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
-          -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
-          -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_C_FLAGS="-I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include" \
+          -DCMAKE_EXE_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
+          -DCMAKE_SHARED_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
+          -DCMAKE_PREFIX_PATH=$MOGRIX_STAGING \
+          -DCMAKE_INCLUDE_PATH=$MOGRIX_STAGING/include \
+          -DCMAKE_LIBRARY_PATH=$MOGRIX_STAGING/lib32 \
+          -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \
           -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
           -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
           -DCMAKE_BUILD_TYPE=Debug \
@@ -202,7 +207,7 @@ rules:
         # Skip Python bindings installation (not built for cross-compilation)
     # Add yum.repos.d directory and default repo file to %files (tdnf owns this directory per package-rules.md)
     - pattern: "%dir %{_var}/cache/%{name}"
-      replacement: "%dir %{_var}/cache/%{name}\n%dir /usr/sgug/etc/yum.repos.d\n%config(noreplace) /usr/sgug/etc/yum.repos.d/mogrix.repo"
+      replacement: "%dir %{_var}/cache/%{name}\n%dir /opt/mogrix/etc/yum.repos.d\n%config(noreplace) /opt/mogrix/etc/yum.repos.d/mogrix.repo"
     # Fix shared library patterns for non-versioned libs
     - pattern: "%{_libdir}/libtdnf.so.*"
       replacement: "%{_libdir}/libtdnf.so"
@@ -267,23 +272,23 @@ rules:
     - pattern: "%systemd_postun_with_restart %{automatic_services}"
       replacement: "# disabled: %systemd_postun_with_restart %{automatic_services}"
 
-  # Fix tdnf.conf paths for IRIX - must be rooted at /usr/sgug, not /etc or /var
+  # Fix tdnf.conf paths for IRIX - must be rooted at /opt/mogrix, not /etc or /var
   # Also set IRIX-specific settings:
   # - gpgcheck=0 (no GPG infrastructure on IRIX)
   # - distroverpkg= (empty - disable distro package check since rpmdb is empty at bootstrap)
   # - releasever=1 (prevent $releasever lookup)
   # - basearch=mips (IRIX uname returns IP30/IP32, not a usable arch)
   install_cleanup:
-    - sed -i 's|repodir=/etc/|repodir=/usr/sgug/etc/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
-    - sed -i 's|cachedir=/var/|cachedir=/usr/sgug/var/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+    - sed -i 's|repodir=/etc/|repodir=/opt/mogrix/etc/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+    - sed -i 's|cachedir=/var/|cachedir=/opt/mogrix/var/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
     - sed -i 's|gpgcheck=1|gpgcheck=0|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
     - echo 'distroverpkg=sgugrse-release' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
     - echo 'releasever=1' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
     - echo 'basearch=mips' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
-    - mkdir -p $RPM_BUILD_ROOT/usr/sgug/etc/yum.repos.d
-    - mkdir -p $RPM_BUILD_ROOT/usr/sgug/var/cache/tdnf
+    - mkdir -p $RPM_BUILD_ROOT/opt/mogrix/etc/yum.repos.d
+    - mkdir -p $RPM_BUILD_ROOT/opt/mogrix/var/cache/tdnf
     - |
-      cat > $RPM_BUILD_ROOT/usr/sgug/etc/yum.repos.d/mogrix.repo << 'REPOEOF'
+      cat > $RPM_BUILD_ROOT/opt/mogrix/etc/yum.repos.d/mogrix.repo << 'REPOEOF'
       [mogrix]
       name=Mogrix Local Repository
       baseurl=file:///tmp/mogrix-repo

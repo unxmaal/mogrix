@@ -1,4 +1,8 @@
+# SKIP: mogrix build process hangs (98% CPU for 60+ min without spawning rpmbuild).
+# Not a btop code issue — mogrix infrastructure bug in spec conversion/build pipeline.
+# btop is a leaf package (nothing depends on it).
 package: btop
+skip: true
 
 build_after:
   - ncurses
@@ -50,7 +54,7 @@ rules:
         # Force PLATFORM to irix for cross-compilation
         %{__make} %{?_smp_mflags} \
           PLATFORM=irix \
-          CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx-libcxx" \
+          CXX="$MOGRIX_STAGING/bin/irix-cxx-libcxx" \
           OPTFLAGS="%{optflags}" \
           PREFIX="%{_prefix}" \
           STATIC=true \
@@ -142,5 +146,5 @@ rules:
       "
 
 smoke_test:
-  - command: "/usr/sgug/bin/btop --version"
+  - command: "/opt/mogrix/bin/btop --version"
     expect: "btop"

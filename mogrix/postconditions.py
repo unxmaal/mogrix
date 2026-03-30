@@ -37,7 +37,7 @@ class PostconditionReport:
 
 # Patterns that are errors (should have been removed/replaced)
 LINUX_POISON = [
-    (re.compile(r"(?<!/usr/sgug)/usr/lib64/"), "Linux lib64 path (should be /usr/sgug/lib32/)"),
+    (re.compile(r"(?<!/opt/mogrix)/usr/lib64/"), "Linux lib64 path (should be /opt/mogrix/lib32/)"),
     (re.compile(r"-lfstack-protector|__stack_chk"), "stack protector reference (IRIX has none)"),
     (re.compile(r"%\{_unitdir\}"), "systemd unit directory macro"),
     (re.compile(r"%\{_tmpfilesdir\}"), "systemd tmpfiles directory macro"),

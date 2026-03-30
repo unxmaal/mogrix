@@ -2,6 +2,8 @@
 # Has sgifixes patches, needs compat functions
 
 package: python3
+
+build_after: none
 skip: true
 skip_reason: "no SRPM — FC40 package name is python3.12 or similar"
 blocked: true

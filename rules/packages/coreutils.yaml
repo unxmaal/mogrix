@@ -1,12 +1,14 @@
 package: coreutils
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: /usr/sgug/bin/ls --version
+- command: /opt/mogrix/bin/ls --version
   expect: '9.4'
-- command: /usr/sgug/bin/cat --version
+- command: /opt/mogrix/bin/cat --version
   expect: '9.4'
-- command: echo hello | /usr/sgug/bin/head -1
+- command: echo hello | /opt/mogrix/bin/head -1
   expect: hello
 rules:
   inject_compat_functions:

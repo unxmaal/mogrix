@@ -6,7 +6,7 @@ Check these resources before making significant changes or debugging build failu
 
 > **For any change that affects paths, prefixes, API names, or project-wide conventions**: MCP knowledge search finds only indexed rules/knowledge (~60% coverage). It does NOT index tools/, scripts/, tests/, specs/, configs/, patches/, or docs. Always follow MCP search with `grep -rn "<pattern>" . --include="*.py" --include="*.sh" --include="*.yaml" --include="*.md" --include="*.cmake" --include="*.ini" --include="*.conf" --include="*.c" --include="*.h" --include="*.spec"` across the entire project tree. Categorize results. Verify against the plan. Then execute.
 
-Lesson: the `/usr/sgug` → `/opt/mogrix` prefix change plan missed 40% of affected files (180+ total) until a full rg sweep caught tools/, scripts/, tests/, specs/, a 3rd cmake toolchain, qmake.conf, 4 Python modules, hand-written specs, configs, and patches that the MCP didn't know about.
+Lesson: the `/opt/mogrix` → `/opt/mogrix` prefix change plan missed 40% of affected files (180+ total) until a full rg sweep caught tools/, scripts/, tests/, specs/, a 3rd cmake toolchain, qmake.conf, 4 Python modules, hand-written specs, configs, and patches that the MCP didn't know about.
 
 ## -1. Map the Territory (Deep Systems Work)
 

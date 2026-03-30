@@ -1,6 +1,21 @@
 # GraphicsMagick - image processing suite for IRIX
 package: GraphicsMagick
 
+build_after:
+  - bzip2
+  - freetype
+  - lcms2
+  - libICE
+  - libSM
+  - libX11
+  - libXext
+  - libjpeg-turbo
+  - libpng
+  - libtiff
+  - libxml2
+  - xz
+  - zlib-ng
+
 rules:
   drop_buildrequires:
     - jasper-devel

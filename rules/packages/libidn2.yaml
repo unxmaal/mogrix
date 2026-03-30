@@ -1,4 +1,7 @@
 package: libidn2
+
+build_after:
+  - libunistring
 rules:
   configure_flags:
     add:

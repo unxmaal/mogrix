@@ -1,6 +1,11 @@
 # libtiff - Tag Image File Format library
 package: libtiff
 
+build_after:
+  - libjpeg-turbo
+  - xz
+  - zlib-ng
+
 rules:
   drop_buildrequires:
     - jbigkit-devel

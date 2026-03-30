@@ -1,4 +1,7 @@
 package: vile
+
+build_after:
+  - ncurses
 rules:
   drop_buildrequires:
   - libXpm-devel
@@ -43,5 +46,5 @@ rules:
   install_cleanup:
   - rm -rf %{buildroot}%{_libdir}/vile
 smoke_test:
-- command: "/usr/sgug/bin/vile -V"
+- command: "/opt/mogrix/bin/vile -V"
   expect: "vile"

@@ -161,7 +161,7 @@ class SSHConnection:
         escaped_cmd = command.replace("'", "'\\''")
         if chroot:
             remote_cmd = (
-                f"chroot {self.chroot} /usr/sgug/bin/sgug-exec "
+                f"chroot {self.chroot} /opt/mogrix/bin/sgug-exec "
                 f"/bin/sh -c '{escaped_cmd}'"
             )
         else:
@@ -547,7 +547,7 @@ def list_all_results() -> list[dict]:
 
 def check_deps_linux(path: Path) -> list[dict]:
     """Check library deps of MIPS ELF binaries using readelf on Linux."""
-    staging_lib = Path("/opt/sgug-staging/usr/sgug/lib32")
+    staging_lib = Path("$MOGRIX_STAGING/lib32")
     results = []
 
     # Find ELF binaries
@@ -658,7 +658,7 @@ class MogrixTestServer:
                     "Returns exit code, stdout, stderr, crash/signal info. "
                     "Runs in chroot by default. For bundle binaries, set "
                     "host_mode=true. "
-                    "Example: test_binary {\"binary\": \"/usr/sgug/bin/grep\", "
+                    "Example: test_binary {\"binary\": \"/opt/mogrix/bin/grep\", "
                     "\"args\": \"--version\"}"
                 ),
                 "inputSchema": {
@@ -693,7 +693,7 @@ class MogrixTestServer:
                             "type": "string",
                             "description": (
                                 "Working directory on IRIX. Default: binary's "
-                                "parent dir in host_mode, /usr/sgug in chroot."
+                                "parent dir in host_mode, /opt/mogrix in chroot."
                             ),
                         },
                     },
@@ -736,7 +736,7 @@ class MogrixTestServer:
                     "intelligent output parsing. Returns summary of library "
                     "loads, file errors, signals, and crash info. "
                     "Example: par_trace {\"command\": "
-                    "\"/usr/sgug/bin/grep --version\"}"
+                    "\"/opt/mogrix/bin/grep --version\"}"
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1272,7 +1272,7 @@ class MogrixTestServer:
                     soname = m.group(1)
                     # Check if library exists
                     check_rc, _, _ = self.ssh.exec_chroot(
-                        f"ls /usr/sgug/lib32/{soname} /usr/lib32/{soname} "
+                        f"ls /opt/mogrix/lib32/{soname} /usr/lib32/{soname} "
                         f"2>/dev/null | head -1",
                         timeout=5,
                     )

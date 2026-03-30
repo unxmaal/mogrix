@@ -4,6 +4,8 @@
 
 package: npth
 
+build_after: none
+
 rules:
   # IRIX puts pthread_atfork in unistd.h, not pthread.h
   # Add include so the declaration is visible

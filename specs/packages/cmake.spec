@@ -41,13 +41,13 @@ set(CMAKE_SYSTEM_NAME IRIX)
 set(CMAKE_SYSTEM_PROCESSOR mips)
 set(UNIX 1)
 
-set(CMAKE_C_COMPILER   /opt/sgug-staging/usr/sgug/bin/irix-cc)
-set(CMAKE_CXX_COMPILER /opt/sgug-staging/usr/sgug/bin/irix-cxx)
+set(CMAKE_C_COMPILER   $MOGRIX_STAGING/bin/irix-cc)
+set(CMAKE_CXX_COMPILER $MOGRIX_STAGING/bin/irix-cxx)
 set(CMAKE_AR           /opt/cross/bin/llvm-ar)
 set(CMAKE_RANLIB       /opt/cross/bin/llvm-ranlib)
-set(CMAKE_LINKER       /opt/sgug-staging/usr/sgug/bin/irix-ld)
+set(CMAKE_LINKER       $MOGRIX_STAGING/bin/irix-ld)
 
-set(CMAKE_FIND_ROOT_PATH /opt/sgug-staging/usr/sgug)
+set(CMAKE_FIND_ROOT_PATH $MOGRIX_STAGING)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
@@ -183,7 +183,7 @@ perl -pi -e 'if (/Build tree has.*bin.*config.*cmake/) {
   -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
   -DCMAKE_C_FLAGS="%{optflags}" \
   -DCMAKE_CXX_FLAGS="%{optflags}" \
-  -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -L$(pwd)/mogrix-compat -lpthread -lm -lmogrix_compat -lmogrix-compat" \
+  -DCMAKE_EXE_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 -L$(pwd)/mogrix-compat -lpthread -lm -lmogrix_compat -lmogrix-compat" \
   -DCMAKE_USE_SYSTEM_LIBRARIES=OFF \
   -DBUILD_CursesDialog=OFF \
   -DBUILD_QtDialog=OFF \

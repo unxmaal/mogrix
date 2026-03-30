@@ -56,18 +56,18 @@ uv run --directory "$MOGRIX_ROOT" mogrix patch-crates
 # 5. Build compat library
 mkdir -p compat
 %{__cc} -c "$MOGRIX_ROOT/compat/rust/rust_compat.c" -o compat/rust_compat.o \
-  -I/opt/sgug-staging/usr/sgug/include \
+  -I$MOGRIX_STAGING/include \
   -I"$MOGRIX_ROOT/compat/include"
 %{__cc} -c "$MOGRIX_ROOT/compat/rust/errno_location.c" -o compat/errno_location.o \
-  -I/opt/sgug-staging/usr/sgug/include
+  -I$MOGRIX_STAGING/include
 %{__cc} -c "$MOGRIX_ROOT/compat/dicl/openat-compat.c" -o compat/openat-compat.o \
-  -I"$MOGRIX_ROOT/compat/include" -I/opt/sgug-staging/usr/sgug/include
+  -I"$MOGRIX_ROOT/compat/include" -I$MOGRIX_STAGING/include
 %{__cc} -c "$MOGRIX_ROOT/compat/string/strnlen.c" -o compat/strnlen.o \
-  -I"$MOGRIX_ROOT/compat/include" -I/opt/sgug-staging/usr/sgug/include
+  -I"$MOGRIX_ROOT/compat/include" -I$MOGRIX_STAGING/include
 %{__cc} -c "$MOGRIX_ROOT/compat/stdlib/setenv.c" -o compat/setenv.o \
-  -I"$MOGRIX_ROOT/compat/include" -I/opt/sgug-staging/usr/sgug/include
+  -I"$MOGRIX_ROOT/compat/include" -I$MOGRIX_STAGING/include
 %{__cc} -c "$MOGRIX_ROOT/compat/error/strerror_r.c" -o compat/strerror_r.o \
-  -I"$MOGRIX_ROOT/compat/include" -I/opt/sgug-staging/usr/sgug/include
+  -I"$MOGRIX_ROOT/compat/include" -I$MOGRIX_STAGING/include
 %{__ar} rcs compat/librust_irix_compat.a compat/*.o
 ```
 
@@ -125,7 +125,7 @@ For packages with C library dependencies:
 | SDL2 link | `-lSDL2` appended to `RUSTFLAGS` |
 | cc-crate C deps | `CC_mips_sgi_irix6_5="$MOGRIX_ROOT/cross/bin/irix-cc"`, `AR_mips_sgi_irix6_5=ar` |
 
-All sysroot paths use `/opt/sgug-staging/usr/sgug/{lib32,include}`.
+All sysroot paths use `$MOGRIX_STAGING/{lib32,include}`.
 
 ### The cargo invocation
 
@@ -180,7 +180,7 @@ Rust binaries are N32 MIPS binaries. Test via the standard mogrix test path:
 
 ```
 # Copy to IRIX chroot and test
-irix_copy_to local_path=target/mips-sgi-irix6.5/release/rg remote_path=/usr/sgug/bin/rg
+irix_copy_to local_path=target/mips-sgi-irix6.5/release/rg remote_path=/opt/mogrix/bin/rg
 
 # Run (via MCP):
 irix_exec "rg --version"

@@ -1,4 +1,10 @@
 package: libsndfile
+
+build_after:
+  - flac
+  - libogg
+  - libvorbis
+  - opus
 rules:
   drop_buildrequires:
   - gsm-devel
@@ -58,5 +64,5 @@ rules:
 
       '
 smoke_test:
-- command: ls /usr/sgug/lib32/libsndfile.so.1
+- command: ls /opt/mogrix/lib32/libsndfile.so.1
   expect: libsndfile.so.1

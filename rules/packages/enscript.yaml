@@ -2,6 +2,8 @@
 # NOTE: Bundled gettext has strerror@U@ and stpcpy conflicts.
 # Low priority — skip from rebuild-all for now.
 package: enscript
+
+build_after: none
 skip: true
 rules:
   configure_disable:

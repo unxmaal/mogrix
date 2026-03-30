@@ -2,6 +2,8 @@
 # Used by GnuTLS
 package: nettle
 
+build_after: none
+
 rules:
   configure_flags:
     add:
@@ -17,7 +19,7 @@ rules:
 
   # Nettle Makefile calls ld directly; use our wrapper to filter non-linker flags
   export_vars:
-    LD: "/opt/sgug-staging/share/mogrix/irix-ld"
+    LD: "$MOGRIX_STAGING_ROOT/share/mogrix/irix-ld"
 
   # Remove the bootstrap conditional so compat Source entries don't get trapped inside it
   remove_conditionals:

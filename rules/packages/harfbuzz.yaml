@@ -1,11 +1,11 @@
 package: harfbuzz
-# Pass 2: with cairo and ICU enabled now that both are built.
-# Graphite2 stays disabled (not in staging). Introspection disabled (no gobject-introspection).
+# Pass 1: without ICU (skip:true — __timespec libc++ issue).
+# Cairo and gobject enabled. Graphite2 disabled (not in staging).
+# Introspection disabled (no gobject-introspection).
 
 build_after:
   - freetype
   - glib2
-  - icu
   - cairo
 
 rules:
@@ -13,11 +13,17 @@ rules:
   - graphite2-devel
   spec_replacements:
   - pattern: '%configure --disable-static --with-graphite2 --with-gobject --enable-introspection'
-    replacement: 'export CXX="/opt/sgug-staging/usr/sgug/bin/irix-cxx"
+    replacement: 'export CXX="%{_staging}/bin/irix-cxx"
 
       export CXXFLAGS="%{optflags}"
 
-      %configure --disable-static --without-graphite2 --with-gobject --with-glib --disable-introspection --with-cairo --with-icu
+      %define __cxx %{_staging}/bin/irix-cxx
+
+      %configure --disable-static --without-graphite2 --with-gobject --with-glib --disable-introspection --with-cairo --without-icu
+
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || true
+
+      sed -i "s/need_relink=yes/need_relink=no/g" libtool
 
       '
   - pattern: 'License:        MIT-Modern-Variant'
@@ -29,8 +35,6 @@ rules:
 
       Provides: libharfbuzz-gobject.so.0(mips-32)
 
-      Provides: libharfbuzz-icu.so.0(mips-32)
-
       Provides: harfbuzz(mips-32) = %{version}-%{release}
 
       '
@@ -39,7 +43,7 @@ rules:
       Requires:       %{name}-icu%{?_isa} = %{version}-%{release}'
     replacement: 'Requires:       %{name} = %{version}-%{release}
 
-      Requires:       %{name}-icu = %{version}-%{release}'
+      # ICU disabled (skip:true)'
   - pattern: '%ldconfig_scriptlets
 
 
@@ -99,8 +103,6 @@ rules:
 
       %{_libdir}/libharfbuzz-cairo.so
 
-      %{_libdir}/libharfbuzz-icu.so
-
       %{_libdir}/libharfbuzz-subset.so
 
       %{_libdir}/pkgconfig/harfbuzz.pc
@@ -108,8 +110,6 @@ rules:
       %{_libdir}/pkgconfig/harfbuzz-cairo.pc
 
       %{_libdir}/pkgconfig/harfbuzz-gobject.pc
-
-      %{_libdir}/pkgconfig/harfbuzz-icu.pc
 
       %{_libdir}/pkgconfig/harfbuzz-subset.pc
 
@@ -138,8 +138,6 @@ rules:
 
       %{_libdir}/libharfbuzz-gobject.so
 
-      %{_libdir}/libharfbuzz-icu.so
-
       %{_libdir}/libharfbuzz-subset.so
 
       %{_libdir}/pkgconfig/harfbuzz.pc
@@ -147,8 +145,6 @@ rules:
       %{_libdir}/pkgconfig/harfbuzz-cairo.pc
 
       %{_libdir}/pkgconfig/harfbuzz-gobject.pc
-
-      %{_libdir}/pkgconfig/harfbuzz-icu.pc
 
       %{_libdir}/pkgconfig/harfbuzz-subset.pc
 
@@ -158,9 +154,13 @@ rules:
   - pattern: '%files icu
 
       %{_libdir}/libharfbuzz-icu.so.*'
-    replacement: '%files icu
-
-      %{_libdir}/libharfbuzz-icu.so.*'
+    replacement: '# icu subpackage disabled (ICU skip:true)'
+  remove_lines:
+    - "%{_libdir}/pkgconfig/harfbuzz-icu.pc"
+    - "%{_libdir}/libharfbuzz-icu.so"
+    - "%dir %{_datadir}/gir-1.0"
+    - "%{_datadir}/gir-1.0/HarfBuzz-0.0.gir"
+    - "%doc %{_datadir}/gtk-doc"
   install_cleanup:
   - rm -rf %{buildroot}%{_datadir}/gtk-doc
   prep_commands:

@@ -1,4 +1,6 @@
 package: alpine
+
+build_after: none
 rules:
   inject_compat_functions:
   - mkdtemp
@@ -15,10 +17,10 @@ rules:
     - --without-krb5
     - --without-ldap
     - --without-ntlm
-    - --with-ssl-dir=/opt/sgug-staging/usr/sgug
-    - --with-ssl-certs-dir=/usr/sgug/etc/pki/tls/certs
-    - --with-ssl-include-dir=/opt/sgug-staging/usr/sgug/include
-    - --with-ssl-lib-dir=/opt/sgug-staging/usr/sgug/lib32
+    - --with-ssl-dir=$MOGRIX_STAGING
+    - --with-ssl-certs-dir=/opt/mogrix/etc/pki/tls/certs
+    - --with-ssl-include-dir=$MOGRIX_STAGING/include
+    - --with-ssl-lib-dir=$MOGRIX_STAGING/lib32
   spec_replacements:
   - pattern: --with-c-client-target=lfd
     replacement: --with-c-client-target=slx
@@ -27,9 +29,9 @@ rules:
 
       %configure'
   - pattern: --with-smtp-msa=/usr/sbin/sendmail
-    replacement: --with-smtp-msa=/usr/sgug/sbin/sendmail
+    replacement: --with-smtp-msa=/opt/mogrix/sbin/sendmail
   - pattern: --with-npa=/usr/bin/inews
-    replacement: --with-npa=/usr/sgug/bin/inews
+    replacement: --with-npa=/opt/mogrix/bin/inews
   - pattern: export RPM_BUILD_NCPUS=1
     replacement: '# Build help generators with host gcc (cross-compile HOSTCC pattern)
 

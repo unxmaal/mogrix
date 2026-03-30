@@ -1,4 +1,6 @@
 package: libyaml
+
+build_after: none
 rules:
   drop_buildrequires:
   - autoconf

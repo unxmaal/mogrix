@@ -3,6 +3,8 @@
 
 package: zchunk
 
+build_after: none
+
 # Old sgifixes.patch targeted 1.1.5, renaming 'bool stdout' to 'bool zcstdout'
 # in unzck.c and zck_gen_zdict.c. In 1.4.0, unzck.c is fixed upstream but
 # zck_gen_zdict.c still has 'bool stdout' (line 74). Use prep_commands

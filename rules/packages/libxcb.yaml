@@ -1,7 +1,10 @@
 package: libxcb
+
+build_after:
+  - libXau
 rules:
   prep_commands:
-  - export PYTHONPATH=/opt/sgug-staging/usr/sgug/lib/python3.12/site-packages:$PYTHONPATH
+  - export PYTHONPATH=$MOGRIX_STAGING/lib/python3.12/site-packages:$PYTHONPATH
   drop_buildrequires:
   - graphviz
   - pkgconfig(xorg-macros)
@@ -22,7 +25,7 @@ rules:
       # autoreconf -f needed to expunge rpaths
 
       autoreconf -v -f --install'
-    replacement: 'export PYTHONPATH=/opt/sgug-staging/usr/sgug/lib/python3.12/site-packages:$PYTHONPATH
+    replacement: 'export PYTHONPATH=$MOGRIX_STAGING/lib/python3.12/site-packages:$PYTHONPATH
 
       # Skip autoreconf — use distributed configure, provide pthread-stubs.pc
 

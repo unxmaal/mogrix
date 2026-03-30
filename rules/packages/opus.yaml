@@ -1,4 +1,6 @@
 package: opus
+
+build_after: none
 rules:
   drop_subpackages:
   - mingw32-*
@@ -39,5 +41,5 @@ rules:
   - pattern: rm %{buildroot}%{_libdir}/libopus.la
     replacement: '# .la already removed by generic install_cleanup'
 smoke_test:
-- command: ls /usr/sgug/lib32/libopus.so.0
+- command: ls /opt/mogrix/lib32/libopus.so.0
   expect: libopus.so.0

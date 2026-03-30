@@ -57,9 +57,9 @@ rules:
     - libX11-devel
 
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
 
   prep_commands:
     # Create isolated directory with IRIX native X11R6.3 headers for ABI compatibility
@@ -136,11 +136,11 @@ rules:
         cat > /tmp/sdl2-irix-cache.cmake << 'CACHEEOF'
         set(CMAKE_SYSTEM_NAME "Linux" CACHE STRING "")
         set(CMAKE_SYSTEM_PROCESSOR "mips" CACHE STRING "")
-        set(CMAKE_C_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/irix-sysroot/usr/include -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
-        set(CMAKE_CXX_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/irix-sysroot/usr/include -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include -O2 -g" CACHE STRING "")
-        set(CMAKE_EXE_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32 -lgen -laudio" CACHE STRING "")
-        set(CMAKE_SHARED_LINKER_FLAGS_INIT "-L/opt/sgug-staging/usr/sgug/lib32 -L/opt/irix-sysroot/usr/lib32 -lgen -laudio" CACHE STRING "")
-        set(CMAKE_FIND_ROOT_PATH "/opt/sgug-staging/usr/sgug;/opt/irix-sysroot/usr" CACHE STRING "")
+        set(CMAKE_C_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/irix-sysroot/usr/include -I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include -O2 -g" CACHE STRING "")
+        set(CMAKE_CXX_FLAGS_INIT "-I/tmp/irix-x11-inc -I/opt/irix-sysroot/usr/include -I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include -O2 -g" CACHE STRING "")
+        set(CMAKE_EXE_LINKER_FLAGS_INIT "-L$MOGRIX_STAGING/lib32 -L/opt/irix-sysroot/usr/lib32 -lgen -laudio" CACHE STRING "")
+        set(CMAKE_SHARED_LINKER_FLAGS_INIT "-L$MOGRIX_STAGING/lib32 -L/opt/irix-sysroot/usr/lib32 -lgen -laudio" CACHE STRING "")
+        set(CMAKE_FIND_ROOT_PATH "$MOGRIX_STAGING;/opt/irix-sysroot/usr" CACHE STRING "")
         set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY "ONLY" CACHE STRING "")
         set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE "ONLY" CACHE STRING "")
         set(THREADS_PTHREAD_ARG "0" CACHE STRING "")
@@ -190,14 +190,14 @@ rules:
           -C /tmp/sdl2-irix-cache.cmake \
           -DCMAKE_MAKE_PROGRAM=/usr/bin/make \
           -DCMAKE_C_COMPILER=%{__cc} \
-          -DCMAKE_CXX_COMPILER=/opt/sgug-staging/usr/sgug/bin/irix-cxx \
+          -DCMAKE_CXX_COMPILER=$MOGRIX_STAGING/bin/irix-cxx-libcxx \
           -DCMAKE_AR=%{__ar} \
           -DCMAKE_RANLIB=%{__ranlib} \
           -DCMAKE_INSTALL_PREFIX=%{_prefix} \
           -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
-          -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
-          -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
-          -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
+          -DCMAKE_PREFIX_PATH=$MOGRIX_STAGING \
+          -DCMAKE_INCLUDE_PATH=$MOGRIX_STAGING/include \
+          -DCMAKE_LIBRARY_PATH=$MOGRIX_STAGING/lib32 \
           -DCMAKE_BUILD_TYPE=Release \
           -DTHREADS_PREFER_PTHREAD_FLAG=OFF \
           -DSDL_DLOPEN=ON \

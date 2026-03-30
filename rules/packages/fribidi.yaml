@@ -1,4 +1,6 @@
 package: fribidi
+
+build_after: none
 rules:
   configure_flags:
     add:

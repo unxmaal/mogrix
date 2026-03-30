@@ -14,6 +14,8 @@
 # thread-safe, but all IRIX GUI apps are single-threaded).
 package: pixman
 
+build_after: none
+
 rules:
 
   prep_commands:

@@ -1,6 +1,8 @@
 # help2man - creates man pages from --help output
 package: help2man
 
+build_after: none
+
 rules:
   spec_replacements:
     # Remove localized man pages — %find_lang doesn't work in cross-build

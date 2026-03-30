@@ -108,7 +108,7 @@ cp bin/lld /path/to/tools/bin/ld.lld-irix-18
 Update the irix-ld wrapper to use the new binary:
 
 ```bash
-# In /opt/sgug-staging/usr/sgug/bin/irix-ld:
+# In $MOGRIX_STAGING/bin/irix-ld:
 LLD="${IRIX_LLD:-/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18}"
 ```
 

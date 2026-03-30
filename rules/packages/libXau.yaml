@@ -3,6 +3,8 @@
 
 package: libXau
 
+build_after: none
+
 rules:
 
   spec_replacements:

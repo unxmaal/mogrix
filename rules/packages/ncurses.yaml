@@ -3,6 +3,9 @@
 # SGUG-RSE reference: packages/ncurses/
 package: ncurses
 
+build_after:
+  - ncurses
+
 add_patch:
   - ncurses.sgiinfocmperr.patch
 

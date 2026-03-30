@@ -3,12 +3,14 @@
 # The spec does its own make invocations — we patch the Makefile directly.
 package: dos2unix
 
+build_after: none
+
 rules:
   prep_commands:
     # Disable NLS (gettext) — cross-compile has no msgfmt
     - "sed -i 's/^ENABLE_NLS[[:space:]]*=.*/ENABLE_NLS =/' Makefile"
-    # Force prefix to /usr/sgug — use override-style assignment
-    - "sed -i 's|^prefix[[:space:]]*= /usr$|prefix = /usr/sgug|' Makefile"
+    # Force prefix to /opt/mogrix — use override-style assignment
+    - "sed -i 's|^prefix[[:space:]]*= /usr$|prefix = /opt/mogrix|' Makefile"
   spec_replacements:
     # Override prefix, CC, and add -lgen for dirname() (IRIX has dirname in libgen, not libc)
     - pattern: 'LDFLAGS="%{build_ldflags}"'

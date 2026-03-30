@@ -4,6 +4,9 @@
 # which hides BSD types (u_int/u_char) needed by IRIX arpa/inet.h
 package: mpg123
 
+build_after:
+  - libao
+
 rules:
   drop_buildrequires:
     - pulseaudio-libs-devel

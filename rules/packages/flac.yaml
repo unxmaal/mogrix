@@ -1,6 +1,8 @@
 # flac - lossless audio codec
 package: flac
 
+build_after: none
+
 rules:
   spec_replacements:
     # autogen.sh not needed — source tarball already has configure

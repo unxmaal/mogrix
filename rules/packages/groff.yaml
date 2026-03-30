@@ -1,8 +1,14 @@
+# SKIP: C++ with gnulib. libc++ hits rpl_frexp, libstdc++ hits cctype ::isblank
+# (irix-cxx doesn't define __c99, and adding __c99 globally breaks vsscanf in stdio).
+# Leaf package, 0 dependents. Needs per-package -D__c99 in irix-cxx only.
 package: groff
+
+build_after: none
+skip: true
 smoke_test:
-  - command: "/usr/sgug/bin/groff --version 2>&1 | head -1"
+  - command: "/opt/mogrix/bin/groff --version 2>&1 | head -1"
     expect: "groff"
-  - command: "/usr/sgug/bin/gdiffmk --version 2>&1"
+  - command: "/opt/mogrix/bin/gdiffmk --version 2>&1"
     expect: "gdiffmk"
 rules:
   drop_buildrequires:
@@ -35,6 +41,13 @@ rules:
   # Remove generate_man_files target from all
   - "sed -i '/^all:.*generate_man_files/d' Makefile.in"
   spec_replacements:
+  # gnulib renames frexp→rpl_frexp which conflicts with libc++ math.h.
+  # Override %__cxx to use libstdc++ for this package.
+  # (export_vars CXX doesn't work — %configure re-exports CXX="%{__cxx}")
+  - pattern: '%{!?with_x:%global with_x 1}'
+    replacement: '%{!?with_x:%global with_x 1}
+
+      %global __cxx %{_staging}/bin/irix-cxx'
   - pattern: '%autosetup -S git'
     replacement: '%autosetup -p1'
   - pattern: contrib/mom/examples/{README.txt,*.mom,mom.vim}

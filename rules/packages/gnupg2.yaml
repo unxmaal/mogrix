@@ -1,6 +1,15 @@
 package: gnupg2
+
+build_after:
+  - bzip2
+  - gettext
+  - libassuan
+  - libgcrypt
+  - libgpg-error
+  - npth
+  - zlib-ng
 smoke_test:
-- command: /usr/sgug/bin/gpg2 --version
+- command: /opt/mogrix/bin/gpg2 --version
   expect: 2.4.4
 add_patch:
 - gnupg2.sgifixes.patch
@@ -46,10 +55,10 @@ rules:
     - --disable-tofu
     - --without-libusb
     - --without-readline
-    - --with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug
-    - --with-libgcrypt-prefix=/opt/sgug-staging/usr/sgug
-    - --with-libassuan-prefix=/opt/sgug-staging/usr/sgug
-    - --with-ksba-prefix=/opt/sgug-staging/usr/sgug
+    - --with-libgpg-error-prefix=$MOGRIX_STAGING
+    - --with-libgcrypt-prefix=$MOGRIX_STAGING
+    - --with-libassuan-prefix=$MOGRIX_STAGING
+    - --with-ksba-prefix=$MOGRIX_STAGING
     remove:
     - --enable-g13
     - --enable-large-secmem

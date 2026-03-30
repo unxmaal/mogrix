@@ -33,7 +33,7 @@ rules:
     CFLAGS: "-pthread -fcommon"
     CXXFLAGS: "-pthread -fcommon"
     LIBS: "-lgcc_s -lc -lm -lpthread"
-    FLTK_CONFIG: "/opt/sgug-staging/usr/sgug/bin/fltk-config"
+    FLTK_CONFIG: "$MOGRIX_STAGING/bin/fltk-config"
 
   drop_buildrequires:
     - gettext

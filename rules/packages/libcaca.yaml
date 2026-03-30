@@ -1,4 +1,10 @@
 package: libcaca
+
+build_after:
+  - libX11
+  - ncurses
+  - slang
+  - zlib-ng
 # Re-enablement audit (Feb 2025):
 # - X11 backend: works. libX11 in staging, auto-detected by configure.
 # - imlib2 backend: works. libImlib2 in staging, auto-detected.
@@ -64,7 +70,7 @@ rules:
     replacement: '
 
 
-      /opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
+      $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
 
       %make_build'
   - pattern: mv %{buildroot}%{_docdir}/libcaca-dev libcaca-dev-docs

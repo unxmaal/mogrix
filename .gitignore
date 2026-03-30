@@ -91,3 +91,8 @@ cross/build-runtime/libstdc++.so.6
 cross/build-runtime/test_stdcxx*
 
 rebuild*
+
+.claude/knowledge.db-wal
+.claude/knowledge.db-shm
+.claude/mcp-enforcement-state.json
+.claude/mcp-enforcement-state.json.lock

@@ -686,7 +686,7 @@ class BatchBuilder:
     def _build(self, converted_srpm: Path, options: BatchOptions) -> BuildResult:
         """Run rpmbuild --cross on a converted SRPM."""
         rpmbuild_path = Path.home() / "rpmbuild"
-        macros_path = Path("/opt/sgug-staging/rpmmacros.irix")
+        macros_path = Path(__file__).parent.parent.resolve() / "staging" / "rpmmacros.irix"
         out_rpms = self.outputs_dir / "RPMS"
         out_rpms.mkdir(parents=True, exist_ok=True)
 

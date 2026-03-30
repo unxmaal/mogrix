@@ -22,7 +22,7 @@
 #define MAX_PATH 1024
 
 int main(int argc, char *argv[]) {
-    const char *libdir = "/usr/sgug/lib32";
+    const char *libdir = "/opt/mogrix/lib32";
     char line[MAX_PATH];
     char path[MAX_PATH];
     int failed = 0, loaded = 0;

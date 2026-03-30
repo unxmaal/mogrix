@@ -18,7 +18,7 @@ console = Console()
 class StagingConfig:
     """Configuration for the staging environment."""
 
-    staging_dir: Path = field(default_factory=lambda: Path("/opt/sgug-staging/usr/sgug"))
+    staging_dir: Path = field(default_factory=lambda: Path(__file__).parent.parent.resolve() / "staging" / "opt" / "mogrix")
     cross_bindir: Path = field(default_factory=lambda: Path("/opt/cross/bin"))
     mogrix_dir: Path = field(default_factory=lambda: Path(__file__).parent.parent)
 

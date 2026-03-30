@@ -1,7 +1,13 @@
+# SKIP: libc++ link fails — ninja's custom build system bypasses irix-cxx-libcxx
+# link mode, so -lc++ symbols not resolved. json-c and libsolv depend on this.
+# Needs dedicated investigation of ninja's configure.py link rule.
 # ninja-build - Small build system with a focus on speed
 # Uses its own Python bootstrap build system (not cmake/autotools)
 # configure.py --bootstrap directly invokes CXX for each source file
 package: ninja-build
+
+build_after: none
+skip: true
 rules:
   inject_compat_functions:
   - posix_spawn
@@ -14,8 +20,8 @@ rules:
   - emacs-filesystem
   - vim-filesystem
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
   spec_replacements:
   # Enable bootstrap mode (skip docs, tests, extras)
   - pattern: '%bcond_with bootstrap'
@@ -23,7 +29,7 @@ rules:
   # Replace build section: set cross-compile env, use pselect (no ppoll on IRIX)
   # Note: -l flags go in link rule (after $libs), not LDFLAGS (before objects)
   - pattern: "%set_build_flags\n%python3 configure.py --bootstrap --verbose\n./ninja -v all"
-    replacement: "export CXX=\"%{__cxx}\"\nexport AR=\"%{__ar}\"\nexport CXXFLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\"\nexport LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 -L$(pwd)/mogrix-compat\"\n# Patch link rule: compat/gen libs must come AFTER $in/$libs (link order)\nsed -i \"s|\\$cxx \\$ldflags -o \\$out \\$in \\$libs|\\$cxx \\$ldflags -o \\$out \\$in \\$libs -lmogrix-compat -lmogrix_compat -lgen|\" configure.py\npython3 configure.py --bootstrap --verbose --force-pselect\n# Skip ./ninja -v all — can't run MIPS binary on build host"
+    replacement: "export CXX=\"%{__cxx}\"\nexport AR=\"%{__ar}\"\nexport CXXFLAGS=\"-I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include %{optflags}\"\nexport LDFLAGS=\"-L$MOGRIX_STAGING/lib32 -L$(pwd)/mogrix-compat\"\n# Patch link rule: compat/gen libs must come AFTER $in/$libs (link order)\nsed -i \"s|\\$cxx \\$ldflags -o \\$out \\$in \\$libs|\\$cxx \\$ldflags -o \\$out \\$in \\$libs -lmogrix-compat -lgen -lc++ -lc++abi -lgcc_s|\" configure.py\npython3 configure.py --bootstrap --verbose --force-pselect\n# Skip ./ninja -v all — can't run MIPS binary on build host"
   prep_commands:
   # Stub out getloadavg (not available on IRIX) — just return -1 (load unknown)
   - "$MOGRIX_ROOT/tools/safepatch src/util.cc --old 'if (getloadavg(loadavg, 3) < 0)' --new 'if (1)' --no-backup --quiet"

@@ -1,10 +1,12 @@
 package: gzip
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: echo hello | /usr/sgug/bin/gzip -c | /usr/sgug/bin/gzip -dc
+- command: echo hello | /opt/mogrix/bin/gzip -c | /opt/mogrix/bin/gzip -dc
   expect: hello
-- command: /usr/sgug/bin/gzip --version
+- command: /opt/mogrix/bin/gzip --version
   expect: '1.13'
 rules:
   ac_cv_overrides:

@@ -30,8 +30,8 @@ rules:
     - --disable-lzo
     - --disable-hardening
     - --with-openssl=yes
-    - --with-openssl-include=/opt/sgug-staging/usr/sgug/include
-    - --with-openssl-lib=/opt/sgug-staging/usr/sgug/lib32
+    - --with-openssl-include=$MOGRIX_STAGING/include
+    - --with-openssl-lib=$MOGRIX_STAGING/lib32
   prep_commands:
   - sed -i '/^  \*)/i \  *irix*)\n  ;;' configure.ac
   - mkdir -p src/irix

@@ -6,7 +6,7 @@
 
 Cross-compiler does NOT define `__linux__`. Verify:
 ```bash
-echo | /opt/sgug-staging/usr/sgug/bin/irix-cc -dM -E - | grep __linux  # Should be empty
+echo | $MOGRIX_STAGING/bin/irix-cc -dM -E - | grep __linux  # Should be empty
 ```
 
 Search C++ source for Linux-only patterns (compile-time guards):

@@ -1,10 +1,10 @@
 # libwebp - WebP image format library (cmake-based)
 package: libwebp
+
+build_after: none
 rules:
-  drop_subpackages:
-  - java
-  - mingw32-libwebp
-  - mingw64-libwebp
+  # drop_subpackages disabled — engine _comment_orphaned_conditionals bug
+  # creates orphaned %endif. mingw/java disabled via bcond flip instead.
   drop_buildrequires:
   - freeglut-devel
   - java-devel
@@ -26,16 +26,16 @@ rules:
   - java-headless
   - jpackage-utils
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
   spec_replacements:
   # Disable mingw build
   - pattern: '%bcond_without mingw'
     replacement: '%bcond_with mingw'
   # Replace cmake macros with raw cross-compilation cmake
   - pattern: "# Native build\n%cmake\n%cmake_build"
-    replacement: "# Native build (cross-compilation for IRIX)\ncmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \\\n  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DWEBP_BUILD_VWEBP=OFF \\\n  -DBUILD_SHARED_LIBS=ON \\\n  -DUNIX=1\ncd _build && make %{?_smp_mflags}"
+    replacement: "# Native build (cross-compilation for IRIX)\ncmake -B _build -S . \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_SYSTEM_NAME=Linux \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_AR=%{__ar} \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include %{optflags}\" \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen\" \\\n  -DCMAKE_PREFIX_PATH=$MOGRIX_STAGING \\\n  -DCMAKE_INCLUDE_PATH=$MOGRIX_STAGING/include \\\n  -DCMAKE_LIBRARY_PATH=$MOGRIX_STAGING/lib32 \\\n  -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n  -DCMAKE_BUILD_TYPE=Release \\\n  -DWEBP_BUILD_VWEBP=OFF \\\n  -DBUILD_SHARED_LIBS=ON \\\n  -DUNIX=1\ncd _build && make %{?_smp_mflags}"
   # Replace cmake install
   - pattern: "# Native build\n%cmake_install"
     replacement: "# Native build\nmake -C _build install DESTDIR=%{buildroot}"
@@ -43,11 +43,11 @@ rules:
   - pattern: "%{_bindir}/vwebp\n"
     replacement: ""
 smoke_test:
-  - command: /usr/sgug/bin/cwebp -version
+  - command: /opt/mogrix/bin/cwebp -version
     expect: "1.3.2"
-  - command: /usr/sgug/bin/dwebp -version
+  - command: /opt/mogrix/bin/dwebp -version
     expect: "1.3.2"
-  - command: /usr/sgug/bin/gif2webp -version
+  - command: /opt/mogrix/bin/gif2webp -version
     expect: "1.3.2"
-  - command: /usr/sgug/bin/img2webp -version
+  - command: /opt/mogrix/bin/img2webp -version
     expect: "1.3.2"

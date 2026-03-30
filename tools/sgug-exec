@@ -31,14 +31,14 @@ unset PYTHONPATH
 unset PYTHONHOME
 unset HOST
 
-SGUG_ROOT=/usr/sgug
-SGUG_BIN=$SGUG_ROOT/bin
-SGUG_SBIN=$SGUG_ROOT/sbin
-SGUG_LIB=$SGUG_ROOT/lib32
+MOGRIX_ROOT=/opt/mogrix
+MOGRIX_BIN=$MOGRIX_ROOT/bin
+MOGRIX_SBIN=$MOGRIX_ROOT/sbin
+MOGRIX_LIB=$MOGRIX_ROOT/lib32
 
-export PATH=$SGUG_BIN:$SGUG_SBIN:/usr/bin/X11:/usr/bin:/bin:/usr/sbin:/usr/bsd
-export LD_LIBRARYN32_PATH=$SGUG_LIB:/usr/lib32:/lib32:/usr/lib:/lib
-export MANPATH=$SGUG_ROOT/share/man:/usr/share/catman/a_man:/usr/share/catman/g_man:/usr/share/catman/p_man:/usr/share/catman/u_man
+export PATH=$MOGRIX_BIN:$MOGRIX_SBIN:/usr/bin/X11:/usr/bin:/bin:/usr/sbin:/usr/bsd
+export LD_LIBRARYN32_PATH=$MOGRIX_LIB:/usr/lib32:/lib32:/usr/lib:/lib
+export MANPATH=$MOGRIX_ROOT/share/man:/usr/share/catman/a_man:/usr/share/catman/g_man:/usr/share/catman/p_man:/usr/share/catman/u_man
 export LC_ALL=C
 
 if [ $# -eq 0 ]; then

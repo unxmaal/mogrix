@@ -268,7 +268,7 @@ main() {
     echo ""
     echo "New LLD: $INSTALL_DIR/ld.lld-irix-18"
     echo ""
-    echo "To test with mogrix, update /opt/sgug-staging/usr/sgug/bin/irix-ld"
+    echo "To test with mogrix, update $MOGRIX_STAGING/bin/irix-ld"
     echo "to use this LLD path in the LLD= variable"
 }
 

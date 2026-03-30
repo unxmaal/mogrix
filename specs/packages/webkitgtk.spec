@@ -81,8 +81,8 @@ COMPAT_DIR=$(pwd)/mogrix-compat
   -DCMAKE_CXX_FLAGS="" \
   -DCMAKE_C_COMPILER_LAUNCHER=ccache \
   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-  -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -L$COMPAT_DIR -lpthread -lm -lmogrix_compat -lmogrix-compat" \
-  -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 -lpthread -lm" \
+  -DCMAKE_EXE_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 -L$COMPAT_DIR -lpthread -lm -lmogrix_compat -lmogrix-compat" \
+  -DCMAKE_SHARED_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 -lpthread -lm" \
   \
   -DUSE_GTK4=OFF \
   -DUSE_SOUP2=ON \
@@ -143,10 +143,10 @@ COMPAT_DIR=$(pwd)/mogrix-compat
   -DRuby_EXECUTABLE=/home/edodd/projects/github/unxmaal/mogrix/cross/native-tools/ruby \
   -DIMPORT_EXECUTABLES= \
   -DCMAKE_CROSSCOMPILING=ON \
-  -DHarfBuzz_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include/harfbuzz \
-  -DHarfBuzz_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libharfbuzz.so \
-  -DHarfBuzz_ICU_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include/harfbuzz \
-  -DHarfBuzz_ICU_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libharfbuzz-icu.so
+  -DHarfBuzz_INCLUDE_DIR=$MOGRIX_STAGING/include/harfbuzz \
+  -DHarfBuzz_LIBRARY=$MOGRIX_STAGING/lib32/libharfbuzz.so \
+  -DHarfBuzz_ICU_INCLUDE_DIR=$MOGRIX_STAGING/include/harfbuzz \
+  -DHarfBuzz_ICU_LIBRARY=$MOGRIX_STAGING/lib32/libharfbuzz-icu.so
 
 cd _build && make %{?_smp_mflags} VERBOSE=1
 

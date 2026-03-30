@@ -1,4 +1,6 @@
 package: time
+
+build_after: none
 rules:
   inject_compat_functions:
   - timegm

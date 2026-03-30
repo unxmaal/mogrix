@@ -202,6 +202,8 @@ class CompatInjector:
 
         lines = [
             "# Compile mogrix compat sources into static archive",
+            "export MOGRIX_STAGING=\"%{_staging}\"",
+            "export MOGRIX_ROOT=\"%{_mogrix_root}\"",
             "COMPAT_DIR=$(pwd)/mogrix-compat",
             "for f in mogrix-compat/*.c; do",
             '  %{__cc} %{optflags} -c "$f" -o "${f%.c}.o"',

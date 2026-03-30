@@ -7,6 +7,9 @@
 
 package: libksba
 
+build_after:
+  - libgpg-error
+
 rules:
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
   # NOTE: skip_check handled by generic.yaml
@@ -16,7 +19,7 @@ rules:
   # Configure flags
   configure_flags:
     add:
-      - --with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug
+      - --with-libgpg-error-prefix=$MOGRIX_STAGING
       - --disable-doc
       - --disable-static
 

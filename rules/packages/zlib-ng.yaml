@@ -9,10 +9,12 @@
 # similar_to: [rpm, libsolv]
 # depends: []
 # status: WORKING
-# warning: Installing to /usr/sgug can break sshd (uses libz)
+# warning: Installing to /opt/mogrix can break sshd (uses libz)
 # ---
 
 package: zlib-ng
+
+build_after: none
 
 rules:
   # Add IRIX-specific patch for UINT64_C macro
@@ -106,8 +108,8 @@ rules:
         cd ..
 
   export_vars:
-    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
-    CXX: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
+    CC: "$MOGRIX_STAGING/bin/irix-cc"
+    CXX: "$MOGRIX_STAGING/bin/irix-cc"
     LD: "/opt/cross/bin/mips-sgi-irix6.5-ld.bfd"
     AR: "/opt/cross/bin/llvm-ar"
     RANLIB: "/opt/cross/bin/llvm-ranlib"

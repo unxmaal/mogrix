@@ -1,25 +1,32 @@
 # gmp - GNU Multiple Precision Arithmetic Library (FC40: 6.2.1)
 package: gmp
 
+build_after: none
+
 rules:
   # gmp-impl.h has #define strchr index for non-STDC compilers, but on IRIX
   # index() isn't declared in scope. We need to ensure HAVE_STRING_H is defined
   # so the code path uses strchr directly, not the index() alias.
-  # Also force ac_cv_func_obstack_vprintf to avoid configure check failure.
+  ac_cv_overrides:
+    ac_cv_c_undeclared_builtin_options: "none needed"
+
+  # Drop the C++ subpackage
+  drop_subpackages:
+    - c++
+
   prep_commands:
     - "sed -i '/#define strchr.*index/d' gmp-impl.h || true"
 
   drop_buildrequires:
     - texinfo
+    - fipscheck
 
   configure_flags:
     add:
       - --disable-assembly
     remove:
       - --enable-fat
-
-  drop_buildrequires:
-    - fipscheck
+      - --enable-cxx
 
   install_cleanup:
     # irix-cc defines __mips=64, so gmp.h's multilib dispatch looks for
@@ -27,21 +34,17 @@ rules:
     - "ln -sf gmp-mips.h %{buildroot}%{_includedir}/gmp-mips64.h"
     - "ln -sf gmp-mparam-mips.h %{buildroot}%{_includedir}/gmp-mparam-mips64.h"
 
+  remove_lines:
+    # C++ files not covered by drop_subpackages
+    - "%{_libdir}/libgmpxx.so"
+    - "%{_libdir}/libgmpxx.a"
+    - "%{_includedir}/gmpxx.h"
+    - "%{_libdir}/pkgconfig/gmpxx.pc"
+
   spec_replacements:
     # Disable FIPS (fipshmac not available, not needed for IRIX)
     - pattern: "%bcond_without fips"
       replacement: "%bcond_with fips"
     # Switch from git-based autosetup to simple patch application
-    - pattern: "%autosetup -S git -n %{name}-%{version}"
-      replacement: "%autosetup -p1 -n %{name}-%{version}"
-
-    # Remove info dir cleanup — remove all info files
-    - pattern: "rm -f %{buildroot}%{_infodir}/dir"
-      replacement: "rm -rf %{buildroot}%{_infodir}"
-    - pattern: "rm -f $RPM_BUILD_ROOT%{_infodir}/dir"
-      replacement: "rm -rf $RPM_BUILD_ROOT%{_infodir}"
-
-    # Remove info files from %files
-    - pattern: "%{_infodir}/gmp.info*"
-      replacement: ""
-
+    - pattern: "%autosetup -S git"
+      replacement: "%autosetup -p1"

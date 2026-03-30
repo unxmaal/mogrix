@@ -9,11 +9,11 @@ bundle_trampoline_exclude:
   - bashbug-32
 
 smoke_test:
-  - command: "/usr/sgug/bin/bash -c 'echo $BASH_VERSION'"
+  - command: "/opt/mogrix/bin/bash -c 'echo $BASH_VERSION'"
     expect: "5.2.26"
-  - command: "/usr/sgug/bin/bash -c 'echo {a,b,c}'"
+  - command: "/opt/mogrix/bin/bash -c 'echo {a,b,c}'"
     expect: "a b c"
-  - command: "/usr/sgug/bin/bash -c 'for i in 1 2 3; do echo $i; done'"
+  - command: "/opt/mogrix/bin/bash -c 'for i in 1 2 3; do echo $i; done'"
     expect: "1"
 
 rules:
@@ -35,21 +35,18 @@ rules:
     #   --disable-nls: no gettext on IRIX
     #   --with-installed-readline: use system readline (available in sysroot)
     #   --host: cross-compile target
-    # NOTE: SGUG-RSE used bundled readline because they bootstrapped without it.
-    # We have readline+ncurses in our sysroot — use them. Bundled readline would
-    # link against libcurses.so which is a GNU ld script on IRIX (rld can't load it).
     - pattern: "%configure --with-bash-malloc=no --with-afs"
       replacement: "%configure --with-bash-malloc=no --with-afs --disable-nls --with-installed-readline --host=mips-sgi-irix6.5"
 
-    # Fix DEFAULT_PATH to include /usr/sgug/bin
+    # Fix DEFAULT_PATH to include /opt/mogrix/bin
     - pattern: "/usr/local/bin:/usr/bin"
-      replacement: "/usr/sgug/bin:/usr/local/bin:/usr/bin"
+      replacement: "/opt/mogrix/bin:/usr/local/bin:/usr/bin"
 
-    # Fix STANDARD_UTILS_PATH to include /usr/sgug paths
+    # Fix STANDARD_UTILS_PATH to include /opt/mogrix paths
     - pattern: "/bin:/usr/bin:/usr/sbin:/sbin"
-      replacement: "/usr/sgug/bin:/bin:/usr/bin:/usr/sbin:/sbin"
+      replacement: "/opt/mogrix/bin:/bin:/usr/bin:/usr/sbin:/sbin"
 
-    # Fix hardcoded /etc/skel → %{_sysconfdir}/skel (/usr/sgug/etc/skel)
+    # Fix hardcoded /etc/skel → %{_sysconfdir}/skel (/opt/mogrix/etc/skel)
     - pattern: "%{buildroot}/etc/skel"
       replacement: "%{buildroot}%{_sysconfdir}/skel"
     - pattern: "%config(noreplace) /etc/skel/.b*"

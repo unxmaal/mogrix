@@ -94,6 +94,6 @@ rules:
         %{_mandir}/man1/gtkterm.1*
 
 smoke_test:
-  - command: "/usr/sgug/bin/gtkterm"
+  - command: "/opt/mogrix/bin/gtkterm"
     args: "--help"
     expect: "gtkterm"

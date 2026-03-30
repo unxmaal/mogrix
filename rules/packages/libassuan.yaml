@@ -9,6 +9,9 @@
 
 package: libassuan
 
+build_after:
+  - libgpg-error
+
 rules:
   # IRIX needs _SGI_SOURCE for IPv6/snprintf, and manual SCM_RIGHTS definition
   extra_cflags:
@@ -33,7 +36,7 @@ rules:
   # Configure flags
   configure_flags:
     add:
-      - --with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug
+      - --with-libgpg-error-prefix=$MOGRIX_STAGING
       - --enable-shared
       - --disable-static
 

@@ -3,6 +3,8 @@
 # Source is .tar.lz — need lzip on PATH for tar to decompress.
 package: ed
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - lzip

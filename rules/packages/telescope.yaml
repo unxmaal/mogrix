@@ -118,7 +118,7 @@ rules:
     # Bundled libgrapheme: config.mk sets CC=cc (host), need cross-compiler.
     # BUILD_CC stays as host for code generators, CC becomes cross-compiler.
     # Also fix AR/RANLIB and disable shared lib (static only needed).
-    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'CC       = cc' --new 'CC       = /opt/sgug-staging/usr/sgug/bin/irix-cc' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'CC       = cc' --new 'CC       = $MOGRIX_STAGING/bin/irix-cc' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'BUILD_CC = $(CC)' --new 'BUILD_CC = gcc' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'AR       = ar' --new 'AR       = /opt/cross/bin/llvm-ar' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch libgrapheme/config.mk --old 'RANLIB   = ranlib' --new 'RANLIB   = /opt/cross/bin/llvm-ranlib' --no-backup --quiet"

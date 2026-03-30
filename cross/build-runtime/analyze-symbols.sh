@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:-/opt/sgug-staging/usr/sgug}"
 NM="/opt/cross/bin/mips-sgi-irix6.5-nm"
 READELF="/opt/cross/bin/mips-sgi-irix6.5-readelf"
 TMPDIR=$(mktemp -d)

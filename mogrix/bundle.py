@@ -44,7 +44,12 @@ from rich.table import Table
 
 console = Console()
 
-STAGING_LIB_DIR = Path("/opt/sgug-staging/usr/sgug/lib32")
+def _default_staging_lib_dir() -> Path:
+    """Derive staging lib32 dir from project root."""
+    project_root = Path(__file__).parent.parent.resolve()
+    return project_root / "staging" / "opt" / "mogrix" / "lib32"
+
+STAGING_LIB_DIR = _default_staging_lib_dir()
 
 # Libraries that must NEVER be bundled — they exist on native IRIX and apps
 # must use the native versions.  IRIX X11 libs use IRIX-specific transport/auth;
@@ -74,7 +79,7 @@ IRIX_NATIVE_SONAMES = {
 # When the bundler detects _lib32/<subdir>/... containing .so files, it checks
 # this map.  If the subdir (or a parent) matches, it sets the env var in the
 # wrapper so the library finds its plugins inside the bundle instead of
-# at the hardcoded /usr/sgug/lib32/... path.
+# at the hardcoded /opt/mogrix/lib32/... path.
 #
 # Format: { "subdir_path_relative_to_lib32": ("ENV_VAR", "value_template") }
 # value_template uses {lib32} as placeholder for "$dir/_lib32".
@@ -1051,7 +1056,7 @@ class BundleBuilder:
             )
             fonts_conf.write_text(conf_text)
 
-        # Add cachedir relative to bundle (so fc-cache doesn't need /usr/sgug)
+        # Add cachedir relative to bundle (so fc-cache doesn't need /opt/mogrix)
         if "../../var/cache/fontconfig" not in conf_text:
             conf_text = fonts_conf.read_text()
             conf_text = conf_text.replace(
@@ -1355,8 +1360,11 @@ class BundleBuilder:
                 console.print(f"  [dim]Extracting:[/dim] {rpm_name}")
                 self._extract_rpm(rpm_path, tmppath)
 
-            # Move usr/sgug/* to bundle root with internal prefixes
-            sgug_dir = tmppath / "usr" / "sgug"
+            # Move prefix dir contents to bundle root with internal prefixes
+            # Support both old (/usr/sgug) and new (/opt/mogrix) prefix
+            sgug_dir = tmppath / "opt" / "mogrix"
+            if not sgug_dir.is_dir():
+                sgug_dir = tmppath / "usr" / "sgug"
             if sgug_dir.is_dir():
                 for item in sgug_dir.iterdir():
                     # Rename bin/ -> _bin/, sbin/ -> _sbin/, lib32/ -> _lib32/
@@ -1515,7 +1523,7 @@ class BundleBuilder:
 
         # Global plugin directory detection: scan _lib32/ for known plugin
         # subdirs and set env vars so libraries find their dlopen'd modules
-        # inside the bundle instead of at hardcoded /usr/sgug/lib32/ paths.
+        # inside the bundle instead of at hardcoded /opt/mogrix/lib32/ paths.
         lib32_dir = bundle_dir / "_lib32"
         if lib32_dir.is_dir():
             for subdir_rel, (env_var, val_template) in PLUGIN_DIR_ENV_MAP.items():
@@ -1623,7 +1631,7 @@ class BundleBuilder:
             )
         # WebKitGTK: WEBKIT_EXEC_PATH tells WebKit where to find subprocess
         # executables (WebKitWebProcess, WebKitNetworkProcess). Without this,
-        # WebKit uses the compiled-in PKGLIBEXECDIR (/usr/sgug/libexec/webkit2gtk-4.0)
+        # WebKit uses the compiled-in PKGLIBEXECDIR (/opt/mogrix/libexec/webkit2gtk-4.0)
         # which doesn't exist on the live IRIX host.
         webkit_libexec = bundle_dir / "libexec" / "webkit2gtk-4.0"
         if webkit_libexec.is_dir():
@@ -1804,9 +1812,9 @@ class BundleBuilder:
         for rpm_path in manifest.target_rpms:
             for fpath in self._rpm_filelist(rpm_path):
                 fname = Path(fpath).name
-                if fpath.startswith("/usr/sgug/bin/") and fname in binaries:
+                if fpath.startswith("/opt/mogrix/bin/") and fname in binaries:
                     target_bins.add(fname)
-                elif fpath.startswith("/usr/sgug/sbin/") and fname in sbin_binaries:
+                elif fpath.startswith("/opt/mogrix/sbin/") and fname in sbin_binaries:
                     target_bins.add(fname)
 
         # Apply global + package-level trampoline exclusions

@@ -99,13 +99,13 @@ install -d %{buildroot}/usr/lib64
     )
     result = TransformResult(
         spec=spec,
-        path_rewrites={"/usr/lib64": "/usr/sgug/lib32"},
+        path_rewrites={"/usr/lib64": "/opt/mogrix/lib32"},
     )
     writer = SpecWriter()
 
     output = writer.write(result).content
 
-    assert "/usr/sgug/lib32" in output
+    assert "/opt/mogrix/lib32" in output
     assert "/usr/lib64" not in output
 
 
@@ -129,10 +129,10 @@ make
     )
     writer = SpecWriter()
 
-    output = writer.write(result, cppflags="-I/usr/sgug/include/mogrix-compat/generic").content
+    output = writer.write(result, cppflags="-I/opt/mogrix/include/mogrix-compat/generic").content
 
     assert "CPPFLAGS" in output
-    assert "-I/usr/sgug/include/mogrix-compat/generic" in output
+    assert "-I/opt/mogrix/include/mogrix-compat/generic" in output
     # CPPFLAGS should come right after %build
     build_idx = output.find("%build")
     cppflags_idx = output.find("CPPFLAGS")

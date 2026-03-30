@@ -4,6 +4,9 @@
 
 package: libX11
 
+build_after:
+  - libxcb
+
 rules:
 
   prep_commands:

@@ -29,7 +29,7 @@ chmod +x scripts/resources.sh
 # Build decker (SDL2 GUI application)
 # Use pkg-config for SDL2 flags (works in cross-compile with PKG_CONFIG_PATH set)
 %{__cc} %{optflags} ./c/decker.c -o decker \
-  -I/opt/sgug-staging/usr/sgug/include/SDL2 -lSDL2 -lSDL2_image \
+  -I$MOGRIX_STAGING/include/SDL2 -lSDL2 -lSDL2_image \
   -lm -DVERSION="\"1.64\"" $LIBS
 
 %install

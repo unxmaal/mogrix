@@ -59,8 +59,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Cross-compilation toolchain
 sudo mkdir -p /opt/cross/bin
 sudo mkdir -p /opt/irix-sysroot
-sudo mkdir -p /opt/sgug-staging/usr/sgug/{bin,lib32,include}
-sudo chown -R $USER:$USER /opt/cross /opt/irix-sysroot /opt/sgug-staging
+sudo mkdir -p $MOGRIX_STAGING/{bin,lib32,include}
+sudo chown -R $USER:$USER /opt/cross /opt/irix-sysroot $MOGRIX_STAGING_ROOT
 
 # Claude Code jail temp directory
 sudo mkdir -p /opt/faketemp
@@ -128,7 +128,7 @@ exec systemd-run --user --pty \
   --property=ReadWritePaths=/src \
   --property=ReadWritePaths=/opt/cross \
   --property=ReadWritePaths=/opt/libdicl \
-  --property=ReadWritePaths=/opt/sgug-staging \
+  --property=ReadWritePaths=$MOGRIX_STAGING_ROOT \
   --property=ReadWritePaths=/tmp \
   --property=PrivateDevices=no \
   --property=ProtectKernelTunables=yes \
@@ -370,9 +370,9 @@ uv run mogrix setup-cross
 ```
 
 This deploys:
-- `irix-cc`, `irix-ld`, `irix-cxx` wrapper scripts to `/opt/sgug-staging/usr/sgug/bin/`
-- Compat headers to `/opt/sgug-staging/usr/sgug/include/`
-- RPM macros to `/opt/sgug-staging/rpmmacros.irix`
+- `irix-cc`, `irix-ld`, `irix-cxx` wrapper scripts to `$MOGRIX_STAGING/bin/`
+- Compat headers to `$MOGRIX_STAGING/include/`
+- RPM macros to `$MOGRIX_STAGING_ROOT/rpmmacros.irix`
 
 It does NOT build the runtime objects — that's the next step.
 
@@ -402,7 +402,7 @@ This builds all runtime objects that must exist in staging before any package ca
 | `irix-shared.lds` | `cross/lib/irix-shared.lds` | BFD ld linker script (2-segment layout) |
 | `crt-hide.ver` | `cross/crt/crt-hide.ver` | Version script hiding CRT symbols |
 
-All objects are deployed to `/opt/sgug-staging/usr/sgug/lib32/`.
+All objects are deployed to `$MOGRIX_STAGING/lib32/`.
 
 ---
 
@@ -426,17 +426,17 @@ ls /opt/irix-sysroot/usr/lib32/libc.so
 ### Check Staging
 
 ```bash
-ls /opt/sgug-staging/usr/sgug/bin/irix-cc
-ls /opt/sgug-staging/usr/sgug/lib32/libsoft_float_stubs.a
-ls /opt/sgug-staging/usr/sgug/lib32/dlmalloc.o
-ls /opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.so
+ls $MOGRIX_STAGING/bin/irix-cc
+ls $MOGRIX_STAGING/lib32/libsoft_float_stubs.a
+ls $MOGRIX_STAGING/lib32/dlmalloc.o
+ls $MOGRIX_STAGING/lib32/libmogrix_compat.so
 ```
 
 ### Test Cross-Compilation
 
 ```bash
 echo 'int main() { return 0; }' > /tmp/test.c
-/opt/sgug-staging/usr/sgug/bin/irix-cc /tmp/test.c -o /tmp/test
+$MOGRIX_STAGING/bin/irix-cc /tmp/test.c -o /tmp/test
 file /tmp/test
 # Expected: ELF 32-bit MSB executable, MIPS, N32 MIPS-III version 1 (SYSV), dynamically linked
 ```
@@ -526,6 +526,6 @@ Runtime objects haven't been built. Run `./scripts/build-runtime-objects.sh`.
 
 Check that `irix-cc` is using the correct clang. Run:
 ```bash
-/opt/sgug-staging/usr/sgug/bin/irix-cc --version
+$MOGRIX_STAGING/bin/irix-cc --version
 ```
 It should show `Target: mips-sgi-irix6.5`.

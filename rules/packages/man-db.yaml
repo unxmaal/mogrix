@@ -3,6 +3,12 @@
 # IRIX fixes: remove systemd/alternatives integration, remove perl/po4a deps.
 package: man-db
 
+build_after:
+  - gdbm
+  - gettext
+  - libpipeline
+  - zlib-ng
+
 rules:
   drop_buildrequires:
     - po4a
@@ -51,8 +57,8 @@ rules:
     add:
       - "--disable-year2038"
       - "--disable-manual"
-      - "--with-nroff=/usr/sgug/bin/nroff"
-      - "--with-pager=/usr/sgug/bin/less"
+      - "--with-nroff=/opt/mogrix/bin/nroff"
+      - "--with-pager=/opt/mogrix/bin/less"
       - "--with-col=/usr/bin/col"
 
   spec_replacements:

@@ -33,7 +33,7 @@ class HeaderOverlayManager:
     def get_cppflags(
         self,
         overlays: list[str],
-        install_prefix: str = "/usr/sgug/include/mogrix-compat",
+        install_prefix: str = "/opt/mogrix/include/mogrix-compat",
     ) -> str:
         """Generate CPPFLAGS for the specified overlays.
 

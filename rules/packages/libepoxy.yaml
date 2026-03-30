@@ -1,5 +1,7 @@
 package: libepoxy
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - libEGL-devel

@@ -14,11 +14,11 @@ rules:
   - libnghttp2
   - libssh
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
-    CPPFLAGS: -I/opt/sgug-staging/usr/sgug/include $CPPFLAGS
-    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
+    CPPFLAGS: -I$MOGRIX_STAGING/include $CPPFLAGS
+    LDFLAGS: -L$MOGRIX_STAGING/lib32 $LDFLAGS
     LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
   ac_cv_overrides:
     curl_cv_func_recv_args: int,void *,size_t,int
@@ -58,18 +58,18 @@ rules:
   - pattern: '# configure minimal build
 
       ('
-    replacement: "# configure minimal build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export\
-      \ RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+    replacement: "# configure minimal build\n(\n    export CC=$MOGRIX_STAGING/bin/irix-cc\n    export CXX=$MOGRIX_STAGING/bin/irix-cxx-libcxx\n    export AR=/opt/cross/bin/llvm-ar\n    export\
+      \ RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I$MOGRIX_STAGING/include\"\n    export LDFLAGS=\"-L$MOGRIX_STAGING/lib32\""
   - pattern: '# configure full build
 
       ('
-    replacement: "# configure full build\n(\n    export CC=/opt/sgug-staging/usr/sgug/bin/irix-cc\n    export CXX=/opt/sgug-staging/usr/sgug/bin/irix-cxx\n    export AR=/opt/cross/bin/llvm-ar\n    export\
-      \ RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include\"\n    export LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\""
+    replacement: "# configure full build\n(\n    export CC=$MOGRIX_STAGING/bin/irix-cc\n    export CXX=$MOGRIX_STAGING/bin/irix-cxx-libcxx\n    export AR=/opt/cross/bin/llvm-ar\n    export\
+      \ RANLIB=/opt/cross/bin/llvm-ranlib\n    export LD=/opt/cross/bin/mips-sgi-irix6.5-ld.bfd\n    export CPPFLAGS=\"-I$MOGRIX_STAGING/include\"\n    export LDFLAGS=\"-L$MOGRIX_STAGING/lib32\""
   - pattern: '    %configure $common_configure_opts   \'
-    replacement: '    ../configure --prefix=/usr/sgug --exec-prefix=/usr/sgug --bindir=/usr/sgug/bin --sbindir=/usr/sgug/sbin --libdir=/usr/sgug/lib32 --includedir=/usr/sgug/include --datadir=/usr/sgug/share
-      --mandir=/usr/sgug/share/man --infodir=/usr/sgug/share/info --sysconfdir=/usr/sgug/etc --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu $common_configure_opts \'
+    replacement: '    ../configure --prefix=/opt/mogrix --exec-prefix=/opt/mogrix --bindir=/opt/mogrix/bin --sbindir=/opt/mogrix/sbin --libdir=/opt/mogrix/lib32 --includedir=/opt/mogrix/include --datadir=/opt/mogrix/share
+      --mandir=/opt/mogrix/share/man --infodir=/opt/mogrix/share/info --sysconfdir=/opt/mogrix/etc --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu $common_configure_opts \'
   - pattern: --with-ssl --with-ca-bundle
-    replacement: --with-openssl=/opt/sgug-staging/usr/sgug --with-ca-bundle
+    replacement: --with-openssl=$MOGRIX_STAGING --with-ca-bundle
   - pattern: --with-gssapi
     replacement: --without-gssapi
   # libidn2 re-enabled — dep now in staging

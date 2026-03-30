@@ -1,4 +1,6 @@
 package: libarchive
+
+build_after: none
 add_patch:
 - libarchive.sgifixes.patch
 rules:

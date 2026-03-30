@@ -1,4 +1,11 @@
 package: rxvt-unicode
+
+build_after:
+  - fontconfig
+  - freetype
+  - libX11
+  - libXft
+  - libXrender
 rules:
   export_vars:
     LLVM_PROJECT: /home/edodd/projects/github/unxmaal/mogrix/tmp/llvm-build/llvm-project-22.1.2.src

@@ -4,6 +4,8 @@
 # IRIX sysroot. ALSA/PulseAudio/JACK/OSS/ESD/aRts/NAS are disabled.
 package: libao
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - pkgconfig(libpulse)

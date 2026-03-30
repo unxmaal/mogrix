@@ -17,7 +17,7 @@
 #   - inject_compat_functions: strdup, strndup, strnlen, getline, getopt_long, asprintf,
 #       vasprintf, setenv, strerror_r, reallocarray, stpcpy, bsearch
 #   - configure_flags.add: --disable-silent-rules
-#   - rpm_macros: _prefix=/usr/sgug, _libdir=/usr/sgug/lib32
+#   - rpm_macros: _prefix=/opt/mogrix, _libdir=/opt/mogrix/lib32
 #   - configure_disable: selinux, systemd, udev, inotify, epoll, etc.
 #   - header_overlays: generic (stdarg.h, stdio.h, etc.)
 #   - install_cleanup: fix /usr/bin paths, rm *.la, rm infodir/dir
@@ -215,20 +215,20 @@ generic:
     # Disable automatic dependency detection - IRIX system libs aren't in RPM db
     __find_requires: "%{nil}"
     __find_provides: "%{nil}"
-    _prefix: /usr/sgug
-    _exec_prefix: /usr/sgug
-    _bindir: /usr/sgug/bin
-    _sbindir: /usr/sgug/sbin
-    _libdir: /usr/sgug/lib32
-    _includedir: /usr/sgug/include
-    _datadir: /usr/sgug/share
-    _mandir: /usr/sgug/share/man
-    _infodir: /usr/sgug/share/info
-    _sysconfdir: /usr/sgug/etc
-    _localstatedir: /usr/sgug/var
+    _prefix: /opt/mogrix
+    _exec_prefix: /opt/mogrix
+    _bindir: /opt/mogrix/bin
+    _sbindir: /opt/mogrix/sbin
+    _libdir: /opt/mogrix/lib32
+    _includedir: /opt/mogrix/include
+    _datadir: /opt/mogrix/share
+    _mandir: /opt/mogrix/share/man
+    _infodir: /opt/mogrix/share/info
+    _sysconfdir: /opt/mogrix/etc
+    _localstatedir: /opt/mogrix/var
     # NOTE: Do NOT set _var - it's used by RPM for %_tmppath and must remain /var
-    _sharedstatedir: /usr/sgug/var/lib
-    _docdir: /usr/sgug/share/doc
+    _sharedstatedir: /opt/mogrix/var/lib
+    _docdir: /opt/mogrix/share/doc
     _pkgdocdir: "%{_docdir}/%{name}"
     _pkglicensedir: "%{_datadir}/licenses/%{name}"
 
@@ -244,21 +244,21 @@ generic:
     - audit
 
   rewrite_paths:
-    /usr/lib64: /usr/sgug/lib32
-    /usr/lib: /usr/sgug/lib32
-    /usr/include: /usr/sgug/include
+    /usr/lib64: /opt/mogrix/lib32
+    /usr/lib: /opt/mogrix/lib32
+    /usr/include: /opt/mogrix/include
 
   header_overlays:
     - generic
 
   # Fix build-host paths baked into installed scripts and data files.
   # Build systems detect /usr/bin/perl, /usr/bin/m4, etc. on the Linux host
-  # and hardcode those paths. On IRIX, these tools are at /usr/sgug/bin/.
+  # and hardcode those paths. On IRIX, these tools are at /opt/mogrix/bin/.
   # /usr/bin/env is restored since it exists on IRIX.
   install_cleanup:
-    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i 's|/usr/bin/|/usr/sgug/bin/|g; s|/usr/sgug/bin/env|/usr/bin/env|g'"
-    # Fix #!/bin/bash shebangs — IRIX has no /bin/bash, use /usr/sgug/bin/bash
-    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '#!/bin/bash\\|#! /bin/bash' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i '1s|^#! */bin/bash|#!/usr/sgug/bin/bash|'"
+    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i 's|/usr/bin/|/opt/mogrix/bin/|g; s|/opt/mogrix/bin/env|/usr/bin/env|g'"
+    # Fix #!/bin/bash shebangs — IRIX has no /bin/bash, use /opt/mogrix/bin/bash
+    - "find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '#!/bin/bash\\|#! /bin/bash' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\\(.*\\): .*/\\1/' | xargs -r sed -i '1s|^#! */bin/bash|#!/opt/mogrix/bin/bash|'"
     # Remove libtool archives - IRIX doesn't use them
     - "rm -f %{buildroot}%{_libdir}/*.la"
     # Remove info dir file - rebuilt by install-info on target

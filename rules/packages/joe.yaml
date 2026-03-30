@@ -18,7 +18,7 @@ rules:
     # Also the symlinks already exist from make install — force overwrite
     - pattern: "pushd $RPM_BUILD_ROOT/%{_mandir}/man1\nln -s joe.1 jmacs.1\nln -s joe.1 jpico.1\nln -s joe.1 jstar.1\nln -s joe.1 rjoe.1\npopd"
       replacement: "# man page symlinks already created by make install"
-    # Fix hardcoded /etc/joe path — should use %{_sysconfdir} (= /usr/sgug/etc)
+    # Fix hardcoded /etc/joe path — should use %{_sysconfdir} (= /opt/mogrix/etc)
     - pattern: "%dir /etc/joe"
       replacement: "%dir %{_sysconfdir}/joe"
     - pattern: "%config(noreplace) /etc/joe/*"

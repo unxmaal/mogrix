@@ -2,10 +2,12 @@
 # Provides pkg-config compatibility
 package: pkgconf
 
+build_after: none
+
 smoke_test:
-  - command: "/usr/sgug/bin/pkg-config --version"
+  - command: "/opt/mogrix/bin/pkg-config --version"
     expect: "2.1.0"
-  - command: "/usr/sgug/bin/pkg-config --list-all"
+  - command: "/opt/mogrix/bin/pkg-config --list-all"
 
 rules:
   # atf-tests and kyua are test frameworks not available for IRIX

@@ -68,7 +68,7 @@ def run_test_standalone(test):
     expect = test.get("expect", "exit0")
 
     # Build environment
-    env_str = f"LD_LIBRARYN32_PATH={IRIX_LIB}:/usr/sgug/lib32:/usr/lib32"
+    env_str = f"LD_LIBRARYN32_PATH={IRIX_LIB}:/opt/mogrix/lib32:/usr/lib32"
     extra_env = test.get("env", {})
     for k, v in extra_env.items():
         # For _RLDN32_LIST, prepend with lib path

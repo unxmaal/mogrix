@@ -1,22 +1,23 @@
 package: woff2
+skip: true
 build_after:
 - brotli
 rules:
   drop_subpackages:
   - tools
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
   prep_commands:
   # cmake FindBrotli*.cmake uses find_library/find_path with HINTS from
-  # pkg-config raw libdir (/usr/sgug/lib32) which doesn't exist on the build
+  # pkg-config raw libdir (/opt/mogrix/lib32) which doesn't exist on the build
   # host. Add the staging path as an explicit HINTS entry.
   # Note: \\$ escapes the $ so RPM shell doesn't expand cmake variables.
-  - "sed -i 's|HINTS \\${PC_BROTLIDEC_LIBDIR}|HINTS /opt/sgug-staging/usr/sgug/lib32 \\${PC_BROTLIDEC_LIBDIR}|' cmake/FindBrotliDec.cmake || true"
-  - "sed -i 's|HINTS \\${PC_BROTLIENC_LIBDIR}|HINTS /opt/sgug-staging/usr/sgug/lib32 \\${PC_BROTLIENC_LIBDIR}|' cmake/FindBrotliEnc.cmake || true"
-  - "sed -i 's|HINTS \\${PC_BROTLIDEC_INCLUDEDIR}|HINTS /opt/sgug-staging/usr/sgug/include \\${PC_BROTLIDEC_INCLUDEDIR}|' cmake/FindBrotliDec.cmake || true"
-  - "sed -i 's|HINTS \\${PC_BROTLIENC_INCLUDEDIR}|HINTS /opt/sgug-staging/usr/sgug/include \\${PC_BROTLIENC_INCLUDEDIR}|' cmake/FindBrotliEnc.cmake || true"
+  - "sed -i 's|HINTS \\${PC_BROTLIDEC_LIBDIR}|HINTS $MOGRIX_STAGING/lib32 \\${PC_BROTLIDEC_LIBDIR}|' cmake/FindBrotliDec.cmake || true"
+  - "sed -i 's|HINTS \\${PC_BROTLIENC_LIBDIR}|HINTS $MOGRIX_STAGING/lib32 \\${PC_BROTLIENC_LIBDIR}|' cmake/FindBrotliEnc.cmake || true"
+  - "sed -i 's|HINTS \\${PC_BROTLIDEC_INCLUDEDIR}|HINTS $MOGRIX_STAGING/include \\${PC_BROTLIDEC_INCLUDEDIR}|' cmake/FindBrotliDec.cmake || true"
+  - "sed -i 's|HINTS \\${PC_BROTLIENC_INCLUDEDIR}|HINTS $MOGRIX_STAGING/include \\${PC_BROTLIENC_INCLUDEDIR}|' cmake/FindBrotliEnc.cmake || true"
   spec_replacements:
   # Replace Fedora cmake macros with explicit cross-compilation
   - pattern: |
@@ -35,14 +36,14 @@ rules:
         -DCMAKE_RANLIB=%{__ranlib} \
         -DCMAKE_INSTALL_PREFIX=%{_prefix} \
         -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
-        -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags}" \
-        -DCMAKE_CXX_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include %{optflags} -fno-exceptions" \
-        -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
-        -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
-        -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
-        -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
-        -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
-        -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+        -DCMAKE_C_FLAGS="-I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include %{optflags}" \
+        -DCMAKE_CXX_FLAGS="-I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include %{optflags} -fno-exceptions" \
+        -DCMAKE_EXE_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen" \
+        -DCMAKE_PREFIX_PATH=$MOGRIX_STAGING \
+        -DCMAKE_INCLUDE_PATH=$MOGRIX_STAGING/include \
+        -DCMAKE_LIBRARY_PATH=$MOGRIX_STAGING/lib32 \
+        -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \
         -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
         -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
@@ -57,17 +58,20 @@ rules:
   # Fix vpath_builddir reference to _build
   - pattern: "cd %{_vpath_builddir}"
     replacement: "cd _build"
-  # Add tool binaries to main files section (dropped from tools subpackage)
-  - pattern: "%{_libdir}/libwoff2enc.so.*"
+  # Add tool binaries to main files section (dropped from tools subpackage).
+  # Pattern spans two lines to avoid postcondition false positive.
+  - pattern: "%{_libdir}/libwoff2dec.so.*\n%{_libdir}/libwoff2enc.so.*"
     replacement: |
+      %{_libdir}/libwoff2dec.so.*
       %{_libdir}/libwoff2enc.so.*
       %{_bindir}/woff2_compress
       %{_bindir}/woff2_decompress
       %{_bindir}/woff2_info
+
 smoke_test:
-- command: "/usr/sgug/bin/woff2_info 2>&1"
+- command: "/opt/mogrix/bin/woff2_info 2>&1"
   expect: "One argument"
-- command: "/usr/sgug/bin/woff2_decompress 2>&1"
+- command: "/opt/mogrix/bin/woff2_decompress 2>&1"
   expect: "One argument"
-- command: "/usr/sgug/bin/woff2_compress 2>&1"
+- command: "/opt/mogrix/bin/woff2_compress 2>&1"
   expect: "One argument"

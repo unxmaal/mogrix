@@ -10,7 +10,7 @@
 **IMPORTANT**: Always use `--target=mips-sgi-irix` with rpmbuild:
 
 ```bash
-rpmbuild --macros="/usr/lib/rpm/macros:/opt/sgug-staging/rpmmacros.irix" \
+rpmbuild --macros="/usr/lib/rpm/macros:$MOGRIX_STAGING_ROOT/rpmmacros.irix" \
   --define '_disable_source_fetch 1' \
   --nodeps \
   --target=mips-sgi-irix \
@@ -45,10 +45,10 @@ spec_replacements:
         -DCMAKE_CXX_COMPILER=%{__cxx} \
         -DCMAKE_AR=/opt/cross/bin/llvm-ar \
         -DCMAKE_RANLIB=/opt/cross/bin/llvm-ranlib \
-        -DCMAKE_INSTALL_PREFIX=/usr/sgug \
+        -DCMAKE_INSTALL_PREFIX=/opt/mogrix \
         -DCMAKE_INSTALL_LIBDIR=lib32 \
-        -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
-        -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+        -DCMAKE_PREFIX_PATH=$MOGRIX_STAGING \
+        -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \
         -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
         -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
@@ -81,9 +81,9 @@ spec_replacements:
 -DWITH_AUDIT=OFF
 -DWITH_CAP=OFF
 -DENABLE_PLUGINS=OFF
--DRPM_CONFIGDIR=/usr/sgug/lib32/rpm
--DSQLite3_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include
--DSQLite3_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libsqlite3.so
+-DRPM_CONFIGDIR=/opt/mogrix/lib32/rpm
+-DSQLite3_INCLUDE_DIR=$MOGRIX_STAGING/include
+-DSQLite3_LIBRARY=$MOGRIX_STAGING/lib32/libsqlite3.so
 ```
 
 ### libsolv
@@ -112,18 +112,18 @@ These are NOT CMake-configurable and must be patched in source:
 
 ```bash
 # Patch client/defines.h
-sed -i 's|"/etc/tdnf/tdnf.conf"|"/usr/sgug/etc/tdnf/tdnf.conf"|g' client/defines.h
-sed -i 's|"/etc/yum.repos.d"|"/usr/sgug/etc/yum.repos.d"|g' client/defines.h
-sed -i 's|"/etc/tdnf/pluginconf.d"|"/usr/sgug/etc/tdnf/pluginconf.d"|g' client/defines.h
+sed -i 's|"/etc/tdnf/tdnf.conf"|"/opt/mogrix/etc/tdnf/tdnf.conf"|g' client/defines.h
+sed -i 's|"/etc/yum.repos.d"|"/opt/mogrix/etc/yum.repos.d"|g' client/defines.h
+sed -i 's|"/etc/tdnf/pluginconf.d"|"/opt/mogrix/etc/tdnf/pluginconf.d"|g' client/defines.h
 
 # Patch common/config.h (has additional VARS_DIRS)
-sed -i 's|"/etc/tdnf/tdnf.conf"|"/usr/sgug/etc/tdnf/tdnf.conf"|g' common/config.h
-sed -i 's|"/etc/yum.repos.d"|"/usr/sgug/etc/yum.repos.d"|g' common/config.h
-sed -i 's|"/etc/tdnf/vars /etc/dnf/vars /etc/yum/vars"|"/usr/sgug/etc/tdnf/vars /usr/sgug/etc/dnf/vars /usr/sgug/etc/yum/vars"|g' common/config.h
-sed -i 's|"/etc/tdnf/pluginconf.d"|"/usr/sgug/etc/tdnf/pluginconf.d"|g' common/config.h
+sed -i 's|"/etc/tdnf/tdnf.conf"|"/opt/mogrix/etc/tdnf/tdnf.conf"|g' common/config.h
+sed -i 's|"/etc/yum.repos.d"|"/opt/mogrix/etc/yum.repos.d"|g' common/config.h
+sed -i 's|"/etc/tdnf/vars /etc/dnf/vars /etc/yum/vars"|"/opt/mogrix/etc/tdnf/vars /opt/mogrix/etc/dnf/vars /opt/mogrix/etc/yum/vars"|g' common/config.h
+sed -i 's|"/etc/tdnf/pluginconf.d"|"/opt/mogrix/etc/tdnf/pluginconf.d"|g' common/config.h
 ```
 
-After building, verify with: `strings libtdnf.so | grep "/etc"` - should show `/usr/sgug/etc` paths
+After building, verify with: `strings libtdnf.so | grep "/etc"` - should show `/opt/mogrix/etc` paths
 
 ---
 
@@ -159,10 +159,10 @@ rules:
         cmake -B _build -S . \
           -DCMAKE_SYSTEM_NAME=IRIX \
           -DCMAKE_C_COMPILER=%{__cc} \
-          -DCMAKE_INSTALL_PREFIX=/usr/sgug \
+          -DCMAKE_INSTALL_PREFIX=/opt/mogrix \
           -DCMAKE_INSTALL_LIBDIR=lib32 \
-          -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
-          -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+          -DCMAKE_PREFIX_PATH=$MOGRIX_STAGING \
+          -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \
           -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
           -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
           -DSOME_FEATURE=OFF
@@ -183,8 +183,8 @@ rules:
 
 CMake can't find a dependency. Add:
 ```yaml
--D<Package>_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include
--D<Package>_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/lib<pkg>.so
+-D<Package>_INCLUDE_DIR=$MOGRIX_STAGING/include
+-D<Package>_LIBRARY=$MOGRIX_STAGING/lib32/lib<pkg>.so
 ```
 
 ### "CMAKE_SIZEOF_VOID_P is empty"

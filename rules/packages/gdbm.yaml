@@ -3,6 +3,11 @@
 # IRIX fixes: iswblank() compat, disable TLS (__tls_get_addr unsupported by IRIX rld).
 package: gdbm
 
+build_after:
+  - gettext
+  - ncurses
+  - readline
+
 rules:
   prep_commands:
     # IRIX has isblank() but not iswblank() — provide compat

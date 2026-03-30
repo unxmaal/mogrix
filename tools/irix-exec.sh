@@ -14,4 +14,4 @@ fi
 escaped_cmd=$(printf '%s' "$cmd" | sed "s/'/'\\\\''/g")
 ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no \
     "${IRIX_USER}@${IRIX_HOST}" \
-    "chroot ${IRIX_CHROOT} /usr/sgug/bin/sgug-exec /bin/sh -c '${escaped_cmd}'"
+    "chroot ${IRIX_CHROOT} /opt/mogrix/bin/sgug-exec /bin/sh -c '${escaped_cmd}'"

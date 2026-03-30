@@ -13,7 +13,7 @@
 
 # Configurable paths - set by mogrix setup-cross
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:?MOGRIX_STAGING must be set — run builds via mogrix CLI or set it to staging/opt/mogrix}"
 CLANG="${IRIX_CLANG:-/opt/cross/bin/clang}"
 LD="${STAGING}/bin/irix-ld"
 
@@ -64,6 +64,10 @@ CLANG_FLAGS="$CLANG_FLAGS -Dunix=1 -D__unix__=1 -D__unix=1"
 # -D__mips=1 causes -Werror,-Wmacro-redefined failures (libffi in glib2).
 # IRIX has no stack protector (__stack_chk_fail/__stack_chk_guard not in libc)
 CLANG_FLAGS="$CLANG_FLAGS -fno-stack-protector"
+# Clang 15+ promotes -Wincompatible-pointer-types to error. IRIX wchar_t is long
+# (not int), so wide string literals (L"...") are int[] but wchar_t* is long*.
+# This breaks every configure C99 wchar_t test. Demote back to warning.
+CLANG_FLAGS="$CLANG_FLAGS -Wno-error=incompatible-pointer-types"
 # Override _MIPS_ISA - clang sets _MIPS_ISA_MIPS64 which IRIX headers don't recognize
 # IRIX 6.5 N32 uses MIPS3 ISA (R4000 and later)
 CLANG_FLAGS="$CLANG_FLAGS -U_MIPS_ISA -D_MIPS_ISA=_MIPS_ISA_MIPS3"

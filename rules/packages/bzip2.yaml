@@ -18,6 +18,8 @@
 #
 package: bzip2
 
+build_after: none
+
 # Use existing patch file instead of sed
 add_patch:
   - disable-test.patch
@@ -25,7 +27,7 @@ add_patch:
 rules:
   # Export CC for cross-compilation (bzip2 uses Makefile, not autotools)
   export_vars:
-    CC: "/opt/sgug-staging/usr/sgug/bin/irix-cc"
+    CC: "$MOGRIX_STAGING/bin/irix-cc"
     AR: "/opt/cross/bin/llvm-ar"
     RANLIB: "/opt/cross/bin/llvm-ranlib"
 

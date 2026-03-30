@@ -1,6 +1,8 @@
 package: libtool
+
+build_after: none
 smoke_test:
-- command: /usr/sgug/bin/libtool --version
+- command: /opt/mogrix/bin/libtool --version
   expect: 2.4.7
 rules:
   export_vars:

@@ -1,4 +1,6 @@
 package: rsync
+
+build_after: none
 rules:
   ac_cv_overrides:
     ac_cv_type_long_double_wider: 'no'
@@ -15,7 +17,7 @@ rules:
   # rsync uses its own configure.sh, not autoconf — %configure adds --host/--build which it rejects
   # rsync uses configure.sh (autoconf-generated) — replace whole block to avoid double-backslash issues
   - pattern: "%configure \\\n  --enable-openssl \\\n  --enable-xxhash \\\n  --enable-zstd \\\n  --enable-lz4 \\\n  --enable-ipv6"
-    replacement: "CC=%{__cc} CXX=%{__cxx} AR=%{__ar} RANLIB=%{__ranlib} CFLAGS=\"%{optflags}\" LDFLAGS=\"-L/opt/sgug-staging/usr/sgug/lib32\" CPPFLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include\" ./configure --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu --prefix=%{_prefix} --libdir=%{_libdir} --mandir=%{_mandir} --disable-lz4 --disable-xxhash --disable-md2man --disable-zstd --enable-openssl --enable-ipv6"
+    replacement: "CC=%{__cc} CXX=%{__cxx} AR=%{__ar} RANLIB=%{__ranlib} CFLAGS=\"%{optflags}\" LDFLAGS=\"-L$MOGRIX_STAGING/lib32\" CPPFLAGS=\"-I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include\" ./configure --host=mips-sgi-irix6.5 --build=x86_64-linux-gnu --prefix=%{_prefix} --libdir=%{_libdir} --mandir=%{_mandir} --disable-lz4 --disable-xxhash --disable-md2man --disable-zstd --enable-openssl --enable-ipv6"
   - pattern: '%if %isprerelease
 
       %setup -q -n rsync-%{version}%{?prerelease}

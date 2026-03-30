@@ -5,7 +5,7 @@ GCC="$SCRIPT_DIR/gcc-9.5.0"
 CFG="$SCRIPT_DIR/gcc-config"
 CLANG="/opt/cross/bin/clang"
 SYSROOT="/opt/irix-sysroot"
-STAGING="/opt/sgug-staging/usr/sgug"
+STAGING="${MOGRIX_STAGING:-/opt/sgug-staging/usr/sgug}"
 OUTDIR="$SCRIPT_DIR/build/test"
 mkdir -p "$OUTDIR"
 

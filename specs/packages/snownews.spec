@@ -20,8 +20,8 @@ updates are fetched using libcurl.
 %autosetup -n snownews-1.11
 
 %build
-export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
-export PKG_CONFIG_PATH="/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
+export PKG_CONFIG_SYSROOT_DIR="$MOGRIX_STAGING_ROOT"
+export PKG_CONFIG_PATH="$MOGRIX_STAGING/lib32/pkgconfig"
 
 # Create local libintl.h stub to shadow system gettext
 # (our libintl exports bindtextdomain, not libintl_bindtextdomain)
@@ -45,9 +45,9 @@ STUBEOF
 # Set CC for configure to detect our cross-compiler
 export CC="%{__cc}"
 # Extra include paths: NLS stub (shadows system libintl.h) + mogrix compat headers
-export CFLAGS="-I$(pwd)/nls-stub -I/usr/sgug/include/mogrix-compat/generic"
+export CFLAGS="-I$(pwd)/nls-stub -I/opt/mogrix/include/mogrix-compat/generic"
 
-./configure --prefix=/usr/sgug
+./configure --prefix=/opt/mogrix
 
 # Fix generated Config.mk for IRIX cross-compilation
 COMPAT_DIR=$(pwd)/mogrix-compat
@@ -61,7 +61,7 @@ sed -i "s|^libs.*|& -L$COMPAT_DIR -lmogrix-compat|" Config.mk
 make %{?_smp_mflags}
 
 %install
-make install DESTDIR=$RPM_BUILD_ROOT PREFIX=/usr/sgug
+make install DESTDIR=$RPM_BUILD_ROOT PREFIX=/opt/mogrix
 
 %files
 %{_bindir}/snownews

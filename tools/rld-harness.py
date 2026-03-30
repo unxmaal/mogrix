@@ -947,7 +947,7 @@ def cmd_test_loading(args):
 
     # Find irix-cc
     irix_cc = "irix-cc"
-    for candidate in ["/opt/sgug-staging/usr/sgug/bin/irix-cc",
+    for candidate in ["$MOGRIX_STAGING/bin/irix-cc",
                       str(PROJECT_ROOT / "cross" / "bin" / "irix-cc")]:
         if Path(candidate).exists():
             irix_cc = candidate

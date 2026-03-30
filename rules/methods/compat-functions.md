@@ -127,7 +127,7 @@ If a compat function needs to override a **buggy libc function called from share
    ```
 3. Deploy to staging:
    ```bash
-   cp /tmp/libmogrix_compat.so /opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.so
+   cp /tmp/libmogrix_compat.so $MOGRIX_STAGING/lib32/libmogrix_compat.so
    ```
 4. The bundler automatically includes it in `_lib32/` and sets `_RLDN32_LIST=libmogrix_compat.so:DEFAULT` in wrapper scripts
 
@@ -243,6 +243,6 @@ After editing compat headers in the repo, sync them to staging:
 mogrix sync-headers
 ```
 
-This copies headers from `mogrix/compat/include/` to `/opt/sgug-staging/usr/sgug/include/`.
+This copies headers from `mogrix/compat/include/` to `$MOGRIX_STAGING/include/`.
 
-**Important**: Never edit headers directly in `/opt/sgug-staging/`. Always edit in the repo and sync.
+**Important**: Never edit headers directly in `$MOGRIX_STAGING_ROOT/`. Always edit in the repo and sync.

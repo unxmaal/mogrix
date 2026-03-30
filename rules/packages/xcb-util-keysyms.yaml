@@ -1,6 +1,9 @@
 # xcb-util-keysyms 0.4.1 - XCB key constant/conversion functions (FC40: 0.4.1-5)
 package: xcb-util-keysyms
 
+build_after:
+  - libxcb
+
 rules:
 
   prep_commands:

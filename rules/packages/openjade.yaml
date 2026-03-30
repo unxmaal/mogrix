@@ -1,5 +1,7 @@
 # openjade package rules for IRIX cross-compilation
 package: openjade
+
+build_after: none
 skip: true
 skip_reason: "missing dependency: opensp-devel not staged (no opensp SRPM available)"
 blocked: true

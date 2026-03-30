@@ -567,14 +567,23 @@ class RoadmapResolver:
                        "patch", "tar", "gzip", "xz", "bzip2", "zip",
                        "ed", "less", "time", "groff"}
 
+        # Track packages missing build_after declarations
+        missing_build_after: list[str] = []
+
         for pkg in all_packages:
             # Read explicit build_after from YAML (for upstream packages
             # that have no spec in the repo metadata DB)
             pkg_rules = self.rule_loader.load_package(pkg)
+            has_build_after = False
             if pkg_rules:
-                for dep in pkg_rules.get("build_after", []):
-                    if dep in all_packages and dep != pkg:
-                        edges.append((dep, pkg))
+                ba = pkg_rules.get("build_after")
+                if ba is not None:
+                    has_build_after = True
+                    # "none" means explicit root — no dependencies
+                    if ba != "none":
+                        for dep in ba:
+                            if dep in all_packages and dep != pkg:
+                                edges.append((dep, pkg))
 
             buildrequires = self._get_buildrequires(pkg)
             drops = self._compute_effective_drops(pkg)
@@ -591,7 +600,45 @@ class RoadmapResolver:
                     if src_pkg not in host_tools:
                         edges.append((src_pkg, pkg))
 
-        return self._topological_sort(edges, all_packages)
+            if not has_build_after:
+                missing_build_after.append(pkg)
+
+        if missing_build_after:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "%d packages missing build_after declaration (build order unreliable): %s",
+                len(missing_build_after),
+                ", ".join(sorted(missing_build_after)[:20])
+                + ("..." if len(missing_build_after) > 20 else ""),
+            )
+
+        order, cycles = self._topological_sort(edges, all_packages)
+
+        # Move non-C language packages (Rust, Go) to the end of the build order.
+        # These use cargo/go toolchains and should build after all C libraries.
+        late_languages = {"rust", "go"}
+        late_pkgs = []
+        c_pkgs = []
+        for pkg in order:
+            pkg_rules = self.rule_loader.load_package(pkg)
+            lang = pkg_rules.get("language", "c") if pkg_rules else "c"
+            if lang in late_languages:
+                late_pkgs.append(pkg)
+            else:
+                c_pkgs.append(pkg)
+
+        if late_pkgs:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Moved %d %s packages to end of build order",
+                       len(late_pkgs),
+                       "/".join(sorted({
+                           (self.rule_loader.load_package(p) or {}).get("language", "?")
+                           for p in late_pkgs
+                       })))
+
+        return c_pkgs + late_pkgs, cycles
 
     def _classify_package(self, pkg: str) -> Classification:
         """Classify a package based on mogrix state (not as a dep provider)."""

@@ -1,4 +1,7 @@
 package: nano
+
+build_after:
+  - ncurses
 classes:
 - nls-disabled
 rules:
@@ -28,7 +31,7 @@ rules:
 
       %configure'
   - pattern: "sed -e 's/^#.*set speller.*$/set speller \"hunspell\"/' \\\n    -e 's|^# \\(include \"/usr/share/nano/\\*.nanorc\"\\)|\\1|' \\\n    %{SOURCE3} doc/sample.nanorc > ./nanorc\n"
-    replacement: "sed -e 's|^# \\(include \"/usr/sgug/share/nano/\\*.nanorc\"\\)|\\1|' \\\n    %{SOURCE3} doc/sample.nanorc > ./nanorc\n"
+    replacement: "sed -e 's|^# \\(include \"/opt/mogrix/share/nano/\\*.nanorc\"\\)|\\1|' \\\n    %{SOURCE3} doc/sample.nanorc > ./nanorc\n"
   - pattern: '%files -f build/%{name}.lang'
     replacement: '%files'
   - pattern: '%{_infodir}/nano.info*'

@@ -3,19 +3,19 @@
 %define _arch mips
 %define __find_requires %{nil}
 %define __find_provides %{nil}
-%define _prefix /usr/sgug
-%define _exec_prefix /usr/sgug
-%define _bindir /usr/sgug/bin
-%define _sbindir /usr/sgug/sbin
-%define _libdir /usr/sgug/lib32
-%define _includedir /usr/sgug/include
-%define _datadir /usr/sgug/share
-%define _mandir /usr/sgug/share/man
-%define _infodir /usr/sgug/share/info
-%define _sysconfdir /usr/sgug/etc
-%define _localstatedir /usr/sgug/var
-%define _sharedstatedir /usr/sgug/var/lib
-%define _docdir /usr/sgug/share/doc
+%define _prefix /opt/mogrix
+%define _exec_prefix /opt/mogrix
+%define _bindir /opt/mogrix/bin
+%define _sbindir /opt/mogrix/sbin
+%define _libdir /opt/mogrix/lib32
+%define _includedir /opt/mogrix/include
+%define _datadir /opt/mogrix/share
+%define _mandir /opt/mogrix/share/man
+%define _infodir /opt/mogrix/share/info
+%define _sysconfdir /opt/mogrix/etc
+%define _localstatedir /opt/mogrix/var
+%define _sharedstatedir /opt/mogrix/var/lib
+%define _docdir /opt/mogrix/share/doc
 %define _pkgdocdir %{_docdir}/%{name}
 %define _pkglicensedir %{_datadir}/licenses/%{name}
 
@@ -206,9 +206,9 @@ $MOGRIX_ROOT/tools/safepatch CMakeLists.txt --delete-line '_XOPEN_SOURCE' --no-b
 %build
 # Use our IRIX linker wrapper for libtool
 export MOGRIX_ROOT="/home/edodd/projects/github/unxmaal/mogrix"
-export PKG_CONFIG_PATH="/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-export PKG_CONFIG_LIBDIR="/opt/sgug-staging/usr/sgug/lib32/pkgconfig"
-export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
+export PKG_CONFIG_PATH="$MOGRIX_STAGING/lib32/pkgconfig"
+export PKG_CONFIG_LIBDIR="$MOGRIX_STAGING/lib32/pkgconfig"
+export PKG_CONFIG_SYSROOT_DIR="$MOGRIX_STAGING_ROOT"
 # Autoconf cache overrides for cross-compilation
 export ac_cv_func_malloc_0_nonnull="yes"
 export ac_cv_func_realloc_0_nonnull="yes"
@@ -226,7 +226,7 @@ export ac_cv_member_struct_sigaction_sa_sigaction="yes"
 export gl_cv_func_select_detects_ebadf="yes"
 export gl_cv_func_select_supports0="yes"
 export ac_cv_c_undeclared_builtin_options="none needed"
-export CPPFLAGS="-I/usr/sgug/include/mogrix-compat/generic $CPPFLAGS"
+export CPPFLAGS="-I/opt/mogrix/include/mogrix-compat/generic $CPPFLAGS"
 # Disable Python bindings - can't cross-compile these
 # Compile mogrix compat sources into static archive
 COMPAT_DIR=$(pwd)/mogrix-compat
@@ -253,13 +253,13 @@ cmake -B _build -S . \
   -DCMAKE_RANLIB=%{__ranlib} \
   -DCMAKE_INSTALL_PREFIX=%{_prefix} \
   -DCMAKE_INSTALL_LIBDIR=%{_libdir} \
-  -DCMAKE_C_FLAGS="-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include" \
-  -DCMAKE_EXE_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
-  -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/sgug-staging/usr/sgug/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
-  -DCMAKE_PREFIX_PATH=/opt/sgug-staging/usr/sgug \
-  -DCMAKE_INCLUDE_PATH=/opt/sgug-staging/usr/sgug/include \
-  -DCMAKE_LIBRARY_PATH=/opt/sgug-staging/usr/sgug/lib32 \
-  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \
+  -DCMAKE_C_FLAGS="-I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include" \
+  -DCMAKE_EXE_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
+  -DCMAKE_SHARED_LINKER_FLAGS="-L$MOGRIX_STAGING/lib32 $COMPAT_DIR/libmogrix-compat.a -lgen -lpthread -lsqlite3" \
+  -DCMAKE_PREFIX_PATH=$MOGRIX_STAGING \
+  -DCMAKE_INCLUDE_PATH=$MOGRIX_STAGING/include \
+  -DCMAKE_LIBRARY_PATH=$MOGRIX_STAGING/lib32 \
+  -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \
   -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
   -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
   -DCMAKE_BUILD_TYPE=Debug \
@@ -312,20 +312,20 @@ find %{buildroot} \( -name '*.a' -o -name '*.pyc' \) -delete
 # Tests skipped for cross-compilation
 
 # Install cleanup (injected by mogrix)
-find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\(.*\): .*/\1/' | xargs -r sed -i 's|/usr/bin/|/usr/sgug/bin/|g; s|/usr/sgug/bin/env|/usr/bin/env|g'
-find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '#!/bin/bash\|#! /bin/bash' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\(.*\): .*/\1/' | xargs -r sed -i '1s|^#! */bin/bash|#!/usr/sgug/bin/bash|'
+find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '/usr/bin/' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\(.*\): .*/\1/' | xargs -r sed -i 's|/usr/bin/|/opt/mogrix/bin/|g; s|/opt/mogrix/bin/env|/usr/bin/env|g'
+find %{buildroot}%{_bindir} %{buildroot}%{_datadir} -type f -print0 2>/dev/null | xargs -0 -r grep -lZ '#!/bin/bash\|#! /bin/bash' 2>/dev/null | xargs -0 -r file 2>/dev/null | grep text | sed 's/^\(.*\): .*/\1/' | xargs -r sed -i '1s|^#! */bin/bash|#!/opt/mogrix/bin/bash|'
 rm -f %{buildroot}%{_libdir}/*.la
 rm -f %{buildroot}%{_infodir}/dir
 rm -rf %{buildroot}%{_datadir}/locale
-sed -i 's|repodir=/etc/|repodir=/usr/sgug/etc/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
-sed -i 's|cachedir=/var/|cachedir=/usr/sgug/var/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+sed -i 's|repodir=/etc/|repodir=/opt/mogrix/etc/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
+sed -i 's|cachedir=/var/|cachedir=/opt/mogrix/var/|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
 sed -i 's|gpgcheck=1|gpgcheck=0|' $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
 echo 'distroverpkg=sgugrse-release' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
 echo 'releasever=1' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
 echo 'basearch=mips' >> $RPM_BUILD_ROOT%{_sysconfdir}/%{name}/tdnf.conf
-mkdir -p $RPM_BUILD_ROOT/usr/sgug/etc/yum.repos.d
-mkdir -p $RPM_BUILD_ROOT/usr/sgug/var/cache/tdnf
-cat > $RPM_BUILD_ROOT/usr/sgug/etc/yum.repos.d/mogrix.repo << 'REPOEOF'
+mkdir -p $RPM_BUILD_ROOT/opt/mogrix/etc/yum.repos.d
+mkdir -p $RPM_BUILD_ROOT/opt/mogrix/var/cache/tdnf
+cat > $RPM_BUILD_ROOT/opt/mogrix/etc/yum.repos.d/mogrix.repo << 'REPOEOF'
 [mogrix]
 name=Mogrix Local Repository
 baseurl=file:///tmp/mogrix-repo
@@ -390,8 +390,8 @@ rm -f %{_var}/cache/%{name}/cached-updateinfo.txt
 %config(noreplace) %{_sysconfdir}/%{name}/protected.d/%{name}.conf
 # not installed: %{_sysconfdir}/motdgen.d/02-%{name}-updateinfo.sh
 %dir %{_var}/cache/%{name}
-%dir /usr/sgug/etc/yum.repos.d
-%config(noreplace) /usr/sgug/etc/yum.repos.d/mogrix.repo
+%dir /opt/mogrix/etc/yum.repos.d
+%config(noreplace) /opt/mogrix/etc/yum.repos.d/mogrix.repo
 %dir %{hist_db_dir}
 %{_datadir}/bash-completion/completions/%{name}
 

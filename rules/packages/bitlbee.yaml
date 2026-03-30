@@ -1,6 +1,12 @@
 package: bitlbee
+
+build_after:
+  - gettext
+  - glib2
+  - gnutls
+  - libgcrypt
 smoke_test:
-  - command: "/usr/sgug/bin/bitlbee -V 2>&1"
+  - command: "/opt/mogrix/bin/bitlbee -V 2>&1"
     expect: "BitlBee"
 rules:
   inject_compat_functions:
@@ -25,8 +31,8 @@ rules:
       \ \\\n  --datadir=%{_datadir}/%{name} \\\n  --config=%{_localstatedir}/lib/%{name} \\\n  --pcdir=%{_libdir}/pkgconfig \\\n  --plugindir=%{_libdir}/%{name} \\\n  --systemdsystemunitdir=%{_unitdir}\
       \ \\\n  --strip=0 \\\n  --plugins=1 \\\n  --ssl=gnutls \\\n  --jabber=1 \\\n  --twitter=1 \\\n  --purple=1 \\\n%if %{with otr}\n  --otr=plugin\n%endif\n\n%make_build VERBOSE=\"\"\n(cd doc/user-guide/\
       \ && make user-guide.html)"
-    replacement: "export CC=\"%{__cc}\"\nexport CFLAGS=\"%{optflags}\"\nexport PKG_CONFIG_LIBDIR=\"/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig\"\nexport PKG_CONFIG_SYSROOT_DIR=\"\
-      /opt/sgug-staging\"\nexport LD=/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18\n./configure \\\n  --prefix=%{_prefix} \\\n  --bindir=%{_sbindir} \\\n  --etcdir=%{_sysconfdir}/%{name}\
+    replacement: "export CC=\"%{__cc}\"\nexport CFLAGS=\"%{optflags}\"\nexport PKG_CONFIG_LIBDIR=\"$MOGRIX_STAGING/lib32/pkgconfig:$MOGRIX_STAGING/share/pkgconfig\"\nexport PKG_CONFIG_SYSROOT_DIR=\"\
+      $MOGRIX_STAGING_ROOT\"\nexport LD=/home/edodd/projects/github/unxmaal/mogrix/tools/bin/ld.lld-irix-18\n./configure \\\n  --prefix=%{_prefix} \\\n  --bindir=%{_sbindir} \\\n  --etcdir=%{_sysconfdir}/%{name}\
       \ \\\n  --mandir=%{_mandir} \\\n  --datadir=%{_datadir}/%{name} \\\n  --config=%{_localstatedir}/lib/%{name} \\\n  --pcdir=%{_libdir}/pkgconfig \\\n  --plugindir=%{_libdir}/%{name} \\\n  --strip=0\
       \ \\\n  --plugins=1 \\\n  --ssl=gnutls \\\n  --jabber=1 \\\n  --twitter=1 \\\n  --purple=0 \\\n  --otr=0 \\\n  --pie=0\n# Inject compat library and gcrypt (libgcrypt-config not in PATH)\n# Dynamic\
       \ list: export only the 48 symbols plugins need (discord.so etc.)\n# --export-dynamic exports ALL symbols and crashes IRIX rld (>468 entries)\n# --dynamic-list exports only listed symbols for dlopen\

@@ -1,10 +1,12 @@
 package: gawk
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: echo 'a b c' | /usr/sgug/bin/gawk '{print $2}'
+- command: echo 'a b c' | /opt/mogrix/bin/gawk '{print $2}'
   expect: b
-- command: /usr/sgug/bin/gawk --version
+- command: /opt/mogrix/bin/gawk --version
   expect: 5.3.0
 rules:
   # IRIX has all these standard functions — configure misdetects during cross-compile
@@ -72,5 +74,5 @@ rules:
     replacement: '# infodir removed (install_cleanup)'
   - pattern: ln -sf /usr/share/awk   %{buildroot}%{_datadir}/gawk
     replacement: '# symlink removed (cross-build)'
-  - pattern: ln -sf /usr/sgug/lib32exec/awk %{buildroot}%{_libexecdir}/gawk
+  - pattern: ln -sf /opt/mogrix/lib32exec/awk %{buildroot}%{_libexecdir}/gawk
     replacement: '# symlink removed (cross-build)'

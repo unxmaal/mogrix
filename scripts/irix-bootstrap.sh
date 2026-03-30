@@ -2,11 +2,11 @@
 #
 # irix-bootstrap.sh - Install bootstrap packages to real IRIX filesystem
 #
-# WARNING: This script modifies the real /usr/sgug filesystem!
+# WARNING: This script modifies the real /opt/mogrix filesystem!
 #          Run irix-chroot-testing.sh first to verify binaries work.
 #
 # This script:
-# 1. Extracts the bootstrap tarball to / (creates /usr/sgug/...)
+# 1. Extracts the bootstrap tarball to / (creates /opt/mogrix/...)
 # 2. Initializes the RPM database
 # 3. Properly installs packages via rpm (for database tracking)
 #
@@ -19,7 +19,7 @@
 # Configuration
 TARBALL="${1:-/tmp/irix-bootstrap.tar.gz}"
 RPM_DIR="${2:-/tmp/rpms}"
-SGUG_PREFIX="/usr/sgug"
+SGUG_PREFIX="/opt/mogrix"
 RPM_DBPATH="$SGUG_PREFIX/lib32/sysimage/rpm"
 
 # Colors
@@ -178,7 +178,7 @@ init_rpm_database() {
 create_db_symlink() {
     log_info "Creating RPM database symlink..."
 
-    # rpm's %pre script creates: /var/lib/rpm -> /usr/sgug/lib32/sysimage/rpm
+    # rpm's %pre script creates: /var/lib/rpm -> /opt/mogrix/lib32/sysimage/rpm
     # This is for compatibility with tools that expect /var/lib/rpm
 
     mkdir -p /var/lib

@@ -4,10 +4,12 @@
 # Simple autoconf package, uses bundled glob/getopt
 
 package: make
+
+build_after: none
 classes: [nls-disabled]
 
 smoke_test:
-  - command: "/usr/sgug/bin/make --version"
+  - command: "/opt/mogrix/bin/make --version"
     expect: "4.4.1"
 
 rules:

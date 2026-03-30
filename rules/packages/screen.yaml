@@ -3,8 +3,11 @@
 # NAMEDPIPE: IRIX lacks Unix domain sockets in some contexts; screen can use FIFOs
 package: screen
 
+build_after:
+  - ncurses
+
 smoke_test:
-  - command: "/usr/sgug/bin/screen --version"
+  - command: "/opt/mogrix/bin/screen --version"
     expect: "4.09.01"
 
 rules:

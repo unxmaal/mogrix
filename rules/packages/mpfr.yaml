@@ -9,7 +9,7 @@ rules:
   configure_flags:
     add:
     - --disable-thread-safe
-    - "--with-gmp=/opt/sgug-staging/usr/sgug"
+    - "--with-gmp=$MOGRIX_STAGING"
   install_cleanup:
     # Remove unpackaged doc files that cause rpmbuild to fail
     - "rm -f %{buildroot}%{_pkgdocdir}/COPYING %{buildroot}%{_pkgdocdir}/COPYING.LESSER"

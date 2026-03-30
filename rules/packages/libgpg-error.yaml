@@ -11,6 +11,8 @@
 
 package: libgpg-error
 
+build_after: none
+
 add_source:
   - lock-obj-pub.irix6.5.h
 
@@ -52,7 +54,7 @@ rules:
   spec_replacements:
     # Fedora hardcodes libdir=@exec_prefix@/lib in gpg-error-config.in for
     # multilib compatibility. This breaks us because we use lib32. Remove the
-    # libdir rewrite so configure substitutes @libdir@ → /usr/sgug/lib32 correctly.
+    # libdir rewrite so configure substitutes @libdir@ → /opt/mogrix/lib32 correctly.
     # Keep the GPG_ERROR_CONFIG_HOST substitution.
     - pattern: "s|^libdir=@libdir@$|libdir=@exec_prefix@/lib|g;s|@GPG_ERROR_CONFIG_HOST@|none|g"
       replacement: "s|@GPG_ERROR_CONFIG_HOST@|none|g"

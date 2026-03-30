@@ -2,6 +2,8 @@
 # Meson-based build — uses explicit meson cross-compilation commands
 package: gcr
 
+build_after: none
+
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - gcr.sgifixes.patch
@@ -23,7 +25,7 @@ rules:
     # Replace %meson + %meson_build with explicit meson cross-compilation
     # Copy host-runnable Python scripts (glib-mkenums, glib-genmarshal) to local bin dir
     - pattern: "%meson\n%meson_build"
-      replacement: "mkdir -p _hostbin\nfor tool in glib-mkenums glib-genmarshal glib-compile-resources glib-compile-schemas gdbus-codegen; do\n  if [ -f /opt/sgug-staging/usr/sgug/bin/$tool ]; then\n    cp /opt/sgug-staging/usr/sgug/bin/$tool _hostbin/\n    chmod +x _hostbin/$tool\n  fi\ndone\n# Patch gdbus-codegen: fix shebang to avoid meson virtualenv, add codegen module path\nsed -i '1s|#!/usr/bin/env python3|#!/usr/bin/python3|' _hostbin/gdbus-codegen\nsed -i '2i import sys; sys.path.insert(0, \"/opt/sgug-staging/usr/sgug/share/glib-2.0\")' _hostbin/gdbus-codegen\nexport PATH=$(pwd)/_hostbin:$PATH\nMOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  --libexecdir=%{_libexecdir} \\\n  -Dgtk4=false \\\n  -Dgtk_doc=false \\\n  -Dintrospection=false \\\n  -Dvapi=false \\\n  -Dssh_agent=false \\\n  -Dsystemd=disabled \\\n  --default-library=shared\n/home/edodd/.local/bin/meson compile -C _build"
+      replacement: "mkdir -p _hostbin\nfor tool in glib-mkenums glib-genmarshal glib-compile-resources glib-compile-schemas gdbus-codegen; do\n  if [ -f $MOGRIX_STAGING/bin/$tool ]; then\n    cp $MOGRIX_STAGING/bin/$tool _hostbin/\n    chmod +x _hostbin/$tool\n  fi\ndone\n# Patch gdbus-codegen: fix shebang to avoid meson virtualenv, add codegen module path\nsed -i '1s|#!/usr/bin/env python3|#!/usr/bin/python3|' _hostbin/gdbus-codegen\nsed -i '2i import sys; sys.path.insert(0, \"$MOGRIX_STAGING/share/glib-2.0\")' _hostbin/gdbus-codegen\nexport PATH=$(pwd)/_hostbin:$PATH\nMOGRIX_CROSS=/home/edodd/projects/github/unxmaal/mogrix/cross/meson-irix-cross.ini\n/home/edodd/.local/bin/meson setup _build \\\n  --cross-file=$MOGRIX_CROSS \\\n  --prefix=%{_prefix} \\\n  --libdir=%{_libdir} \\\n  --libexecdir=%{_libexecdir} \\\n  -Dgtk4=false \\\n  -Dgtk_doc=false \\\n  -Dintrospection=false \\\n  -Dvapi=false \\\n  -Dssh_agent=false \\\n  -Dsystemd=disabled \\\n  --default-library=shared\n/home/edodd/.local/bin/meson compile -C _build"
 
     # Replace %meson_install
     - pattern: "%meson_install"

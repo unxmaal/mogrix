@@ -1,4 +1,9 @@
 package: glib-networking
+
+build_after:
+  - gettext
+  - glib2
+  - gnutls
 rules:
   prep_commands:
   - "$MOGRIX_ROOT/tools/safepatch tls/meson.build --delete-line \"subdir('tests')\" --no-backup --quiet"

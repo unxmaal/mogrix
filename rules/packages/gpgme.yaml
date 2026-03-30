@@ -12,6 +12,10 @@
 
 package: gpgme
 
+build_after:
+  - libassuan
+  - libgpg-error
+
 rules:
   # IRIX needs _SGI_SOURCE and SCM_RIGHTS, plus isinf via compat header
   extra_cflags:
@@ -34,7 +38,7 @@ rules:
   - pattern: "--enable-languages=cpp,%{?with_qt5:qt,}%{!?with_qt5:%{?with_qt6:qt6,}}python"
     replacement: "--enable-languages="
   - pattern: "pushd build\n%configure"
-    replacement: "export GPG_ERROR_CONFIG=/opt/sgug-staging/usr/sgug/bin/gpg-error-config\nexport LIBASSUAN_CONFIG=/opt/sgug-staging/usr/sgug/bin/libassuan-config\ncd build\n%configure"
+    replacement: "export GPG_ERROR_CONFIG=$MOGRIX_STAGING/bin/gpg-error-config\nexport LIBASSUAN_CONFIG=$MOGRIX_STAGING/bin/libassuan-config\ncd build\n%configure"
   - pattern: "%make_build\npopd"
     replacement: "%make_build\ncd .."
   - pattern: "pushd build-qt6\n%configure"

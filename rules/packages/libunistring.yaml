@@ -2,6 +2,8 @@
 # Needed by gettext, p11-kit, gnutls
 package: libunistring
 
+build_after: none
+
 rules:
 
   # gnulib cross-compilation incorrectly replaces memchr with rpl_memchr.

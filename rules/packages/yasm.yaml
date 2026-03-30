@@ -4,6 +4,8 @@
 # the cross-compiled -lmogrix-compat archive into host linking.
 package: yasm
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - byacc

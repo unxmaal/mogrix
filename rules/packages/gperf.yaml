@@ -2,6 +2,8 @@
 # Needed by fontconfig, glib2
 package: gperf
 
+build_after: none
+
 rules:
 
   # gperf uses 'register' keyword, deprecated in C++17

@@ -1,11 +1,14 @@
 # most - pager program (uses slang)
 package: most
 
+build_after:
+  - slang
+
 rules:
   spec_replacements:
     # Tell configure where to find slang in cross-compilation sysroot
     - pattern: "%configure"
-      replacement: "%configure --with-slanglib=/opt/sgug-staging/usr/sgug/lib32 --with-slanginc=/opt/sgug-staging/usr/sgug/include"
+      replacement: "%configure --with-slanglib=$MOGRIX_STAGING/lib32 --with-slanginc=$MOGRIX_STAGING/include"
     # make install puts docs in %{_docdir}/%{name} which conflicts with %doc's %{_pkgdocdir}
     - pattern: "%make_install"
       replacement: "%make_install\nrm -rf %{buildroot}%{_docdir}/%{name}"

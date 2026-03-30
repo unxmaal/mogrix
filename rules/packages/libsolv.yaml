@@ -1,4 +1,6 @@
 package: libsolv
+
+build_after: none
 aliases:
 - lib%{libname}
 rules:
@@ -15,9 +17,9 @@ rules:
   - rubygems
   - zchunk-devel
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
   spec_replacements:
   - pattern: '%bcond_without python_bindings'
     replacement: '%bcond_with python_bindings'
@@ -47,13 +49,13 @@ rules:
     replacement: '%bcond_with comps'
   - pattern: '%cmake -GNinja'
     replacement: "export COMPAT_DIR=$(pwd)/mogrix-compat\ncmake -B _build -S . \\\n  -DCMAKE_SYSTEM_NAME=IRIX \\\n  -DCMAKE_MAKE_PROGRAM=/usr/bin/make \\\n  -DCMAKE_C_COMPILER=%{__cc} \\\n  -DCMAKE_CXX_COMPILER=%{__cxx} \\\n  -DCMAKE_AR=%{__ar}\
-      \ \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic\"\
+      \ \\\n  -DCMAKE_RANLIB=%{__ranlib} \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=%{_libdir} \\\n  -DCMAKE_C_FLAGS=\"-I$MOGRIX_STAGING/include/mogrix-compat/generic\"\
       \ \\\n  -DCMAKE_EXE_LINKER_FLAGS=\"-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a -Wl,--no-whole-archive -lgen -lpthread\" \\\n  -DCMAKE_SHARED_LINKER_FLAGS=\"-Wl,--whole-archive $COMPAT_DIR/libmogrix-compat.a\
-      \ -Wl,--no-whole-archive -lgen -lpthread\" \\\n  -DCMAKE_FIND_ROOT_PATH=/opt/sgug-staging/usr/sgug \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n\
-      \  -DRPM_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n  -DRPMDB_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/librpm.so \\\n  -DRPMIO_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/librpmio.so \\\n  -DLIBXML2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include/libxml2\
-      \ \\\n  -DLIBXML2_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libxml2.so \\\n  -DZLIB_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/libz.so \\\n  -DZLIB_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n\
-      \  -DBZIP2_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/libbz2.so \\\n  -DBZIP2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n  -DLZMA_LIBRARY=/opt/sgug-staging/usr/sgug/lib32/liblzma.so \\\n \
-      \ -DLZMA_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include \\\n  -DFEDORA=1 \\\n  -DENABLE_RPMDB=ON \\\n  -DENABLE_RPMDB_BYRPMHEADER=ON \\\n  -DENABLE_RPMDB_LIBRPM=ON \\\n  -DENABLE_RPMPKG_LIBRPM=ON\
+      \ -Wl,--no-whole-archive -lgen -lpthread\" \\\n  -DCMAKE_FIND_ROOT_PATH=$MOGRIX_STAGING \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \\\n  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \\\n\
+      \  -DRPM_INCLUDE_DIR=$MOGRIX_STAGING/include \\\n  -DRPMDB_LIBRARY=$MOGRIX_STAGING/lib32/librpm.so \\\n  -DRPMIO_LIBRARY=$MOGRIX_STAGING/lib32/librpmio.so \\\n  -DLIBXML2_INCLUDE_DIR=$MOGRIX_STAGING/include/libxml2\
+      \ \\\n  -DLIBXML2_LIBRARY=$MOGRIX_STAGING/lib32/libxml2.so \\\n  -DZLIB_LIBRARY=$MOGRIX_STAGING/lib32/libz.so \\\n  -DZLIB_INCLUDE_DIR=$MOGRIX_STAGING/include \\\n\
+      \  -DBZIP2_LIBRARIES=$MOGRIX_STAGING/lib32/libbz2.so \\\n  -DBZIP2_INCLUDE_DIR=$MOGRIX_STAGING/include \\\n  -DLZMA_LIBRARY=$MOGRIX_STAGING/lib32/liblzma.so \\\n \
+      \ -DLZMA_INCLUDE_DIR=$MOGRIX_STAGING/include \\\n  -DFEDORA=1 \\\n  -DENABLE_RPMDB=ON \\\n  -DENABLE_RPMDB_BYRPMHEADER=ON \\\n  -DENABLE_RPMDB_LIBRPM=ON \\\n  -DENABLE_RPMPKG_LIBRPM=ON\
       \ \\\n  -DENABLE_RPMMD=ON \\\n  -DUSE_VENDORDIRS=ON \\\n  -DWITH_LIBXML2=ON \\\n  -DENABLE_LZMA_COMPRESSION=ON \\\n  -DENABLE_BZIP2_COMPRESSION=ON \\\n  -DENABLE_COMPLEX_DEPS=ON \\\n  -DENABLE_ZSTD_COMPRESSION=OFF\
       \ \\\n  -DENABLE_ZCHUNK_COMPRESSION=OFF \\\n  -DENABLE_COMPS=OFF \\\n  -DENABLE_APPDATA=OFF \\\n  -DENABLE_HELIXREPO=OFF \\\n  -DENABLE_SUSEREPO=OFF \\\n  -DENABLE_DEBIAN=OFF \\\n  -DENABLE_ARCHREPO=OFF\
       \ \\\n  -DMULTI_SEMANTICS=OFF \\\n  -DENABLE_CONDA=OFF \\\n  -DENABLE_PERL=OFF \\\n  -DENABLE_RUBY=OFF \\\n  -DENABLE_PYTHON=OFF \\\n  -DHAVE_FUNOPEN=1\n"

@@ -2,6 +2,8 @@
 # Universally Unique Identifier generation library
 package: uuid
 
+build_after: none
+
 rules:
 
   # Drop C++, perl, and DCE subpackages for cross-compilation

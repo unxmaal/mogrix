@@ -1,8 +1,10 @@
 package: diffutils
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: /usr/sgug/bin/diff --version
+- command: /opt/mogrix/bin/diff --version
   expect: '3.10'
 rules:
   drop_buildrequires:

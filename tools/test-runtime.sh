@@ -35,7 +35,7 @@ echo "odump RC: $?"
 
 echo ""
 echo "=== Running test executable ==="
-export LD_LIBRARYN32_PATH=/tmp:/usr/sgug/lib32:/usr/lib32:/lib32
+export LD_LIBRARYN32_PATH=/tmp:/opt/mogrix/lib32:/usr/lib32:/lib32
 ./test-hello
 RC=$?
 echo "test-hello exit code: $RC"

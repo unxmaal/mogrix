@@ -3,6 +3,8 @@
 # IRIX fix: clearenv() not available — provide compat implementation via ac_cv.
 package: libpipeline
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - check-devel

@@ -1,8 +1,8 @@
 #!/bin/sh
-prefix=/usr/sgug
-exec_prefix=/usr/sgug
-libdir=/usr/sgug/lib32
-includedir=/usr/sgug/include
+prefix=/opt/mogrix
+exec_prefix=/opt/mogrix
+libdir=/opt/mogrix/lib32
+includedir=/opt/mogrix/include
 case "$1" in
   --version) echo "1.7" ;;
   --cflags) echo "-I${includedir}" ;;

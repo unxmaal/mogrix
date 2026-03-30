@@ -1,4 +1,6 @@
 package: popt
+
+build_after: none
 add_patch:
 - popt-disable-stpcpy.patch
 - popt-disable-mbsrtowcs.patch

@@ -4,7 +4,7 @@ Each `mogrix build --cross` gets a clean staging sysroot containing ONLY the
 base toolchain + declared build dependencies. No leaking, no accumulation.
 
 How it works:
-  1. /opt/sgug-staging/ is the read-only base layer (toolchain, rpmmacros, base libs)
+  1. <project_root>/staging/ is the read-only base layer (toolchain, rpmmacros, base libs)
   2. Declared BuildRequires are extracted into a per-build upper dir
   3. unshare --mount creates a private mount namespace with overlayfs
   4. rpmbuild sees base + declared deps, nothing else
@@ -41,7 +41,7 @@ class IsolatedStaging:
     """Manages per-build staging isolation via overlayfs."""
 
     def __init__(self, base_staging: Path, rpms_dir: Path, rules_dir: Path):
-        self.base_staging = base_staging       # /opt/sgug-staging
+        self.base_staging = base_staging       # <project_root>/staging
         self.rpms_dir = rpms_dir               # ~/mogrix_outputs/RPMS
         self.rules_dir = rules_dir
         self.resolver = DependencyResolver(rules_dir)
@@ -303,8 +303,8 @@ class IsolatedStaging:
             "[yellow]OverlayFS not available — checking deps in current staging[/yellow]"
         )
 
-        lib_dir = self.base_staging / "usr" / "sgug" / "lib32"
-        include_dir = self.base_staging / "usr" / "sgug" / "include"
+        lib_dir = self.base_staging / "opt" / "mogrix" / "lib32"
+        include_dir = self.base_staging / "opt" / "mogrix" / "include"
 
         missing = []
         for dep in deps:

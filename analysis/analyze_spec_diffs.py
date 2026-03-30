@@ -185,8 +185,8 @@ def analyze_spec_patterns(added, removed, patterns):
     if 'lib32' in added_text and 'lib64' in removed_text:
         patterns['lib64_to_lib32'].append(True)
 
-    # 18. /usr/sgug prefix usage
-    if '/usr/sgug' in added_text:
+    # 18. /opt/mogrix prefix usage
+    if '/opt/mogrix' in added_text:
         patterns['usr_sgug_prefix'].append(True)
 
 def summarize_spec_results(all_results):

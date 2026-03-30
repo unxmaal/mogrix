@@ -1,2 +1,5 @@
 # libvorbis - Vorbis audio codec library
 package: libvorbis
+
+build_after:
+  - libogg

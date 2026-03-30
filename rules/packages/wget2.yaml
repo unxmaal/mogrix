@@ -1,4 +1,14 @@
 package: wget2
+
+build_after:
+  - brotli
+  - gettext
+  - gnutls
+  - gpgme
+  - libidn2
+  - libpsl
+  - pcre2
+  - zlib-ng
 rules:
   drop_buildrequires:
   - git-core

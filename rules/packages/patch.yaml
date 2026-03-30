@@ -1,6 +1,8 @@
 package: patch
+
+build_after: none
 smoke_test:
-- command: /usr/sgug/bin/patch --version
+- command: /opt/mogrix/bin/patch --version
   expect: 2.7.6
 rules:
   inject_compat_functions:

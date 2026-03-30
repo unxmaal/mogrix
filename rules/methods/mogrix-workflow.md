@@ -29,7 +29,7 @@ uv run mogrix <command>
 | `~/mogrix_outputs/SRPMS/` | Converted SRPMs (mogrix convert output) |
 | `~/mogrix_outputs/RPMS/` | Built RPMs (known-good outputs) |
 | `~/rpmbuild/` | Ephemeral rpmbuild workspace (can delete anytime) |
-| `/opt/sgug-staging/` | Cross-compilation staging (setup-cross + staged packages) |
+| `$MOGRIX_STAGING_ROOT/` | Cross-compilation staging (setup-cross + staged packages) |
 
 **Key principles:**
 - **Never store build artifacts in the mogrix repo** - keep it code-only
@@ -63,7 +63,7 @@ uv run mogrix build ~/mogrix_outputs/SRPMS/popt-1.19-6.fc40.src-converted/popt-1
 ```
 
 The `--cross` flag automatically:
-- Uses `/opt/sgug-staging/rpmmacros.irix`
+- Uses `$MOGRIX_STAGING_ROOT/rpmmacros.irix`
 - Sets `--target=mips-sgi-irix`
 - Passes `--nodeps`
 
@@ -151,7 +151,7 @@ Only use direct rpmbuild when:
 In those cases, the correct incantation is:
 ```bash
 rpmbuild \
-  --macros="/usr/lib/rpm/macros:/opt/sgug-staging/rpmmacros.irix" \
+  --macros="/usr/lib/rpm/macros:$MOGRIX_STAGING_ROOT/rpmmacros.irix" \
   --define '_disable_source_fetch 1' \
   --nodeps \
   --target=mips-sgi-irix \

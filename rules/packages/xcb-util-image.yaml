@@ -1,6 +1,10 @@
 # xcb-util-image 0.4.1 - XCB image convenience functions (FC40: 0.4.1-5)
 package: xcb-util-image
 
+build_after:
+  - libxcb
+  - xcb-util
+
 rules:
 
   prep_commands:

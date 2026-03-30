@@ -1,2 +1,4 @@
 # keychain - SSH/GPG agent manager (shell script)
 package: keychain
+
+build_after: none

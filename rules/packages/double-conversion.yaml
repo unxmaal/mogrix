@@ -1,10 +1,18 @@
 package: double-conversion
+
+build_after: none
 rules:
   spec_replacements:
+  - pattern: 'export ac_cv_c_undeclared_builtin_options="none needed"
+export CPPFLAGS="-I/opt/mogrix/include/mogrix-compat/generic $CPPFLAGS"
+# Compile mogrix compat sources into static archive'
+    replacement: 'export ac_cv_c_undeclared_builtin_options="none needed"
+# irix-cc wrapper provides mogrix-compat/generic via -isystem, CPPFLAGS removed
+# Compile mogrix compat sources into static archive'
   - pattern: '%cmake -DBUILD_TESTING=ON
 
       %cmake_build'
-    replacement: "MOGRIX_TOOLCHAIN=/home/edodd/projects/github/unxmaal/mogrix/cross/cmake-irix-toolchain.cmake\ncmake -B _build \\\n  -DCMAKE_TOOLCHAIN_FILE=$MOGRIX_TOOLCHAIN \\\n  -DCMAKE_BUILD_TYPE=Release\
+    replacement: "MOGRIX_TOOLCHAIN=/home/edodd/projects/github/unxmaal/mogrix/cross/cmake-irix-toolchain-libcxx.cmake\ncmake -B _build \\\n  -DCMAKE_TOOLCHAIN_FILE=$MOGRIX_TOOLCHAIN \\\n  -DCMAKE_BUILD_TYPE=Release\
       \ \\\n  -DCMAKE_INSTALL_PREFIX=%{_prefix} \\\n  -DCMAKE_INSTALL_LIBDIR=lib32 \\\n  -DBUILD_TESTING=OFF \\\n  -DBUILD_SHARED_LIBS=ON\ncmake --build _build\n"
   - pattern: '%cmake_install'
     replacement: DESTDIR=$RPM_BUILD_ROOT cmake --install _build
@@ -12,13 +20,14 @@ rules:
     replacement: 'Requires:       %{name} = %{version}-%{release}'
   - pattern: '%{_libdir}/libdouble-conversion.so.3{,.*}'
     replacement: '%{_libdir}/libdouble-conversion.so.3*'
-  - pattern: 'URL:            https://github.com/google/double-conversion'
+  - pattern: 'URL:            https://github.com/google/double-conversion
+Source0:'
     replacement: 'URL:            https://github.com/google/double-conversion
 
       Provides: libdouble-conversion.so.3(mips-32)
 
       Provides: double-conversion(mips-32) = %{version}-%{release}
 
-      '
+      Source0:'
   install_cleanup:
   - rm -f %{buildroot}%{_libdir}/libdouble-conversion.a || true

@@ -2,6 +2,9 @@
 # Uses X11 from IRIX native sysroot (like aterm)
 package: xclip
 
+build_after:
+  - libX11
+
 rules:
 
   prep_commands:

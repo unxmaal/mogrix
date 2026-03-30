@@ -1,7 +1,9 @@
 package: vim
 
+build_after: none
+
 smoke_test:
-  - command: "/usr/sgug/bin/vim --version 2>&1"
+  - command: "/opt/mogrix/bin/vim --version 2>&1"
     expect: "VIM"
 
 rules:
@@ -37,7 +39,7 @@ rules:
   - "$MOGRIX_ROOT/tools/safepatch src/osdef1.h.in --delete-line 'struct pollfd.*for poll' --regex --no-backup --quiet || :"
   - "$MOGRIX_ROOT/tools/safepatch src/osdef1.h.in --delete-line 'extern int.*poll.struct pollfd' --regex --no-backup --quiet || :"
   export_vars:
-    LDFLAGS: "-L/opt/sgug-staging/usr/sgug/lib32"
+    LDFLAGS: "-L$MOGRIX_STAGING/lib32"
   spec_replacements:
   - pattern: '%bcond_without gui'
     replacement: '%bcond_with gui'

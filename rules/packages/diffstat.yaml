@@ -1,1 +1,3 @@
 package: diffstat
+
+build_after: none

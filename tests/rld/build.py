@@ -33,7 +33,7 @@ CXX = str(CROSS_DIR / "irix-cxx")
 LD = str(CROSS_DIR / "irix-ld")
 STRIP_VERNEED = str(CROSS_DIR / "strip-verneed")
 
-STAGING = "/opt/sgug-staging/usr/sgug"
+STAGING = "$MOGRIX_STAGING"
 
 # Common flags
 CFLAGS = ["-O1", "-g", "-Wall"]

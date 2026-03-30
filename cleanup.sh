@@ -8,7 +8,7 @@
 set -e
 
 MOGRIX_DIR="/home/edodd/projects/github/unxmaal/mogrix"
-STAGING="/opt/sgug-staging/usr/sgug"
+STAGING="$MOGRIX_STAGING"
 
 echo "=== Mogrix Build VM Cleanup ==="
 echo ""

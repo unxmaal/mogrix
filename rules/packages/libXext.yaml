@@ -3,6 +3,9 @@
 
 package: libXext
 
+build_after:
+  - libX11
+
 rules:
 
   spec_replacements:

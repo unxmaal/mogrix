@@ -4,6 +4,12 @@
 # With those available, libbsd is not needed.
 package: scrot
 
+build_after:
+  - imlib2
+  - libX11
+  - libXext
+  - libXfixes
+
 rules:
   inject_compat_functions:
     - err
@@ -55,7 +61,7 @@ rules:
     - pattern: "autoreconf -if"
       replacement: "# autoreconf skipped — using pre-generated configure (needs autoconf-archive)"
     # scrot.png doesn't exist in the source tree root but is listed in %doc.
-    # make install also installs docs to /usr/sgug/share/doc/scrot/ causing
+    # make install also installs docs to /opt/mogrix/share/doc/scrot/ causing
     # "unpackaged files" error. Remove scrot.png from %doc and use %{_docdir}/%{name}/
     # to reference the make-installed docs instead of letting RPM copy from source.
     - pattern: "%doc AUTHORS ChangeLog README.md scrot.png FAQ CONTRIBUTING.md TODO.md"

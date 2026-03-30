@@ -1,4 +1,6 @@
 package: xnedit
+
+build_after: none
 skip: true
 skip_reason: "needs Motif (Xm/Xm.h) — not in cross-compilation sysroot"
 blocked: true
@@ -15,17 +17,17 @@ add_source:
   - fix_class_recs.c
 rules:
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
     MOGRIX_NO_DLMALLOC: "1"
   prep_commands:
     # Fix hardcoded Linux paths in Makefile.linux for cross-compilation
-    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-I/usr/X11R6/include' --new '-I/opt/sgug-staging/usr/sgug/include' --count 0 --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-I/usr/include/X11' --new '-I/opt/sgug-staging/usr/sgug/include/X11' --count 0 --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-L/usr/X11R6/lib' --new '-L/opt/sgug-staging/usr/sgug/lib32' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-I/usr/X11R6/include' --new '-I$MOGRIX_STAGING/include' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-I/usr/include/X11' --new '-I$MOGRIX_STAGING/include/X11' --count 0 --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-L/usr/X11R6/lib' --new '-L$MOGRIX_STAGING/lib32' --count 0 --no-backup --quiet"
     # Add compat include path and EDITRES support
-    - '$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old ''$(C_OPT_FLAGS)'' --new ''$(C_OPT_FLAGS) -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -DEDITRES'' --no-backup --quiet'
+    - '$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old ''$(C_OPT_FLAGS)'' --new ''$(C_OPT_FLAGS) -I$MOGRIX_STAGING/include/mogrix-compat/generic -DEDITRES'' --no-backup --quiet'
     # Add -lXmu for EDITRES and -lgen for IRIX, add compat library
     - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.linux --old '-lXrender' --new '-lXmu -lXrender' --no-backup --quiet"
     # Replace DropDown.h with ComboBox.h (IRIX Motif has ComboBox, not DropDown)
@@ -59,5 +61,5 @@ rules:
         %{_datadir}/applications/xnedit.desktop
         %{_datadir}/icons/xnedit.png
 smoke_test:
-- command: "/usr/sgug/bin/xnedit -V 2>&1"
+- command: "/opt/mogrix/bin/xnedit -V 2>&1"
   expect: "XNEdit"

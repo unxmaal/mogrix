@@ -1,10 +1,12 @@
 package: grep
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: echo hello | /usr/sgug/bin/grep hello
+- command: echo hello | /opt/mogrix/bin/grep hello
   expect: hello
-- command: /usr/sgug/bin/grep --version
+- command: /opt/mogrix/bin/grep --version
   expect: '3.11'
 rules:
   drop_buildrequires:

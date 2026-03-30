@@ -1,4 +1,17 @@
 package: imlib2
+
+build_after:
+  - bzip2
+  - freetype
+  - giflib
+  - libX11
+  - libXext
+  - libjpeg-turbo
+  - libpng
+  - libtiff
+  - libxcb
+  - xz
+  - zlib-ng
 add_source:
 - memmem.h
 rules:

@@ -1,4 +1,6 @@
 package: irssi
+
+build_after: none
 # Re-enablement audit (Feb 2025): Perl scripting stays DISABLED.
 # Cross-compilation of perl embedding is not feasible — perl's ExtUtils::Embed
 # generates host-specific compiler/linker flags that conflict with IRIX cross-build.

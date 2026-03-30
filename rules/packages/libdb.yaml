@@ -1,5 +1,7 @@
 # libdb package rules for IRIX cross-compilation
 package: libdb
+
+build_after: none
 skip: true
 skip_reason: "Multiple build issues: __db_Clocaltime undeclared (clib not compiled), EBADRPC guards needed. Needs deep BDB configure investigation."
 blocked: true
@@ -17,7 +19,7 @@ rules:
     replacement: "cd db.1.85/PORT/linux\n%patch10 -p0\ncd ../../..\ncd db.1.85"
   - pattern: "%patch20 -p1\npopd"
     replacement: "%patch20 -p1\ncd .."
-  # Fix brace expansion. The /usr/lib path gets mangled to /usr/sgug/lib32 by
+  # Fix brace expansion. The /usr/lib path gets mangled to /opt/mogrix/lib32 by
   # generic rewrite_paths — we use prep_commands to pre-stage config files.
   - pattern: 'cp /usr/lib/rpm/redhat/config.{guess,sub} "$dir"'
     replacement: 'cp config.guess config.sub "$dir"'

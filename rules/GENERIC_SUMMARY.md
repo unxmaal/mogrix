@@ -15,8 +15,8 @@ Generic rules are applied to EVERY package automatically. Do NOT duplicate them 
 | libdicl removal | `remove_lines` | CPPFLAGS/LIBS exports, %gpgverify, %ldconfig_scriptlets, systemd scriptlets |
 | Common compat functions | `inject_compat_functions` | strdup, strndup, strnlen, getline, getopt_long, asprintf, vasprintf, setenv, strerror_r, reallocarray, stpcpy |
 | malloc(0) cross-detect | `ac_cv_overrides` | ac_cv_func_malloc_0_nonnull, ac_cv_func_realloc_0_nonnull, gl_cv_func_select_* |
-| SGUG prefix paths | `rpm_macros` | _prefix=/usr/sgug, _libdir=/usr/sgug/lib32, _bindir, _includedir, etc. |
-| Path translation | `rewrite_paths` | /usr/lib64 → /usr/sgug/lib32, /usr/lib → /usr/sgug/lib32, /usr/include → /usr/sgug/include |
+| SGUG prefix paths | `rpm_macros` | _prefix=/opt/mogrix, _libdir=/opt/mogrix/lib32, _bindir, _includedir, etc. |
+| Path translation | `rewrite_paths` | /usr/lib64 → /opt/mogrix/lib32, /usr/lib → /opt/mogrix/lib32, /usr/include → /opt/mogrix/include |
 | Linux-only features | `configure_disable` | selinux, systemd, udev, inotify, epoll, fanotify, timerfd, libcap, audit |
 | Verbose builds | `configure_flags: add` | --disable-silent-rules |
 | Header stubs | `header_overlays: generic` | execinfo.h, malloc.h, error.h, sys/socket.h (MSG_NOSIGNAL, SOCK_CLOEXEC, SOCK_NONBLOCK), etc. |

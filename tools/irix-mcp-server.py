@@ -95,7 +95,7 @@ def is_blocked(command: str) -> str | None:
 HOST_DANGEROUS_PATHS = [
     "/etc", "/bin", "/sbin", "/lib", "/lib32", "/lib64",
     "/usr/bin", "/usr/sbin", "/usr/lib", "/usr/lib32",
-    "/usr/sgug",  # Must go through chroot, not direct host access
+    "/opt/mogrix",  # Must go through chroot, not direct host access
     "/dev", "/proc", "/hw",
 ]
 
@@ -197,7 +197,7 @@ class SSHConnection:
         """Execute a single command (no retry)."""
         escaped_cmd = command.replace("'", "'\\''")
         remote_cmd = (
-            f"chroot {self.chroot} /usr/sgug/bin/sgug-exec "
+            f"chroot {self.chroot} /opt/mogrix/bin/sgug-exec "
             f"/bin/sh -c '{escaped_cmd}'"
         )
 
@@ -495,7 +495,7 @@ class IRIXMCPServer:
                 "description": (
                     "Read a file from the IRIX chroot. "
                     "Path is relative to the chroot root "
-                    "(e.g., /usr/sgug/lib32/libfoo.so). "
+                    "(e.g., /opt/mogrix/lib32/libfoo.so). "
                     "Returns the file contents (text files) or metadata (binary)."
                 ),
                 "inputSchema": {
@@ -544,7 +544,7 @@ class IRIXMCPServer:
                     "Destructive operations (reboot, mkfs, rm -rf /) are blocked. "
                     "Use for running test binaries, diagnostics (ping, par, netstat), "
                     "and file operations in user directories. "
-                    "System directories (/etc, /bin, /usr/sgug, etc.) are protected from writes."
+                    "System directories (/etc, /bin, /opt/mogrix, etc.) are protected from writes."
                 ),
                 "inputSchema": {
                     "type": "object",

@@ -1,11 +1,13 @@
 # findutils - GNU find, xargs, locate
 package: findutils
+
+build_after: none
 classes:
 - nls-disabled
 smoke_test:
-- command: /usr/sgug/bin/find --version
+- command: /opt/mogrix/bin/find --version
   expect: 4.9.0
-- command: /usr/sgug/bin/xargs --version
+- command: /opt/mogrix/bin/xargs --version
   expect: 4.9.0
 rules:
   drop_buildrequires:
@@ -18,6 +20,7 @@ rules:
     CPPFLAGS: "-D_GNU_SOURCE=1 $CPPFLAGS"
   ac_cv_overrides:
     ac_cv_func_timegm: "yes"
+    gl_cv_func_working_mktime: "yes"
     gl_cv_func_strerror_r_works: "yes"
     ac_cv_func_strerror_r: "yes"
   prep_commands:

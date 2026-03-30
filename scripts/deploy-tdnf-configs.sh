@@ -41,12 +41,12 @@ gpgcheck=0
 EOF
 
 echo "Creating directories on IRIX..."
-ssh "$IRIX_HOST" "mkdir -p ${CHROOT_PATH}/usr/sgug/etc/tdnf ${CHROOT_PATH}/usr/sgug/etc/yum.repos.d ${CHROOT_PATH}/usr/sgug/var/cache/tdnf"
+ssh "$IRIX_HOST" "mkdir -p ${CHROOT_PATH}/opt/mogrix/etc/tdnf ${CHROOT_PATH}/opt/mogrix/etc/yum.repos.d ${CHROOT_PATH}/opt/mogrix/var/cache/tdnf"
 
 echo "Copying configuration files..."
-scp "$TEMP_DIR/tdnf.conf" "${IRIX_HOST}:${CHROOT_PATH}/usr/sgug/etc/tdnf/"
-scp "$TEMP_DIR/mogrix.repo" "${IRIX_HOST}:${CHROOT_PATH}/usr/sgug/etc/yum.repos.d/"
-scp "$TEMP_DIR/mogrix-local.repo" "${IRIX_HOST}:${CHROOT_PATH}/usr/sgug/etc/yum.repos.d/"
+scp "$TEMP_DIR/tdnf.conf" "${IRIX_HOST}:${CHROOT_PATH}/opt/mogrix/etc/tdnf/"
+scp "$TEMP_DIR/mogrix.repo" "${IRIX_HOST}:${CHROOT_PATH}/opt/mogrix/etc/yum.repos.d/"
+scp "$TEMP_DIR/mogrix-local.repo" "${IRIX_HOST}:${CHROOT_PATH}/opt/mogrix/etc/yum.repos.d/"
 
 rm -rf "$TEMP_DIR"
 
@@ -57,8 +57,8 @@ echo "  # Enter chroot"
 echo "  chroot $CHROOT_PATH /bin/sh"
 echo ""
 echo "  # Set up environment"
-echo "  export LD_LIBRARY_PATH=/usr/sgug/lib32"
-echo "  export PATH=/usr/sgug/bin:\$PATH"
+echo "  export LD_LIBRARY_PATH=/opt/mogrix/lib32"
+echo "  export PATH=/opt/mogrix/bin:\$PATH"
 echo ""
 echo "  # Test tdnf"
 echo "  tdnf repolist"

@@ -5,7 +5,16 @@
  * don't have it (like IRIX).
  *
  * Based on public domain implementations.
+ *
+ * Skipped when gnulib provides its own getopt via __GETOPT_PREFIX.
+ * gnulib renames struct option to rpl_option, making our implementation
+ * incompatible. gnulib's getopt_long is sufficient.
  */
+
+/* Skip entire file when gnulib provides getopt */
+#if defined(__GETOPT_PREFIX) || defined(_GL_SYSTEM_GETOPT)
+/* gnulib provides getopt_long — nothing to do */
+#else
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +23,22 @@
 
 /* Include the header with struct option definition */
 #include <getopt.h>
+
+/* IRIX getopt.h doesn't define struct option (no getopt_long natively).
+ * Define it here if not already provided by the system header.
+ * Use no_argument as a sentinel — glibc defines it alongside struct option. */
+#ifndef no_argument
+#define no_argument        0
+#define required_argument  1
+#define optional_argument  2
+
+struct option {
+    const char *name;
+    int has_arg;
+    int *flag;
+    int val;
+};
+#endif
 
 /* External variables used by getopt - provided by libc */
 extern char *optarg;
@@ -168,3 +193,5 @@ int getopt_long_only(int argc, char * const argv[],
     /* A full implementation would try long options with single dash too */
     return getopt_long(argc, argv, optstring, longopts, longindex);
 }
+
+#endif /* !__GETOPT_PREFIX && !_GL_SYSTEM_GETOPT */

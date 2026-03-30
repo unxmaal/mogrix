@@ -1,4 +1,6 @@
 package: unzip
+
+build_after: none
 rules:
   drop_buildrequires: []
   spec_replacements:

@@ -3,6 +3,9 @@
 
 package: xcb-util
 
+build_after:
+  - libxcb
+
 rules:
 
   spec_replacements:

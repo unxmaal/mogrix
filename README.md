@@ -4,7 +4,7 @@
 
 Mogrix is a complete IRIX cross-compilation system that transforms C/C++ software into working IRIX packages. It supports Fedora 40 SRPMs, upstream git repos, and tarball downloads — handling the entire pipeline from source fetch through cross-compilation to deployable RPMs and self-contained app bundles.
 
-**Current Status:** 145+ source packages cross-compiled for IRIX (400+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **tcsh** (C shell), **Qt5** (5.15.13), **GTK3** (3.24.41), **gtkterm** (GTK3 terminal emulator — first GTK3 GUI app on IRIX!), **nedit** (Motif text editor rendering on IRIX native Motif), **xnedit** (XNEdit Motif text editor with Xt constructor workaround), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **161+ app bundles** created as self-extracting `.run` installers that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+**Current Status:** 145+ source packages cross-compiled for IRIX (400+ RPMs), including a full GNU userland (coreutils, findutils, tar, make, sed, gawk, grep), build tools (autoconf, automake, libtool, perl, bash), crypto stack (gnupg2), a complete package management system (rpm + tdnf), library foundation packages (fontconfig, freetype, gettext, pcre2, libffi, libpng, and more), **gnutls** (TLS library with CA trust store), **openssh** (SSH server), **groff** (document formatting system), **nano** (text editor), **weechat** (IRC client with TLS verified on IRIX), **rsync** (file sync), **tmux** (terminal multiplexer), **vim** (text editor), **wget2** (HTTP/HTTPS downloader), **st** (X11 terminal), **bitlbee** (IM gateway with Discord), **tcsh** (C shell), **Qt5** (5.15.13), **GTK3** (3.24.41), **gtkterm** (GTK3 terminal emulator — first GTK3 GUI app on IRIX!), **nedit** (Motif text editor rendering on IRIX native Motif), **xnedit** (XNEdit Motif text editor with Xt constructor workaround), and **aterm** — the first X11 graphical application running on the IRIX GUI. C++ cross-compilation is fully operational using clang++ with GCC 9 libstdc++. **161+ app bundles** created as self-extracting `.run` installers that coexist with SGUG-RSE — no `/opt/mogrix` replacement needed.
 
 **Target Platform:** SGI IRIX 6.5.x running on MIPS processors (O2, Octane, Origin, Fuel, Tezro). Builds use the N32 ABI (MIPS III instruction set).
 
@@ -61,7 +61,7 @@ The recommended workflow operates on SRPMs directly. Direct spec file editing sh
 | `~/mogrix_outputs/SRPMS/` | Converted SRPMs (mogrix convert output) |
 | `~/mogrix_outputs/RPMS/` | Built MIPS RPMs (known-good outputs) |
 | `~/rpmbuild/` | Ephemeral rpmbuild workspace |
-| `/opt/sgug-staging/` | Cross-compilation staging area |
+| `$MOGRIX_STAGING_ROOT/` | Cross-compilation staging area |
 
 ```bash
 # 1. One-time setup of cross-compilation environment
@@ -139,7 +139,7 @@ Packages without rules get candidate YAML generated in `rules/candidates/` for h
 
 ### App Bundles
 
-Create self-contained app tarballs for IRIX that coexist with SGUG-RSE — no `/usr/sgug` replacement needed.
+Create self-contained app tarballs for IRIX that coexist with SGUG-RSE — no `/opt/mogrix` replacement needed.
 
 ```bash
 # Single app bundle
@@ -275,7 +275,7 @@ uv run mogrix build converted-package.src.rpm
 After cross-compiling packages, stage them to make their headers and libraries available for building dependent packages:
 
 ```bash
-# Stage RPMs to /opt/sgug-staging
+# Stage RPMs to $MOGRIX_STAGING_ROOT
 uv run mogrix stage ~/rpmbuild/RPMS/mips/popt-*.rpm
 
 # Stage to custom location
@@ -288,7 +288,7 @@ uv run mogrix stage --list
 uv run mogrix stage --clean
 ```
 
-The staging area extracts RPM contents so that subsequent builds can find headers (`-I/opt/sgug-staging/usr/sgug/include`) and libraries (`-L/opt/sgug-staging/usr/sgug/lib32`).
+The staging area extracts RPM contents so that subsequent builds can find headers (`-I$MOGRIX_STAGING/include`) and libraries (`-L$MOGRIX_STAGING/lib32`).
 
 ### Cross-Compilation Setup
 
@@ -309,7 +309,7 @@ The `--cross` flag enables IRIX cross-compilation. See **[docs/setup-guide.md](d
 |------|---------|
 | `/opt/cross/bin/` | Cross-compilation toolchain (clang, LLD, binutils) |
 | `/opt/irix-sysroot/` | IRIX system headers and libraries |
-| `/opt/sgug-staging/usr/sgug/` | Staging area (compiler wrappers, runtime objects, cross-compiled packages) |
+| `$MOGRIX_STAGING/` | Staging area (compiler wrappers, runtime objects, cross-compiled packages) |
 
 **Setup steps** (details in the guide):
 
@@ -322,7 +322,7 @@ uv run mogrix setup-cross
 
 # 3. Verify cross-compilation works
 echo 'int main() { return 0; }' > /tmp/test.c
-/opt/sgug-staging/usr/sgug/bin/irix-cc /tmp/test.c -o /tmp/test
+$MOGRIX_STAGING/bin/irix-cc /tmp/test.c -o /tmp/test
 file /tmp/test  # Should show: ELF 32-bit MSB executable, MIPS
 ```
 
@@ -518,11 +518,11 @@ scp tmp/irix-bootstrap.tar.gz root@irix-host:/tmp/
 cd /opt/chroot
 gzcat /tmp/irix-bootstrap.tar.gz | tar xvf -
 chroot /opt/chroot /bin/sh
-export LD_LIBRARYN32_PATH=/usr/sgug/lib32
-/usr/sgug/bin/rpm --initdb
+export LD_LIBRARYN32_PATH=/opt/mogrix/lib32
+/opt/mogrix/bin/rpm --initdb
 cd /tmp/bootstrap-rpms
-/usr/sgug/bin/rpm -Uvh --nodeps sgugrse-release*.noarch.rpm
-/usr/sgug/bin/rpm -Uvh *.rpm
+/opt/mogrix/bin/rpm -Uvh --nodeps sgugrse-release*.noarch.rpm
+/opt/mogrix/bin/rpm -Uvh *.rpm
 ```
 
 Additional packages (Phase 2+) are installed individually via `rpm -Uvh` after copying to the chroot. The MCP-based workflow uses `irix_copy_to` and `irix_exec` tools instead of SSH.
@@ -843,7 +843,7 @@ make clean
 - `LIBS="value"` on `%configure` line **replaces** the exported `LIBS`. Always use `LIBS="$LIBS value"` to append.
 
 **Compatibility:**
-- Built packages use `/usr/sgug` prefix (SGUG-RSE convention).
+- Built packages use `/opt/mogrix` prefix (SGUG-RSE convention).
 - May conflict with existing SGUG-RSE installations (different library versions).
 - rpm 4.19 uses sqlite backend by default; incompatible with SGUG-RSE's BerkeleyDB databases.
 

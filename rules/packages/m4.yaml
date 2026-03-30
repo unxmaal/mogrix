@@ -3,12 +3,14 @@
 # with our GNU char*-returning compat. Needs gnulib strerror_r exclusion or
 # a compat that provides both signatures. Low priority — build tool only.
 package: m4
+
+build_after: none
 skip: true
 
 smoke_test:
-  - command: "/usr/sgug/bin/m4 --version"
+  - command: "/opt/mogrix/bin/m4 --version"
     expect: "1.4.19"
-  - command: "echo 'define(FOO,bar)FOO' | /usr/sgug/bin/m4"
+  - command: "echo 'define(FOO,bar)FOO' | /opt/mogrix/bin/m4"
     expect: "bar"
 
 # m4 1.4.19 gnulib already has IRIX getprogname support (was missing in 1.4.18)

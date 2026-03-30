@@ -9,8 +9,15 @@
 # Without this, any directory traversal causes SIGSEGV (readdir_r overflows
 # the 1-byte d_name buffer on the stack).
 
+
+package: ripgrep
+build_after: none
+language: rust
+
 smoke_test:
   - command: "rg --version 2>&1"
     expect: "ripgrep"
   - command: "rg --help 2>&1"
     expect: "PATTERN"
+
+build_after: none

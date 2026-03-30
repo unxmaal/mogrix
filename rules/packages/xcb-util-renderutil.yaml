@@ -1,6 +1,9 @@
 # xcb-util-renderutil 0.3.10 - XCB render extension convenience functions (FC40: 0.3.10-5)
 package: xcb-util-renderutil
 
+build_after:
+  - libxcb
+
 rules:
 
   spec_replacements:

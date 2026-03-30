@@ -1,4 +1,7 @@
 package: zsh
+
+build_after:
+  - ncurses
 rules:
   drop_buildrequires:
   - glibc-langpack-ja

@@ -1,5 +1,7 @@
 # gd package rules for IRIX cross-compilation
 package: gd
+
+build_after: none
 skip: true
 skip_reason: "no SRPM in mogrix_inputs"
 blocked: true

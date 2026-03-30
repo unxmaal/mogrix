@@ -1,6 +1,8 @@
 # flex package rules for IRIX cross-compilation
 package: flex
 
+build_after: none
+
 classes:
   - nls-disabled
 

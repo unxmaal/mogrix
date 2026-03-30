@@ -2,6 +2,8 @@
 # Disable HTML doc generation (needs doxygen/sphinx on build host)
 package: jansson
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - python3-sphinx

@@ -1,9 +1,12 @@
 smoke_test:
-- command: /usr/sgug/bin/perl -e 'print "ok\n"'
+- command: /opt/mogrix/bin/perl -e 'print "ok\n"'
   expect: ok
-- command: /usr/sgug/bin/perl -v
+- command: /opt/mogrix/bin/perl -v
   expect: 5.38.2
 package: perl
+
+build_after:
+  - gdbm
 add_patch:
 - perl.sgifixes.patch
 add_source:
@@ -93,9 +96,9 @@ rules:
   - pattern: ln -s "libperl.so.%{perl_version}" "$RPM_BUILD_ROOT%{_libdir}/libperl.so"
     replacement: ln -sf "libperl.so.%{perl_version}" "$RPM_BUILD_ROOT%{_libdir}/libperl.so"
   - pattern: '    s|INCLUDE         = ./zlib-src|INCLUDE         = %{_includedir}|'
-    replacement: '    s|INCLUDE         = ./zlib-src|INCLUDE         = /opt/sgug-staging/usr/sgug/include|'
+    replacement: '    s|INCLUDE         = ./zlib-src|INCLUDE         = $MOGRIX_STAGING/include|'
   - pattern: '    s|LIB             = ./zlib-src|LIB             = %{_libdir}|'
-    replacement: '    s|LIB             = ./zlib-src|LIB             = /opt/sgug-staging/usr/sgug/lib32|'
+    replacement: '    s|LIB             = ./zlib-src|LIB             = $MOGRIX_STAGING/lib32|'
   - pattern: "pushd $RPM_BUILD_ROOT%{_mandir}/man1/\n  for i in perl588delta.1 perldelta.1 ; do\n    iconv -c -f MS-ANSI -t UTF-8 $i --output new-$i\n    rm $i\n    mv new-$i $i\n  done\npopd\n"
     replacement: "cd $RPM_BUILD_ROOT%{_mandir}/man1/\n  for i in perl588delta.1 perldelta.1 ; do\n    if [ -f \"$i\" ]; then\n      iconv -c -f MS-ANSI -t UTF-8 $i --output new-$i\n      rm $i\n      mv\
       \ new-$i $i\n    fi\n  done\ncd -\n"
@@ -140,6 +143,6 @@ rules:
 
       '
   install_cleanup:
-  - find %{buildroot}%{_bindir} -type f -exec grep -l '#!/usr/bin/perl' {} \; | xargs -r sed -i 's|#!/usr/bin/perl|#!/usr/sgug/bin/perl|g'
-  - find %{buildroot}%{_bindir} -type f -exec grep -l '#!.*perl' {} \; | xargs -r sed -i 's|#!/usr/local/bin/perl|#!/usr/sgug/bin/perl|g'
+  - find %{buildroot}%{_bindir} -type f -exec grep -l '#!/usr/bin/perl' {} \; | xargs -r sed -i 's|#!/usr/bin/perl|#!/opt/mogrix/bin/perl|g'
+  - find %{buildroot}%{_bindir} -type f -exec grep -l '#!.*perl' {} \; | xargs -r sed -i 's|#!/usr/local/bin/perl|#!/opt/mogrix/bin/perl|g'
   - find $RPM_BUILD_ROOT -type f -o -type l | sed "s|$RPM_BUILD_ROOT||" | sort > perl-filelist.txt

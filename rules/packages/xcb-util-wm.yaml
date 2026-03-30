@@ -1,6 +1,9 @@
 # xcb-util-wm 0.4.2 - EWMH/ICCCM helper functions (FC40: 0.4.2-5)
 package: xcb-util-wm
 
+build_after:
+  - libxcb
+
 rules:
 
   spec_replacements:

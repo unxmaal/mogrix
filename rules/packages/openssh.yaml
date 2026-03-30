@@ -9,7 +9,7 @@ add_source:
 - charclass.irix.h
 - cipher-evptype-dispatch.c
 smoke_test:
-- command: /usr/sgug/bin/ssh -V
+- command: /opt/mogrix/bin/ssh -V
   expect: OpenSSH_9.6
 rules:
   drop_buildrequires:
@@ -70,8 +70,8 @@ rules:
     - --without-systemd
     - --without-security-key-builtin
     - --with-privsep-user=sshd
-    - --with-ssl-dir=/usr/sgug
-    - --with-zlib=/usr/sgug
+    - --with-ssl-dir=/opt/mogrix
+    - --with-zlib=/opt/mogrix
   remove_lines:
   - '%sysusers_create_compat'
   spec_replacements:
@@ -299,9 +299,9 @@ rules:
 
       %configure \'
   - pattern: --with-default-path=/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
-    replacement: --with-default-path=/usr/sgug/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+    replacement: --with-default-path=/opt/mogrix/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
   - pattern: --with-superuser-path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
-    replacement: --with-superuser-path=/usr/sgug/sbin:/usr/sgug/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+    replacement: --with-superuser-path=/opt/mogrix/sbin:/opt/mogrix/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
   - pattern: install -d $RPM_BUILD_ROOT/etc/pam.d/
     replacement: '# PAM disabled for IRIX'
   - pattern: install -m644 %{SOURCE2} $RPM_BUILD_ROOT/etc/pam.d/sshd

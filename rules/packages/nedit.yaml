@@ -1,4 +1,6 @@
 package: nedit
+
+build_after: none
 skip: true
 skip_reason: "needs Motif (Xm/Xm.h) — not in cross-compilation sysroot"
 blocked: true
@@ -20,9 +22,9 @@ rules:
     MOGRIX_NO_DLMALLOC: "1"
   prep_commands:
     # Fix SGI Makefile for cross-compilation: add staging include/lib paths
-    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.sgi --old 'CFLAGS=-O -DSGI' --new 'CFLAGS=-O -DSGI -I/opt/sgug-staging/usr/sgug/include/mogrix-compat/generic -I/opt/sgug-staging/usr/sgug/include' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.sgi --old 'CFLAGS=-O -DSGI' --new 'CFLAGS=-O -DSGI -I$MOGRIX_STAGING/include/mogrix-compat/generic -I$MOGRIX_STAGING/include' --no-backup --quiet"
     # Replace -lPW with -lgen (IRIX equivalent), add staging lib path
-    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.sgi --old 'LIBS= -lm -lXm -lXt -lX11 -lPW' --new 'LIBS= -L/opt/sgug-staging/usr/sgug/lib32 -lm -lXm -lXt -lX11 -lgen' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch makefiles/Makefile.sgi --old 'LIBS= -lm -lXm -lXt -lX11 -lPW' --new 'LIBS= -L$MOGRIX_STAGING/lib32 -lm -lXm -lXt -lX11 -lgen' --no-backup --quiet"
     # Remove the verification step that tries to run the cross-compiled binary
     - "$MOGRIX_ROOT/tools/safepatch Makefile --old '@source/nedit -V' --new '@echo Skipping cross-compiled binary verification' --no-backup --quiet"
     # Copy the class record fixup source into source/ directory
@@ -34,7 +36,7 @@ rules:
     - pattern: "%make_build"
       replacement: |
         COMPAT_LIB="$(pwd)/mogrix-compat/libmogrix-compat.a"
-        make sgi CC=%{__cc} AR=%{__ar} LIBS="-L/opt/sgug-staging/usr/sgug/lib32 -lm -lXm -lXt -lX11 -lgen $COMPAT_LIB"
+        make sgi CC=%{__cc} AR=%{__ar} LIBS="-L$MOGRIX_STAGING/lib32 -lm -lXm -lXt -lX11 -lgen $COMPAT_LIB"
     # nedit has no install target - install manually
     - pattern: "%make_install PREFIX=%{_prefix} DESTDIR=%{buildroot}"
       replacement: |
@@ -42,5 +44,5 @@ rules:
         cp source/nedit %{buildroot}%{_bindir}/nedit
         cp source/nc %{buildroot}%{_bindir}/nedit-nc
 smoke_test:
-- command: "/usr/sgug/bin/nedit -V 2>&1"
+- command: "/opt/mogrix/bin/nedit -V 2>&1"
   expect: "NEdit"

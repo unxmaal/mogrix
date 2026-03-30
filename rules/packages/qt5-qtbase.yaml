@@ -1,4 +1,6 @@
 package: qt5-qtbase
+
+build_after: none
 rules:
   add_patch:
   - qt5-qtbase-irix-no-elf-tls.patch
@@ -186,8 +188,8 @@ rules:
       \ defaults)\nmake clean -C qmake\n%make_build -C qmake all binary \\\n  QMAKE_CFLAGS_RELEASE=\"${CFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_CXXFLAGS_RELEASE=\"${CXXFLAGS:-$RPM_OPT_FLAGS}\" \\\n  QMAKE_LFLAGS_RELEASE=\"\
       ${LDFLAGS:-$RPM_LD_FLAGS}\" \\\n  QMAKE_STRIP=\n\n%make_build"
     replacement: "%build\n%define _lto_cflags %{nil}\n\n# Inject compat library into mkspec for linking\nexport COMPAT_DIR=$(pwd)/mogrix-compat\necho \"QMAKE_LIBS += -L${COMPAT_DIR} -lmogrix-compat\" >>\
-      \ mkspecs/irix-n32-clang/qmake.conf\n\n# PKG_CONFIG must find staged libraries\nexport PKG_CONFIG_LIBDIR=\"/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig\"\n\
-      export PKG_CONFIG_SYSROOT_DIR=\"/opt/sgug-staging\"\n\n./configure \\\n  -verbose \\\n  -confirm-license \\\n  -opensource \\\n  -prefix %{_qt5_prefix} \\\n  -archdatadir %{_qt5_archdatadir} \\\n\
+      \ mkspecs/irix-n32-clang/qmake.conf\n\n# PKG_CONFIG must find staged libraries\nexport PKG_CONFIG_LIBDIR=\"$MOGRIX_STAGING/lib32/pkgconfig:$MOGRIX_STAGING/share/pkgconfig\"\n\
+      export PKG_CONFIG_SYSROOT_DIR=\"$MOGRIX_STAGING_ROOT\"\n\n./configure \\\n  -verbose \\\n  -confirm-license \\\n  -opensource \\\n  -prefix %{_qt5_prefix} \\\n  -archdatadir %{_qt5_archdatadir} \\\n\
       \  -bindir %{_qt5_bindir} \\\n  -libdir %{_qt5_libdir} \\\n  -libexecdir %{_qt5_libexecdir} \\\n  -datadir %{_qt5_datadir} \\\n  -docdir %{_qt5_docdir} \\\n  -headerdir %{_qt5_headerdir} \\\n  -importdir\
       \ %{_qt5_importdir} \\\n  -plugindir %{_qt5_plugindir} \\\n  -sysconfdir %{_qt5_sysconfdir} \\\n  -translationdir %{_qt5_translationdir} \\\n  -platform %{platform} \\\n  -xplatform irix-n32-clang\
       \ \\\n  -release \\\n  -shared \\\n  -no-accessibility \\\n  -no-dbus \\\n  -no-egl \\\n  -no-eglfs \\\n  -fontconfig \\\n  -no-glib \\\n  -no-gtk \\\n  -no-icu \\\n  -no-journald \\\n  -openssl-linked\

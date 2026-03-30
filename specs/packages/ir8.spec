@@ -22,8 +22,8 @@ IRIX-appropriate defaults.
 %build
 export CC="%{__cc}"
 export CXX="%{__cxx}"
-export PKG_CONFIG_LIBDIR="/opt/sgug-staging/usr/sgug/lib32/pkgconfig:/opt/sgug-staging/usr/sgug/share/pkgconfig"
-export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
+export PKG_CONFIG_LIBDIR="$MOGRIX_STAGING/lib32/pkgconfig:$MOGRIX_STAGING/share/pkgconfig"
+export PKG_CONFIG_SYSROOT_DIR="$MOGRIX_STAGING_ROOT"
 %make_build
 
 %install

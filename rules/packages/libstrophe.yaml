@@ -1,4 +1,6 @@
 package: libstrophe
+
+build_after: none
 rules:
   inject_compat_functions:
   - explicit_bzero

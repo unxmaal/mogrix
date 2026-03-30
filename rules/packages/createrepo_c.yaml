@@ -1,6 +1,8 @@
 # createrepo_c - Repository metadata generator
 # cmake-based build, needs glib2, curl, libxml2, bzip2, openssl, zlib, sqlite, rpm, zstd, drpm
 package: createrepo_c
+
+build_after: none
 skip: true
 skip_reason: "missing dependencies: curl-devel (no pkgconfig/headers), libzstd (not staged), drpm (not staged), libmodulemd (not staged)"
 blocked: true
@@ -26,4 +28,4 @@ rules:
 
     # Replace %cmake macro with actual cmake command with cross-compilation toolchain
     - pattern: "%cmake .."
-      replacement: "cmake .. -DCMAKE_TOOLCHAIN_FILE=/home/edodd/projects/github/unxmaal/mogrix/cross/cmake-irix-toolchain.cmake -DCMAKE_INSTALL_PREFIX=%{_prefix} -DLIB_SUFFIX=32 -DBZIP2_LIBRARIES=/opt/sgug-staging/usr/sgug/lib32/libbz2.so -DBZIP2_INCLUDE_DIR=/opt/sgug-staging/usr/sgug/include -DWITH_ZCHUNK=OFF -DWITH_LIBMODULEMD=OFF -DENABLE_DRPM=OFF"
+      replacement: "cmake .. -DCMAKE_TOOLCHAIN_FILE=/home/edodd/projects/github/unxmaal/mogrix/cross/cmake-irix-toolchain.cmake -DCMAKE_INSTALL_PREFIX=%{_prefix} -DLIB_SUFFIX=32 -DBZIP2_LIBRARIES=$MOGRIX_STAGING/lib32/libbz2.so -DBZIP2_INCLUDE_DIR=$MOGRIX_STAGING/include -DWITH_ZCHUNK=OFF -DWITH_LIBMODULEMD=OFF -DENABLE_DRPM=OFF"

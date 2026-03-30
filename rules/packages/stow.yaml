@@ -3,16 +3,18 @@
 # Needs perl_vendorlib macro defined for module installation path.
 package: stow
 
+build_after: none
+
 rules:
   spec_replacements:
     # Define perl_vendorlib macro - not set in rpmmacros.irix
     - pattern: "AutoReq: no"
-      replacement: "AutoReq: no\n%define perl_vendorlib /usr/sgug/share/perl5"
+      replacement: "AutoReq: no\n%define perl_vendorlib /opt/mogrix/share/perl5"
   install_cleanup:
-    # Fix @INC: hardcoded /usr/sgug/share/perl5 won't resolve in bundle context
+    # Fix @INC: hardcoded /opt/mogrix/share/perl5 won't resolve in bundle context
     # Use FindBin-relative path so the bundled Stow modules are found
-    - "sed -i 's|use lib \"/usr/sgug/share/perl5\";|use FindBin; use lib \"$FindBin::RealBin/../share/perl5\";|' %{buildroot}%{_bindir}/stow %{buildroot}%{_bindir}/chkstow"
+    - "sed -i 's|use lib \"/opt/mogrix/share/perl5\";|use FindBin; use lib \"$FindBin::RealBin/../share/perl5\";|' %{buildroot}%{_bindir}/stow %{buildroot}%{_bindir}/chkstow"
 
 smoke_test:
-  - command: "/usr/sgug/bin/stow --version"
+  - command: "/opt/mogrix/bin/stow --version"
     expect: "2.3.1"

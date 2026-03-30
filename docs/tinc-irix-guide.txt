@@ -196,7 +196,7 @@ IRIX-SPECIFIC NOTES
 -------------------
 
 Paths:
-  tinc on IRIX looks for configs in /usr/sgug/etc/tinc/ by
+  tinc on IRIX looks for configs in /opt/mogrix/etc/tinc/ by
   default (the --sysconfdir from the build). Override with
   --config= or --net= flags.
 

@@ -1,4 +1,7 @@
 package: jq
+
+build_after:
+  - oniguruma
 rules:
   export_vars:
     LIBS: -lgen
@@ -72,7 +75,7 @@ rules:
   - oniguruma
   spec_replacements:
   - pattern: '%make_build'
-    replacement: '/opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
+    replacement: '$MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
 
       %make_build
 

@@ -1,4 +1,8 @@
 package: libxkbcommon
+
+build_after:
+  - libxcb
+  - libxml2
 rules:
   prep_commands:
   - "perl -0777 -pi -e 's/^test\\(.*?(?=^# Documentation)//ms' meson.build"

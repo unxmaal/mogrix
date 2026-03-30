@@ -1,4 +1,6 @@
 package: slang
+
+build_after: none
 rules:
   drop_buildrequires:
   - pcre-devel

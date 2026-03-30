@@ -2,6 +2,8 @@
 # Man pages not generated during cross-compile (no xmlto)
 package: patchutils
 
+build_after: none
+
 rules:
   skip_manpages: true
   spec_replacements:

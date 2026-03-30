@@ -3,6 +3,8 @@
 
 package: lcms2
 
+build_after: none
+
 rules:
   spec_replacements:
     # Replace %meson macro with raw meson setup command

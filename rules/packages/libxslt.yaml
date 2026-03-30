@@ -1,4 +1,7 @@
 package: libxslt
+
+build_after:
+  - libxml2
 rules:
   configure_flags:
     add:

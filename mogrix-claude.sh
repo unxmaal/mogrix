@@ -11,7 +11,7 @@ exec systemd-run --user --pty \
   --property=ReadWritePaths=/src \
   --property=ReadWritePaths=/opt/cross \
   --property=ReadWritePaths=/opt/libdicl \
-  --property=ReadWritePaths=/opt/sgug-staging \
+  --property=ReadWritePaths=$MOGRIX_STAGING_ROOT \
   --property=ReadWritePaths=/tmp \
   --property=PrivateDevices=no \
   --property=ProtectKernelTunables=yes \

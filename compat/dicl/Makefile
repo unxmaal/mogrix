@@ -15,7 +15,7 @@ ABI_VERSION = 0.1
 SONAME = libdicl-$(ABI_VERSION).so
 
 # Install directories
-PREFIX ?= /usr/sgug
+PREFIX ?= /opt/mogrix
 LIBDIR ?= $(PREFIX)/lib32
 INCLUDEDIR ?= $(PREFIX)/include/libdicl-$(ABI_VERSION)
 

@@ -23,7 +23,7 @@ rules:
   explicit_provides:
   - snownews
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
     CFLAGS: "-DPATH_MAX=1024 $CFLAGS"
   spec_replacements:
     # snownews's configure bakes LDFLAGS into Config.mk. The mogrix-compat

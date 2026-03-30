@@ -30,9 +30,9 @@ def test_generic_rpm_macros():
     rules = loader.load_generic()
     macros = rules["generic"]["rpm_macros"]
     assert "_prefix" in macros
-    assert macros["_prefix"] == "/usr/sgug"
+    assert macros["_prefix"] == "/opt/mogrix"
     assert "_libdir" in macros
-    assert macros["_libdir"] == "/usr/sgug/lib32"
+    assert macros["_libdir"] == "/opt/mogrix/lib32"
 
 
 def test_generic_configure_disable():
@@ -49,7 +49,7 @@ def test_generic_rewrite_paths():
     loader = RuleLoader(RULES_DIR)
     rules = loader.load_generic()
     paths = rules["generic"]["rewrite_paths"]
-    assert paths["/usr/lib64"] == "/usr/sgug/lib32"
+    assert paths["/usr/lib64"] == "/opt/mogrix/lib32"
 
 
 def test_generic_header_overlays():

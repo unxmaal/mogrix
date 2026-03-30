@@ -1,4 +1,6 @@
 package: xz
+
+build_after: none
 rules:
   configure_flags:
     add:

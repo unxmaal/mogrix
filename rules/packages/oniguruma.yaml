@@ -2,6 +2,8 @@
 # Standard autoconf package, required by jq
 package: oniguruma
 
+build_after: none
+
 rules:
   # Fix alloca include - source skips it when __GNUC__ is defined (clang defines this)
   add_patch:
@@ -22,5 +24,5 @@ rules:
     - pattern: "%{nil}\n%make_build"
       replacement: |
         %{nil}
-        /opt/sgug-staging/share/mogrix/fix-libtool-irix.sh libtool || exit 1
+        $MOGRIX_ROOT/tools/fix-libtool-irix.sh libtool || exit 1
         %make_build

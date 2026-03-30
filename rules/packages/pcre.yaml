@@ -2,6 +2,9 @@
 # FC40 has pcre-8.45 as a deprecated compat package
 package: pcre
 
+build_after:
+  - pcre
+
 rules:
   configure_flags:
     add:
@@ -11,6 +14,7 @@ rules:
     - --enable-pcre16
     - --enable-pcre32
     - --disable-silent-rules
+    - --disable-cpp
     remove:
     - --enable-jit
     - --enable-pcretest-libreadline
@@ -48,9 +52,20 @@ rules:
     - pattern: "Provides:  deprecated()"
       replacement: "# deprecated() not needed on IRIX"
 
-install_cleanup:
-  - rm -f %{buildroot}%{_bindir}/pcregrep
-  - rm -f %{buildroot}%{_bindir}/pcretest
-  - rm -f %{buildroot}%{_libdir}/*.a
-  - rm -f %{buildroot}%{_mandir}/man1/pcregrep.*
-  - rm -f %{buildroot}%{_mandir}/man1/pcretest.*
+  # Remove pcrecpp files (C++ disabled)
+  remove_lines:
+    - "%{_libdir}/libpcrecpp.so.0"
+    - "%{_libdir}/libpcrecpp.so.0.*"
+    - "%{_libdir}/libpcrecpp.so"
+    - "%{_includedir}/pcrecpp.h"
+    - "%{_includedir}/pcre_scanner.h"
+    - "%{_includedir}/pcre_stringpiece.h"
+    - "%{_libdir}/pkgconfig/libpcrecpp.pc"
+
+  install_cleanup:
+    - rm -f %{buildroot}%{_bindir}/pcregrep
+    - rm -f %{buildroot}%{_bindir}/pcretest
+    - rm -f %{buildroot}%{_libdir}/*.a
+    - rm -f %{buildroot}%{_mandir}/man1/pcregrep.*
+    - rm -f %{buildroot}%{_mandir}/man1/pcretest.*
+    - rm -f %{buildroot}%{_libdir}/libpcrecpp* %{buildroot}%{_libdir}/pkgconfig/libpcrecpp.pc %{buildroot}%{_includedir}/pcrecpp.h %{buildroot}%{_includedir}/pcre_scanner.h %{buildroot}%{_includedir}/pcre_stringpiece.h || true

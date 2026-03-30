@@ -1,2 +1,4 @@
 # screenfetch - system information tool (bash script)
 package: screenfetch
+
+build_after: none

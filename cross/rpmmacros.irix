@@ -16,12 +16,15 @@
 %_target_os             irix
 
 # Cross-compilation paths
+# NOTE: %_mogrix_root is NOT defined here — it comes from --define on the
+# rpmbuild command line, set by mogrix CLI (resolves project root at startup).
 %_irix_sysroot          /opt/irix-sysroot
-%_sgug_staging          /opt/sgug-staging/usr/sgug
+%_staging_root          %{_mogrix_root}/staging
+%_staging               %{_staging_root}/opt/mogrix
 %_cross_bindir          /opt/cross/bin
 
 # Installation prefix on target IRIX system
-%_prefix                /usr/sgug
+%_prefix                /opt/mogrix
 %_exec_prefix           %{_prefix}
 %_bindir                %{_prefix}/bin
 %_sbindir               %{_prefix}/sbin
@@ -46,8 +49,10 @@
 %_srcrpmdir             %{_topdir}/SRPMS
 
 # Cross-compilers (deployed by mogrix setup-cross)
-%__cc                   %{_sgug_staging}/bin/irix-cc
-%__cxx                  %{_sgug_staging}/bin/irix-cxx
+%__cc                   %{_staging}/bin/irix-cc
+# libc++ is the default C++ standard library (LLVM, not GCC libstdc++).
+# Per-package fallback to irix-cxx (libstdc++) via export_vars CXX if needed.
+%__cxx                  %{_staging}/bin/irix-cxx-libcxx
 %__cpp                  %{__cc} -E
 %__ar                   %{_cross_bindir}/llvm-ar
 %__ranlib               %{_cross_bindir}/llvm-ranlib
@@ -84,7 +89,7 @@
 %debug_package          %{nil}
 
 # Cross-linker (for libtool)
-%__ld                   %{_sgug_staging}/bin/irix-ld
+%__ld                   %{_staging}/bin/irix-ld
 
 # Cross-compilation aware configure macro
 # Export compiler variables so configure finds them.
@@ -97,8 +102,10 @@
   export AR="%{__ar}"; \
   export RANLIB="%{__ranlib}"; \
   export LD="%{__ld}"; \
-  export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig"; \
-  export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"; \
+  export MOGRIX_STAGING="%{_staging}"; \
+  export MOGRIX_STAGING_ROOT="%{_staging_root}"; \
+  export PKG_CONFIG_LIBDIR="%{_staging}/lib32/pkgconfig:%{_staging}/share/pkgconfig"; \
+  export PKG_CONFIG_SYSROOT_DIR="%{_staging_root}"; \
   export SED="/usr/bin/sed"; \
   export AWK="/usr/bin/gawk"; \
   export PERL="/usr/bin/perl"; \
@@ -148,7 +155,7 @@ AutoProv:               no
   printf '[binaries]\\nc = %%s\\ncpp = %%s\\nar = %%s\\nstrip = %%s\\npkgconfig = %%s\\n[built-in options]\\nc_args = %%s\\ncpp_args = %%s\\nc_link_args = []\\ncpp_link_args = []\\n[properties]\\nsys_root = %%s\\npkg_config_libdir = %%s\\n[host_machine]\\nsystem = %%s\\ncpu_family = %%s\\ncpu = %%s\\nendian = %%s\\n' \\\
     "'%{__cc}'" "'%{__cxx}'" "'%{__ar}'" "'%{__strip}'" "'pkg-config'" \\\
     "['-O2', '-mxgot', '-include', 'alloca.h']" "['-O2', '-mxgot', '-include', 'alloca.h']" \\\
-    "'/opt/sgug-staging'" "'%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig'" \\\
+    "'%{_staging_root}'" "'%{_staging}/lib32/pkgconfig:%{_staging}/share/pkgconfig'" \\\
     "'irix'" "'mips'" "'mips'" "'big'" \\\
     > %{_meson_cross_file}; \
   if [ -f mogrix-compat/libmogrix-compat.a ]; then \
@@ -156,8 +163,10 @@ AutoProv:               no
     sed -i "s|^c_link_args = \\[\\]|c_link_args = ['-L${_compat_dir}', '-lmogrix-compat']|" %{_meson_cross_file}; \
     sed -i "s|^cpp_link_args = \\[\\]|cpp_link_args = ['-L${_compat_dir}', '-lmogrix-compat']|" %{_meson_cross_file}; \
   fi; \
-  export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig"; \
-  export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"; \
+  export MOGRIX_STAGING="%{_staging}"; \
+  export MOGRIX_STAGING_ROOT="%{_staging_root}"; \
+  export PKG_CONFIG_LIBDIR="%{_staging}/lib32/pkgconfig:%{_staging}/share/pkgconfig"; \
+  export PKG_CONFIG_SYSROOT_DIR="%{_staging_root}"; \
   %{_cross_meson} setup \\\
     --cross-file=%{_meson_cross_file} \\\
     --prefix=%{_prefix} \\\

@@ -1,5 +1,8 @@
 package: lame
 
+build_after:
+  - ncurses
+
 rules:
   # ncurses-devel is available in staging; nasm is x86-only (not needed for MIPS)
   drop_buildrequires:
@@ -43,5 +46,5 @@ rules:
       replacement: "%{_libdir}/libmp3lame.so.0\n%{_libdir}/libmp3lame.so.0.*"
 
 smoke_test:
-  - command: "/usr/sgug/bin/lame --help 2>&1 | head -1"
+  - command: "/opt/mogrix/bin/lame --help 2>&1 | head -1"
     expect: "LAME"

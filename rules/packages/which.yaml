@@ -5,8 +5,10 @@
 
 package: which
 
+build_after: none
+
 smoke_test:
-  - command: "/usr/sgug/bin/which --version 2>&1"
+  - command: "/opt/mogrix/bin/which --version 2>&1"
     expect: "which"
 
 rules:

@@ -1,4 +1,6 @@
 package: gettext
+
+build_after: none
 # gettext 0.22.5 cross-compilation for IRIX.
 #
 # Lessons learned (re-enablement audit, Feb 2025):

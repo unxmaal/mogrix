@@ -32,7 +32,12 @@ set(CMAKE_CXX_COMPILER_WORKS 1)
 set(IRIX_SYSROOT /opt/irix-sysroot)
 
 # Staging directory - cross-compiled packages are installed here
-set(STAGING_DIR /opt/sgug-staging/usr/sgug)
+# Uses MOGRIX_STAGING env var when available, falls back to legacy path
+if(DEFINED ENV{MOGRIX_STAGING})
+  set(STAGING_DIR $ENV{MOGRIX_STAGING})
+else()
+  set(STAGING_DIR /opt/sgug-staging/usr/sgug)
+endif()
 
 # GNU ld for shared libraries (critical for IRIX compatibility)
 # LLD produces 3-LOAD-segment layout that crashes IRIX rld
@@ -80,7 +85,7 @@ set(CMAKE_CXX_CREATE_STATIC_LIBRARY "${CMAKE_C_CREATE_STATIC_LIBRARY}")
 # -rpath: Runtime library search path on target system
 # -z notext: Allow text relocations (needed for some IRIX code)
 # crt1.o/crtn.o: C runtime startup/cleanup files
-set(CMAKE_C_LINK_EXECUTABLE "${LLD} --sysroot=${IRIX_SYSROOT} --allow-shlib-undefined --dynamic-linker=/lib32/rld -L${STAGING_DIR}/lib32 -L${STAGING_DIR}/lib -L${IRIX_SYSROOT}/usr/lib32 -L${IRIX_SYSROOT}/lib32 -rpath /usr/sgug/lib32:/usr/lib32:/lib32 -z notext ${IRIX_SYSROOT}/usr/lib32/mips3/fixed/crt1.o <OBJECTS> -o <TARGET> <LINK_LIBRARIES> -lpthread -lm -lc ${IRIX_SYSROOT}/usr/lib32/mips3/fixed/crtn.o")
+set(CMAKE_C_LINK_EXECUTABLE "${LLD} --sysroot=${IRIX_SYSROOT} --allow-shlib-undefined --dynamic-linker=/lib32/rld -L${STAGING_DIR}/lib32 -L${STAGING_DIR}/lib -L${IRIX_SYSROOT}/usr/lib32 -L${IRIX_SYSROOT}/lib32 -rpath /opt/mogrix/lib32:/usr/lib32:/lib32 -z notext ${IRIX_SYSROOT}/usr/lib32/mips3/fixed/crt1.o <OBJECTS> -o <TARGET> <LINK_LIBRARIES> -lpthread -lm -lc ${IRIX_SYSROOT}/usr/lib32/mips3/fixed/crtn.o")
 set(CMAKE_CXX_LINK_EXECUTABLE "${CMAKE_C_LINK_EXECUTABLE}")
 
 # SONAME flag for shared libraries

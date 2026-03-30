@@ -2,6 +2,8 @@
 # Makefile-based build (no autotools). Uses imlib2, libcurl, libpng, X11, Xinerama.
 package: feh
 
+build_after: none
+
 rules:
   inject_compat_functions:
     - mkdtemp
@@ -51,7 +53,7 @@ rules:
           config.mk
         # Set pkg-config for cross-compilation (not auto-set in Makefile builds)
         export PKG_CONFIG_LIBDIR="%{_sgug_staging}/lib32/pkgconfig:%{_sgug_staging}/share/pkgconfig"
-        export PKG_CONFIG_SYSROOT_DIR="/opt/sgug-staging"
+        export PKG_CONFIG_SYSROOT_DIR="$MOGRIX_STAGING_ROOT"
         export CC="%{__cc}"
         # Do NOT pass CFLAGS on make command line — it overrides config.mk's +=
         # additions (which add -DPREFIX, -DPACKAGE, -DVERSION, -Wall, etc.).

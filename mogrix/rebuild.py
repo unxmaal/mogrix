@@ -42,12 +42,19 @@ def _log(msg: str) -> None:
 
 # Fixed directories
 MOGRIX_INPUTS = Path.home() / "mogrix_inputs"
-STAGING_DIR = Path("/opt/sgug-staging")
+_PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+STAGING_DIR = _PROJECT_ROOT / "staging"
 WORKSPACE_PREFIX = "mogrix_v"
 
 # Use venv mogrix binary directly to avoid uv lock contention
 # when rebuild-all is itself invoked via `uv run mogrix`.
 MOGRIX_BIN = Path(__file__).parent.parent / ".venv" / "bin" / "mogrix"
+
+# Ensure staging env vars are set for all subprocesses
+import os as _os
+_os.environ.setdefault("MOGRIX_STAGING", str(STAGING_DIR / "opt" / "mogrix"))
+_os.environ.setdefault("MOGRIX_STAGING_ROOT", str(STAGING_DIR))
+_os.environ.setdefault("LLVM_PROJECT", str(_PROJECT_ROOT / "tmp" / "llvm-build" / "llvm-project-22.1.2.src"))
 
 
 def find_latest_workspace() -> Path | None:
@@ -93,8 +100,76 @@ def _update_outputs_symlink(workspace: Path) -> None:
         _log(f"[yellow]Warning: could not update ~/mogrix_outputs symlink: {e}[/yellow]")
 
 
+def _validate_outputs_symlink(workspace: Path) -> None:
+    """Pre-flight: verify ~/mogrix_outputs points to this workspace.
+
+    Hard failure if:
+    - ~/mogrix_outputs doesn't exist
+    - ~/mogrix_outputs is not a symlink (it's a real directory)
+    - ~/mogrix_outputs points to a different workspace
+
+    On mismatch, offers to fix it. On missing, creates it.
+    """
+    outputs_link = Path.home() / "mogrix_outputs"
+    ws_outputs = workspace / "mogrix_outputs"
+
+    if not outputs_link.exists() and not outputs_link.is_symlink():
+        # Missing entirely — create it
+        _log(f"[dim]Creating ~/mogrix_outputs → {ws_outputs}[/dim]")
+        outputs_link.symlink_to(ws_outputs)
+        return
+
+    if not outputs_link.is_symlink():
+        _log(f"[red]Pre-flight FAILED: ~/mogrix_outputs is a real directory, not a symlink[/red]")
+        _log(f"[red]Expected: symlink → {ws_outputs}[/red]")
+        _log(f"[yellow]Move or remove ~/mogrix_outputs and retry.[/yellow]")
+        raise SystemExit(1)
+
+    current_target = outputs_link.resolve()
+    expected_target = ws_outputs.resolve()
+    if current_target != expected_target:
+        _log(f"[red]Pre-flight FAILED: ~/mogrix_outputs symlink mismatch[/red]")
+        _log(f"  [red]Points to:[/red] {current_target}")
+        _log(f"  [red]Expected:[/red]  {expected_target}")
+        _log(f"\n[yellow]Fix with: ln -sfn {ws_outputs} ~/mogrix_outputs[/yellow]")
+        raise SystemExit(1)
+
+    _log(f"[dim]~/mogrix_outputs → {ws_outputs} ✓[/dim]")
+
+
+def _validate_staging_owner(staging_dir: Path, workspace: Path, resume: bool) -> None:
+    """Pre-flight: verify staging-owner.json matches this workspace.
+
+    On resume: hard error if staging belongs to a different workspace.
+    On new build: write ownership (gate0 will also write it, but this catches it early).
+    """
+    owner_file = staging_dir / "staging-owner.json"
+
+    if resume:
+        if owner_file.exists():
+            try:
+                data = json.loads(owner_file.read_text())
+                recorded = data.get("workspace", "")
+                if recorded and Path(recorded).resolve() != workspace.resolve():
+                    _log(f"[red]Pre-flight FAILED: staging owned by different workspace[/red]")
+                    _log(f"  [red]Staging owner:[/red] {recorded}")
+                    _log(f"  [red]This workspace:[/red] {workspace}")
+                    _log(f"\n[yellow]Either use --workspace {recorded} or run a fresh (non-resume) build.[/yellow]")
+                    raise SystemExit(1)
+            except (json.JSONDecodeError, OSError):
+                pass
+        _log(f"[dim]Staging owner: {workspace} ✓[/dim]")
+    else:
+        # New build — claim staging ownership
+        _write_staging_owner(staging_dir, workspace)
+        _log(f"[dim]Staging owner set to {workspace}[/dim]")
+
+
 def create_workspace() -> Path:
-    """Create the next numbered workspace (auto-increment)."""
+    """Create the next numbered workspace (auto-increment).
+
+    DEPRECATED: Only used by legacy code. rebuild-all now requires --workspace.
+    """
     latest = find_latest_workspace()
     if latest:
         current_version = int(latest.name[len(WORKSPACE_PREFIX):])
@@ -541,7 +616,8 @@ def build_package(
         errors='replace',
     )
 
-    # Save full output to log
+    # Save full output to log (ensure dir exists — mogrix build may recreate rpmbuild tree)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text(result.stdout + "\n" + result.stderr)
 
     if result.returncode != 0:
@@ -710,7 +786,7 @@ def unstage_packages(
     Returns count of packages un-staged.
     """
     unstaged = 0
-    staging_root = staging_dir  # RPM paths are absolute, e.g. /usr/sgug/lib32/libfoo.so
+    staging_root = staging_dir  # RPM paths are absolute, e.g. /opt/mogrix/lib32/libfoo.so
 
     for pkg in packages:
         # Get the RPM file list from gate-results
@@ -739,8 +815,8 @@ def unstage_packages(
                 line = line.strip()
                 if not line or line.endswith("/"):
                     continue  # skip directories
-                # RPM paths are absolute (e.g. /usr/sgug/lib32/libfoo.so.1)
-                # Map to staging: /opt/sgug-staging/usr/sgug/lib32/libfoo.so.1
+                # RPM paths are absolute (e.g. /opt/mogrix/lib32/libfoo.so.1)
+                # Map to staging: <staging_root>/opt/mogrix/lib32/libfoo.so.1
                 staged_file = staging_root / line.lstrip("/")
                 if staged_file.exists() and staged_file.is_file():
                     staged_file.unlink()
@@ -879,9 +955,12 @@ def _cascade_gate_check(
     """
     import tempfile
 
-    lib32 = staging_dir / "usr" / "sgug" / "lib32"
+    lib32 = staging_dir / "opt" / "mogrix" / "lib32"
     if not lib32.exists():
-        return False, f"staging lib32 not found at {lib32}"
+        # Fallback for old prefix layout
+        lib32 = staging_dir / "usr" / "sgug" / "lib32"
+    if not lib32.exists():
+        return False, f"staging lib32 not found (checked opt/mogrix/lib32 and usr/sgug/lib32)"
 
     # Extract each RPM, find .so files it ships, verify they exist in staging
     expected_sos = set()
@@ -908,6 +987,34 @@ def _cascade_gate_check(
         )
 
     return True, ""
+
+
+def _validate_build_after(build_order: list[str], rules_dir: Path) -> None:
+    """Verify every package in the build order has a build_after declaration.
+
+    Packages without build_after get arbitrary positions in the topological
+    sort, causing unreliable build ordering. This is a hard failure.
+    """
+    from mogrix.rules.loader import RuleLoader
+
+    loader = RuleLoader(rules_dir)
+    missing = []
+    for pkg in build_order:
+        pkg_rules = loader.load_package(pkg)
+        if not pkg_rules:
+            continue  # No rules file at all — handled elsewhere
+        if pkg_rules.get("skip"):
+            continue
+        if "build_after" not in pkg_rules:
+            missing.append(pkg)
+
+    if missing:
+        _log(f"\n[bold red]Pre-flight FAILED: {len(missing)} packages missing build_after:[/bold red]")
+        for pkg in missing:
+            _log(f"  [red]•[/red] {pkg}")
+        _log("\nEvery package must declare build_after (use 'build_after: none' for root packages).")
+        _log("Without it, build ordering is unreliable.\n")
+        raise SystemExit(1)
 
 
 def _fetch_missing_srpms(build_order: list[str], rules_dir: Path) -> None:
@@ -995,8 +1102,8 @@ def rebuild_all(
     Args:
         rules_dir: Path to rules directory
         staging_dir: Staging sysroot path
-        workspace: Explicit workspace path (auto-detected if None)
-        resume: Reuse latest workspace and skip completed packages
+        workspace: Explicit workspace path (required — no auto-increment)
+        resume: Skip completed packages in the workspace
         dry_run: Just compute plan, don't build
         skip_gates: Run gates but treat failures as warnings
         from_list: Only build these packages (in dependency order)
@@ -1015,19 +1122,31 @@ def rebuild_all(
 
     prev_handler = signal.signal(signal.SIGINT, _handle_sigint)
 
-    # Resolve workspace
-    if workspace:
-        ws = workspace
-        _update_outputs_symlink(ws)
-    elif resume:
-        ws = find_latest_workspace()
-        if not ws:
-            _log("[red]No existing workspace found for --resume[/red]")
+    # Resolve workspace — always explicit, never auto-increment
+    if not workspace:
+        _log("[red]--workspace is required. Example: mogrix rebuild-all --workspace ~/mogrix_v11[/red]")
+        raise SystemExit(1)
+
+    ws = workspace
+    if resume:
+        if not ws.exists():
+            _log(f"[red]Workspace {ws} does not exist — cannot resume[/red]")
             raise SystemExit(1)
         _log(f"[bold]Resuming workspace: {ws}[/bold]")
-        _update_outputs_symlink(ws)
     else:
-        ws = create_workspace()
+        # New build — create workspace dirs
+        ws.mkdir(exist_ok=True)
+        (ws / "gate-results").mkdir(exist_ok=True)
+        (ws / "mogrix_outputs" / "SRPMS").mkdir(parents=True, exist_ok=True)
+        (ws / "mogrix_outputs" / "RPMS").mkdir(parents=True, exist_ok=True)
+        (ws / "rpmbuild").mkdir(exist_ok=True)
+        _log(f"[bold green]Created workspace: {ws}[/bold green]")
+
+    # Validate ~/mogrix_outputs symlink
+    _validate_outputs_symlink(ws)
+
+    # Validate staging-owner.json matches this workspace
+    _validate_staging_owner(staging_dir, ws, resume)
 
     # Workspace paths
     outputs_dir = ws / "mogrix_outputs"
@@ -1067,6 +1186,9 @@ def rebuild_all(
     _log(f"[bold]Build order:[/bold] {plan.total} packages")
     if plan.cycles:
         _log(f"[yellow]Dependency cycles:[/yellow] {len(plan.cycles)}")
+
+    # Pre-flight: verify every package has build_after declared
+    _validate_build_after(plan.build_order, rules_dir)
 
     if dry_run:
         if resume:
@@ -1191,7 +1313,7 @@ def rebuild_all(
             skipped_blocked.append(package)
             continue
 
-        # Check for blocked packages (blocked: true in rule YAML)
+        # Check for blocked/skipped packages (blocked: true or skip: true in rule YAML)
         rule_file = rules_dir / "packages" / f"{package}.yaml"
         if rule_file.exists():
             import yaml as _yaml
@@ -1200,6 +1322,10 @@ def rebuild_all(
             if _pkg_rules.get("blocked"):
                 reason = _pkg_rules.get("blocked_reason", "no reason given")
                 _log(f"[dim]{i:3d}/{plan.total} {package} — blocked: {reason}[/dim]")
+                skipped_blocked.append(package)
+                continue
+            if _pkg_rules.get("skip"):
+                _log(f"[dim]{i:3d}/{plan.total} {package} — skipped (skip: true in rules)[/dim]")
                 skipped_blocked.append(package)
                 continue
 

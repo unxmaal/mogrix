@@ -63,7 +63,7 @@ rules:
       NO_MKDTEMP = YesPlease
       NO_SETENV = YesPlease
       NO_UNSETENV = YesPlease
-      CURL_CONFIG = /opt/sgug-staging/usr/sgug/bin/curl-config
+      CURL_CONFIG = $MOGRIX_STAGING/bin/curl-config
       EXTLIBS += -lgen
   # Remove contrib builds that need asciidoc or unavailable deps
   - pattern: "%make_build -C contrib/contacts/ all"
@@ -173,9 +173,9 @@ rules:
   - pattern: "find %{buildroot}%{_pkgdocdir}/{contrib,RelNotes} -type f \\\n        | grep -o \"%{_pkgdocdir}.*$\""
     replacement: "find %{buildroot}%{_pkgdocdir}/contrib %{buildroot}%{_pkgdocdir}/RelNotes -type f 2>/dev/null \\\n        | grep -o \"%{_pkgdocdir}.*$\""
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
   prep_commands:
   # IRIX unistd.h declares atfork_parent/atfork_prepare — rename git's internal ones
   - "sed -i 's/atfork_parent/git_atfork_parent/g; s/atfork_prepare/git_atfork_prepare/g' run-command.c"

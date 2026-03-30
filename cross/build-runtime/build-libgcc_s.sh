@@ -22,7 +22,7 @@ GCC_CFG="$SCRIPT_DIR/gcc-config"
 # Cross-compiler settings (match irix-cc)
 CLANG="/opt/cross/bin/clang"
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:-/opt/sgug-staging/usr/sgug}"
 IRIX_LD="$STAGING/bin/irix-ld"
 
 # Base flags matching irix-cc's target/ABI settings
@@ -282,7 +282,7 @@ if [ $? -eq 0 ] && [ -f "$OUTPUT" ]; then
     echo "Exported symbols: $exported"
     echo ""
     echo "Next steps:"
-    echo "  1. Compare symbols: nm -D $OUTPUT vs nm -D /opt/sgug-staging/usr/sgug/lib32/libgcc_s.so.1"
+    echo "  1. Compare symbols: nm -D $OUTPUT vs nm -D $STAGING/lib32/libgcc_s.so.1"
     echo "  2. Test with overlayfs (Phase 0b)"
 else
     echo "LINK FAILED"

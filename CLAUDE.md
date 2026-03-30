@@ -9,9 +9,22 @@ These are hard rules. Violating any of these is a session failure.
 - **NO INLINE C IN YAML**: C files go in `patches/packages/<pkg>/`, referenced via `add_source`. No heredocs generating .c/.h files in `prep_commands`.
 - **`add_rule` IMMEDIATELY AFTER FIX CONFIRMED**: The moment a build passes after a fix, call `add_rule` with `file_path` pointing to the authoritative rule file. Do not batch to session end — context pressure causes deferred `add_rule` calls to be dropped.
 - **DB IS CACHE, FILES ARE AUTHORITATIVE**: Rule files (`rules/packages/*.yaml`, `rules/generic.yaml`, `compat/catalog.yaml`, `rules/methods/*.md`) are the source of truth. `add_rule` must include `file_path`.
+- **FIX SCOPE MUST MATCH PROBLEM SCOPE**: One package fails → fix that package (skip, patch, or per-package rule). NEVER change a global default (`rpmmacros.irix`, `irix-cxx`, `generic.yaml`, compiler wrappers) to fix a local failure. Strategic decisions (libc++ migration, prefix change, LLVM upgrade) are NOT rollback candidates for tactical failures. A migration only gets rolled back if there's evidence of systemic incompatibility across many packages — not because one leaf package broke. When a package fails during a migration: skip it, file it for later, keep moving.
 - **DELEGATE LONG DEBUGS**: >2 failed fix attempts for the same error → stop and spawn a sub-agent with `Task()`. Pass it the error text, file paths, and tell it to use MCP tools first. Never let debug trace flood parent context.
 - **REDIRECT BUILD OUTPUT**: Never let rpmbuild output flood context. Log to file. Use sub-agents (`Task(model="haiku")`) for reading large build logs.
 - **INVOCATION**: `uv run mogrix <command>`. No other invocation method works.
+
+---
+## Package Failure Protocol
+
+When a package fails during porting/rebuild, follow `rules/methods/package-failure-triage.md` EXACTLY.
+
+**The short version:** read error → MCP search → fix in package YAML → rebuild.
+If it looks like a platform gap (compat headers, compiler wrappers, linker),
+**SKIP the package** (`skip: true`) and log it. Do NOT modify shared infrastructure
+to unblock a single package. Ever. Infrastructure changes happen in dedicated sessions.
+
+After two failed fix attempts on any package, SKIP IT and move on.
 
 ---
 
@@ -105,3 +118,11 @@ Compat function registry: `compat/catalog.yaml` (use `check_compat` MCP tool ins
 - **Shell**: `/bin/sh` only (not bash). No heredocs in `irix_exec` (csh). Use `LD_LIBRARYN32_PATH`.
 - **No C compiler on IRIX**: All C compilation is cross-compilation from the build host.
 - **After editing compat headers**: `mogrix sync-headers`
+
+## Sub-Agent Rules
+
+- **Monitoring and investigation agents use MANDATORY templates.** Copy the constraint block verbatim from `.claude/sub-agent-monitor-prompt.md` into every sub-agent prompt. Do not paraphrase or abbreviate. Do not write ad-hoc prompts that omit the constraints.
+- **Monitoring agents** are READ-ONLY. They may ONLY read logs, files, and git state. They may NEVER run builds, modify files, or commit changes.
+- **Investigation agents** (Haiku/Sonnet for log reading) are READ-ONLY. They read files and return a summary to the parent. The PARENT applies any fix.
+- **Only the orchestrator** (the main Opus session) may modify rule files, run builds, and commit changes.
+- **If a sub-agent runs a build or modifies a file, that is a session failure.** The constraint blocks exist because previous sessions had monitoring agents launch their own `mogrix rebuild-all` and revert rule file changes.

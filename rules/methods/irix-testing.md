@@ -13,7 +13,7 @@
 | IRIX version | 6.5.30 |
 | Machine | SGI Octane (IP30) |
 | Chroot | `/opt/chroot` |
-| SGUG-RSE | `/usr/sgug` (existing rpm 4.15.0) |
+| SGUG-RSE | `/opt/mogrix` (existing rpm 4.15.0) |
 
 ### Always Use MCP Tools
 
@@ -61,13 +61,13 @@ A separate MCP server (`tools/mogrix-test-server.py`) provides structured testin
 test_bundle {"bundle_path": "/path/to/package.run"}
 
 # 2. Quick ad-hoc binary check
-test_binary {"binary": "/usr/sgug/bin/grep", "args": "--version"}
+test_binary {"binary": "/opt/mogrix/bin/grep", "args": "--version"}
 
 # 3. Check library deps before deploying
 check_deps {"path": "/path/to/bundle_dir"}
 
 # 4. Debug a crash with parsed syscall trace
-par_trace {"command": "/usr/sgug/bin/failing-binary"}
+par_trace {"command": "/opt/mogrix/bin/failing-binary"}
 
 # 5. GUI app testing: launch + screenshot
 test_binary {"binary": "/path/to/gui-app", "args": "-display :0", "env": {"DISPLAY": ":0"}, "timeout": 5, "host_mode": true}
@@ -129,21 +129,21 @@ SGUG-RSE uses n32 ABI (32-bit pointers, 64-bit registers).
 
 ```bash
 # Sets up LD_LIBRARYN32_PATH and PATH automatically
-/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf --version
+/opt/mogrix/bin/sgug-exec /opt/mogrix/bin/tdnf --version
 ```
 
 ### Method 2: Manual Library Path
 
 ```bash
 # For chroot binaries from base system:
-LD_LIBRARYN32_PATH=/opt/chroot/usr/sgug/lib32:/usr/sgug/lib32 \
-  /opt/chroot/usr/sgug/bin/rpm --version
+LD_LIBRARYN32_PATH=/opt/chroot/opt/mogrix/lib32:/opt/mogrix/lib32 \
+  /opt/chroot/opt/mogrix/bin/rpm --version
 ```
 
 ### Method 3: Interactive sgugshell
 
 ```bash
-/usr/sgug/bin/sgugshell
+/opt/mogrix/bin/sgugshell
 # Now SGUG commands work without prefixes
 rpm --version
 tdnf --help
@@ -170,7 +170,7 @@ Unlike Linux:
 # On base IRIX (not in chroot):
 mkdir -p /etc/yum.repos.d
 mkdir -p /etc/tdnf/pluginconf.d
-ln -sf /opt/chroot/usr/sgug/lib32/rpm /usr/sgug/lib32/rpm
+ln -sf /opt/chroot/opt/mogrix/lib32/rpm /opt/mogrix/lib32/rpm
 ```
 
 ---
@@ -195,21 +195,21 @@ irix_copy_to /path/to/package.rpm /tmp/package.rpm
 
 # Install and test
 irix_exec "rpm -Uvh --nodeps /tmp/package.rpm"
-irix_exec "/usr/sgug/bin/some-binary --version"
+irix_exec "/opt/mogrix/bin/some-binary --version"
 ```
 
 ### Pattern 3: Read Files from IRIX (MCP)
 
 ```bash
 # Read a config file or log
-irix_read_file /usr/sgug/etc/tdnf/tdnf.conf
+irix_read_file /opt/mogrix/etc/tdnf/tdnf.conf
 ```
 
 ### Pattern 4: Syscall Tracing (MCP)
 
 ```bash
 # Trace a command with par
-irix_par "/usr/sgug/bin/some-binary --version"
+irix_par "/opt/mogrix/bin/some-binary --version"
 ```
 
 Note: All MCP tools run inside the chroot with sgug-exec — LD_LIBRARYN32_PATH and PATH are set automatically.
@@ -222,10 +222,10 @@ Note: All MCP tools run inside the chroot with sgug-exec — LD_LIBRARYN32_PATH 
 
 ```bash
 # Trace system calls (via MCP)
-irix_par "/usr/sgug/bin/tdnf repolist"
+irix_par "/opt/mogrix/bin/tdnf repolist"
 
 # Or manually with output redirect:
-irix_exec "par -s /usr/sgug/bin/tdnf repolist > /tmp/par_out.txt 2>&1"
+irix_exec "par -s /opt/mogrix/bin/tdnf repolist > /tmp/par_out.txt 2>&1"
 
 # Read trace output on Linux for analysis
 irix_read_file /tmp/par_out.txt
@@ -281,7 +281,7 @@ IRIX /dev/fd doesn't work the same as Linux. Our futimens() tries to use /dev/fd
 If a syscall shows no result (no "OK" or "errno"), something crashed or hung. The unusual address (0x80c78 instead of stack address 0x7ffd...) suggests memory corruption.
 
 **ensureDir only goes partway:**
-If you see open("/"), open("usr") but never open("sgug") for a path like /usr/sgug/etc/, check for EINVAL on the directory opens - likely O_NOFOLLOW issue.
+If you see open("/"), open("usr") but never open("sgug") for a path like /opt/mogrix/etc/, check for EINVAL on the directory opens - likely O_NOFOLLOW issue.
 
 ---
 
@@ -348,7 +348,7 @@ irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
     patches/shared/mogrix_crash_handler.c \
     -I compat/include -I patches/shared
 
-cp /tmp/libmogrix_compat.so /opt/sgug-staging/usr/sgug/lib32/libmogrix_compat.so
+cp /tmp/libmogrix_compat.so $MOGRIX_STAGING/lib32/libmogrix_compat.so
 ```
 
 To hot-deploy to an existing bundle without rebundling:
@@ -377,13 +377,13 @@ See `rules/packages/gtkterm.yaml` for a working example.
 
 ## NEVER Do
 
-1. **NEVER install to /usr/sgug directly** - can break sshd, lock you out
+1. **NEVER install to /opt/mogrix directly** - can break sshd, lock you out
 2. **NEVER assume bash syntax** - use POSIX sh
 3. **NEVER forget LD_LIBRARYN32_PATH** - binaries won't find libraries
 4. **NEVER run rpmbuild on IRIX** - build on Linux, copy RPMs to IRIX
 5. **NEVER replace libraries that running services use** - sshd uses libz, libssl
 6. **NEVER put files in /tmp on Linux** - put files in /home/edodd/projects/github/unxmaal/mogrix/tmp
-7. **NEVER reference paths outside /usr/sgug** - mogrix-converted packages must be fully self-contained under /usr/sgug. Config files must not reference /etc, /var, /lib, or any path outside /usr/sgug. IRIX is old and fragile; reinstalling is painful. We never touch the base IRIX OS filesystem.
+7. **NEVER reference paths outside /opt/mogrix** - mogrix-converted packages must be fully self-contained under /opt/mogrix. Config files must not reference /etc, /var, /lib, or any path outside /opt/mogrix. IRIX is old and fragile; reinstalling is painful. We never touch the base IRIX OS filesystem.
 8. **NEVER write ad-hoc wrapper scripts for IRIX testing** — use the mogrix-test MCP tools (`test_bundle`, `test_binary`, `par_trace`, `screenshot`). They handle permissions, paths, environment, and output capture correctly. Writing one-off scripts leads to permission errors, wrong paths, and wasted debugging time.
 9. **NEVER assume `/tmp` is writable on IRIX** — the `edodd` user cannot write to `/tmp`. Use `/usr/people/edodd/tmp/` for user-writable temp files on the IRIX host.
 10. **NEVER forget bundle file permissions** — extracted bundles may be owned by root and unreadable by `edodd`. Use `chown -Rh edodd` (NOT `-R`) because bundles contain symlinks and `-R` follows them, failing on broken symlink targets with ENOENT. The mogrix-test MCP server handles this correctly; ad-hoc testing does not.
@@ -391,14 +391,14 @@ See `rules/packages/gtkterm.yaml` for a working example.
 
 ### Path Rooting Rule
 
-All paths in mogrix-converted packages must be rooted at `/usr/sgug`:
+All paths in mogrix-converted packages must be rooted at `/opt/mogrix`:
 
 | Linux Path | SGUG Path |
 |------------|-----------|
-| `/etc/pki/CA` | `/usr/sgug/etc/pki/CA` |
-| `/etc/ssl` | `/usr/sgug/etc/pki/tls` |
-| `/var/lib/rpm` | `/usr/sgug/var/lib/rpm` |
-| `/etc/tdnf` | `/usr/sgug/etc/tdnf` |
+| `/etc/pki/CA` | `/opt/mogrix/etc/pki/CA` |
+| `/etc/ssl` | `/opt/mogrix/etc/pki/tls` |
+| `/var/lib/rpm` | `/opt/mogrix/var/lib/rpm` |
+| `/etc/tdnf` | `/opt/mogrix/etc/tdnf` |
 
 When converting packages, check config files for hardcoded paths and fix them. 
 
@@ -440,7 +440,7 @@ mkdir -p usr/sgug/etc/{tdnf/vars,dnf/vars,yum/vars,yum.repos.d,rpm}
 mkdir -p usr/sgug/var/cache/tdnf
 mkdir -p usr/sgug/lib/sysimage/rpm
 mkdir -p var/lib
-cd var/lib && ln -s ../../usr/sgug/lib/sysimage/rpm rpm && cd ../..
+cd var/lib && ln -s ../../opt/mogrix/lib/sysimage/rpm rpm && cd ../..
 
 # Create sqlite backend macro
 echo "%_db_backend sqlite" > usr/sgug/etc/rpm/macros.sqlite
@@ -456,8 +456,8 @@ cat > usr/sgug/etc/tdnf/tdnf.conf << 'EOF'
 gpgcheck=0
 installonly_limit=3
 clean_requirements_on_remove=1
-repodir=/usr/sgug/etc/yum.repos.d
-cachedir=/usr/sgug/var/cache/tdnf
+repodir=/opt/mogrix/etc/yum.repos.d
+cachedir=/opt/mogrix/var/cache/tdnf
 EOF
 
 # Create tarball
@@ -484,8 +484,8 @@ gunzip -c /tmp/tdnf-chroot-bundle.tar.gz | tar xvf -
 
 # Initialize rpm database (from inside chroot)
 chroot /opt/chroot /bin/sh
-export LD_LIBRARYN32_PATH=/usr/sgug/lib32
-/usr/sgug/bin/rpm --initdb
+export LD_LIBRARYN32_PATH=/opt/mogrix/lib32
+/opt/mogrix/bin/rpm --initdb
 exit
 ```
 
@@ -493,9 +493,9 @@ exit
 
 Inside the chroot:
 ```bash
-/usr/sgug/bin/sgug-exec /usr/sgug/bin/rpm -qa
-/usr/sgug/bin/sgug-exec /usr/sgug/bin/rpm -Uvh --nodeps /tmp/some-package.rpm
-/usr/sgug/bin/sgug-exec /usr/sgug/bin/tdnf repolist
+/opt/mogrix/bin/sgug-exec /opt/mogrix/bin/rpm -qa
+/opt/mogrix/bin/sgug-exec /opt/mogrix/bin/rpm -Uvh --nodeps /tmp/some-package.rpm
+/opt/mogrix/bin/sgug-exec /opt/mogrix/bin/tdnf repolist
 ```
 
 ---

@@ -1,4 +1,7 @@
 package: libmetalink
+
+build_after:
+  - expat
 rules:
   configure_flags:
     add:

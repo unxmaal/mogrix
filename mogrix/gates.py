@@ -16,14 +16,14 @@ IRIX_NATIVE_SHEBANGS = {
     "/bin/sh", "/sbin/sh",
 }
 
-# Shebangs that must be rewritten to /usr/sgug/bin/
+# Shebangs that must be rewritten to /opt/mogrix/bin/
 BAD_SHEBANG_PATTERNS = [
-    (re.compile(r"^#!\s*/usr/bin/env\s+(.+)"), "#!/usr/sgug/bin/{0}"),
-    (re.compile(r"^#!\s*/usr/bin/(.+)"), "#!/usr/sgug/bin/{0}"),
-    (re.compile(r"^#!\s*/bin/(.+)"), "#!/usr/sgug/bin/{0}"),
+    (re.compile(r"^#!\s*/usr/bin/env\s+(.+)"), "#!/opt/mogrix/bin/{0}"),
+    (re.compile(r"^#!\s*/usr/bin/(.+)"), "#!/opt/mogrix/bin/{0}"),
+    (re.compile(r"^#!\s*/bin/(.+)"), "#!/opt/mogrix/bin/{0}"),
 ]
 
-# Known binaries that have /usr/sgug/bin equivalents and should NOT use /usr/bin
+# Known binaries that have /opt/mogrix/bin equivalents and should NOT use /usr/bin
 SGUG_BINARIES = {
     "perl", "python3", "python", "bash",
     "sed", "awk", "grep", "gawk", "mawk",
@@ -31,8 +31,8 @@ SGUG_BINARIES = {
 
 # Hardcoded path patterns that break relocatability
 BAD_PATH_PATTERNS = [
-    re.compile(r'use lib "/usr/sgug/share/'),
-    re.compile(r"unshift\(@INC,\s*'/usr/sgug/share/"),
+    re.compile(r'use lib "/opt/mogrix/share/'),
+    re.compile(r"unshift\(@INC,\s*'/opt/mogrix/share/"),
 ]
 
 # ELF constants for MIPS n32
@@ -79,18 +79,18 @@ def check_shebang(filepath: Path, content_first_line: str) -> GateIssue | None:
         m = pattern.match(line)
         if m:
             binary = m.group(1).split()[0]  # handle "env perl" -> "perl"
-            # /usr/bin/env shebangs work if PATH includes /usr/sgug/bin/ (bundles do this)
+            # /usr/bin/env shebangs work if PATH includes /opt/mogrix/bin/ (bundles do this)
             if interp == "/usr/bin/env":
                 return GateIssue(
                     "warning",
                     str(filepath),
-                    f"env shebang: {line} (works in bundles, but direct /usr/sgug/bin/ is safer)",
+                    f"env shebang: {line} (works in bundles, but direct /opt/mogrix/bin/ is safer)",
                 )
             if binary in SGUG_BINARIES:
                 return GateIssue(
                     "error",
                     str(filepath),
-                    f"Bad shebang: {line} (should use /usr/sgug/bin/)",
+                    f"Bad shebang: {line} (should use /opt/mogrix/bin/)",
                 )
     return None
 
@@ -309,7 +309,8 @@ def _check_elf_defects(elf_path: Path, rpm_name: str) -> list[DefectIssue]:
 
 
 IRIX_SYSROOT = Path("/opt/irix-sysroot")
-STAGING_LIB32 = Path("/opt/sgug-staging/usr/sgug/lib32")
+_GATES_PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+STAGING_LIB32 = _GATES_PROJECT_ROOT / "staging" / "opt" / "mogrix" / "lib32"
 IRIX_LIB32 = IRIX_SYSROOT / "usr" / "lib32"
 
 

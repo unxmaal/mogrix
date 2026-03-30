@@ -14,20 +14,20 @@
 #   4. Run irix-diag.sh for full par trace + diagnostics
 #   5. scp the diag tarball back to Linux
 #
-# NOTE: Uses /usr/sgug/bin/bash on IRIX to avoid csh quoting hell.
+# NOTE: Uses /opt/mogrix/bin/bash on IRIX to avoid csh quoting hell.
 
 set -euo pipefail
 
 IRIX_HOST="edodd@192.168.0.81"
 IRIX_APPS_DIR="apps"
-IRIX_BASH="/usr/sgug/bin/bash"
+IRIX_BASH="/opt/mogrix/bin/bash"
 MOGRIX_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Helper: run a bash script on IRIX via heredoc (bypasses csh entirely).
 # csh is the IRIX login shell and can't do VAR=val syntax, so we use env
 # to bootstrap LD_LIBRARYN32_PATH so bash can find its shared libs.
 irix_bash() {
-    ssh "$IRIX_HOST" "env LD_LIBRARYN32_PATH=/usr/sgug/lib32:/usr/lib32:/lib32 $IRIX_BASH --norc"
+    ssh "$IRIX_HOST" "env LD_LIBRARYN32_PATH=/opt/mogrix/lib32:/usr/lib32:/lib32 $IRIX_BASH --norc"
 }
 
 # --- Parse arguments ---
@@ -72,8 +72,8 @@ echo ""
 # --- Step 2: Extract bundle ---
 echo "[2/5] Extracting bundle on IRIX..."
 irix_bash <<EOF
-export PATH=/usr/sgug/bin:/usr/bin:/bin
-export LD_LIBRARYN32_PATH=/usr/sgug/lib32:/usr/lib32:/lib32
+export PATH=/opt/mogrix/bin:/usr/bin:/bin
+export LD_LIBRARYN32_PATH=/opt/mogrix/lib32:/usr/lib32:/lib32
 cd "\$HOME"
 rm -rf "${BUNDLE_NAME}"
 /bin/sh "./${BUNDLE_FILE}"
@@ -87,8 +87,8 @@ BUNDLE_DIR_REMOTE="\$HOME/${BUNDLE_NAME}"
 # --- Step 3: Smoke test ---
 echo "[3/5] Smoke test..."
 SMOKE_OUTPUT=$(irix_bash <<EOF
-export PATH=/usr/sgug/bin:/usr/bin:/bin
-export LD_LIBRARYN32_PATH=/usr/sgug/lib32:/usr/lib32:/lib32
+export PATH=/opt/mogrix/bin:/usr/bin:/bin
+export LD_LIBRARYN32_PATH=/opt/mogrix/lib32:/usr/lib32:/lib32
 
 WRAPPER="\$HOME/${BUNDLE_NAME}/${BINARY}"
 if [ ! -f "\$WRAPPER" ]; then
@@ -115,8 +115,8 @@ scp "$MOGRIX_DIR/tools/irix-diag.sh" "${IRIX_HOST}:irix-diag.sh"
 
 # Run the diag script and capture the output tarball name
 DIAG_OUTPUT=$(irix_bash <<EOF
-export PATH=/usr/sgug/bin:/usr/bin:/bin:/usr/sbin
-export LD_LIBRARYN32_PATH=/usr/sgug/lib32:/usr/lib32:/lib32
+export PATH=/opt/mogrix/bin:/usr/bin:/bin:/usr/sbin
+export LD_LIBRARYN32_PATH=/opt/mogrix/lib32:/usr/lib32:/lib32
 export DISPLAY=:0
 
 /bin/sh "\$HOME/irix-diag.sh" "\$HOME/${BUNDLE_NAME}" "${BINARY}"

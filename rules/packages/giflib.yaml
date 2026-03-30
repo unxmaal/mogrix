@@ -1,4 +1,6 @@
 package: giflib
+
+build_after: none
 rules:
   drop_subpackages:
   - mingw32-*

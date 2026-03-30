@@ -158,7 +158,7 @@ rules:
       replacement: |
         mkdir build && cd build
         ../configure --host=mips-sgi-irix6.5 \
-          --with-ssl=/usr/sgug \
+          --with-ssl=/opt/mogrix \
           --without-libpsl \
           ...
 
@@ -177,8 +177,8 @@ rules:
 ### "libtool: link: cannot find -lfoo"
 
 Libtool can't find a dependency. Check:
-1. Is the dependency staged? `ls /opt/sgug-staging/usr/sgug/lib32/libfoo*`
-2. Add `-L/opt/sgug-staging/usr/sgug/lib32` to LDFLAGS
+1. Is the dependency staged? `ls $MOGRIX_STAGING/lib32/libfoo*`
+2. Add `-L$MOGRIX_STAGING/lib32` to LDFLAGS
 
 ### "configure: error: cannot run test program"
 

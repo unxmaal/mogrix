@@ -933,7 +933,6 @@ namespace std
 #define _GLIBCXX_HAVE_ISNANL 1
 
 /* Defined if iswblank exists. */
-/* mogrix: declared in mogrix-compat/generic/wctype.h overlay */
 #define _GLIBCXX_HAVE_ISWBLANK 1
 
 /* Define if LC_MESSAGES is available in <locale.h>. */
@@ -1226,22 +1225,18 @@ namespace std
 #define _GLIBCXX_HAVE_UTIME_H 1
 
 /* Defined if vfwscanf exists. */
-/* mogrix: declared in mogrix-compat/generic/wchar.h overlay */
 #define _GLIBCXX_HAVE_VFWSCANF 1
 
 /* Defined if vswscanf exists. */
-/* mogrix: declared in mogrix-compat/generic/wchar.h overlay */
 #define _GLIBCXX_HAVE_VSWSCANF 1
 
 /* Defined if vwscanf exists. */
-/* mogrix: declared in mogrix-compat/generic/wchar.h overlay */
 #define _GLIBCXX_HAVE_VWSCANF 1
 
 /* Define to 1 if you have the <wchar.h> header file. */
 #define _GLIBCXX_HAVE_WCHAR_H 1
 
 /* Defined if wcstof exists. */
-/* mogrix: declared in mogrix-compat/generic/wchar.h overlay */
 #define _GLIBCXX_HAVE_WCSTOF 1
 
 /* Define to 1 if you have the <wctype.h> header file. */
@@ -1511,7 +1506,7 @@ namespace std
 
 /* Define if C99 functions or macros in <stdio.h> should be imported in
    <cstdio> in namespace std for C++11. */
-#define _GLIBCXX11_USE_C99_STDIO 1
+#define _GLIBCXX11_USE_C99_STDIO 0
 
 /* Define if C99 functions or macros in <stdlib.h> should be imported in
    <cstdlib> in namespace std for C++11. */
@@ -1532,7 +1527,7 @@ namespace std
 
 /* Define if C99 functions or macros in <stdio.h> should be imported in
    <cstdio> in namespace std for C++98. */
-#define _GLIBCXX98_USE_C99_STDIO 1
+#define _GLIBCXX98_USE_C99_STDIO 0
 
 /* Define if C99 functions or macros in <stdlib.h> should be imported in
    <cstdlib> in namespace std for C++98. */

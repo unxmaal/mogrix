@@ -1,6 +1,8 @@
 # bison - GNU parser generator
 package: bison
 
+build_after: none
+
 classes:
   - nls-disabled
 

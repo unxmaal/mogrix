@@ -1,4 +1,8 @@
 package: libssh2
+
+build_after:
+  - libgcrypt
+  - zlib-ng
 rules:
   drop_buildrequires:
   - openssh-server
@@ -7,11 +11,11 @@ rules:
   - docs
   export_vars:
     LD: /opt/cross/bin/mips-sgi-irix6.5-ld.bfd
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_SYSROOT_DIR: /opt/sgug-staging
-    CPPFLAGS: -I/opt/sgug-staging/usr/sgug/include $CPPFLAGS
-    LDFLAGS: -L/opt/sgug-staging/usr/sgug/lib32 $LDFLAGS
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
+    CPPFLAGS: -I$MOGRIX_STAGING/include $CPPFLAGS
+    LDFLAGS: -L$MOGRIX_STAGING/lib32 $LDFLAGS
   configure_flags:
     add:
     - --disable-static

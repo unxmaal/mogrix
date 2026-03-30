@@ -3,6 +3,8 @@
 # macro (CHECK(false) → exit) as non-returning path in non-void function.
 package: re2c
 
+build_after: none
+
 rules:
   spec_replacements:
     # Disable -Werror=return-type: re2c's UNREACHABLE() macro uses exit() inside

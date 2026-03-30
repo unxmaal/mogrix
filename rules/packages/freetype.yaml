@@ -2,6 +2,11 @@
 # Font rendering library, needed by fontconfig, cairo, harfbuzz, pango
 package: freetype
 
+build_after:
+  - bzip2
+  - libpng
+  - zlib-ng
+
 rules:
   # Drop demos subpackage — no X11, demos not needed for cross-compilation
   drop_subpackages:

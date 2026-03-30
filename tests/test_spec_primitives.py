@@ -227,10 +227,10 @@ class TestRegexReplacements:
         wr = writer.write(result, spec_replacements=[
             {
                 "pattern_regex": r"(--with-default-path=).*",
-                "replacement": r"\1/usr/sgug/bin",
+                "replacement": r"\1/opt/mogrix/bin",
             },
         ])
-        assert "--with-default-path=/usr/sgug/bin" in wr.content
+        assert "--with-default-path=/opt/mogrix/bin" in wr.content
 
     def test_regex_no_match_tracked(self):
         """Unmatched regex is tracked."""

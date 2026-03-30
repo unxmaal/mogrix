@@ -10,6 +10,9 @@
 
 package: libgcrypt
 
+build_after:
+  - libgpg-error
+
 rules:
   # Autoconf cache overrides for cross-compilation
   # NOTE: ac_cv_func_malloc/realloc_0_nonnull handled by generic.yaml
@@ -39,7 +42,7 @@ rules:
   # Configure flags
   configure_flags:
     add:
-      - --with-libgpg-error-prefix=/opt/sgug-staging/usr/sgug
+      - --with-libgpg-error-prefix=$MOGRIX_STAGING
       - --disable-static
       - --disable-asm
       - --disable-amd64-as-feature-detection

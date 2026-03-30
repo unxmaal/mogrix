@@ -2,6 +2,11 @@
 # Makefile-based build — needs explicit CC and LDFLAGS override
 package: boxes
 
+build_after:
+  - libunistring
+  - ncurses
+  - pcre2
+
 rules:
   drop_subpackages:
     - vim

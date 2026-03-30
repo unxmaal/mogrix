@@ -6,6 +6,8 @@
 
 package: ca-certificates
 
+build_after: none
+
 rules:
   drop_buildrequires:
     - p11-kit-devel

@@ -1,5 +1,7 @@
 # expect package rules for IRIX cross-compilation
 package: expect
+
+build_after: none
 skip: true
 skip_reason: "K&R C codebase with undeclared functions (expDiagLogPtrStrStr, fcntl, open). Needs extensive source patching. Low priority."
 blocked: true
@@ -9,7 +11,7 @@ rules:
   spec_replacements:
     # Fix tcl/tclinclude paths to use staging prefix
     - pattern: "--with-tcl=%{_libdir} --with-tk=%{_libdir} --enable-shared \\\n\t--with-tclinclude=%{_includedir}/tcl-private/generic"
-      replacement: "--with-tcl=/opt/sgug-staging/usr/sgug/lib32 --with-tk=/opt/sgug-staging/usr/sgug/lib32 --enable-shared \\\n\t--with-tclinclude=/opt/sgug-staging/usr/sgug/include/tcl-private/generic"
+      replacement: "--with-tcl=$MOGRIX_STAGING/lib32 --with-tk=$MOGRIX_STAGING/lib32 --enable-shared \\\n\t--with-tclinclude=$MOGRIX_STAGING/include/tcl-private/generic"
     # After autoconf: fix configure for cross-compilation, and fix source files
     # (must be after patches which may re-introduce issues)
     - pattern: "autoconf\n( cd testsuite"

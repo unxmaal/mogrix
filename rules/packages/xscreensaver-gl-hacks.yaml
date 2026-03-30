@@ -29,11 +29,11 @@ rules:
   - libpng-devel
   # Neutralize generic rewrite_paths — this hand-written spec already has
   # correct cross-compilation paths. The generic rewrites mangle sysroot
-  # paths like /opt/irix-sysroot/usr/include → /opt/irix-sysroot/usr/sgug/include
+  # paths like /opt/irix-sysroot/usr/include → /opt/irix-sysroot/opt/mogrix/include
   rewrite_paths:
     /usr/lib64: /usr/lib64
     /usr/lib: /usr/lib
     /usr/include: /usr/include
   export_vars:
-    PKG_CONFIG_PATH: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
-    PKG_CONFIG_LIBDIR: /opt/sgug-staging/usr/sgug/lib32/pkgconfig
+    PKG_CONFIG_PATH: $MOGRIX_STAGING/lib32/pkgconfig
+    PKG_CONFIG_LIBDIR: $MOGRIX_STAGING/lib32/pkgconfig

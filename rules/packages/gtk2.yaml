@@ -1,6 +1,8 @@
 # gtk2 package rules for IRIX cross-compilation
 package: gtk2
 
+build_after: none
+
 # IRIX-specific patches from SGUG-RSE
 add_patch:
   - gtk2.sgifixes.patch

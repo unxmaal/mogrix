@@ -21,7 +21,7 @@
 
 # Configurable paths - set by mogrix setup-cross
 SYSROOT="${IRIX_SYSROOT:-/opt/irix-sysroot}"
-STAGING="${SGUG_STAGING:-/opt/sgug-staging/usr/sgug}"
+STAGING="${MOGRIX_STAGING:-/opt/sgug-staging/usr/sgug}"
 CLANG="${IRIX_CLANG:-/opt/cross/bin/clang++}"
 LD="${STAGING}/bin/irix-ld"
 

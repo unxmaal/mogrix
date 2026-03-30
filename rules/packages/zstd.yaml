@@ -2,9 +2,14 @@
 # Unblocks elfutils, gnutls, libarchive, git
 package: zstd
 
+build_after: none
+
 rules:
 
   spec_replacements:
+    # gcc + conditional gtest on same line → empty BuildRequires after drops
+    - pattern: "BuildRequires:  gcc %{?with_gtest:gtest-devel}"
+      replacement: "# BuildRequires: gcc (host) gtest (disabled)"
     # Disable asm (x86-only), pzstd (C++), lz4 (not built), gtest
     - pattern: "%bcond_without asm"
       replacement: "%bcond_with asm"

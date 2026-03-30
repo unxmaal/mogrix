@@ -234,7 +234,9 @@ static inline int asprintf_l(char **__strp, locale_t __loc, const char *__fmt, .
     return ret;
 }
 
-/* vasprintf: IRIX lacks this GNU/BSD extension. Implement via vsnprintf. */
+/* vasprintf: IRIX lacks this GNU/BSD extension. Implement via vsnprintf.
+ * Guard: mogrix-compat/generic/stdio.h may declare vasprintf as extern. */
+#ifndef _MOGRIX_COMPAT_STDIO_H
 static inline int vasprintf(char **__strp, const char *__fmt, va_list __ap) {
     va_list ap2;
     va_copy(ap2, __ap);
@@ -246,6 +248,7 @@ static inline int vasprintf(char **__strp, const char *__fmt, va_list __ap) {
     va_end(ap2);
     return ret;
 }
+#endif /* !_MOGRIX_COMPAT_STDIO_H */
 
 /* strftime_l: locale-aware strftime (ignore locale, use global) */
 static inline size_t strftime_l(char *__s, size_t __max, const char *__fmt,

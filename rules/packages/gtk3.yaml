@@ -1,10 +1,12 @@
 package: gtk3
+
+build_after: none
 smoke_test:
-  - command: "/usr/sgug/bin/gtk-query-immodules-3.0 2>&1 | head -1"
+  - command: "/opt/mogrix/bin/gtk-query-immodules-3.0 2>&1 | head -1"
     expect: "GTK+"
-  - command: "/usr/sgug/bin/gtk-update-icon-cache --help 2>&1"
+  - command: "/opt/mogrix/bin/gtk-update-icon-cache --help 2>&1"
     expect: "gtk-update-icon-cache"
-  - command: "/usr/sgug/bin/gtk-launch --help 2>&1"
+  - command: "/opt/mogrix/bin/gtk-launch --help 2>&1"
     expect: "gtk-launch"
 
 rules:

@@ -1,6 +1,8 @@
 # lrzsz - X/Y/ZMODEM file transfer tools
 package: lrzsz
 
+build_after: none
+
 rules:
   # The Makefile has rules to regenerate autotools outputs (aclocal.m4, configure,
   # Makefile.in, config.h.in) when inputs (configure.in, Makefile.am) are newer.

@@ -1,5 +1,7 @@
 # tree - directory listing in tree format
 package: tree-pkg
+
+build_after: none
 rules:
   prep_commands:
   # Makefile hardcodes CC=gcc — must override for cross-compilation

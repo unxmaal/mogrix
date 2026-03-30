@@ -1,6 +1,8 @@
 package: gdk-pixbuf2
+
+build_after: none
 smoke_test:
-  - command: "/usr/sgug/bin/gdk-pixbuf-query-loaders 2>&1 | head -1"
+  - command: "/opt/mogrix/bin/gdk-pixbuf-query-loaders 2>&1 | head -1"
     expect: "GdkPixbuf"
 
 rules:

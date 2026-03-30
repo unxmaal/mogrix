@@ -4,6 +4,8 @@
 # use autoconf-style LIBS. Need to inject via LDFLAGS or prep_commands.
 package: pwgen
 
+build_after: none
+
 rules:
   prep_commands:
     # pwgen's configure is hand-written, not autoconf. It doesn't honor LIBS.

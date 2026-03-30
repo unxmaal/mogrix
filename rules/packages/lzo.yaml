@@ -1,6 +1,8 @@
 # lzo - fast compression library
 package: lzo
 
+build_after: none
+
 rules:
   spec_replacements:
     # minilzo is built with hardcoded 'gcc' — must use cross-compiler

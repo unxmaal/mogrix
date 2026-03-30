@@ -90,7 +90,7 @@ The process:
 3. For each soname:
    - **IRIX native** (317 sonames in `/usr/lib32` + `/lib32`): Skip — always available
    - **mogrix-built RPM**: Add that RPM + its siblings to the queue
-   - **Staging fallback**: Copy from `/opt/sgug-staging/usr/sgug/lib32/`
+   - **Staging fallback**: Copy from `$MOGRIX_STAGING/lib32/`
    - **Unresolved**: Warning (bundle may not work)
 4. Repeat until all transitive deps are resolved
 

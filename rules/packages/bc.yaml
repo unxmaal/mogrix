@@ -1,4 +1,9 @@
 package: bc
+
+build_after:
+  - flex
+  - ncurses
+  - readline
 rules:
   spec_replacements:
   - pattern: rm -f $RPM_BUILD_ROOT/%{_infodir}/dir

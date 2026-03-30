@@ -1,4 +1,7 @@
 package: frotz
+
+build_after:
+  - ncurses
 rules:
   drop_buildrequires:
   - pkgconfig(ao)
@@ -23,7 +26,7 @@ rules:
   - $MOGRIX_ROOT/tools/safepatch src/dumb/doutput.c --old 'cell_t' --new 'frotz_cell_t' --count 0 --no-backup --quiet
   spec_replacements:
   - pattern: '%make_build all'
-    replacement: "export PKG_CONFIG_SYSROOT_DIR=\"/opt/sgug-staging\"\nCOMPAT_DIR=$(pwd)/mogrix-compat\n%make_build CC=\"%{__cc}\" AR=\"%{__ar}\" RANLIB=\"%{__ranlib}\" \\\n  SOUND_TYPE=none NO_BLORB=yes\
+    replacement: "export PKG_CONFIG_SYSROOT_DIR=\"$MOGRIX_STAGING_ROOT\"\nCOMPAT_DIR=$(pwd)/mogrix-compat\n%make_build CC=\"%{__cc}\" AR=\"%{__ar}\" RANLIB=\"%{__ranlib}\" \\\n  SOUND_TYPE=none NO_BLORB=yes\
       \ NO_EXECINFO_H=yes \\\n  CFLAGS=\"%{optflags} -std=c99 -Wall\" \\\n  LDFLAGS=\"-L$COMPAT_DIR -lmogrix-compat -lgen\" \\\n  frotz dfrotz\n"
   - pattern: '%make_install PREFIX=%{_prefix} install_all'
     replacement: 'COMPAT_DIR=$(pwd)/mogrix-compat
@@ -47,7 +50,7 @@ rules:
 
       '
 smoke_test:
-- command: "/usr/sgug/bin/dfrotz -h 2>&1 | head -1"
+- command: "/opt/mogrix/bin/dfrotz -h 2>&1 | head -1"
   expect: "FROTZ"
-- command: "/usr/sgug/bin/frotz -h 2>&1 | head -1"
+- command: "/opt/mogrix/bin/frotz -h 2>&1 | head -1"
   expect: "FROTZ"

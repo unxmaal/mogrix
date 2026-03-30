@@ -1,4 +1,6 @@
 package: libsoup
+
+build_after: none
 rules:
   drop_buildrequires:
   - pkgconfig(sysprof-capture-4)

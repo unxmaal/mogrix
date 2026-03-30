@@ -4,6 +4,8 @@
 # g-ir-scanner tool which embeds Python.
 
 package: gobject-introspection
+
+build_after: none
 skip: true
 skip_reason: "requires cross-compiled Python3 development files for IRIX (not available)"
 blocked: true

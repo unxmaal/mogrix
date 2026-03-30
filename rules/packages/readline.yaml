@@ -15,6 +15,9 @@
 # Fedora's patch already handles that fix.
 package: readline
 
+build_after:
+  - ncurses
+
 add_patch:
   - readline-8.2-shobj-irix-clang.patch
 

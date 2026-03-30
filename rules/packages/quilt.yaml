@@ -1,4 +1,6 @@
 package: quilt
+
+build_after: none
 rules:
   drop_buildrequires:
   - p7zip

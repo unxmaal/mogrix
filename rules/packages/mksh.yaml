@@ -1,8 +1,10 @@
 package: mksh
+
+build_after: none
 smoke_test:
-- command: /usr/sgug/bin/mksh -c 'echo hello'
+- command: /opt/mogrix/bin/mksh -c 'echo hello'
   expect: hello
-- command: /usr/sgug/bin/mksh -c 'print -r -- $KSH_VERSION'
+- command: /opt/mogrix/bin/mksh -c 'print -r -- $KSH_VERSION'
   expect: MIRBSD
 rules:
   drop_buildrequires:

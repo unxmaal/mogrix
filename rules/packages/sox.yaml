@@ -1,4 +1,6 @@
 package: sox
+
+build_after: none
 skip: true
 skip_reason: "configure adds -fstack-protector which IRIX lacks __stack_chk_fail — needs deeper fix"
 rules:
@@ -58,5 +60,5 @@ rules:
   - pattern: 'autoreconf -vfi'
     replacement: "autoreconf -vfi\nsed -i 's/strcasecmp|tell/strn?casecmp|tell/g' src/Makefile.am src/Makefile.in"
 smoke_test:
-- command: /usr/sgug/bin/sox --version 2>&1 | head -1
+- command: /opt/mogrix/bin/sox --version 2>&1 | head -1
   expect: sox

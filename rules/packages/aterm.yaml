@@ -1,4 +1,10 @@
 package: aterm
+
+build_after:
+  - libICE
+  - libSM
+  - libX11
+  - libXext
 rules:
   # IRIX has no /bin/bash — aterm hardcodes DEFAULT_SHELL in rxvt.h
   prep_commands:

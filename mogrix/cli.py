@@ -1,5 +1,6 @@
 """CLI for mogrix SRPM conversion engine."""
 
+import os
 from pathlib import Path
 
 import click
@@ -32,15 +33,35 @@ MOGRIX_OUTPUTS = Path.home() / "mogrix_outputs"
 MOGRIX_CONVERTED = MOGRIX_OUTPUTS / "converted"
 
 
-STAGING_DIR = Path("/opt/sgug-staging")
+def _resolve_project_root() -> Path:
+    """Resolve the mogrix project root directory.
+
+    Walks up from this file's location looking for pyproject.toml.
+    Returns the directory containing pyproject.toml.
+    """
+    candidate = Path(__file__).parent.parent.resolve()
+    # __file__ is mogrix/cli.py, parent.parent is the project root
+    if (candidate / "pyproject.toml").exists():
+        return candidate
+    # Walk upward as fallback
+    for parent in candidate.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    # Last resort: use the __file__-relative path
+    return candidate
+
+
+PROJECT_ROOT = _resolve_project_root()
+STAGING_ROOT = PROJECT_ROOT / "staging"
+STAGING_DIR = STAGING_ROOT
 
 # Cross-compilation tools that must stay in sync between repo and staging
 # Format: (repo path relative to CROSS_DIR, staging path relative to STAGING_DIR)
 _CROSS_TOOLS = [
-    ("bin/irix-cc", "usr/sgug/bin/irix-cc"),
-    ("bin/irix-ld", "usr/sgug/bin/irix-ld"),
-    ("bin/fix-anon-relocs", "usr/sgug/bin/fix-anon-relocs"),
-    ("bin/strip-verneed", "usr/sgug/bin/strip-verneed"),
+    ("bin/irix-cc", "opt/mogrix/bin/irix-cc"),
+    ("bin/irix-ld", "opt/mogrix/bin/irix-ld"),
+    ("bin/fix-anon-relocs", "opt/mogrix/bin/fix-anon-relocs"),
+    ("bin/strip-verneed", "opt/mogrix/bin/strip-verneed"),
 ]
 
 
@@ -94,7 +115,7 @@ def main():
       2. mogrix fetch <package> -y             # → ~/mogrix_inputs/SRPMS/
       3. mogrix convert <srpm>                 # → ~/mogrix_outputs/converted/ + SRPMS/
       4. mogrix build <converted.src.rpm> --cross  # → ~/mogrix_outputs/RPMS/
-      5. mogrix stage <rpms>                   # → /opt/sgug-staging/
+      5. mogrix stage <rpms>                   # → staging/
 
     \b
     Workflow (upstream git/tarball packages):
@@ -955,8 +976,8 @@ def list_rules():
 
 
 # Cross-compilation default paths
-SGUG_STAGING = Path("/opt/sgug-staging/usr/sgug")
-IRIX_MACROS = Path("/opt/sgug-staging/rpmmacros.irix")
+SGUG_STAGING = STAGING_ROOT / "opt" / "mogrix"
+IRIX_MACROS = STAGING_ROOT / "rpmmacros.irix"
 IRIX_SYSROOT = Path("/opt/irix-sysroot")
 CROSS_BINDIR = Path("/opt/cross/bin")
 
@@ -972,7 +993,7 @@ CROSS_BINDIR = Path("/opt/cross/bin")
 @click.option(
     "--cross",
     is_flag=True,
-    help="Enable IRIX cross-compilation mode (uses /opt/sgug-staging/rpmmacros.irix)",
+    help="Enable IRIX cross-compilation mode (uses staging/rpmmacros.irix)",
 )
 @click.option(
     "--macros",
@@ -1031,7 +1052,7 @@ def build(
 
     Use --cross to enable IRIX cross-compilation, which:
       - Uses the cross-toolchain at /opt/cross/bin/
-      - Loads rpmmacros.irix from /opt/sgug-staging/
+      - Loads rpmmacros.irix from staging/
       - Targets IRIX 6.5 N32 ABI
     """
     import subprocess
@@ -1084,7 +1105,7 @@ def build(
         from mogrix.isolated_build import IsolatedStaging
 
         isolated = IsolatedStaging(
-            base_staging=Path("/opt/sgug-staging"),
+            base_staging=STAGING_ROOT,
             rpms_dir=MOGRIX_OUTPUTS / "RPMS",
             rules_dir=RULES_DIR,
         )
@@ -1123,6 +1144,8 @@ def build(
         cmd.extend(["--define", "_target_cpu mips"])
         cmd.extend(["--define", "_target_os irix"])
         cmd.extend(["--define", "_arch mips"])
+        # Pass project root so rpmmacros.irix can derive staging paths
+        cmd.extend(["--define", f"_mogrix_root {PROJECT_ROOT}"])
 
     # Add source/spec directories
     cmd.extend(["--define", f"_topdir {rpmbuild_path}"])
@@ -1366,7 +1389,7 @@ def _validate_cross_env(dry_run: bool = False):
       - IRIX sysroot at /opt/irix-sysroot/
       - Deployed compiler wrapper at staging/bin/irix-cc
       - Deployed linker wrapper at staging/bin/irix-ld
-      - rpmmacros.irix at /opt/sgug-staging/
+      - rpmmacros.irix at staging/
       - Base cross-toolchain (clang, ld.lld-irix)
 
     Args:
@@ -2029,8 +2052,8 @@ def audit_rules(rules_dir: str | None, verbose: bool):
     default=None,
     help="Path to rules directory",
 )
-@click.option("--resume", is_flag=True, help="Resume latest workspace (skip completed packages)")
-@click.option("--workspace", type=click.Path(), default=None, help="Explicit workspace path (overrides auto-detect)")
+@click.option("--resume", is_flag=True, help="Resume from this workspace (skip completed packages)")
+@click.option("--workspace", type=click.Path(), required=True, help="Workspace path (e.g. ~/mogrix_v11)")
 @click.option("--dry-run", is_flag=True, help="Compute plan without building")
 @click.option("--skip-gates", is_flag=True, help="Treat gate failures as warnings")
 @click.option("--from-list", type=click.Path(exists=True), help="File with package names to build")
@@ -2046,8 +2069,8 @@ def rebuild_all_cmd(
 ):
     """Full dependency-ordered rebuild with quality gates.
 
-    Each full rebuild gets a versioned workspace (~/mogrix_v11, ~/mogrix_v12, etc.).
-    Use --resume to continue building in the latest workspace.
+    Requires --workspace to specify the versioned workspace directory.
+    Use --resume to skip already-completed packages in that workspace.
 
     Gate 0: Reset staging + cross-compilation setup.
     Gate 2: Build validation — ELF ABI, shebangs, hardcoded paths.
@@ -2057,10 +2080,10 @@ def rebuild_all_cmd(
     against freshly-built upstream libraries.
 
     Examples:
-      mogrix rebuild-all --dry-run            # Preview build order
-      mogrix rebuild-all                      # New workspace (auto-increment)
-      mogrix rebuild-all --resume             # Continue latest workspace
-      mogrix rebuild-all --from-list pkgs.txt # Build specific packages
+      mogrix rebuild-all --workspace ~/mogrix_v11 --dry-run   # Preview
+      mogrix rebuild-all --workspace ~/mogrix_v11              # New build
+      mogrix rebuild-all --workspace ~/mogrix_v11 --resume     # Continue
+      mogrix rebuild-all --workspace ~/mogrix_v11 --from-list pkgs.txt
     """
     from mogrix.rebuild import rebuild_all
 
@@ -2078,7 +2101,7 @@ def rebuild_all_cmd(
             if line.strip() and not line.startswith("#")
         ]
 
-    ws = Path(workspace) if workspace else None
+    ws = Path(workspace).expanduser()
 
     rebuild_all(
         rules_dir=rules_path,
@@ -2791,8 +2814,8 @@ def _prompt_select_srpm(matches: list) -> object | None:
 @click.option(
     "--staging-dir",
     type=click.Path(),
-    default="/opt/sgug-staging/usr/sgug",
-    help="SGUG staging directory (default: /opt/sgug-staging/usr/sgug)",
+    default=None,
+    help="Staging directory (default: <project_root>/staging/opt/mogrix)",
 )
 @click.option(
     "--sysroot",
@@ -2833,7 +2856,7 @@ def setup_cross(
     import shutil
     import stat
 
-    staging_path = Path(staging_dir)
+    staging_path = Path(staging_dir) if staging_dir else SGUG_STAGING
     sysroot_path = Path(sysroot)
     cross_bin_path = Path(cross_bindir)
 
@@ -2875,6 +2898,7 @@ def setup_cross(
         (CROSS_DIR / "bin" / "irix-ld", staging_path / "bin" / "irix-ld", "Linker wrapper"),
         (CROSS_DIR / "bin" / "strip-verneed", staging_path / "bin" / "strip-verneed", "Strip GNU version sections"),
         (CROSS_DIR / "bin" / "fix-anon-relocs", staging_path / "bin" / "fix-anon-relocs", "Fix anonymous R_MIPS_REL32"),
+        (CROSS_DIR / "lib" / "elf_utils.py", staging_path / "lib" / "elf_utils.py", "ELF utilities (required by fix-anon-relocs)"),
         (CROSS_DIR / "rpmmacros.irix", staging_path.parent.parent / "rpmmacros.irix", "RPM macros"),
         (CROSS_DIR / "pkgconfig" / "pthread-stubs.pc", staging_path / "lib32" / "pkgconfig" / "pthread-stubs.pc", "pthread-stubs (IRIX has pthreads in libc)"),
         # Runtime libraries (cross-compiled from GCC 9.5.0 source)
@@ -2888,6 +2912,28 @@ def setup_cross(
         (CROSS_DIR / "bin" / "irix-cxx-restrict-fix.h", staging_path / "bin" / "irix-cxx-restrict-fix.h", "C++ restrict/timespec fix header"),
         (CROSS_DIR / "bin" / "strip-eh-relocs", staging_path / "bin" / "strip-eh-relocs", "Strip unaligned .eh_frame relocs"),
     ]
+
+    # Add GCC 9 libstdc++ headers (C++ standard library for irix-cxx)
+    cxx_headers_src = CROSS_DIR / "include" / "c++" / "9"
+    cxx_headers_dst = staging_path / "include" / "c++" / "9"
+
+    if cxx_headers_src.exists():
+        for header in cxx_headers_src.rglob("*"):
+            if header.is_file():
+                rel_path = header.relative_to(cxx_headers_src)
+                dst = cxx_headers_dst / rel_path
+                deployments.append((header, dst, f"C++ header: {rel_path}"))
+
+    # Add LLVM libc++ headers (C++ standard library for irix-cxx-libcxx)
+    for subdir in ["libcxx", "libcxxabi"]:
+        libcxx_src = CROSS_DIR / "include" / subdir
+        libcxx_dst = staging_path / "include" / subdir
+        if libcxx_src.exists():
+            for header in libcxx_src.rglob("*"):
+                if header.is_file():
+                    rel_path = header.relative_to(libcxx_src)
+                    dst = libcxx_dst / rel_path
+                    deployments.append((header, dst, f"libc++ header: {subdir}/{rel_path}"))
 
     # Add dicl-clang-compat headers (IRIX header fixes for clang)
     clang_compat_src = CROSS_DIR / "include" / "dicl-clang-compat"
@@ -2983,6 +3029,145 @@ def setup_cross(
             cxx_wrapper.chmod(cxx_wrapper.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
             console.print(f"  [green]✓[/green] C++ compiler wrapper (copy of C wrapper)")
 
+    # === Preflight verification ===
+    # Verify the deployed toolchain actually works before declaring success.
+    # These checks catch silent failures that waste entire rebuild cycles.
+    console.print("\n[bold]Verifying toolchain...[/bold]")
+    preflight_ok = True
+
+    # 1. Clang resource dir exists (stdatomic.h, builtins)
+    import subprocess
+    try:
+        res_dir = subprocess.run(
+            [str(clang), "-print-resource-dir"],
+            capture_output=True, text=True, timeout=10
+        )
+        resource_dir = Path(res_dir.stdout.strip())
+        if not resource_dir.is_dir():
+            console.print(f"  [red]✗[/red] Clang resource dir missing: {resource_dir}")
+            console.print(f"    Fix: sudo cp -a <llvm-build>/lib/clang/{resource_dir.name} {resource_dir}")
+            preflight_ok = False
+        elif not (resource_dir / "include" / "stdatomic.h").exists():
+            console.print(f"  [red]✗[/red] stdatomic.h missing in {resource_dir}/include/")
+            preflight_ok = False
+        else:
+            console.print(f"  [green]✓[/green] Clang resource dir: {resource_dir}")
+    except Exception as e:
+        console.print(f"  [red]✗[/red] Cannot run clang: {e}")
+        preflight_ok = False
+
+    # 2. irix-cc can compile a minimal C file
+    irix_cc = staging_path / "bin" / "irix-cc"
+    if irix_cc.exists():
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".c", mode="w", delete=False) as tf:
+            tf.write('#include <stdatomic.h>\n#include <stdio.h>\nint main(void){return 0;}\n')
+            tf.flush()
+            try:
+                env = {**os.environ, "MOGRIX_STAGING": str(staging_path)}
+                result = subprocess.run(
+                    [str(irix_cc), "-c", tf.name, "-o", "/dev/null"],
+                    capture_output=True, text=True, timeout=30, env=env
+                )
+                if result.returncode == 0:
+                    console.print("  [green]✓[/green] irix-cc compiles (stdatomic.h, stdio.h)")
+                else:
+                    console.print(f"  [red]✗[/red] irix-cc compile test failed:")
+                    for line in result.stderr.strip().splitlines()[:5]:
+                        console.print(f"    {line}")
+                    preflight_ok = False
+            except Exception as e:
+                console.print(f"  [red]✗[/red] irix-cc test failed: {e}")
+                preflight_ok = False
+            finally:
+                Path(tf.name).unlink(missing_ok=True)
+
+    # 3. fix-anon-relocs can import its dependencies
+    fix_anon = staging_path / "bin" / "fix-anon-relocs"
+    elf_utils = staging_path / "lib" / "elf_utils.py"
+    if fix_anon.exists():
+        if not elf_utils.exists():
+            console.print(f"  [red]✗[/red] elf_utils.py missing at {elf_utils}")
+            console.print("    fix-anon-relocs will fail silently during builds!")
+            preflight_ok = False
+        else:
+            try:
+                result = subprocess.run(
+                    ["python3", "-c", f"import sys; sys.path.insert(0, '{staging_path / 'lib'}'); import elf_utils"],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    console.print("  [green]✓[/green] fix-anon-relocs dependencies (elf_utils)")
+                else:
+                    console.print(f"  [red]✗[/red] elf_utils import failed: {result.stderr.strip()[:200]}")
+                    preflight_ok = False
+            except Exception as e:
+                console.print(f"  [red]✗[/red] elf_utils check failed: {e}")
+                preflight_ok = False
+
+    # 4. irix-ld deployed
+    irix_ld = staging_path / "bin" / "irix-ld"
+    if irix_ld.exists():
+        console.print(f"  [green]✓[/green] irix-ld deployed")
+    else:
+        console.print(f"  [red]✗[/red] irix-ld missing at {irix_ld}")
+        preflight_ok = False
+
+    # 5. CRT objects exist (needed by every link)
+    crt_objects = [
+        "crtbeginS.o", "crtendS.o",  # shared libs
+        "crtbeginT.o", "crtendT.o",  # executables
+        "dso_handle.o", "eh_frame_reg.o", "dlmalloc.o",
+        "libsoft_float_stubs.a",
+    ]
+    missing_crt = [f for f in crt_objects if not (staging_path / "lib32" / f).exists()]
+    if missing_crt:
+        console.print(f"  [red]✗[/red] CRT objects missing in lib32/: {', '.join(missing_crt)}")
+        preflight_ok = False
+    else:
+        console.print(f"  [green]✓[/green] CRT objects ({len(crt_objects)} files)")
+
+    # 6. Runtime libs exist
+    runtime_libs = ["libgcc_s.so.1", "libstdc++.so.6"]
+    missing_rt = [f for f in runtime_libs if not (staging_path / "lib32" / f).exists()]
+    if missing_rt:
+        console.print(f"  [red]✗[/red] Runtime libs missing in lib32/: {', '.join(missing_rt)}")
+        preflight_ok = False
+    else:
+        console.print(f"  [green]✓[/green] Runtime libs (libgcc_s, libstdc++)")
+
+    # 7. LLD exists and runs
+    lld_path = cross_bin_path / "ld.lld-irix"
+    if not lld_path.exists():
+        # Check tools/bin fallback
+        lld_path = Path(__file__).parent.parent / "tools" / "bin" / "ld.lld-irix-18"
+    if lld_path.exists():
+        try:
+            result = subprocess.run(
+                [str(lld_path), "--version"],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                ver = result.stdout.strip().splitlines()[0] if result.stdout else "unknown"
+                console.print(f"  [green]✓[/green] LLD: {ver}")
+            else:
+                console.print(f"  [red]✗[/red] LLD --version failed")
+                preflight_ok = False
+        except Exception as e:
+            console.print(f"  [red]✗[/red] LLD check failed: {e}")
+            preflight_ok = False
+    else:
+        console.print(f"  [red]✗[/red] LLD not found at {cross_bin_path / 'ld.lld-irix'}")
+        preflight_ok = False
+
+    if not preflight_ok:
+        console.print("\n[bold red]Toolchain verification FAILED[/bold red]")
+        console.print("Fix the issues above before building packages.")
+        if not dry_run:
+            raise SystemExit(1)
+    else:
+        console.print("  [bold green]All checks passed[/bold green]")
+
     console.print("\n[bold green]Cross-compilation environment set up![/bold green]")
     console.print(f"\n[bold]Staging directory:[/bold] {staging_path}")
     console.print(f"[bold]RPM macros:[/bold] {staging_path.parent.parent / 'rpmmacros.irix'}")
@@ -2998,8 +3183,8 @@ def setup_cross(
 @click.option(
     "--staging-dir",
     type=click.Path(),
-    default="/opt/sgug-staging",
-    help="Staging root directory (default: /opt/sgug-staging)",
+    default=None,
+    help="Staging root directory (default: <project_root>/staging)",
 )
 @click.option(
     "--clean",
@@ -3050,24 +3235,24 @@ def stage(
     """
     import subprocess
 
-    staging_path = Path(staging_dir)
+    staging_path = Path(staging_dir) if staging_dir else STAGING_ROOT
 
     # Files/directories to preserve during clean
     PRESERVE = {
-        "usr/sgug/bin/irix-cc",
-        "usr/sgug/bin/irix-cxx",
-        "usr/sgug/bin/irix-ld",
-        "usr/sgug/bin/fix-anon-relocs",
-        "usr/sgug/bin/strip-verneed",
-        "usr/sgug/include/dicl-clang-compat",
-        "usr/sgug/include/mogrix-compat",
-        "usr/sgug/lib32/libsoft_float_stubs.a",
-        "usr/sgug/lib32/libmogrix_compat.so",
-        "usr/sgug/lib32/dlmalloc.o",
-        "usr/sgug/lib32/safe_mem.o",
-        "usr/sgug/lib32/dso_handle.o",
-        "usr/sgug/lib32/eh_frame_reg.o",
-        "usr/sgug/lib32/pkgconfig/pthread-stubs.pc",
+        "opt/mogrix/bin/irix-cc",
+        "opt/mogrix/bin/irix-cxx",
+        "opt/mogrix/bin/irix-ld",
+        "opt/mogrix/bin/fix-anon-relocs",
+        "opt/mogrix/bin/strip-verneed",
+        "opt/mogrix/include/dicl-clang-compat",
+        "opt/mogrix/include/mogrix-compat",
+        "opt/mogrix/lib32/libsoft_float_stubs.a",
+        "opt/mogrix/lib32/libmogrix_compat.so",
+        "opt/mogrix/lib32/dlmalloc.o",
+        "opt/mogrix/lib32/safe_mem.o",
+        "opt/mogrix/lib32/dso_handle.o",
+        "opt/mogrix/lib32/eh_frame_reg.o",
+        "opt/mogrix/lib32/pkgconfig/pthread-stubs.pc",
         "rpmmacros.irix",
     }
 
@@ -3075,22 +3260,22 @@ def stage(
     # overwritten by `mogrix stage`. Uses fnmatch glob patterns against paths
     # relative to the staging root.
     PROTECTED_PATTERNS = {
-        "usr/sgug/lib32/libstdc++*",
-        "usr/sgug/lib32/libgcc_s*",
-        "usr/sgug/lib32/libmogrix_compat.so",
-        "usr/sgug/lib32/dlmalloc.o",
-        "usr/sgug/lib32/crt*.o",
-        "usr/sgug/lib32/dso_handle.o",
-        "usr/sgug/lib32/eh_frame_reg.o",
-        "usr/sgug/lib32/safe_mem.o",
-        "usr/sgug/bin/irix-cc",
-        "usr/sgug/bin/irix-cxx",
-        "usr/sgug/bin/irix-ld",
-        "usr/sgug/bin/fix-anon-relocs",
-        "usr/sgug/bin/strip-verneed",
-        "usr/sgug/bin/strip-eh-relocs",
-        "usr/sgug/bin/irix-cxx-libcxx",
-        "usr/sgug/bin/irix-cxx-restrict-fix.h",
+        "opt/mogrix/lib32/libstdc++*",
+        "opt/mogrix/lib32/libgcc_s*",
+        "opt/mogrix/lib32/libmogrix_compat.so",
+        "opt/mogrix/lib32/dlmalloc.o",
+        "opt/mogrix/lib32/crt*.o",
+        "opt/mogrix/lib32/dso_handle.o",
+        "opt/mogrix/lib32/eh_frame_reg.o",
+        "opt/mogrix/lib32/safe_mem.o",
+        "opt/mogrix/bin/irix-cc",
+        "opt/mogrix/bin/irix-cxx",
+        "opt/mogrix/bin/irix-ld",
+        "opt/mogrix/bin/fix-anon-relocs",
+        "opt/mogrix/bin/strip-verneed",
+        "opt/mogrix/bin/strip-eh-relocs",
+        "opt/mogrix/bin/irix-cxx-libcxx",
+        "opt/mogrix/bin/irix-cxx-restrict-fix.h",
     }
 
     # Legacy set for backward compat with _list_staged_packages
@@ -3515,8 +3700,8 @@ def _clean_staged_packages(
 @click.option(
     "--staging-dir",
     type=click.Path(),
-    default="/opt/sgug-staging/usr/sgug",
-    help="Staging directory (default: /opt/sgug-staging/usr/sgug)",
+    default=None,
+    help="Staging directory (default: <project_root>/staging/opt/mogrix)",
 )
 def sync_headers(staging_dir: str):
     """Sync compat headers from repo to staging.
@@ -3534,7 +3719,7 @@ def sync_headers(staging_dir: str):
     console.print("[bold]Syncing compat headers to staging...[/bold]")
 
     config = StagingConfig()
-    config.staging_dir = Path(staging_dir)
+    config.staging_dir = Path(staging_dir) if staging_dir else SGUG_STAGING
 
     manager = StagingManager(config)
     status = StagingStatus()
@@ -4373,14 +4558,14 @@ def create_bootstrap(
 
     \b
     On IRIX, run as root:  sh mogrix-bootstrap.run
-    This creates /usr/sgug with tdnf + rpm + dependencies. Then:
-      /usr/sgug/bin/sgugshell
+    This creates /opt/mogrix with tdnf + rpm + dependencies. Then:
+      /opt/mogrix/bin/sgugshell
       rpm --initdb
       tdnf makecache
       tdnf install <package>
 
     \b
-    The installer refuses to run if /usr/sgug already exists.
+    The installer refuses to run if /opt/mogrix already exists.
     """
     import fnmatch
     import shutil
@@ -4518,7 +4703,7 @@ def create_bootstrap(
     console.print(f"[bold]Output:[/bold] {out_path}")
     console.print(f"[bold]Size:[/bold] {run_size / 1024 / 1024:.1f} MB")
     console.print(f"\n[dim]Deploy to IRIX and run as root:  sh {out_path.name}[/dim]")
-    console.print("[dim]Then:  /usr/sgug/bin/sgugshell[/dim]")
+    console.print("[dim]Then:  /opt/mogrix/bin/sgugshell[/dim]")
     console.print("[dim]       rpm --initdb[/dim]")
     console.print("[dim]       rpm -Uvh --nodeps /tmp/bootstrap-rpms/*.rpm[/dim]")
     console.print("[dim]       tdnf makecache && tdnf list[/dim]")
@@ -4531,14 +4716,14 @@ _BOOTSTRAP_TEMPLATE = """\
 SKIP={payload_line}
 self="$0"
 case "$self" in /*) ;; *) self="`/bin/pwd`/$self" ;; esac
-if [ -d /usr/sgug ]; then
-  echo "Error: /usr/sgug already exists." >&2
+if [ -d /opt/mogrix ]; then
+  echo "Error: /opt/mogrix already exists." >&2
   echo "Remove it first if you want to reinstall." >&2
   exit 1
 fi
-/sbin/mkdir -p /usr/sgug 2>/dev/null
-if [ ! -d /usr/sgug ]; then
-  echo "Error: cannot create /usr/sgug (are you root?)" >&2
+/sbin/mkdir -p /opt/mogrix 2>/dev/null
+if [ ! -d /opt/mogrix ]; then
+  echo "Error: cannot create /opt/mogrix (are you root?)" >&2
   exit 1
 fi
 echo "Installing mogrix bootstrap ({rpm_count} packages) ..."
@@ -4549,10 +4734,10 @@ if [ $status -ne 0 ]; then
   exit 1
 fi
 echo ""
-echo "Done. Bootstrap installed to /usr/sgug"
+echo "Done. Bootstrap installed to /opt/mogrix"
 echo ""
 echo "Next steps:"
-echo "  /usr/sgug/bin/sgugshell"
+echo "  /opt/mogrix/bin/sgugshell"
 echo "  rpm --initdb"
 echo "  rpm -Uvh --nodeps /tmp/bootstrap-rpms/*.rpm"
 echo "  tdnf makecache"
