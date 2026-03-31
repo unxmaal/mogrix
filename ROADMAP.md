@@ -10,11 +10,11 @@
 
 ## Highest Priority: Prefix Change + libc++ Cutover
 
-### 1. Change install prefix from /usr/sgug to /opt/mogrix
+### 1. Change install prefix from /opt/mogrix to /opt/mogrix
 
 **Status**: Planned. See `sgug_prefix_change.md` for full details.
 
-`/usr/sgug` is an SGUG-RSE convention. Staging accumulated SGUG-RSE artifacts (GCC 9 C++ headers) that conflicted with LLVM 22 libc++. Changing to `/opt/mogrix` gives clean separation and eliminates the contamination vector.
+`/opt/mogrix` is an SGUG-RSE convention. Staging accumulated SGUG-RSE artifacts (GCC 9 C++ headers) that conflicted with LLVM 22 libc++. Changing to `/opt/mogrix` gives clean separation and eliminates the contamination vector.
 
 - [ ] Mechanical sed across ~550 references in YAML rules, Python, shell scripts, cmake
 - [ ] Update rpmmacros.irix, compiler wrappers, cli.py, bundle.py

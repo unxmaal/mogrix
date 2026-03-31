@@ -31,6 +31,8 @@ namespace std {
 
 // --- std::cmp_* integer comparison (C++20 <utility>) ---
 // Safe integer comparison between signed/unsigned types.
+// Requires C++17 for is_signed_v, make_unsigned_t variable templates.
+#if __cplusplus >= 201703L
 #ifndef __cpp_lib_integer_comparison_functions
 #ifndef _MOGRIX_CMP_POLYFILL
 #define _MOGRIX_CMP_POLYFILL
@@ -66,6 +68,7 @@ namespace std {
 }
 #endif
 #endif
+#endif // __cplusplus >= 201703L
 
 // --- quick_exit ---
 // GCC 9 libstdc++ may not provide quick_exit in <cstdlib> on IRIX.

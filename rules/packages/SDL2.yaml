@@ -17,6 +17,7 @@ rules:
   add_source:
     - SDL_irixaudio.c
     - SDL_irixaudio.h
+    - setenv.c
 
   drop_buildrequires:
     - mesa-libGL-devel
@@ -62,6 +63,13 @@ rules:
     PKG_CONFIG_SYSROOT_DIR: $MOGRIX_STAGING_ROOT
 
   prep_commands:
+    # Compile setenv/unsetenv compat directly into SDL2 source tree.
+    # These CANNOT be in libmogrix_compat.so (_RLDN32_LIST preload) — IRIX rld
+    # doesn't set up $t9/GP for interposed libc functions, causing SIGSEGV.
+    # They also can't be injected into the exe (environ access during static init crashes).
+    # So they go directly into libSDL2.so via cmake's EXTRA_CFLAGS mechanism.
+    - "cp %{_sourcedir}/setenv.c src/setenv.c"
+    - "perl -pi -e 'print \"list(APPEND SOURCE_FILES \\${SDL2_SOURCE_DIR}/src/setenv.c)\\n\" if /set.HAVE_DISKAUDIO TRUE/' CMakeLists.txt"
     # Create isolated directory with IRIX native X11R6.3 headers for ABI compatibility
     # SDL2 must compile against these — NOT cross-compiled X11R7+ headers — because
     # at runtime it dlopen's IRIX native libX11.so.1 (X11R6.3). Struct layouts

@@ -1017,6 +1017,140 @@ def _validate_build_after(build_order: list[str], rules_dir: Path) -> None:
         raise SystemExit(1)
 
 
+def _warn_stale_srpms(build_order: list[str], rules_dir: Path) -> None:
+    """Warn if source SRPMs predate rpmmacros or their rule file.
+
+    Stale SRPMs may have old prefix paths baked in from a prior conversion.
+    The reconversion step usually catches this, but the warning helps the user
+    understand why reconversions are happening.
+    """
+    srpms_dir = MOGRIX_INPUTS / "SRPMS"
+    macros_file = _PROJECT_ROOT / "cross" / "rpmmacros.irix"
+    macros_mtime = macros_file.stat().st_mtime if macros_file.exists() else 0
+
+    stale = []
+    for pkg in build_order:
+        srpms = sorted(srpms_dir.glob(f"{pkg}-[0-9]*.src.rpm"))
+        if not srpms:
+            continue
+        srpm = srpms[-1]
+        srpm_mtime = srpm.stat().st_mtime
+
+        rule_file = rules_dir / "packages" / f"{pkg}.yaml"
+        rule_mtime = rule_file.stat().st_mtime if rule_file.exists() else 0
+
+        if srpm_mtime < macros_mtime or srpm_mtime < rule_mtime:
+            stale.append(pkg)
+
+    if stale:
+        _log(f"[yellow]Pre-flight: {len(stale)} SRPMs older than macros/rules (will be reconverted)[/yellow]")
+
+
+def _validate_compat_headers(staging_dir: Path) -> None:
+    """Verify utility_polyfill.h compiles at C++11 and C++17.
+
+    The polyfill is force-included by irix-cxx for all C++ compilations.
+    A regression here would cascade-fail every C++ package.
+    """
+    polyfill = staging_dir / "opt" / "mogrix" / "include" / "mogrix-compat" / "generic" / "utility_polyfill.h"
+    if not polyfill.exists():
+        _log(f"[yellow]Pre-flight: utility_polyfill.h not found in staging[/yellow]")
+        return
+
+    cxx = staging_dir / "opt" / "mogrix" / "bin" / "irix-cxx"
+    if not cxx.exists():
+        return  # No compiler deployed yet
+
+    for std in ["c++11", "c++17"]:
+        result = subprocess.run(
+            [str(cxx), f"-std={std}", "-c", "-o", "/dev/null", str(polyfill)],
+            capture_output=True, timeout=30,
+            env={**os.environ, "MOGRIX_STAGING": str(staging_dir / "opt" / "mogrix")},
+        )
+        if result.returncode != 0:
+            _log(f"[bold red]Pre-flight FAILED: utility_polyfill.h does not compile with -std={std}[/bold red]")
+            stderr = result.stderr.decode(errors="replace")[-500:]
+            _log(f"[red]{stderr}[/red]")
+            raise SystemExit(1)
+
+    _log(f"[dim]Compat headers compile at C++11 and C++17 ✓[/dim]")
+
+
+def _validate_from_list_deps(
+    from_list: list[str] | None,
+    rules_dir: Path,
+    staging_dir: Path,
+) -> None:
+    """Warn if --from-list packages have unstaged build_after dependencies."""
+    if not from_list:
+        return
+
+    import yaml as _yaml_fl
+
+    pkgconfig_dir = staging_dir / "opt" / "mogrix" / "lib32" / "pkgconfig"
+    lib_dir = staging_dir / "opt" / "mogrix" / "lib32"
+
+    missing_deps = []
+    for pkg in from_list:
+        rule_file = rules_dir / "packages" / f"{pkg}.yaml"
+        if not rule_file.exists():
+            continue
+        try:
+            with open(rule_file) as f:
+                rules = _yaml_fl.safe_load(f) or {}
+        except Exception:
+            continue
+        build_after = rules.get("build_after", [])
+        if not build_after or build_after == "none":
+            continue
+        for dep in build_after:
+            if dep == "none":
+                continue
+            # Check if dependency has staged artifacts
+            has_pc = bool(sorted(pkgconfig_dir.glob(f"{dep}*.pc"))) if pkgconfig_dir.exists() else False
+            has_lib = bool(sorted(lib_dir.glob(f"lib{dep}*.so*"))) if lib_dir.exists() else False
+            has_include = (staging_dir / "opt" / "mogrix" / "include" / dep).exists()
+            if not (has_pc or has_lib or has_include):
+                missing_deps.append((pkg, dep))
+
+    if missing_deps:
+        _log(f"[yellow]Pre-flight: {len(missing_deps)} dependencies may be missing from staging:[/yellow]")
+        for pkg, dep in missing_deps[:10]:
+            _log(f"  [yellow]{pkg} needs {dep}[/yellow]")
+        if len(missing_deps) > 10:
+            _log(f"  [yellow]... and {len(missing_deps) - 10} more[/yellow]")
+        _log(f"[yellow]Consider running: mogrix stage ~/mogrix_outputs/RPMS/*.rpm[/yellow]")
+
+
+def _warn_cmake_hardcoded_paths(staging_dir: Path) -> None:
+    """Warn if cmake target files have hardcoded /opt/mogrix install paths.
+
+    CMake *Targets*.cmake files should use relative get_filename_component
+    or ${_IMPORT_PREFIX} for paths, not hardcoded /opt/mogrix which doesn't
+    exist during cross-compilation (staging path is different).
+    """
+    cmake_dir = staging_dir / "opt" / "mogrix" / "lib32" / "cmake"
+    if not cmake_dir.exists():
+        return
+
+    staging_prefix = str(staging_dir / "opt" / "mogrix")
+    bad_files = []
+    for cmake_file in cmake_dir.rglob("*Targets*.cmake"):
+        try:
+            content = cmake_file.read_text()
+        except OSError:
+            continue
+        # Check for hardcoded /opt/mogrix that isn't the staging path
+        if '"/opt/mogrix' in content and staging_prefix not in content:
+            bad_files.append(cmake_file.relative_to(cmake_dir))
+
+    if bad_files:
+        _log(f"[yellow]Pre-flight: {len(bad_files)} cmake target files have hardcoded /opt/mogrix paths:[/yellow]")
+        for f in bad_files[:5]:
+            _log(f"  [yellow]{f}[/yellow]")
+        _log(f"[yellow]Downstream cmake packages may fail to find imported targets.[/yellow]")
+
+
 def _fetch_missing_srpms(build_order: list[str], rules_dir: Path) -> None:
     """Scan build order for packages without source SRPMs and auto-fetch them.
 
@@ -1171,6 +1305,7 @@ def rebuild_all(
     plan.gate_results_dir = gate_results_dir
 
     # Filter to requested packages if --from-list
+    full_build_order = list(plan.build_order)  # preserve unfiltered order for re-staging
     if from_list:
         requested = set(from_list)
         plan.build_order = [p for p in plan.build_order if p in requested]
@@ -1189,6 +1324,12 @@ def rebuild_all(
 
     # Pre-flight: verify every package has build_after declared
     _validate_build_after(plan.build_order, rules_dir)
+
+    # Pre-flight: warn about stale SRPMs (older than macros/rules)
+    _warn_stale_srpms(plan.build_order, rules_dir)
+
+    # Pre-flight: check --from-list dependency staging
+    _validate_from_list_deps(from_list, rules_dir, staging_dir)
 
     if dry_run:
         if resume:
@@ -1213,6 +1354,9 @@ def rebuild_all(
 
     # Gate 0: Reset staging + cross-compilation
     gate0_clean_slate(staging_dir, workspace=ws, resume=resume)
+
+    # Pre-flight: verify compat headers compile at multiple C++ standards
+    _validate_compat_headers(staging_dir)
 
     # Load resume state — single pass with all filtering
     # load_completed checks: build_success, gate2_passed, RPMs on disk, input staleness
@@ -1278,7 +1422,26 @@ def rebuild_all(
                 if staged:
                     restaged += 1
         _log(f"[dim]Re-staged {restaged} trustworthy packages[/dim]")
+
+        # For --from-list: also re-stage completed packages NOT in the build list.
+        # The filtered plan.build_order only contains requested packages, so their
+        # dependencies (freetype, libX11, etc.) won't get re-staged above.
+        if from_list:
+            restaged_deps = 0
+            for pkg in full_build_order:
+                if pkg in completed and pkg not in set(from_list):
+                    pkg_rpms = _find_pkg_rpms(pkg, rpms_dir, gate_results_dir, rpmbuild_dir)
+                    if pkg_rpms:
+                        staged = stage_package(pkg_rpms, staging_dir)
+                        if staged:
+                            restaged_deps += 1
+            if restaged_deps:
+                _log(f"[dim]Re-staged {restaged_deps} dependency packages for --from-list[/dim]")
+
         _log(f"[dim]Trustworthy: {len(completed)} packages[/dim]")
+
+    # Pre-flight: warn about cmake target files with hardcoded paths
+    _warn_cmake_hardcoded_paths(staging_dir)
 
     # Build reverse dependency map for failure propagation (--no-fail-fast safety)
     import yaml as _yaml_deps

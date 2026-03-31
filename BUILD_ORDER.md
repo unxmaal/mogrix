@@ -10,12 +10,12 @@ Before starting, ensure:
 
 1. **IRIX sysroot** is in place: `/opt/irix-sysroot/`
 2. **Cross toolchain** is installed: `/opt/cross/bin/`
-3. **Staging directory** exists: `/opt/sgug-staging/usr/sgug/`
+3. **Staging directory** exists: `$MOGRIX_STAGING/`
 4. **Fixed CRT files** exist: `/opt/irix-sysroot/usr/lib32/mips3/fixed/crt1.o` and `crtn.o`
 5. **Toolchain wrappers** are deployed to staging:
-   - `irix-cc` -> `/opt/sgug-staging/usr/sgug/bin/irix-cc`
-   - `irix-ld` -> `/opt/sgug-staging/usr/sgug/bin/irix-ld`
-6. **irix-compat.h** is in place: `/opt/sgug-staging/usr/sgug/include/irix-compat.h`
+   - `irix-cc` -> `$MOGRIX_STAGING/bin/irix-cc`
+   - `irix-ld` -> `$MOGRIX_STAGING/bin/irix-ld`
+6. **irix-compat.h** is in place: `$MOGRIX_STAGING/include/irix-compat.h`
 
 ## Build Phases
 
@@ -116,10 +116,10 @@ When tdnf is built:
 
 ```bash
 # On IRIX
-LD_LIBRARYN32_PATH=/usr/sgug/lib32 /usr/sgug/bin/tdnf --version
+LD_LIBRARYN32_PATH=/opt/mogrix/lib32 /opt/mogrix/bin/tdnf --version
 # Should output: tdnf: 3.5.x
 
-LD_LIBRARYN32_PATH=/usr/sgug/lib32 /usr/sgug/bin/tdnf repolist
+LD_LIBRARYN32_PATH=/opt/mogrix/lib32 /opt/mogrix/bin/tdnf repolist
 # Should output: Error(1602) - expected, no config file
 ```
 

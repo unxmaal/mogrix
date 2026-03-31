@@ -1,0 +1,183 @@
+# Mogrix Bundle Manifest
+#
+# Declares which packages become bundles and how suites are composed.
+# Used by `mogrix bundle-all` to build every deliverable reproducibly.
+#
+# Individual bundles: one package → one self-contained .run installer.
+# Suite bundles: multiple packages → one .run with shared libraries.
+#
+# Checkpoint bundles are built first so IRIX testing can begin early
+# while the rest of the bundles build.
+
+# Checkpoint bundles — built first for early IRIX validation.
+# Each exercises a different layer of the stack:
+#   bash       — core CLI, readline, ncurses
+#   nano       — editor, basic TUI
+#   tmux       — libevent, complex TUI, pty handling
+#   curl       — TLS (openssl+gnutls), networking
+#   dmenu      — simple X11 app (Xlib, fontconfig, freetype)
+#   dillo      — complex C++ X11 app (FLTK, cairo, PNG, JPEG, TLS)
+#   milkytracker — SDL2 + audio, cmake-built C++, libc++ headers
+checkpoint:
+  - bash
+  - nano
+  - tmux
+  - curl
+  - dmenu
+  - dillo
+  - milkytracker
+
+# Individual app bundles — one package each.
+bundles:
+  # Shells & core CLI
+  - bash
+  - dash
+  - coreutils
+  - diffutils
+  - findutils
+  - gawk
+  - grep
+  - gzip
+  - less
+  - make
+  - patch
+  - sed
+  - tar
+  - which
+
+  # Editors & pagers
+  - nano
+  - vim-enhanced-suite   # suite: vim-enhanced + vim-common + vim-filesystem
+  - mc                   # Midnight Commander (file manager + editor)
+
+  # Terminal multiplexers
+  - tmux
+  - screen
+
+  # Network & transfer
+  - curl
+  - wget2
+  - rsync
+  - openssh
+
+  # Development tools
+  - file
+  - jq
+  - groff
+  - man-db
+  - tree
+  - ripgrep
+  - bc
+
+  # X11 terminals
+  - st
+  - rxvt-unicode
+  - aterm
+  - gtkterm
+
+  # X11 GUI apps
+  - dillo                # web browser
+  - feh                  # image viewer
+  - decker               # HyperCard-like authoring
+  - dmenu                # launcher
+  - worker               # file manager
+
+  # Chat & social
+  - weechat
+  - irssi
+  - bitlbee
+  - alpine               # email client
+
+  # Fun & toys
+  - cowsay
+  - cmatrix
+  - figlet
+  - sl
+  - banner
+  - frotz                # Z-machine interpreter
+  - lolcat
+  - boxes
+
+  # Multimedia
+  - btop                 # system monitor
+
+# Suite bundles — multiple packages sharing libraries.
+# Each suite produces one .run with all included apps.
+suites:
+  mogrix-core:
+    description: "Essential CLI tools for a usable IRIX shell"
+    packages:
+      - bash
+      - coreutils
+      - less
+      - grep
+      - sed
+      - gawk
+      - findutils
+      - diffutils
+      - tar
+      - gzip
+      - which
+      - patch
+      - make
+      - file
+      - tree
+      - man-db
+      - groff
+
+  mogrix-net:
+    description: "Network tools"
+    packages:
+      - curl
+      - wget2
+      - rsync
+      - openssh
+
+  mogrix-dev:
+    description: "Development tools"
+    packages:
+      - jq
+      - bc
+      - ripgrep
+      - file
+      - groff
+      - man-db
+
+  mogrix-editor:
+    description: "Text editors"
+    packages:
+      - nano
+      - vim-enhanced-suite
+      - mc
+
+  mogrix-irc:
+    description: "IRC and chat clients"
+    packages:
+      - weechat
+      - irssi
+      - bitlbee
+
+  mogrix-smallweb:
+    description: "Lightweight web browsers and tools"
+    packages:
+      - dillo
+      - curl
+
+  mogrix-x11-terms:
+    description: "X11 terminal emulators"
+    packages:
+      - st
+      - rxvt-unicode
+      - aterm
+
+  mogrix-fun:
+    description: "Fun and novelty programs"
+    packages:
+      - cowsay
+      - cmatrix
+      - figlet
+      - sl
+      - banner
+      - lolcat
+      - boxes
+      - frotz

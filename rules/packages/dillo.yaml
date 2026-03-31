@@ -44,6 +44,10 @@ rules:
     - xorg-x11-fonts-ISO8859-1-75dpi
 
   prep_commands:
+    # Fix NotSoSimpleVector copy constructor — references nonexistent 'arrayExtra'
+    # member (should be arrayExtra1/arrayExtra2). Source bug in dillo 3.0.5.
+    - 'sed -i "s/this->arrayExtra = NULL;/this->arrayExtra1 = NULL; this->arrayExtra2 = NULL;/" lout/misc.hh'
+    - 'sed -i "s/memcpy (this->arrayExtra, o.arrayExtra, sizeof (T) \* numExtra);/memcpy (this->arrayExtra1, o.arrayExtra1, sizeof (T) * numExtra);\n      memcpy (this->arrayExtra2, o.arrayExtra2, sizeof (T) * numExtra);/" lout/misc.hh'
     # Use static FLTK linking to avoid R_MIPS_REL32 vtable relocation issues on IRIX
     # Replace fltk-config --ldflags with explicit static archive path
     - "$MOGRIX_ROOT/tools/safepatch configure.ac --old 'LIBFLTK_LIBS=`$FLTK_CONFIG --ldflags`' --new 'LIBFLTK_LIBS=\"-Wl,-Bstatic -lfltk -lfltk_images -lfltk_forms -Wl,-Bdynamic -lXcursor -lpthread -lX11\"' --no-backup --quiet"

@@ -23,7 +23,7 @@ rules:
     # -isystem list, and -I target-paths don't exist on the build host.
     - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'X11INC = /usr/X11R6/include' --new 'X11INC = /opt/mogrix/include' --no-backup --quiet"
     - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'X11LIB = /usr/X11R6/lib' --new 'X11LIB = /opt/mogrix/lib32' --no-backup --quiet"
-    - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'FREETYPEINC = /usr/include/freetype2' --new 'FREETYPEINC = $MOGRIX_STAGING/include/freetype2' --no-backup --quiet"
+    - "$MOGRIX_ROOT/tools/safepatch config.mk --old 'FREETYPEINC = /usr/include/freetype2' --new 'FREETYPEINC = %{_staging}/include/freetype2' --no-backup --quiet"
     # IRIX X11R6.3 Xutil.h doesn't transitively include keysym.h like modern X11.
     # dmenu uses XK_Escape, XK_BackSpace etc. without including it directly.
     - "$MOGRIX_ROOT/tools/safepatch dmenu.c --old '#include <X11/Xft/Xft.h>' --insert-after '#include <X11/keysym.h>' --no-backup --quiet"

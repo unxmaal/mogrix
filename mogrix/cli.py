@@ -4399,6 +4399,153 @@ def bundle(
             console.print(f"\n[red]{report.failed} test(s) failed[/red]")
 
 
+@main.command("bundle-all")
+@click.option("--dry-run", is_flag=True, help="Show what would be built")
+@click.option("--checkpoint-only", is_flag=True, help="Build only checkpoint bundles")
+@click.option("--suites-only", is_flag=True, help="Build only suite bundles")
+@click.option("--no-test", is_flag=True, help="Skip IRIX testing after each bundle")
+@click.option(
+    "--sysroot",
+    type=click.Path(exists=True),
+    default="/opt/irix-sysroot",
+    help="IRIX sysroot path",
+)
+def bundle_all(
+    dry_run: bool,
+    checkpoint_only: bool,
+    suites_only: bool,
+    no_test: bool,
+    sysroot: str,
+):
+    """Build all bundles declared in rules/bundles.yaml.
+
+    Builds checkpoint bundles first (for early IRIX validation),
+    then individual bundles, then suite bundles.
+
+    \b
+    Examples:
+      mogrix bundle-all --dry-run           # Preview what would be built
+      mogrix bundle-all --checkpoint-only   # Just bash/nano/less/tmux/openssh/curl
+      mogrix bundle-all --suites-only       # Just the mogrix-* suites
+      mogrix bundle-all --no-test           # Skip IRIX testing
+    """
+    import yaml
+
+    manifest_path = RULES_DIR / "bundles.yaml"
+    if not manifest_path.exists():
+        console.print(f"[red]Bundle manifest not found: {manifest_path}[/red]")
+        raise SystemExit(1)
+
+    with open(manifest_path) as f:
+        manifest = yaml.safe_load(f) or {}
+
+    checkpoint = manifest.get("checkpoint", [])
+    bundles = manifest.get("bundles", [])
+    suites = manifest.get("suites", {})
+
+    rpms_dir = MOGRIX_OUTPUTS / "RPMS"
+    if not rpms_dir.is_dir() and not dry_run:
+        console.print(f"[red]RPMs directory not found: {rpms_dir}[/red]")
+        raise SystemExit(1)
+
+    output_dir = MOGRIX_OUTPUTS / "bundles"
+
+    # Build plan
+    plan_individual = []
+    plan_suites = []
+
+    if checkpoint_only:
+        plan_individual = checkpoint
+    elif suites_only:
+        pass  # no individual bundles
+    else:
+        # Checkpoint first, then remaining individual bundles
+        seen = set(checkpoint)
+        plan_individual = list(checkpoint)
+        for pkg in bundles:
+            if pkg not in seen:
+                plan_individual.append(pkg)
+                seen.add(pkg)
+
+    if not checkpoint_only:
+        for suite_name, suite_def in suites.items():
+            plan_suites.append((suite_name, suite_def.get("packages", [])))
+
+    total = len(plan_individual) + len(plan_suites)
+
+    if dry_run:
+        console.print(f"\n[bold]Bundle-all dry run: {total} bundles[/bold]")
+        if plan_individual:
+            console.print(f"\n[bold]Individual bundles ({len(plan_individual)}):[/bold]")
+            for i, pkg in enumerate(plan_individual, 1):
+                marker = " [green](checkpoint)[/green]" if pkg in checkpoint else ""
+                console.print(f"  {i:3d}. {pkg}{marker}")
+        if plan_suites:
+            console.print(f"\n[bold]Suite bundles ({len(plan_suites)}):[/bold]")
+            for suite_name, pkgs in plan_suites:
+                console.print(f"  {suite_name}: {', '.join(pkgs)}")
+        return
+
+    from mogrix.bundle import BundleBuilder
+
+    builder = BundleBuilder(rpms_dir=rpms_dir, irix_sysroot=Path(sysroot))
+    passed = 0
+    failed = []
+
+    # Build individual bundles
+    for i, pkg in enumerate(plan_individual, 1):
+        marker = " (checkpoint)" if pkg in checkpoint else ""
+        console.print(f"\n[bold]{'='*60}[/bold]")
+        console.print(f"[bold]  {i}/{total} Bundle: {pkg}{marker}[/bold]")
+        console.print(f"[bold]{'='*60}[/bold]")
+        try:
+            # vim-enhanced-suite is a special suite-style bundle
+            if pkg == "vim-enhanced-suite":
+                builder.create_bundle(
+                    target_package="vim-enhanced",
+                    output_dir=output_dir,
+                    extra_packages=["vim-common", "vim-filesystem"],
+                    suite_name="vim-enhanced-suite",
+                )
+            else:
+                builder.create_bundle(
+                    target_package=pkg,
+                    output_dir=output_dir,
+                )
+            passed += 1
+        except (Exception, SystemExit) as e:
+            console.print(f"[red]  FAILED: {e}[/red]")
+            failed.append(pkg)
+
+    # Build suite bundles
+    for j, (suite_name, pkgs) in enumerate(plan_suites, len(plan_individual) + 1):
+        console.print(f"\n[bold]{'='*60}[/bold]")
+        console.print(f"[bold]  {j}/{total} Suite: {suite_name} ({len(pkgs)} packages)[/bold]")
+        console.print(f"[bold]{'='*60}[/bold]")
+        try:
+            builder.create_bundle(
+                target_package=pkgs[0],
+                output_dir=output_dir,
+                extra_packages=pkgs[1:],
+                suite_name=suite_name,
+            )
+            passed += 1
+        except (Exception, SystemExit) as e:
+            console.print(f"[red]  FAILED: {e}[/red]")
+            failed.append(suite_name)
+
+    # Summary
+    console.print(f"\n[bold]{'='*60}[/bold]")
+    console.print(f"[bold]Bundle-all Summary[/bold]")
+    console.print(f"[bold]{'='*60}[/bold]")
+    console.print(f"  [green]Passed:[/green] {passed}")
+    if failed:
+        console.print(f"  [red]Failed:[/red] {len(failed)}")
+        for name in failed:
+            console.print(f"    [red]•[/red] {name}")
+    console.print(f"  Output: {output_dir}")
+
+
 @main.command()
 @click.argument("bundle_path", type=click.Path(exists=True))
 @click.option(

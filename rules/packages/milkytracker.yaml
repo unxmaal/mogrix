@@ -2,6 +2,10 @@ package: milkytracker
 build_after:
   - SDL2
 rules:
+  # NOTE: SDL2 needs setenv/unsetenv but they CANNOT be preloaded via
+  # _RLDN32_LIST (IRIX rld $t9/GP bug) and CANNOT be injected into the exe
+  # (environ access during static init crashes). They must be compiled into
+  # SDL2 itself — see SDL2.yaml inject_compat_functions.
   drop_buildrequires:
   - libappstream-glib
   - rtmidi-devel
@@ -11,6 +15,10 @@ rules:
   # IRIX has no GLX that SDL2 can use — remove SDL_WINDOW_OPENGL flag
   # MilkyTracker uses SDL2 software renderer (PPDisplayDeviceFB), not GL directly
   - "sed -i 's/SDL_WINDOW_OPENGL | //g' src/ppui/sdl/DisplayDevice_SDL.cpp"
+  # Fix SDL2 cmake targets — hardcoded /opt/mogrix paths don't exist during cross-build.
+  # _IMPORT_PREFIX and IMPORTED_LOCATION use install prefix, not staging path.
+  # First reset any double-prefixed paths, then do the replacement (idempotent).
+  - 'for f in %{_staging}/lib32/cmake/SDL2/*.cmake; do sed -i "s|%{_staging}|/opt/mogrix|g" "$f"; sed -i "s|/opt/mogrix|%{_staging}|g" "$f"; done'
   spec_replacements:
   # Replace cmake macro with cross-compilation setup
   # Force SDL audio (no ALSA/JACK on IRIX), disable MIDI/zziplib

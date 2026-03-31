@@ -18,7 +18,7 @@ This document tracks the effort to bootstrap SGUG-RSE packages via cross-compila
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         IRIX TARGET                                  │
 │                                                                      │
-│  rpm -ivh package.rpm  ──►  /usr/sgug/...  ──►  TEST ONLY           │
+│  rpm -ivh package.rpm  ──►  /opt/mogrix/...  ──►  TEST ONLY           │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -31,10 +31,10 @@ This document tracks the effort to bootstrap SGUG-RSE packages via cross-compila
 - [x] Clang 16 with `--target=mips-sgi-irix6.5`
 - [x] vvuk's LLD with IRIX support at `/opt/cross/bin/ld.lld-irix`
 - [x] Compiler wrapper `/opt/cross/bin/irix-cc-bootstrap`
-- [x] Linker wrapper `/opt/sgug-staging/usr/sgug/bin/irix-ld`
+- [x] Linker wrapper `$MOGRIX_STAGING/bin/irix-ld`
 - [x] Fixed CRT files at `/opt/irix-sysroot/usr/lib32/mips3/fixed/`
 - [x] Pristine IRIX sysroot at `/opt/irix-sysroot/`
-- [x] Staging area at `/opt/sgug-staging/usr/sgug/`
+- [x] Staging area at `$MOGRIX_STAGING/`
 
 #### Foundation Libraries - Static (COMPLETE)
 Built from upstream tarballs, validated on IRIX:
@@ -86,7 +86,7 @@ See `mogrix/rules/packages/` for:
 ### Phase C: Cross-Build via rpmbuild (COMPLETE!)
 
 #### rpmbuild Cross-Compilation
-- [x] Cross-compilation macros at `/opt/sgug-staging/rpmmacros.irix`
+- [x] Cross-compilation macros at `$MOGRIX_STAGING_ROOT/rpmmacros.irix`
 - [x] Test package (test-hello) built and validated
 - [x] FC40 zlib SRPM built and validated
 - [x] Integration with mogrix-converted SRPMs
@@ -115,9 +115,9 @@ See `mogrix/rules/packages/` for:
 All packages produce valid **ELF 32-bit MSB, MIPS N32** binaries for IRIX 6.5.
 
 #### tdnf Package Contents
-- `/usr/sgug/bin/tdnf` - Main binary
-- `/usr/sgug/bin/yum`, `/usr/sgug/bin/tyum` - Compatibility symlinks
-- `/usr/sgug/lib32/libtdnf.so` - Library
+- `/opt/mogrix/bin/tdnf` - Main binary
+- `/opt/mogrix/bin/yum`, `/opt/mogrix/bin/tyum` - Compatibility symlinks
+- `/opt/mogrix/lib32/libtdnf.so` - Library
 - Configuration and completions
 
 ## Resolved Issues
@@ -159,16 +159,16 @@ All stored in `compat/` and `compat/catalog.yaml`:
 | Purpose | Path |
 |---------|------|
 | IRIX sysroot (pristine) | `/opt/irix-sysroot/` |
-| Staging area | `/opt/sgug-staging/usr/sgug/` |
+| Staging area | `$MOGRIX_STAGING/` |
 | Cross toolchain | `/opt/cross/bin/` |
 | Mogrix project | `/home/edodd/projects/github/unxmaal/mogrix/` |
-| rpmbuild macros | `/opt/sgug-staging/rpmmacros.irix` |
-| Linker wrapper | `/opt/sgug-staging/usr/sgug/bin/irix-ld` |
+| rpmbuild macros | `$MOGRIX_STAGING_ROOT/rpmmacros.irix` |
+| Linker wrapper | `$MOGRIX_STAGING/bin/irix-ld` |
 
 ## IRIX Test Host
 
 - **SSH**: `ssh edodd@192.168.0.81`
-- **Shell**: Run `/usr/sgug/bin/sgugshell` after connecting (or use csh setenv syntax)
+- **Shell**: Run `/opt/mogrix/bin/sgugshell` after connecting (or use csh setenv syntax)
 - **System**: IRIX 6.5.30 Octane with full SGUG-RSE
 
 ## References

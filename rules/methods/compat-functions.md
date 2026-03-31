@@ -110,10 +110,11 @@ If a compat function needs to override a **buggy libc function called from share
 1. Write the compat function as normal in `compat/` and register in `catalog.yaml`
 2. Cross-compile as shared library:
    ```bash
-   irix-cc -shared -fPIC -o /tmp/libmogrix_compat.so \
+   # NOTE: setenv.c is NOT included — IRIX rld $t9/GP interposition bug.
+   # Packages needing setenv/unsetenv use inject_compat_functions instead.
+   irix-cc -shared -fPIC -Wl,--as-needed -o /tmp/libmogrix_compat.so \
        compat/stdlib/bsearch.c \
        compat/stdlib/posix_memalign.c \
-       compat/stdlib/setenv.c \
        compat/sys/socketpair.c \
        compat/sys/shm_open.c \
        compat/sys/mincore.c \

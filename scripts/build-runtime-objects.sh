@@ -251,9 +251,13 @@ echo "[5/7] libmogrix_compat.so (preloaded libc overrides)..."
 # Sources for the shared library — these override buggy IRIX libc functions
 # that are called from shared libraries (not just executables).
 # CRITICAL: No GLib/GTK deps allowed — this is preloaded into ALL binaries.
+# CRITICAL: Do NOT include setenv.c or unsetenv — IRIX rld doesn't set up
+# $t9/GP for interposed libc functions called internally, causing SIGSEGV.
+# Packages needing setenv must use inject_compat_functions (static link) instead.
 COMPAT_SO_SRCS=""
 for src in \
     compat/stdlib/bsearch.c \
+    compat/stdlib/posix_memalign.c \
     compat/sys/socketpair.c \
     compat/sys/shm_open.c \
     compat/sys/mincore.c \
@@ -273,7 +277,11 @@ do
 done
 
 if [[ -n "$COMPAT_SO_SRCS" ]]; then
-    if "$CC" -shared -fPIC \
+    # --as-needed: drop gratuitous libpthread.so NEEDED from irix-ld's default
+    # -lgcc_s -lpthread. libmogrix_compat.so uses no pthread symbols. Having
+    # libpthread as NEEDED causes "_RLD_PTHREADS_START invoked twice" when
+    # preloaded via _RLDN32_LIST in bundles that also link libpthread (SDL2 apps).
+    if "$CC" -shared -fPIC -Wl,--as-needed \
         -I "${MOGRIX_DIR}/compat/include" \
         -I "${MOGRIX_DIR}/patches/shared" \
         $COMPAT_SO_SRCS \
