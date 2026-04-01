@@ -74,7 +74,7 @@ BUILTIN_SOURCES=(
     absvdi2.c absvsi2.c absvti2.c
     addvdi3.c addvsi3.c addvti3.c
     ashlti3.c ashrti3.c
-    clzdi2.c clzti2.c cmpti2.c ctzdi2.c ctzti2.c
+    clzsi2.c clzdi2.c clzti2.c cmpti2.c ctzsi2.c ctzdi2.c ctzti2.c
     divmodti4.c divti3.c
     ffsdi2.c ffsti2.c
     lshrti3.c

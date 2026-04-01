@@ -88,7 +88,7 @@ C_SOURCES=(
 # C++ sources
 CXX_SOURCES=(
     libunwind.cpp
-    Unwind_AppleExtras.cpp
+    # Unwind_AppleExtras.cpp removed in LLVM 22 (Apple-only, was no-op on other platforms)
 )
 
 # Assembly sources

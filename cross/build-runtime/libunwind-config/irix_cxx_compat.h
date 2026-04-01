@@ -51,6 +51,21 @@
 #ifndef PRId32
 #define PRId32 "d"
 #endif
+#ifndef PRIu8
+#define PRIu8 "u"
+#endif
+#ifndef PRIx8
+#define PRIx8 "x"
+#endif
+#ifndef PRId8
+#define PRId8 "d"
+#endif
+#ifndef PRIu16
+#define PRIu16 "u"
+#endif
+#ifndef PRIx16
+#define PRIx16 "x"
+#endif
 
 /* IRIX lacks CLOCK_MONOTONIC. Map to CLOCK_SGI_CYCLE (free-running HW counter,
    closest to monotonic available on IRIX). Falls back to CLOCK_REALTIME=1

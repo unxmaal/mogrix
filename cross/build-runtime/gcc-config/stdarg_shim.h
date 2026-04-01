@@ -3,6 +3,9 @@
 #ifndef _STDARG_H
 #define _STDARG_H
 #define __STDARG_H
+/* Block clang 22's split stdarg headers from redefining va_list */
+#define _VA_LIST
+#define __GNUC_VA_LIST
 typedef char *va_list;
 typedef char *__gnuc_va_list;
 #define va_start(ap, param) __builtin_va_start(ap, param)

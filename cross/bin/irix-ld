@@ -135,10 +135,10 @@ if [ "$is_shared" = "1" ]; then
           $CRTBEGIN \
           $EH_FRAME_REG \
           $DSOHANDLE \
-          $filtered_args \
           -L$STAGING/lib32 \
           -L$SYSROOT/lib32 \
           -L$SYSROOT/usr/lib32 \
+          $filtered_args \
           $LIBGCC_S_FLAG \
           $CRTEND
         rc=$?
@@ -165,10 +165,10 @@ if [ "$is_shared" = "1" ]; then
       $CRTBEGIN \
       $EH_FRAME_REG \
       $DSOHANDLE \
-      $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
+      $filtered_args \
       $LIBGCC_S_FLAG \
       $CRTEND
     rc=$?
@@ -235,10 +235,10 @@ else
       $DSOHANDLE \
       $DLMALLOC \
       $SAFEMEM \
-      $filtered_args \
       -L$STAGING/lib32 \
       -L$SYSROOT/lib32 \
       -L$SYSROOT/usr/lib32 \
+      $filtered_args \
       -lsoft_float_stubs \
       -lc \
       $CRTEND \

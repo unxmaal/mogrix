@@ -1470,13 +1470,13 @@ class BundleBuilder:
         else:
             console.print("[yellow]  mrqs rebase SKIPPED (skip_mrqs_rebase or MOGRIX_NO_MRQS)[/yellow]")
 
-            # Pre-resolve UND symbol R_MIPS_REL32 relocations in executables.
-            # After mrqs rebases libraries, their symbol addresses are final.
-            # fix-anon-relocs --pre-resolve-only reads the rebased .dynsym
-            # tables and writes correct runtime addresses into the executable,
-            # zeroing the relocation entries so rld doesn't try to process them.
-            # This fixes C++ dynamic_cast crashes (typeinfo vtable pointers).
-            self._pre_resolve_executables(bundle_dir)
+        # Pre-resolve UND symbol R_MIPS_REL32 relocations in executables.
+        # After mrqs rebases libraries, their symbol addresses are final.
+        # fix-anon-relocs --pre-resolve-only reads the rebased .dynsym
+        # tables and writes correct runtime addresses into the executable,
+        # zeroing the relocation entries so rld doesn't try to process them.
+        # This fixes C++ dynamic_cast crashes (typeinfo vtable pointers).
+        self._pre_resolve_executables(bundle_dir)
 
         # Strip runtime-unnecessary data directories
         for strip_dir in ("doc", "man", "info", "licenses"):
