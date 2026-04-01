@@ -12,6 +12,9 @@ build_after:
 rules:
   # IRIX X11R6.3 compat — same fixes as rxvt-unicode
   add_source:
+    # IRIX default pthread stack is 256KB — too small for std::async threads
+    # that call libmagic + C++ exception handling. Sets RLIMIT_STACK to 8MB.
+    - irix_thread_stack.c
     # Thread-safe MagicDB singleton — original has unguarded getInstance()
     # which races between main thread and filetype worker thread, creating
     # two magic_t cookies and crashing when the leaked one is used.
@@ -51,6 +54,9 @@ rules:
     - copyopwin.cc
     - dirbookmarkui.cc
   prep_commands:
+    # IRIX: set default thread stack to 8MB for std::async/std::thread
+    # Compile as .o and inject via LIBS (can't modify Makefile.am — breaks automake bootstrap)
+    - "MOGRIX_STAGING=%{_staging} %{__cc} -c %{_sourcedir}/irix_thread_stack.c -o irix_thread_stack.o"
     # Fix MagicDB singleton data race (replace original with thread-safe version)
     - "cp %{_sourcedir}/magic_db_threadsafe.cc src/magic_db.cc"
     # IRIX/MIPS weak-memory fix: replace dual-lock MutEx/CondVar with single-lock version
@@ -86,3 +92,8 @@ rules:
   configure_flags:
     add:
       - --disable-inotify
+      # Use libstdc++ (irix-cxx), not libc++ — worker links against SGUG libstdc++.so.6
+      - CXX=%{_staging}/bin/irix-cxx
+  export_vars:
+    # Link irix_thread_stack.o to set 8MB default pthread stack for std::async threads
+    LDFLAGS: "$PWD/irix_thread_stack.o"

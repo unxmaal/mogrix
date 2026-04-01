@@ -1,6 +1,9 @@
 package: milkytracker
 build_after:
   - SDL2
+# mrqs rebase corrupts the SGUG GCC-built libstdc++.so.6 (different section layout
+# from clang-built version). milkytracker has few bundled libs so rebase isn't needed.
+skip_mrqs_rebase: true
 rules:
   # NOTE: SDL2 needs setenv/unsetenv but they CANNOT be preloaded via
   # _RLDN32_LIST (IRIX rld $t9/GP bug) and CANNOT be injected into the exe

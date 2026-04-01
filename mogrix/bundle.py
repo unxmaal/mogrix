@@ -809,6 +809,15 @@ class BundleBuilder:
         if target_lib is None:
             return
 
+        # Skip rebasing the SGUG GCC-built libstdc++ — mrqs corrupts it.
+        # The SGUG library has a different section layout than clang-built
+        # versions, and mrqs patches wrong offsets, causing SIGSEGV during
+        # static init.  With few bundled libs, rld handles displacement fine.
+        SGUG_LIBSTDCXX_SIZE = 15886858  # libstdc++.so.6.0.27 from SGUG GCC 9
+        if target_lib.stat().st_size == SGUG_LIBSTDCXX_SIZE:
+            console.print("  [dim]mrqs: skipping SGUG libstdc++ rebase (known incompatible)[/dim]")
+            return
+
         # Rebase just libstdc++ in an isolated temp dir
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
@@ -1542,8 +1551,13 @@ class BundleBuilder:
                 'WEECHAT_EXTRA_LIBDIR="$dir/_lib32/weechat"'
             )
             extra_env_lines.append("export WEECHAT_EXTRA_LIBDIR")
-        # Fontconfig — point to bundle's fonts.conf so bundled fonts are found
-        if has_fonts:
+        # Fontconfig — point to bundle's fonts.conf so fontconfig doesn't look
+        # at /opt/mogrix/etc/fonts/ (which doesn't exist on IRIX).
+        # Set this whenever fonts.conf exists in the bundle, not just when
+        # TTF fonts were included — fontconfig needs the config even without
+        # bundled fonts (it can use IRIX system fonts via the config).
+        bundle_fonts_conf = bundle_dir / "etc" / "fonts" / "fonts.conf"
+        if has_fonts or bundle_fonts_conf.is_file():
             extra_env_lines.append(
                 'FONTCONFIG_FILE="$dir/etc/fonts/fonts.conf"'
             )
