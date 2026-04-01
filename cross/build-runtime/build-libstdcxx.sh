@@ -306,15 +306,20 @@ for src in "${CXX17_SOURCES[@]}"; do
         failed17=$((failed17 + 1))
         continue
     fi
-    # fs_path.cc and cow-fs_path.cc: patch noexcept mismatch between GCC 9.5.0 source
-    # and staging headers (SGUG-RSE GCC 9.2.0). Source adds noexcept to _List::begin/end
-    # but staging header doesn't have it — clang rejects the mismatch.
+    # fs_path.cc and cow-fs_path.cc: noexcept mismatch between GCC 9.5.0 source
+    # and staging headers. If staging headers have noexcept on _List::begin/end
+    # (GCC 9.5 headers), compile unpatched. If not (GCC 9.2), strip noexcept.
     compile_src="$srcpath"
     extra_flags=""
     if [[ "$src" == "fs_path.cc" ]]; then
-        # Patch fs_path.cc and put it where cow-fs_path.cc can also find it
         patched="$BUILD_DIR/c++17/fs_path.cc"
-        sed 's/::begin() noexcept/::begin()/g; s/::end() noexcept/::end()/g; s/::begin() const noexcept/::begin() const/g; s/::end() const noexcept/::end() const/g' "$srcpath" > "$patched"
+        if grep -q 'iterator begin() noexcept' "$STAGING/include/c++/9/bits/fs_path.h" 2>/dev/null; then
+            # Staging has 9.5 headers with noexcept — use source as-is
+            cp "$srcpath" "$patched"
+        else
+            # Staging has 9.2 headers without noexcept — strip from source
+            sed 's/::begin() noexcept/::begin()/g; s/::end() noexcept/::end()/g; s/::begin() const noexcept/::begin() const/g; s/::end() const noexcept/::end() const/g' "$srcpath" > "$patched"
+        fi
         compile_src="$patched"
     elif [[ "$src" == "cow-fs_path.cc" ]]; then
         # cow-fs_path.cc is just: #define _GLIBCXX_USE_CXX11_ABI 0 + #include "fs_path.cc"

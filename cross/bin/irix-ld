@@ -1,6 +1,7 @@
 #!/bin/sh
 #
 # IRIX linker wrapper — LLD 18 with IRIX patches
+# NOTE: LLD 22 rejects IRIX native libc.so section symbols — needs patching before upgrade
 #
 # ============================================================================
 # WARNING: DO NOT CHANGE LINKER SELECTION WITHOUT TESTING ON IRIX!

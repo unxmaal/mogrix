@@ -291,10 +291,32 @@ def rebase_library(data, new_base, verbose=False):
         total_got_entries = got_size // 4
 
         # Patch LOCAL entries
+        #
+        # Local GOT entries can be either:
+        # 1. Absolute addresses: direct pointers into the library (in_range covers these)
+        # 2. GOT_PAGE addresses: clang -mxgot uses (symbol_addr + 0x8000) & ~0xffff as the
+        #    page base for GP-relative symbol access.  These round UP by up to 0x8000, so the
+        #    GOT_PAGE value for a symbol near old_hi can exceed old_hi itself (e.g. a symbol
+        #    at 0x0fa38000 in a library ending at 0x0fa3c000 produces GOT_PAGE = 0x0fa40000,
+        #    which is 0x4000 above old_hi).  The strict in_range check misses these, leaving
+        #    them stale after rebasing → SIGSEGV in any code that uses them.
+        #
+        # Page-aware check: a GOT_PAGE value V is internal if its 64KB coverage window
+        # [V - 0x8000, V + 0x8000) overlaps the library's address range [old_base, old_hi).
+        # Equivalently: V < old_hi + 0x8000  AND  V + 0x8000 > old_base.
+        # Since old_base is always the lowest load vaddr, the second condition is
+        # always satisfied for any realistic library address, so the effective test is:
+        #   V < old_hi + 0x8000  AND  V >= old_base - 0x8000
+        def in_range_got_page(val):
+            """Return True if val is a GOT_PAGE address for a symbol inside this library."""
+            page_start = (val - 0x8000) & 0xFFFFFFFF
+            page_end   = (val + 0x8000) & 0xFFFFFFFF
+            return page_start < old_hi and page_end > old_base
+
         local_count = min(local_gotno, total_got_entries) if local_gotno > 0 else 0
         for i in range(local_count):
             entry = read_u32(data, got_off + i * 4)
-            if in_range(entry):
+            if in_range(entry) or in_range_got_page(entry):
                 write_u32(data, got_off + i * 4, adjust(entry))
                 patched_got += 1
 

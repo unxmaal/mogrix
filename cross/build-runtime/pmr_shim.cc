@@ -24,6 +24,10 @@ namespace std _GLIBCXX_VISIBILITY(default) {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
 namespace pmr {
 
+  // Base class virtual destructor — GCC's memory_resource.cc defines this
+  // out-of-line as "= default" which older clang rejected. Provide explicitly.
+  memory_resource::~memory_resource() {}
+
   // --- get_default_resource ---
   // Uses the same atomic from the header's set_default_resource.
   // The default_resource atomic is defined in the memory_resource header
